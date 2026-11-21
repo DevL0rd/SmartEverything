@@ -34,10 +34,11 @@ export class TurnMachineMoves<T extends MovableTurn> {
     return this.moving.has(chatId);
   }
 
-  atToolCall(turn: T): void {
+  async atToolCall(turn: T): Promise<void> {
     const id = turn.chat.id;
     if (this.moving.has(id)) return;
-    if (this.service.store.aiChats.chat(id).pending_execution_target === null) return;
+    const chat = await this.service.store.host.call('aiChats', 'chat', id);
+    if (chat.pending_execution_target === null || this.moving.has(id)) return;
     this.moving.add(id);
     this.turns.hold(turn);
     background(
@@ -78,10 +79,13 @@ export class TurnMachineMoves<T extends MovableTurn> {
       return;
     }
     if (outcome.state === 'stranded') throw new Error(outcome.reason);
-    if (outcome.state === 'moved') announceMachine(this.service, chatId);
+    if (outcome.state === 'moved') await announceMachine(this.service, chatId);
     const deliveryId = randomUUID();
     this.turns.continueAs(turn, deliveryId);
-    const session = this.service.state({ profileId: turn.chat.profile_id, role: 'member' }, chatId);
+    const session = await this.service.state(
+      { profileId: turn.chat.profile_id, role: 'member' },
+      chatId,
+    );
     if (session.epoch === null) throw new Error('The chat has no open session to continue.');
     await this.service.directory.execute(session.target, randomUUID(), {
       kind: 'prompt',

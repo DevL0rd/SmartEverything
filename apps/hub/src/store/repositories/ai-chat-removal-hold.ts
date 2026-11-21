@@ -38,14 +38,22 @@ export function assertSubagentCreation(context: StoreContext, input: NewChat): v
     throw subagentRefused();
 }
 
+export type ChatWorkState = z.output<typeof WORK_STATE>;
+
+export function assertChatWorkState(
+  state: ChatWorkState | undefined,
+  mode: 'read' | 'write' = 'write',
+): void {
+  if (mode === 'write') assertWritable(state);
+  if (deleting(state)) throw workRefused();
+}
+
 export function assertChatWork(
   context: StoreContext,
   chatId: string,
   mode: 'read' | 'write' = 'write',
 ): void {
-  const state = workState(context, chatId);
-  if (mode === 'write') assertWritable(state);
-  if (deleting(state)) throw workRefused();
+  assertChatWorkState(workState(context, chatId), mode);
 }
 
 export function assertQueuedChatWork(context: StoreContext, chatId: string): void {

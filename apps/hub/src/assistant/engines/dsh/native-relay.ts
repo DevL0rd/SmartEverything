@@ -7,8 +7,8 @@ import type {
   DshSessionMetadata,
   HelperDialogue,
 } from '@smarteverything/domain';
-import type { Store } from '../../../store/store';
-import { ConversationLog } from '../../conversation-log';
+import type { HostStore } from '../../../store/host/host-store';
+import { addPersonMessage, addResponderMessage } from '../../store-units';
 
 const TEXT = z.object({ type: z.literal('text'), text: z.string() });
 const RELAY = z.object({
@@ -53,7 +53,7 @@ export function nativeRelay(data: unknown): Relay | undefined {
   return text.trim() === '' ? undefined : { id, sender, text };
 }
 
-function boundChat(store: Store, metadata: DshSessionMetadata): AiChatRow | undefined {
+function boundChat(store: HostStore, metadata: DshSessionMetadata): AiChatRow | undefined {
   const chat = store.aiChats.find(metadata.chat_id);
   return chat?.profile_id === metadata.profile_id &&
     chat.engine.kind === 'dsh' &&
@@ -79,7 +79,7 @@ function directChild(
 }
 
 function directPair(
-  store: Store,
+  store: HostStore,
   recipient: DshSessionMetadata,
   senderId: string,
 ): Pair | undefined {
@@ -110,12 +110,7 @@ function candidates(event: DshSessionEvent): readonly unknown[] {
   return inbox.success ? inbox.data.inserted : [];
 }
 
-function project(
-  store: Store,
-  conversation: ConversationLog,
-  session: DshSessionMetadata,
-  message: Relay,
-): void {
+function project(store: HostStore, session: DshSessionMetadata, message: Relay): void {
   const pair = directPair(store, session, message.sender);
   if (pair === undefined) return;
   const { parent, helper, direction } = pair;
@@ -130,7 +125,7 @@ function project(
     helper_name: helperName,
   };
   if (direction === 'from_helper') {
-    conversation.responderInChat({
+    addResponderMessage(store, {
       chat: parent,
       replyTo: null,
       messageId,
@@ -139,7 +134,7 @@ function project(
     });
     return;
   }
-  conversation.person({
+  addPersonMessage(store, {
     chat: parent,
     clientId: null,
     author: parent.title,
@@ -152,18 +147,17 @@ function project(
 }
 
 export function projectNativeRelays(
-  store: Store,
+  store: HostStore,
   sessionId: string,
   events: readonly DshSessionEvent[],
 ): void {
   const session = store.dshSessions.ownerOf(sessionId);
   if (session === undefined) return;
-  const conversation = new ConversationLog(store);
   for (const event of events) {
     if (event.seq < session.next_seq || event.seq < session.inherited_event_count) continue;
     for (const candidate of candidates(event)) {
       const message = nativeRelay(candidate);
-      if (message !== undefined) project(store, conversation, session, message);
+      if (message !== undefined) project(store, session, message);
     }
   }
 }

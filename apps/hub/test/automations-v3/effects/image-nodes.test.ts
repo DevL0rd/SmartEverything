@@ -69,7 +69,7 @@ async function rig(): Promise<Rig> {
   const clock = new FakeClock('2026-10-08T10:00:00.000Z');
   const files = new AssistantFiles({
     layout: hubLayout(db.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: clock.now,
   });
@@ -93,7 +93,7 @@ async function rig(): Promise<Rig> {
       content: PICTURE,
       signal: new AbortController().signal,
     });
-    new ConversationLog(store).responderInChat({
+    await new ConversationLog(store).responderInChat({
       chat: store.aiChats.chat(receipt.chat_id),
       replyTo: null,
       text: receipt.request.prompt,
@@ -117,14 +117,14 @@ async function rig(): Promise<Rig> {
     files,
     engine: () => TEST_ENGINE,
     selectedModel: () => ({ model: 'vendor/painter', provider_tag: 'fast' }),
-    actor: (who): ImageActor => {
+    actor: (who): Promise<ImageActor> => {
       actors.push(who);
-      return {
+      return Promise.resolve({
         profileId: who.profileId,
         key: `automation:${who.automationId}`,
-        authorize: (): void => undefined,
+        authorize: (): Promise<void> => Promise.resolve(),
         ...(who.signal === undefined ? {} : { signal: who.signal }),
-      };
+      });
     },
     service: {
       start: (actor, value): Promise<ImageOperationReceipt> => {
@@ -461,9 +461,14 @@ describe('a made picture where a camera picture id goes', () => {
   function pictures(home: Rig): StoredPictures {
     return new StoredPictures({
       snapshot: () => Promise.reject(new Error('not used')),
-      recordings: home.store.cameras,
+      recordings: {
+        addRecording: (input) => Promise.resolve(home.store.cameras.addRecording(input)),
+        recording: (id) => Promise.resolve(home.store.cameras.recording(id)),
+      },
       recordingPath: (path) => join(home.db.directory, 'recordings', path),
-      attachments: home.store.assistantChat,
+      attachments: {
+        attachment: (id) => Promise.resolve(home.store.assistantChat.attachment(id)),
+      },
       attachmentPath: (file) => home.files.pathOf(file),
       now: () => home.clock.now(),
     });

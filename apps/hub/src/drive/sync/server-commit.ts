@@ -9,16 +9,16 @@ import {
   type HubEntry,
 } from '@smarteverything/domain/drive-sync';
 import { sendJson } from '../../server/http';
-import { folderDraft, parentOf, recordItem, commitContent, type ChangeActor } from '../changes';
+import { folderDraft, parentIn, recordItem, commitContent, type ChangeActor } from '../changes';
 import { identityOf, isoOf } from '../change-rows';
 import { commitConflictCopy } from '../conflicts';
 import type { ContentAlongside } from '../units/content';
 import { locate, type DriveWriteRoot } from '../intents';
 import { DriveWriteError } from '../write-error';
-import { checkDriveWrite } from '../quotas';
+import { checkDriveWrite, hostQuotaSource } from '../quotas';
 import { applyMeta, type SyncCall, type WantedMeta } from './server-meta';
 import type { StagedBytes } from '../versions';
-import { assertWritable, resolveScope, type SyncScope } from './placement-scope';
+import { assertWritable, syncScopeOf, type SyncScope } from './placement-scope';
 import { inScope, toWirePath } from './sync-paths';
 import {
   contentToken,
@@ -29,10 +29,10 @@ import {
   verifyAssembled,
   type Assembled,
 } from './server-blocks';
+import { fileOf } from './file-of';
 import {
   acceptOf,
   conflictOf,
-  fileOf,
   remember,
   syncActor,
   type AcceptMessage,
@@ -85,7 +85,7 @@ async function makeFolder(
     draft: folderDraft(
       {
         rootId: root.id,
-        parentId: parentOf(env, root.id, relPath)?.id ?? null,
+        parentId: (await parentIn(env, root.id, relPath))?.id ?? null,
         relPath,
         modifiedAt: isoOf(stamp.mtimeNs),
         addedAt: env.now().toISOString(),
@@ -110,7 +110,7 @@ export async function ensureFolders(
   let prefix = '';
   for (const part of folder === '.' ? [] : folder.split('/')) {
     prefix = prefix === '' ? part : `${prefix}/${part}`;
-    if (env.store.driveItems.byPath(root.id, prefix, null) === undefined) {
+    if ((await env.store.host.call('driveItems', 'byPath', root.id, prefix, null)) === undefined) {
       await makeFolder(env, root, prefix, actor);
     }
   }
@@ -118,7 +118,7 @@ export async function ensureFolders(
 
 export async function discardTxn(env: SyncEnv, txns: SyncTxns, txn: SyncTxn): Promise<void> {
   txns.drop(txn);
-  const row = env.store.driveRoots.find(txn.spec.rootId);
+  const row = await env.store.host.call('driveRoots', 'find', txn.spec.rootId);
   if (row === undefined) return;
   await env.files.remove(await locate(row, txn.spec.tmpRel));
 }
@@ -187,7 +187,7 @@ export class SyncCommitter {
   private async settle(txn: SyncTxn): Promise<CommitResult> {
     try {
       const result = await this.apply(txn);
-      remember(this.env, txn.spec, result);
+      await remember(this.env, txn.spec, result);
       return result;
     } finally {
       await discardTxn(this.env, this.txns, txn);
@@ -196,13 +196,19 @@ export class SyncCommitter {
 
   private async apply(txn: SyncTxn): Promise<AcceptMessage | ConflictMessage> {
     const { spec } = txn;
-    const scope = resolveScope(this.env.store, spec.placementId, spec.deviceId, 'sync');
+    const scope = await syncScopeOf(this.env.store, spec.placementId, spec.deviceId, 'sync');
     assertWritable(scope);
     const root = scope.drive;
     if (!inScope(scope, spec.relPath)) {
       return conflictOf(spec.opId, 'path', 0, null);
     }
-    const existing = this.env.store.driveItems.byPath(spec.rootId, spec.relPath, null);
+    const existing = await this.env.store.host.call(
+      'driveItems',
+      'byPath',
+      spec.rootId,
+      spec.relPath,
+      null,
+    );
     const file = existing === undefined ? null : fileOf(existing);
     if (existing !== undefined && file === null) {
       return conflictOf(spec.opId, 'exists', existing.rev, null);
@@ -225,7 +231,7 @@ export class SyncCommitter {
   ): Promise<void> {
     await checkDriveWrite(
       {
-        status: (profileId) => this.env.store.driveQuotas.status(profileId),
+        status: hostQuotaSource(this.env.store),
         space: this.env.space,
       },
       { profileId: spec.profileId, addBytes: assembled.bytes, releasedBytes, path: root.path },
@@ -262,7 +268,7 @@ export class SyncCommitter {
         alongside: [blocksOf(spec)],
       });
       await applyMeta(this.callOf(spec, scope), written.item, this.wantedOf(spec));
-      return acceptOf(this.env, spec.rootId, spec.opId, written.item.rev);
+      return await acceptOf(this.env, spec.rootId, spec.opId, written.item.rev);
     } catch (cause) {
       if (cause instanceof DriveWriteError && cause.failure === 'exists') {
         return conflictOf(spec.opId, 'exists', hub?.rev ?? 0, null);
@@ -296,7 +302,12 @@ export class SyncCommitter {
       deviceId: spec.deviceId,
       actor: syncActor(spec),
     });
-    const kept = this.env.store.driveItems.byId(conflict.conflictItemId, null);
+    const kept = await this.env.store.host.call(
+      'driveItems',
+      'byId',
+      conflict.conflictItemId,
+      null,
+    );
     await applyMeta(this.callOf(spec, scope), kept, this.wantedOf(spec));
     return conflictOf(spec.opId, 'stale', hub.rev, toWirePath(scope, conflict.conflictRelPath));
   }

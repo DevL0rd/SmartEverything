@@ -4,6 +4,8 @@ import {
   type CapabilityKey,
   type DeviceRow,
   type JsonValue,
+  type VacuumClean,
+  type VacuumCleanSummary,
   type VacuumPoint,
   type VacuumRestricted,
   type VacuumScene,
@@ -31,8 +33,7 @@ import type { MapCache } from '../../vacuum/map-cache';
 import type { VacuumMapService } from '../../vacuum/map-service';
 import type { VacuumRoomLinks } from '../../vacuum/room-links';
 import type { VacuumVideo } from '../../vacuum/video-session';
-import type { VacuumCleansRepository } from '../../store/repositories/vacuum-cleans';
-import type { Store } from '../../store/store';
+import type { VacuumCleanQuery } from '../../store/repositories/vacuum-cleans';
 import { DONE_REPLY, bound, tagged } from '../router';
 
 export interface VacuumControl {
@@ -41,10 +42,13 @@ export interface VacuumControl {
 }
 
 export interface VacuumRouteServices {
-  readonly devices: Pick<Store['devices'], 'byId'>;
+  readonly devices: { readonly byId: (id: string) => DeviceRow };
   readonly scenes: Pick<MapCache, 'latest' | 'robotMap'>;
   readonly maps: Pick<VacuumMapService, 'ensure'>;
-  readonly cleans: Pick<VacuumCleansRepository, 'list' | 'get'>;
+  readonly cleans: {
+    readonly list: (deviceId: string, query: VacuumCleanQuery) => Promise<VacuumCleanSummary[]>;
+    readonly get: (deviceId: string, id: string) => Promise<VacuumClean | undefined>;
+  };
   readonly control: VacuumControl;
   readonly video: Pick<VacuumVideo, 'open' | 'close'>;
   readonly roomLinks: Pick<VacuumRoomLinks, 'list' | 'link' | 'unlink' | 'decorate'>;
@@ -280,18 +284,18 @@ export const vacuumRoutes = (services: VacuumRouteServices) =>
       }),
       sceneEntityTag,
     ),
-    listVacuumCleans: bound(E.listVacuumCleans, ({ params, query }) => {
+    listVacuumCleans: bound(E.listVacuumCleans, async ({ params, query }) => {
       vacuumOf(services.devices, params.deviceId);
       return {
-        cleans: services.cleans.list(params.deviceId, {
+        cleans: await services.cleans.list(params.deviceId, {
           ...(query.before === undefined ? {} : { to: query.before }),
           limit: query.limit,
         }),
       };
     }),
-    getVacuumClean: bound(E.getVacuumClean, ({ params }) => {
+    getVacuumClean: bound(E.getVacuumClean, async ({ params }) => {
       vacuumOf(services.devices, params.deviceId);
-      const clean = services.cleans.get(params.deviceId, params.cleanId);
+      const clean = await services.cleans.get(params.deviceId, params.cleanId);
       if (clean === undefined) {
         throw new ApiError('not_found', `The robot has no clean ${params.cleanId}.`);
       }

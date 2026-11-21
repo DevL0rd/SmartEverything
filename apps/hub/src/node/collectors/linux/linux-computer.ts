@@ -71,6 +71,7 @@ export class LinuxComputer implements ComputerCollector {
     gpu: (tick) => ({ gpus: this.gpus(tick) }),
     memory: (tick) => this.memory.part(tick),
     disks: (tick) => this.disks.part(tick),
+    disk_usage: (tick) => this.disks.usage(tick),
     network: (tick) => this.network.part(tick),
     sensors: (tick) => {
       const reading = this.sensors.read(tick);

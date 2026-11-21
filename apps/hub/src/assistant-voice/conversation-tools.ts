@@ -117,20 +117,22 @@ export class VoiceTools {
       reply({ error: 'No task was given' }, false);
       return;
     }
-    try {
-      const eventId = hooks.task(task, text.recentHeard());
-      this.tasks.set(eventId, { id, name, session: session() });
-      log.info('task.handed_over', { callId: hooks.callId?.(), eventId, taskChars: task.length });
-      record({ who: 'tool', text: 'Handed over a task', ok: true, detail: null });
-      reply({ status: 'started; it is running now' }, true);
-    } catch (cause) {
-      log.warn('task.refused', {
-        callId: hooks.callId?.(),
-        cause: cause instanceof Error ? cause.name : typeof cause,
-      });
-      const error = messageOf(cause);
-      reply({ error }, false);
-    }
+    const asked = session();
+    hooks.task(task, text.recentHeard()).then(
+      (eventId) => {
+        this.tasks.set(eventId, { id, name, session: asked });
+        log.info('task.handed_over', { callId: hooks.callId?.(), eventId, taskChars: task.length });
+        record({ who: 'tool', text: 'Handed over a task', ok: true, detail: null });
+        reply({ status: 'started; it is running now' }, true);
+      },
+      (cause: unknown) => {
+        log.warn('task.refused', {
+          callId: hooks.callId?.(),
+          cause: cause instanceof Error ? cause.name : typeof cause,
+        });
+        reply({ error: messageOf(cause) }, false);
+      },
+    );
   }
 
   private async run(

@@ -65,7 +65,7 @@ describe('automation trace wiring', () => {
     expect(read).toMatchObject({ type: 'watch_automations' });
   });
 
-  it('marks watched subjects, sends the keyframe and relays published notices', () => {
+  it('marks watched subjects, sends the keyframe and relays published notices', async () => {
     const sent: AutomationTraceNotice[] = [];
     const viewers = new Viewers<DeviceDetail>();
     const watches = new LiveWatch<{
@@ -82,15 +82,18 @@ describe('automation trace wiring', () => {
     const wiring = wireAutomationTrace({
       live: { watches },
       viewers,
-      owners: { authorOf: () => null, automationOfRun: () => AUTOMATION },
-      store: { profiles: { activeOf: () => ({ id: 'p' }) } },
-      records: { active: () => [record()], byId: () => record() },
-      nodes: { forRun: () => [] },
+      owners: {
+        authorOf: () => Promise.resolve(null),
+        automationOfRun: () => Promise.resolve(AUTOMATION),
+      },
+      profiles: { activeProfileOf: () => Promise.resolve('p') },
+      records: { active: () => Promise.resolve([record()]), byId: () => Promise.resolve(record()) },
+      nodes: { forRun: () => Promise.resolve([]) },
       now: () => AT,
     });
     const connection = { id: 1, client: OWNER, socket: { bufferedAmount: 0 } };
     expect(wiring.trace.watched(`automation:${AUTOMATION}`)).toBe(false);
-    watches.receiveTrace(connection, {
+    await watches.receiveTrace(connection, {
       type: 'watch_automations',
       demands: [{ automationId: AUTOMATION }],
     });

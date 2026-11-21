@@ -31,7 +31,7 @@ async function nativeSearch(
   request: AiReferenceSearch,
   kinds: readonly AiReferenceKind[],
 ): Promise<NativeSearch> {
-  const session = openSession(service, context);
+  const session = await openSession(service, context);
   if (session instanceof ApiError)
     return {
       sources: kinds.map((kind) => ({ kind, state: 'unavailable', reason: session.message })),
@@ -57,12 +57,12 @@ async function nativeSearch(
   return { sources, matches: { items: page.items, incomplete: page.incomplete } };
 }
 
-function openSession(
+async function openSession(
   service: HarnessService,
   context: ReferenceContext,
-): AiHarnessSession | ApiError {
+): Promise<AiHarnessSession | ApiError> {
   try {
-    return nativeReferenceSession(service, context);
+    return await nativeReferenceSession(service, context);
   } catch (error) {
     if (error instanceof ApiError) return error;
     throw error;
@@ -84,12 +84,12 @@ function searchedKinds(
     );
 }
 
-function execute(
+async function execute(
   service: HarnessService,
   context: ReferenceContext,
   input: AiNativeReferenceAction,
 ): Promise<AiNativeReferenceResult> {
-  return executeIn(service, nativeReferenceSession(service, context), input);
+  return executeIn(service, await nativeReferenceSession(service, context), input);
 }
 
 async function executeIn(

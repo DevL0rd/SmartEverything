@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { ScanCommitter } from '../scanner-commit';
 import { ScanStepError, type ScanEntry } from '../scanner-drafts';
@@ -8,7 +8,7 @@ import { indexedAt, scopesOf } from '../scanner-scope';
 import type { WalkEntry } from '../scanner-walk';
 
 export type ScanStore = Pick<
-  Store,
+  HostStore,
   'driveRoots' | 'driveItems' | 'driveInodes' | 'driveMissing' | 'now'
 >;
 
@@ -107,7 +107,7 @@ export interface ScanIndexedInput {
 }
 
 export function scanIndexed(
-  store: Pick<Store, 'driveItems' | 'driveInodes'>,
+  store: Pick<HostStore, 'driveItems' | 'driveInodes'>,
   input: ScanIndexedInput,
 ): readonly Indexed[] {
   const reader = { items: store.driveItems, inodes: store.driveInodes };

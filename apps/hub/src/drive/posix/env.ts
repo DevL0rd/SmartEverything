@@ -1,16 +1,11 @@
-import type { Store } from '../../store/store';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import type { DriveActor } from '../access';
-import type { ChangeEnv, ChangeStore } from '../changes';
+import type { ChangeEnv } from '../changes';
 import type { FsStatfsEnv } from '../fs-space';
 import type { DriveWriteGuard } from '../quotas';
 import type { DriveRootLanes } from '../root-lanes';
 
-export type PosixStore = ChangeStore & Pick<Store, 'driveXattrs' | 'driveSyncOps'>;
-
-export interface PosixChangeEnv extends ChangeEnv {
-  readonly store: PosixStore;
-}
+export type PosixChangeEnv = ChangeEnv;
 
 export interface PosixEnv {
   readonly change: PosixChangeEnv;

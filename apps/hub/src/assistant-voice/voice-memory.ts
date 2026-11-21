@@ -26,7 +26,7 @@ export const MEMORY_HUB_TOOL: HubTool = {
 
 export interface VoiceMemory {
   readonly prepare: (who: MemoryPrincipal) => Promise<void>;
-  readonly recall: (who: MemoryPrincipal) => string;
+  readonly recall: (who: MemoryPrincipal) => Promise<string>;
   readonly source: (who: () => MemoryPrincipal) => ToolSource;
 }
 
@@ -62,16 +62,39 @@ export async function latestPersonMessage(
   return latest === undefined ? null : { id: latest.id, text: latest.text };
 }
 
+export class VoiceMemoryNotPreparedError extends Error {
+  override readonly name = 'VoiceMemoryNotPreparedError';
+
+  constructor(readonly profileId: string) {
+    super(`Memory for ${profileId} is read before the call prepared it.`);
+  }
+}
+
+function preparedKey(who: MemoryPrincipal): string {
+  return `${who.profileId}\n${who.chatId ?? ''}`;
+}
+
 export function voiceMemory(
   service: MemoryService,
   latest: (chatId: string) => Promise<LatestMessage | null>,
 ): VoiceMemory {
+  const offered = new Map<string, boolean>();
+  const offeredTo = (who: MemoryPrincipal): boolean => {
+    const found = offered.get(preparedKey(who));
+    if (found === undefined) throw new VoiceMemoryNotPreparedError(who.profileId);
+    return found;
+  };
   return {
-    prepare: async (who) =>
-      service.prepare(who, who.chatId === null ? null : await latest(who.chatId)),
-    recall: (who) => renderRecall(service.recall(who), new Date()),
+    prepare: async (who): Promise<void> => {
+      await service.prepare(who, who.chatId === null ? null : await latest(who.chatId));
+      offered.set(preparedKey(who), await service.offered(who));
+    },
+    recall: async (who): Promise<string> => {
+      offered.set(preparedKey(who), await service.offered(who));
+      return renderRecall(await service.recall(who), new Date());
+    },
     source: (who) => ({
-      tools: () => (service.offered(who()) ? [MEMORY_HUB_TOOL] : []),
+      tools: () => (offeredTo(who()) ? [MEMORY_HUB_TOOL] : []),
       call: (_tool, args, caller) => run(service, args, caller),
       validate: (_tool, args): Promise<string | null> => {
         const parsed = AI_MEMORY_TOOL_ARGUMENTS.safeParse(args);

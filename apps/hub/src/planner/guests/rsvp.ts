@@ -10,6 +10,7 @@ import {
   type PlannerRsvpAnswer,
   type SignalInput,
 } from '@smarteverything/domain';
+import type { HostStore } from '../../store/host/host-store';
 import type { Store } from '../../store/store';
 
 export interface RsvpOptions {
@@ -19,7 +20,7 @@ export interface RsvpOptions {
 }
 
 export function respondAsMember(
-  store: Pick<Store, 'plannerGuests'>,
+  store: Pick<HostStore, 'plannerGuests'>,
   item: PlannerItemRow,
   profileId: string,
   answer: {

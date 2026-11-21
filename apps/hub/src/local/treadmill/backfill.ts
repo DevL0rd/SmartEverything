@@ -2,7 +2,7 @@ import type { PadRecord } from '@smarteverything/ble';
 import { isWorthKeeping, type TreadmillSession } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
 import type { Logger } from '@smarteverything/logging';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { PadRecordView } from './fleet';
 
 const SEARCH_HOURS = 24;
@@ -23,7 +23,7 @@ export interface Reconciled {
 }
 
 export interface BackfillDeps {
-  readonly store: Pick<Store, 'treadmillSessions'>;
+  readonly store: Pick<HostStore, 'treadmillSessions'>;
   readonly now: () => Date;
   readonly log: Pick<Logger, 'info'>;
 }

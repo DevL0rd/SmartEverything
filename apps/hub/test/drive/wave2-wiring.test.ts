@@ -1,5 +1,4 @@
 import { access, mkdir, writeFile } from 'node:fs/promises';
-import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import {
   DRIVE_CONTENT_ENDPOINTS,
@@ -20,9 +19,6 @@ import { startDrive, type RunningDrive } from '../../src/server/handlers/drive-s
 import { createDrive, type DriveDeps } from '../../src/server/handlers/drive-wiring';
 import { WorkQueue } from '../../src/drive/work-queue';
 import { MediaLinks } from '../../src/server/media-links';
-import { StoreContext } from '../../src/store/context';
-import { ChangeFeed } from '../../src/store/feed';
-import { Sql } from '../../src/store/sql';
 import { captureLogs, testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
@@ -32,24 +28,18 @@ const NOW = new Date('2026-11-07T00:00:00.000Z');
 const log = testLogger('drive-wave2');
 
 let opened: TestStore;
-let second: DatabaseSync;
 let deps: DriveDeps;
 
 function depsOf(store: TestStore['store']): DriveDeps {
   return {
     store,
     parts: {
-      context: new StoreContext(new Sql(second), new ChangeFeed(log), () => NOW),
-      database: second,
-      conflicts: {
-        find: (): undefined => undefined,
-      },
       listings: {
         shares: () => Promise.resolve({ items: [], next: null }),
         duplicates: () => Promise.resolve({ items: [], next: null }),
         conflicts: () => Promise.resolve({ items: [], next: null }),
       },
-      removeLocationOutside: () => true,
+      removeLocationOutside: () => Promise.resolve(true),
       notifyCorruption: (): void => undefined,
     },
     layout: opened.layout,
@@ -70,12 +60,10 @@ function depsOf(store: TestStore['store']): DriveDeps {
 beforeEach(async () => {
   captureLogs();
   opened = await testStore(() => NOW);
-  second = new DatabaseSync(join(opened.directory, 'test.db'));
   deps = depsOf(opened.store);
 });
 
 afterEach(async () => {
-  second.close();
   await opened.close();
 });
 
@@ -128,7 +116,7 @@ describe('starting and stopping the Drive with wave 2 parts', () => {
   });
 
   it('removes the files and inodes left held open by a stopped hub when the drive starts', async () => {
-    const { store } = deps;
+    const { store } = opened;
     const [drive] = await ensureDrives(store, deps.layout, store.profiles.list());
     if (drive === undefined) throw new Error('no drive');
     const held = store.driveInodes.create({ rootId: drive.id, type: 'file' });
@@ -150,7 +138,7 @@ describe('starting and stopping the Drive with wave 2 parts', () => {
         return text.success ? [text.data.rootId] : [];
       });
     running = await startDrive(deps);
-    const roots = deps.store.driveRoots.list().map((root) => root.id);
+    const roots = opened.store.driveRoots.list().map((root) => root.id);
     expect(roots.length).toBeGreaterThan(0);
     expect(textJobs()).toEqual(expect.arrayContaining(roots));
     await running.runtime.queue.idle();

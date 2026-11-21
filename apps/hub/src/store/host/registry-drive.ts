@@ -54,6 +54,22 @@ import {
 } from '../../drive/units/text';
 import { DRIVE_UPLOAD_DESTINATION_UNIT } from '../../drive/units/upload';
 import { DRIVE_SYNC_CHANGES_UNIT, DRIVE_SYNC_INDEX_PAGE_UNIT } from '../../drive/units/sync';
+import { DRIVE_QUOTA_STATUS_UNIT } from '../../drive/units/quota';
+import { DRIVE_SETTINGS_UPDATE_UNIT } from '../../drive/units/settings';
+import { DRIVE_SYNC_SCOPE_UNIT } from '../../drive/units/sync-scope';
+import { DRIVE_NODE_STANDING_UNIT } from '../../drive/units/node-standing';
+import { DRIVE_ORPHANS_SWEEP_UNIT } from '../../drive/units/orphans';
+import { DRIVE_ENSURE_SPACE_UNIT } from '../../drive/units/spaces';
+import {
+  DRIVE_SYNC_ANNOUNCE_UNIT,
+  DRIVE_SYNC_BLOCK_TARGET_UNIT,
+  DRIVE_SYNC_CARRIED_BLOCKS_UNIT,
+  DRIVE_SYNC_INODE_UNIT,
+  DRIVE_SYNC_LINK_BLOCKS_UNIT,
+  DRIVE_SYNC_PARENT_INODE_UNIT,
+  DRIVE_SYNC_PATH_REASON_UNIT,
+  DRIVE_SYNC_REPORT_UNIT,
+} from '../../drive/units/sync-server';
 
 export const DRIVE_READ_UNITS = {
   hashBacklog: HASH_BACKLOG_UNIT,
@@ -76,6 +92,14 @@ export const DRIVE_READ_UNITS = {
   driveMetadataPending: DRIVE_METADATA_PENDING_UNIT,
   driveTextBacklog: DRIVE_TEXT_BACKLOG_UNIT,
   driveTextFolders: DRIVE_TEXT_FOLDERS_UNIT,
+  driveQuotaStatus: DRIVE_QUOTA_STATUS_UNIT,
+  driveSyncScope: DRIVE_SYNC_SCOPE_UNIT,
+  driveNodeStanding: DRIVE_NODE_STANDING_UNIT,
+  driveSyncPathReason: DRIVE_SYNC_PATH_REASON_UNIT,
+  driveSyncInode: DRIVE_SYNC_INODE_UNIT,
+  driveSyncParentInode: DRIVE_SYNC_PARENT_INODE_UNIT,
+  driveSyncCarriedBlocks: DRIVE_SYNC_CARRIED_BLOCKS_UNIT,
+  driveSyncBlockTarget: DRIVE_SYNC_BLOCK_TARGET_UNIT,
 } as const;
 
 export const DRIVE_WRITE_UNITS = {
@@ -98,4 +122,10 @@ export const DRIVE_WRITE_UNITS = {
   driveScanEnd: DRIVE_SCAN_END_UNIT,
   driveMetadataRecord: DRIVE_METADATA_RECORD_UNIT,
   driveTextRecord: DRIVE_TEXT_RECORD_UNIT,
+  driveSettingsUpdate: DRIVE_SETTINGS_UPDATE_UNIT,
+  driveSyncAnnounce: DRIVE_SYNC_ANNOUNCE_UNIT,
+  driveSyncLinkBlocks: DRIVE_SYNC_LINK_BLOCKS_UNIT,
+  driveSyncReport: DRIVE_SYNC_REPORT_UNIT,
+  driveOrphansSweep: DRIVE_ORPHANS_SWEEP_UNIT,
+  driveEnsureSpace: DRIVE_ENSURE_SPACE_UNIT,
 } as const;

@@ -56,7 +56,7 @@ function hooksOf(speech: SpeechSource, endings: string[]): ConversationHooks {
     webSearch: (): boolean => false,
     window: (): null => null,
     record: (): void => undefined,
-    task: (): string => 'event',
+    task: (): Promise<string> => Promise.resolve('event'),
     run: (): Promise<never> => new Promise(() => undefined),
     ended: (reason): void => {
       endings.push(reason);

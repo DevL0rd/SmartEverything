@@ -1,3 +1,4 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,7 +15,6 @@ import {
 } from '../../src/self-update/command';
 import { findCheckoutSource, findUpdateSource } from '../../src/self-update/update-source';
 import { ServiceConfigError } from '../../src/service/configuration';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import { testLayout } from '../support/test-layout';
 import { testStoreHost } from '../support/store-host';
@@ -52,7 +52,7 @@ beforeEach(async () => {
   scratch = mkdtempSync(join(tmpdir(), 'update-source-'));
   layout = await testLayout(join(scratch, 'data'));
   mkdirSync(dirname(layout.system.database.file), { recursive: true });
-  const store = openStore({
+  const store = await openSeededStore({
     host: testStoreHost(),
     path: layout.system.database.file,
     log: testLogger('store'),
@@ -66,7 +66,7 @@ beforeEach(async () => {
     ui: 'hub',
     desktop: 'hub',
   });
-  store.close();
+  await closedStore(store);
   checkout = join(scratch, 'checkout');
   mkdirSync(join(checkout, 'tooling'), { recursive: true });
   mkdirSync(join(checkout, 'node_modules'));

@@ -48,7 +48,7 @@ beforeEach(async () => {
   ann = addPerson(test, 'Ann', 'owner');
   smtp = await startFakeSmtp();
   const secrets = await SecretStore.open(join(test.directory, 'secrets'), Buffer.alloc(32, 3));
-  settings = new MailSettingsStore({ settingsKv: test.store.settingsKv, secrets });
+  settings = new MailSettingsStore({ saved: test.store.live.home.saved, secrets });
   mail = new MailService({ settings, store: test.store, log: testLogger('mail') });
   invites = new InviteService({
     store: test.store,

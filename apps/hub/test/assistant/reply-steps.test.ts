@@ -18,7 +18,7 @@ afterEach(async () => {
   await opened.close();
 });
 
-function newChatLog(): { readonly log: ConversationLog; readonly chatId: string } {
+async function newChatLog(): Promise<{ readonly log: ConversationLog; readonly chatId: string }> {
   const { store } = opened;
   const client = store.clients.create(
     { name: 'This computer', platform: 'desktop', role: 'owner', tokenHash: 'a' },
@@ -28,17 +28,17 @@ function newChatLog(): { readonly log: ConversationLog; readonly chatId: string 
   const now = (): Date => new Date();
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now,
   });
-  const chat = new ChatDirectory(store, files).create(owner, { engine: TEST_ENGINE });
+  const chat = await new ChatDirectory(store, files).create(owner, { engine: TEST_ENGINE });
   return { log: new ConversationLog(store), chatId: chat.id };
 }
 
 describe('reply steps', () => {
   it('keeps the tools a finished or failed reply used, with how each ended', async () => {
-    const { log, chatId } = newChatLog();
+    const { log, chatId } = await newChatLog();
     const chat = opened.store.aiChats.chat(chatId);
     const done = await log.startReply({
       chat: chat,
@@ -71,7 +71,7 @@ describe('reply steps', () => {
   });
 
   it('attaches the web sources a finished reply cited, and replaces them on a later finish', async () => {
-    const { log, chatId } = newChatLog();
+    const { log, chatId } = await newChatLog();
     const chat = opened.store.aiChats.chat(chatId);
     const reply = await log.startReply({
       chat: chat,

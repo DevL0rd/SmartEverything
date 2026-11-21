@@ -1,5 +1,5 @@
 import { ApiError } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { SpeechPrincipal } from '../transcripts/speech-principal';
 
 export type SpeechPlan =
@@ -25,7 +25,7 @@ export function requireSamePrincipal(
 }
 
 export function priorSpeech(
-  store: Pick<Store, 'speech'>,
+  store: Pick<HostStore, 'speech'>,
   id: string | undefined,
 ): SpeechPrincipal | null {
   if (id === undefined) return null;
@@ -33,7 +33,11 @@ export function priorSpeech(
   return grant === undefined ? null : grant.principal;
 }
 
-export function applySpeech(store: Pick<Store, 'speech'>, saved: Saved, plan: SpeechPlan): void {
+export function applySpeech(
+  store: Pick<HostStore, 'speech'>,
+  saved: Saved,
+  plan: SpeechPlan,
+): void {
   const prior = priorSpeech(store, saved.id);
   if (plan.kind === 'none') {
     if (prior === null) return;

@@ -41,15 +41,17 @@ function line(minute: number, text: string): TranscriptLineInput {
   };
 }
 
-function open(source: TranscriptSource, sourceId: string, title: string): string {
-  return transcripts.open({
-    source,
-    sourceId,
-    pluginId: null,
-    title,
-    retentionDays: null,
-    startedAt: START,
-  }).id;
+async function open(source: TranscriptSource, sourceId: string, title: string): Promise<string> {
+  return (
+    await transcripts.open({
+      source,
+      sourceId,
+      pluginId: null,
+      title,
+      retentionDays: null,
+      startedAt: START,
+    })
+  ).id;
 }
 
 async function call(
@@ -135,10 +137,10 @@ afterEach(async () => {
 
 describe('transcript feed', () => {
   it('serves camera speech by default to members and plugin speech to the owner only', async () => {
-    const camera = open('camera', 'cam-1', 'Porch');
-    const call1 = open('plugin', 'call-1', 'Discord call');
-    transcripts.add(camera, line(0, 'knock knock'));
-    transcripts.add(call1, line(1, 'hello team'));
+    const camera = await open('camera', 'cam-1', 'Porch');
+    const call1 = await open('plugin', 'call-1', 'Discord call');
+    await transcripts.add(camera, line(0, 'knock knock'));
+    await transcripts.add(call1, line(1, 'hello team'));
     expect(await texts(member, {})).toStrictEqual(['knock knock']);
     expect(await texts(owner, { source: 'plugin' })).toStrictEqual(['hello team']);
     await expect(texts(member, { source: 'plugin' })).rejects.toMatchObject({
@@ -152,10 +154,10 @@ describe('transcript feed', () => {
   it('keeps a member’s phone and computer speech to their own devices', async () => {
     const memberPhone = phone('Mine', test.store.profiles.activeOf(memberId()).id);
     const otherPhone = phone('Theirs', crypto.randomUUID());
-    const mine = open('phone', memberPhone, 'Mine');
-    const theirs = open('phone', otherPhone, 'Theirs');
-    transcripts.add(mine, line(0, 'my words'));
-    transcripts.add(theirs, line(1, 'their words'));
+    const mine = await open('phone', memberPhone, 'Mine');
+    const theirs = await open('phone', otherPhone, 'Theirs');
+    await transcripts.add(mine, line(0, 'my words'));
+    await transcripts.add(theirs, line(1, 'their words'));
     expect(await texts(member, { source: 'phone', sourceId: memberPhone })).toStrictEqual([
       'my words',
     ]);
@@ -174,9 +176,9 @@ describe('transcript feed', () => {
     const assistant = assistantOf(member);
     const memberPhone = phone('Mine', test.store.profiles.activeOf(memberId()).id);
     const otherPhone = phone('Theirs', crypto.randomUUID());
-    transcripts.add(open('phone', memberPhone, 'Mine'), line(0, 'my words'));
-    transcripts.add(open('phone', otherPhone, 'Theirs'), line(1, 'their words'));
-    transcripts.add(open('camera', 'cam-1', 'Porch'), line(2, 'knock knock'));
+    await transcripts.add(await open('phone', memberPhone, 'Mine'), line(0, 'my words'));
+    await transcripts.add(await open('phone', otherPhone, 'Theirs'), line(1, 'their words'));
+    await transcripts.add(await open('camera', 'cam-1', 'Porch'), line(2, 'knock knock'));
     expect(await texts(assistant, { source: 'phone', sourceId: memberPhone })).toStrictEqual([
       'my words',
     ]);
@@ -192,10 +194,10 @@ describe('transcript feed', () => {
   });
 
   it('narrows the feed to one source or to one transcript', async () => {
-    const porch = open('camera', 'cam-1', 'Porch');
-    const garage = open('camera', 'cam-2', 'Garage');
-    transcripts.add(porch, line(0, 'porch line'));
-    transcripts.add(garage, line(1, 'garage line'));
+    const porch = await open('camera', 'cam-1', 'Porch');
+    const garage = await open('camera', 'cam-2', 'Garage');
+    await transcripts.add(porch, line(0, 'porch line'));
+    await transcripts.add(garage, line(1, 'garage line'));
     expect(await texts(owner, {})).toStrictEqual(['porch line', 'garage line']);
     expect(await texts(owner, { sourceId: 'cam-2' })).toStrictEqual(['garage line']);
     expect(await texts(owner, { sessionId: porch })).toStrictEqual(['porch line']);
@@ -205,9 +207,9 @@ describe('transcript feed', () => {
   });
 
   it('pages older and newer lines by cursor without overlap', async () => {
-    const session = open('camera', 'cam-1', 'Porch');
+    const session = await open('camera', 'cam-1', 'Porch');
     for (let minute = 0; minute < 5; minute += 1)
-      transcripts.add(session, line(minute, `line ${String(minute)}`));
+      await transcripts.add(session, line(minute, `line ${String(minute)}`));
     const latest = TRANSCRIPT_PAGE.parse(
       await call('readCameraTranscriptFeed', owner, { query: { limit: 2 } }),
     );
@@ -226,19 +228,19 @@ describe('transcript feed', () => {
   });
 
   it('deletes one line without touching its transcript, counts or the other lines', async () => {
-    const session = open('camera', 'cam-1', 'Porch');
-    const keep = transcripts.add(session, line(0, 'keep this'));
-    const drop = transcripts.add(session, line(1, 'drop this'));
+    const session = await open('camera', 'cam-1', 'Porch');
+    const keep = await transcripts.add(session, line(0, 'keep this'));
+    const drop = await transcripts.add(session, line(1, 'drop this'));
     await call('removeTranscript', owner, {
       params: { sessionId: session },
       query: { lineId: String(drop.id) },
     });
     expect(await texts(owner, {})).toStrictEqual(['keep this']);
-    expect(transcripts.find(session)?.line_count).toBe(1);
-    expect(transcripts.search({ words: 'drop', limit: 5 })).toStrictEqual([]);
-    expect(transcripts.search({ words: 'keep', limit: 5 }).map((hit) => hit.line.id)).toStrictEqual(
-      [keep.id],
-    );
+    expect((await transcripts.find(session))?.line_count).toBe(1);
+    expect(await transcripts.search({ words: 'drop', limit: 5 })).toStrictEqual([]);
+    expect(
+      (await transcripts.search({ words: 'keep', limit: 5 })).map((hit) => hit.line.id),
+    ).toStrictEqual([keep.id]);
     await expect(
       call('removeTranscript', owner, {
         params: { sessionId: session },
@@ -248,9 +250,9 @@ describe('transcript feed', () => {
   });
 
   it('deletes a whole transcript only for the owner and not while a conversation runs', async () => {
-    const finished = open('camera', 'cam-1', 'Porch');
-    const running = open('plugin', 'call-1', 'Discord call');
-    transcripts.add(finished, line(0, 'old talk'));
+    const finished = await open('camera', 'cam-1', 'Porch');
+    const running = await open('plugin', 'call-1', 'Discord call');
+    await transcripts.add(finished, line(0, 'old talk'));
     await expect(
       call('removeTranscript', member, { params: { sessionId: finished } }),
     ).rejects.toMatchObject({ code: 'forbidden' });
@@ -261,7 +263,7 @@ describe('transcript feed', () => {
       call('removeTranscript', owner, { params: { sessionId: running } }),
     ).rejects.toMatchObject({ code: 'conflict' });
     await call('removeTranscript', owner, { params: { sessionId: finished } });
-    expect(transcripts.find(finished)).toBeUndefined();
+    expect(await transcripts.find(finished)).toBeUndefined();
   });
 });
 
@@ -312,9 +314,9 @@ describe('transcript notices', () => {
     const port = typeof address === 'object' && address !== null ? address.port : 0;
     const asMember = await liveViewer(port, 'member');
     const asOwner = await liveViewer(port, 'owner');
-    open('plugin', 'call-1', 'Discord call');
+    await open('plugin', 'call-1', 'Discord call');
     await until(() => asOwner.seen.length > 0);
-    open('camera', 'cam-1', 'Porch');
+    await open('camera', 'cam-1', 'Porch');
     await until(() => asMember.seen.length > 0 && asOwner.seen.length > 1);
     expect(asOwner.seen.map((notice) => notice.source)).toStrictEqual(['plugin', 'camera']);
     expect(asMember.seen.map((notice) => notice.source)).toStrictEqual(['camera']);

@@ -6,22 +6,20 @@ import {
   modesOf,
   type AutomationCatalogReply,
   type AutomationFunctionSummary,
-  type DescribeContext,
   type FlowType,
   type NodeKind,
   type PluginRow,
-  type RefKind,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { KindCatalog } from '../../automations/plugin-kinds/catalog';
 import type { AutomationSecrets } from '../../automations/secrets-v3';
-import { graphOutline } from '../../automations/service-programs-outline';
 import type { AutomationFunctions } from '../../automations/service-functions';
 import { localPluginTransport } from '../../plugins/local-transport';
-import { StoreNotFoundError } from '../../store/context';
 import type { Store } from '../../store/store';
 import { roleOfCaller, type Caller } from '../auth';
 import { bound } from '../router';
+import type { CatalogueFacts } from './automation-program-units';
+import { contributedKinds } from './automation-value-units';
 
 export interface ProgramReadDeps {
   readonly store: Store;
@@ -48,45 +46,6 @@ const EXTERNAL_PROCESS =
 const OWNER_ONLY = 'Only the owner can use this node.';
 
 const OBJECT = z.record(z.string(), JSON_VALUE);
-
-function present<T>(read: () => T): T | undefined {
-  try {
-    return read();
-  } catch (cause) {
-    if (cause instanceof StoreNotFoundError) return undefined;
-    throw cause;
-  }
-}
-
-type Namer = (deps: ProgramReadDeps, id: string) => string | undefined;
-
-function deviceName(deps: ProgramReadDeps, id: string): string | undefined {
-  const device = deps.store.devices.find(id);
-  return device === undefined ? undefined : (device.display_name ?? device.name);
-}
-
-const NAMES: Readonly<Record<RefKind, Namer>> = {
-  device: deviceName,
-  camera: deviceName,
-  phone: deviceName,
-  computer: deviceName,
-  room: (deps, id) => present(() => deps.store.rooms.byId(id).name),
-  group: (deps, id) => present(() => deps.store.deviceGroups.byId(id).name),
-  person: (deps, id) => present(() => deps.store.profiles.byId(id).name),
-  chat: (deps, id) => deps.store.aiChats.find(id)?.title ?? undefined,
-  value: (deps, id) => present(() => deps.store.automationValues.byId(id).content.name),
-  automation: (deps, id) => deps.store.automations.find(id)?.name,
-  function: (deps, id) => deps.store.automationFunctions.find(id)?.name,
-  secret: (deps, id) => deps.secrets.list().find((secret) => secret.id === id)?.name,
-  target: () => undefined,
-};
-
-function describeContext(deps: ProgramReadDeps): DescribeContext {
-  return {
-    kinds: (id) => deps.kinds.get(id),
-    names: (kind, id) => NAMES[kind](deps, id),
-  };
-}
 
 type JsonObject = Record<string, z.infer<typeof JSON_VALUE>>;
 
@@ -116,16 +75,10 @@ function functionEntry(
   };
 }
 
-function listedKinds(deps: ProgramReadDeps): readonly Listed[] {
-  const live = deps.kinds.kinds();
-  const present = new Set(live.map((kind) => kind.id));
-  const switchedOff = deps.store.pluginKinds
-    .all()
-    .filter((row) => row.status === 'off' && !present.has(row.kind_id))
-    .map((row) => row.declaration);
+function listedKinds(live: readonly NodeKind[], facts: CatalogueFacts): readonly Listed[] {
   return [
     ...live.map((kind) => ({ kind, off: false })),
-    ...switchedOff.map((kind) => ({ kind, off: true })),
+    ...facts.switchedOff.map((kind) => ({ kind, off: true })),
   ];
 }
 
@@ -136,10 +89,14 @@ function externalProcess(deps: ProgramReadDeps, plugin: PluginRow): boolean {
   );
 }
 
-function pluginReason(deps: ProgramReadDeps, kind: NodeKind, off: boolean): string | undefined {
+function pluginReason(
+  deps: ProgramReadDeps,
+  facts: CatalogueFacts,
+  kind: NodeKind,
+  off: boolean,
+): string | undefined {
   if (off) return SWITCHED_OFF;
-  const plugin =
-    kind.origin?.kind === 'plugin' ? deps.store.plugins.find(kind.origin.id) : undefined;
+  const plugin = kind.origin?.kind === 'plugin' ? facts.plugins[kind.origin.id] : undefined;
   if (plugin === undefined) return undefined;
   if (!plugin.enabled) return SWITCHED_OFF;
   return externalProcess(deps, plugin) ? EXTERNAL_PROCESS : undefined;
@@ -147,12 +104,13 @@ function pluginReason(deps: ProgramReadDeps, kind: NodeKind, off: boolean): stri
 
 function unavailableReason(
   deps: ProgramReadDeps,
+  facts: CatalogueFacts,
   listed: Listed,
   owner: boolean,
 ): string | undefined {
   if (listed.kind.origin === undefined) return undefined;
   if (!owner && listed.kind.access === 'owner') return OWNER_ONLY;
-  return pluginReason(deps, listed.kind, listed.off);
+  return pluginReason(deps, facts, listed.kind, listed.off);
 }
 
 function implicitSource(type: FlowType): string | undefined {
@@ -173,10 +131,15 @@ function runsAsStep(kind: NodeKind): boolean {
   return kind.class !== 'pure' && kind.class !== 'trigger';
 }
 
-function nodeEntry(deps: ProgramReadDeps, listed: Listed, owner: boolean): CatalogNode {
+function nodeEntry(
+  deps: ProgramReadDeps,
+  facts: CatalogueFacts,
+  listed: Listed,
+  owner: boolean,
+): CatalogNode {
   const { kind } = listed;
   const pickers = pickersOf(kind);
-  const reason = unavailableReason(deps, listed, owner);
+  const reason = unavailableReason(deps, facts, listed, owner);
   const modes = modesOf(kind);
   return {
     kind: kind.id,
@@ -219,7 +182,14 @@ async function catalogueOf(
   caller: Caller,
 ): Promise<AutomationCatalogReply> {
   const owner = roleOfCaller(caller) === 'owner';
-  const nodes = listedKinds(deps)
+  const live = deps.kinds.kinds();
+  const facts = await deps.store.host.read('automationCatalogueFacts', {
+    liveIds: live.map((kind) => kind.id),
+    pluginIds: [
+      ...new Set(live.flatMap((kind) => (kind.origin?.kind === 'plugin' ? [kind.origin.id] : []))),
+    ],
+  });
+  const nodes = listedKinds(live, facts)
     .filter((listed) => shown(listed, owner))
     .filter(({ kind }) => query.kind === undefined || kind.id === query.kind)
     .filter(({ kind }) => query.group === undefined || kind.category === query.group)
@@ -231,7 +201,7 @@ async function catalogueOf(
           .toLowerCase()
           .includes(query.query.toLowerCase()),
     )
-    .map((listed) => nodeEntry(deps, listed, owner));
+    .map((listed) => nodeEntry(deps, facts, listed, owner));
   const functions = (await deps.functions.list(caller))
     .filter((summary) => query.kind === undefined || summary.id === query.kind)
     .filter((summary) => query.group === undefined || summary.category === query.group)
@@ -251,15 +221,13 @@ export const automationProgramReadRoutes = (deps: ProgramReadDeps) =>
         program: row.definition,
       };
     }),
-    getAutomationProgramOutline: bound(E.getAutomationProgramOutline, async ({ params }) => {
-      const row = await deps.store.host.call('automations', 'byId', params.automationId);
-      return {
-        id: row.id,
-        name: row.name,
-        revision: row.revision,
-        outline: graphOutline(row.definition, describeContext(deps), deps.kinds),
-      };
-    }),
+    getAutomationProgramOutline: bound(E.getAutomationProgramOutline, ({ params }) =>
+      deps.store.host.read('automationProgramOutline', {
+        automationId: params.automationId,
+        kinds: contributedKinds(deps.kinds),
+        secrets: deps.secrets.list().map(({ id, name }) => ({ id, name })),
+      }),
+    ),
     listAutomationCatalog: bound(E.listAutomationCatalog, ({ query, caller }) =>
       catalogueOf(deps, query, caller),
     ),

@@ -1,15 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
-import {
-  API_ENDPOINTS as E,
-  ApiError,
-  MODEL_DEFAULTS,
-  createModelMetadataIndex,
-  type ModelAssetStored,
-} from '@smarteverything/domain';
+import { API_ENDPOINTS as E, ApiError, type ModelAssetStored } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
-import { ModelCatalogService } from '../../models/catalog-service';
 import { GLB_BYTE_LIMIT } from '../../models/glb-check';
 import type { GlbWorker } from '../../models/glb-worker';
 import type { Store } from '../../store/store';
@@ -55,7 +48,7 @@ async function serveAsset(
   const parsed = E.readModelAsset.params.safeParse(params);
   if (!parsed.success) throw invalid('path', parsed.error);
   const { sha256 } = parsed.data;
-  const stored = services.assets.bytes(sha256);
+  const stored = await services.store.host.read('modelAssetBytes', sha256);
   if (stored === undefined) {
     throw new ApiError('not_found', 'There is no model file with this hash.');
   }
@@ -87,7 +80,7 @@ async function storeUpload(
 ): Promise<ModelAssetStored> {
   const bytes = Uint8Array.from(Buffer.from(upload.data, 'base64'));
   if (upload.kind === 'spec') {
-    const result = services.catalog.storeUserSpec(profile, bytes);
+    const result = await services.store.host.write('modelUserSpec', { profile, bytes });
     if (!result.stored) {
       throw new ApiError('invalid_request', `The model spec is refused: ${result.problem}.`);
     }
@@ -106,10 +99,10 @@ async function storeUpload(
     });
     throw new ApiError('invalid_request', `The model file is refused: ${lods.problem}.`);
   }
-  const row = services.assets.saveGlb(
-    { kind: 'glb', owner: `user:${profile}`, bytes },
-    lods.levels,
-  );
+  const row = await services.store.host.write('modelGlbSave', {
+    asset: { kind: 'glb', owner: `user:${profile}`, bytes },
+    levels: lods.levels,
+  });
   log.info('model_asset.glb_stored', {
     profile,
     sha256: row.sha256,
@@ -139,7 +132,7 @@ async function acceptUpload(
   const raw = await readBody(request, UPLOAD_BODY_LIMIT);
   assertJsonBody(request);
   const upload = await requestBodyOf(workers.encoder, E.uploadModelAsset, raw);
-  const stored = await storeUpload(services, workers.glb, services.profileOf(caller), upload);
+  const stored = await storeUpload(services, workers.glb, profileIdOf(caller), upload);
   sendJson(response, 200, E.uploadModelAsset.response.parse(stored));
 }
 
@@ -162,14 +155,5 @@ export function modelAssetRoutes(
 }
 
 export function modelRouteServices(store: Store): ModelRouteServices {
-  return {
-    devices: store.devices,
-    catalog: new ModelCatalogService({ assets: store.modelAssets, catalog: store.modelCatalog }),
-    overrides: store.modelOverrides,
-    assets: store.modelAssets,
-    metadata: createModelMetadataIndex([]),
-    defaults: () => MODEL_DEFAULTS,
-    profileOf: (caller) => profileIdOf(caller),
-    authorize: modelAuthorizer(store),
-  };
+  return { store, authorize: modelAuthorizer(store) };
 }

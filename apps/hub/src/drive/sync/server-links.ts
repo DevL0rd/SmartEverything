@@ -3,18 +3,11 @@ import { PosixError } from '../posix/errors';
 import { inScope, toDrivePath } from './sync-paths';
 import { blocksOf } from './server-blocks';
 import { ensureFolders } from './server-commit';
-import {
-  announceChange,
-  applyMeta,
-  createHardLink,
-  createSymlink,
-  type SyncCall,
-} from './server-meta';
-import { inodeOfItem } from './item-meta';
+import { applyMeta, createHardLink, createSymlink, inodeOf, type SyncCall } from './server-meta';
+import { fileOf } from './file-of';
 import {
   acceptOf,
   conflictOf,
-  fileOf,
   syncActor,
   type AcceptMessage,
   type ConflictMessage,
@@ -63,11 +56,11 @@ export interface HardLink {
   readonly existing: DriveItem | undefined;
 }
 
-function sourceOf(call: SyncCall, linkOf: string): DriveItem | undefined {
+async function sourceOf(call: SyncCall, linkOf: string): Promise<DriveItem | undefined> {
   const { env, scope } = call;
   const sourcePath = toDrivePath(scope, linkOf);
   return inScope(scope, sourcePath)
-    ? env.store.driveItems.byPath(scope.drive.id, sourcePath, null)
+    ? await env.store.host.call('driveItems', 'byPath', scope.drive.id, sourcePath, null)
     : undefined;
 }
 
@@ -76,20 +69,26 @@ async function nameSource(call: SyncCall, source: DriveItem, made: DriveItem): P
   const file = fileOf(source);
   if (file === null) return;
   const { blockSize, hashes } = await blocksOf(env, scope.drive, file);
-  env.store.driveBlocks.put({ itemId: made.id, rev: made.rev, blockSize, hashes });
-  announceChange(env, call.origin, made);
+  await env.store.host.write('driveSyncLinkBlocks', {
+    blocks: { itemId: made.id, rev: made.rev, blockSize, hashes },
+    actor: syncActor(call.origin),
+  });
 }
 
 export async function hardLink(call: SyncCall, push: HardLink): Promise<Reply> {
   const { env, scope, origin } = call;
   const { message, existing } = push;
-  const source = sourceOf(call, push.linkOf);
+  const source = await sourceOf(call, push.linkOf);
   if (source === undefined) return conflictOf(message.opId, 'missing', 0, null);
   if (source.kind === 'folder' || source.kind === 'special') {
     return conflictOf(message.opId, 'path', source.rev, null);
   }
   if (existing !== undefined) {
-    return inodeOfItem(env.store, existing).id === inodeOfItem(env.store, source).id
+    const [held, linked] = await Promise.all([
+      inodeOf(env, scope.drive.id, existing),
+      inodeOf(env, scope.drive.id, source),
+    ]);
+    return held.id === linked.id
       ? acceptOf(env, scope.drive.id, message.opId, existing.rev)
       : conflictOf(message.opId, 'exists', existing.rev, null);
   }
@@ -106,7 +105,7 @@ export async function pushMeta(call: SyncCall, message: PushMeta): Promise<Reply
   const { env, scope } = call;
   const relPath = toDrivePath(scope, message.relPath);
   if (!inScope(scope, relPath)) return conflictOf(message.opId, 'path', 0, null);
-  const item = env.store.driveItems.byPath(scope.drive.id, relPath, null);
+  const item = await env.store.host.call('driveItems', 'byPath', scope.drive.id, relPath, null);
   if (item === undefined) return conflictOf(message.opId, 'missing', 0, null);
   if (item.kind === 'link' || item.kind === 'special') {
     return conflictOf(message.opId, 'path', item.rev, null);
@@ -116,13 +115,13 @@ export async function pushMeta(call: SyncCall, message: PushMeta): Promise<Reply
   return acceptOf(env, scope.drive.id, message.opId, item.rev);
 }
 
-function refusedLink(
+async function refusedLink(
   call: SyncCall,
   message: PushLink,
   existing: DriveItem | undefined,
-): Reply | null {
+): Promise<Reply | null> {
   const { env, scope } = call;
-  const reason = pathReason(env, scope, message.relPath);
+  const reason = await pathReason(env, scope, message.relPath);
   if (reason !== null) return conflictOf(message.opId, reason, existing?.rev ?? 0, null);
   if (existing?.kind === 'link' && existing.linkTarget === message.target) {
     return acceptOf(env, scope.drive.id, message.opId, existing.rev);
@@ -134,9 +133,9 @@ export async function pushLink(call: SyncCall, message: PushLink): Promise<Reply
   const { env, scope, origin } = call;
   const relPath = toDrivePath(scope, message.relPath);
   const existing = inScope(scope, relPath)
-    ? env.store.driveItems.byPath(scope.drive.id, relPath, null)
+    ? await env.store.host.call('driveItems', 'byPath', scope.drive.id, relPath, null)
     : undefined;
-  const refused = refusedLink(call, message, existing);
+  const refused = await refusedLink(call, message, existing);
   if (refused !== null) return refused;
   await ensureFolders(env, scope.drive, relPath, syncActor(origin));
   return attempt(message.opId, 0, async () => {

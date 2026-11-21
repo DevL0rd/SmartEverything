@@ -12,7 +12,7 @@ import {
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { expandOccurrences } from '../occurrences';
 
 const log = new Logger('hub.planner');
@@ -24,7 +24,7 @@ export interface StepCompletion {
 }
 
 export function completeOpenSteps(
-  store: Pick<Store, 'plannerItems' | 'plannerOccurrences'>,
+  store: Pick<HostStore, 'plannerItems' | 'plannerOccurrences'>,
   parent: PlannerItemRow,
   completion: StepCompletion,
 ): PlannerOccurrenceRow[] {
@@ -135,7 +135,7 @@ function inSpan(
   return Date.parse(view.start) <= at && at < Math.min(limitOf(view, siblings), dayEnd);
 }
 
-function candidatesOf(store: Store, signal: SignalInput): PlannerItemRow[] {
+function candidatesOf(store: HostStore, signal: SignalInput): PlannerItemRow[] {
   if (signal.source === PLANNER_SIGNAL_SOURCE) return [];
   const owner = ownerOf(signal);
   const ids = owner === null ? store.profiles.list().map((profile) => profile.id) : [owner];
@@ -149,14 +149,14 @@ function candidatesOf(store: Store, signal: SignalInput): PlannerItemRow[] {
     });
 }
 
-function dayOf(store: Store, at: number): Day {
+function dayOf(store: HostStore, at: number): Day {
   const zone = store.settings.read().time_zone;
   const start = Temporal.Instant.fromEpochMilliseconds(at).toZonedDateTimeISO(zone).startOfDay();
   return { start: start.toInstant(), end: start.add({ days: 1 }).toInstant(), zone };
 }
 
 function openViews(
-  store: Store,
+  store: HostStore,
   item: PlannerItemRow,
   day: Day,
   nowMs: number,
@@ -173,7 +173,7 @@ function openViews(
 }
 
 function save(
-  store: Store,
+  store: HostStore,
   item: PlannerItemRow,
   view: PlannerOccurrenceView,
   signal: SignalInput,
@@ -210,7 +210,7 @@ interface Moment {
 }
 
 function completeItem(
-  store: Store,
+  store: HostStore,
   item: PlannerItemRow,
   { signal, day, nowMs }: Moment,
 ): Completed[] {
@@ -226,7 +226,7 @@ function completeItem(
 }
 
 function completedBy(
-  store: Store,
+  store: HostStore,
   { signal, nowMs }: { readonly signal: SignalInput; readonly nowMs: number },
 ): Completed[] {
   const candidates = candidatesOf(store, signal);

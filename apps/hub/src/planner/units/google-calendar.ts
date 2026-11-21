@@ -1,7 +1,7 @@
 import type { PlannerItemRow } from '@smarteverything/domain';
 import type { CalendarListEntry, GoogleEvent } from '@smarteverything/google';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { CalendarApplier, type MirroredCalendar } from '../google/calendar-apply';
 import type { Batch } from '../google/calendar-batch';
 import type { Fields } from '../google/calendar-map';
@@ -23,7 +23,7 @@ export interface CalendarItemInput extends ScopedInput {
 }
 
 function scoped<T>(
-  store: Store,
+  store: HostStore,
   input: ScopedInput,
   work: (applier: CalendarApplier, ctx: Ctx) => T,
 ): ScopedOutcome<T> {

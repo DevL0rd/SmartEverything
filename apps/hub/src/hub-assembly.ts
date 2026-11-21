@@ -204,7 +204,7 @@ function cameraConditions(
       return privacy !== null && isPrivate(privacy, writers().state.valueOf(deviceId, privacy.key));
     },
     twoWayAudio: (deviceId): boolean =>
-      parts.store.cameras
+      parts.store.live.home.cameras
         .list()
         .some((camera) => camera.device_id === deviceId && camera.two_way_audio),
   };

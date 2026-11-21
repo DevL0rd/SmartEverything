@@ -44,9 +44,10 @@ export function memoryMacs(initial: Readonly<Record<string, string>> = {}): Memo
   const saved = new Map(Object.entries(initial));
   return {
     saved,
-    all: () => new Map(saved),
-    remember: (deviceId, mac): void => {
+    all: () => Promise.resolve(new Map(saved)),
+    remember: (deviceId, mac): Promise<void> => {
       saved.set(deviceId, mac);
+      return Promise.resolve();
     },
   };
 }

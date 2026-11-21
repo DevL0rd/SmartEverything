@@ -1,7 +1,7 @@
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export function phoneClientsOf(
-  store: Pick<Store, 'clients' | 'profiles'>,
+  store: Pick<HostStore, 'clients' | 'profiles'>,
   profileId: string | null,
   holder: string | null,
 ): string[] {

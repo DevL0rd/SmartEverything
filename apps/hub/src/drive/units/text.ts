@@ -1,6 +1,6 @@
 import type { DriveItem } from '@smarteverything/domain';
 import type { DriveItemTextWrite } from '../../store/repositories/drive-item-text';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import type { ContentResponse } from '../content/content-protocol';
 
@@ -10,7 +10,7 @@ export type TextFile = Exclude<DriveItem, { readonly kind: 'folder' | 'link' | '
 
 export type TextFolder = Extract<DriveItem, { readonly kind: 'folder' }>;
 
-export type TextStore = Pick<Store, 'driveItems' | 'driveItemText' | 'driveFeed'>;
+export type TextStore = Pick<HostStore, 'driveItems' | 'driveItemText' | 'driveFeed'>;
 
 export interface TextBacklog {
   readonly work: readonly TextFile[];

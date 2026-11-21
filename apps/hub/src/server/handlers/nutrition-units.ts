@@ -3,9 +3,9 @@ import { ApiError, type HealthEntryInput, type HealthOutboxAck } from '@smarteve
 import type { z } from 'zod';
 import { outboxReadingOf } from '../../local/reading-records';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
-function noteFoodUse(store: Store, profileId: string, input: HealthEntryInput): void {
+function noteFoodUse(store: HostStore, profileId: string, input: HealthEntryInput): void {
   const foodId = input.food?.foodId ?? null;
   if (foodId !== null) {
     store.foods.used(foodId, profileId);
@@ -17,13 +17,13 @@ export interface EntryAcker {
   readonly profileId: string;
 }
 
-function owned(store: Store, profileId: string, id: string): void {
+function owned(store: HostStore, profileId: string, id: string): void {
   if (!store.healthEntries.isOwnedBy(id, profileId)) {
     throw new ApiError('conflict', `Entry ${id} is not this phone’s to save.`);
   }
 }
 
-function ackEntries(store: Store, phone: EntryAcker, ack: HealthOutboxAck): void {
+function ackEntries(store: HostStore, phone: EntryAcker, ack: HealthOutboxAck): void {
   for (const entry of ack.entries) {
     owned(store, phone.profileId, entry.id);
     store.healthEntries.written(phone.sourceId, entry.id, entry.version);

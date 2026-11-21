@@ -17,7 +17,7 @@
     "check:expo": "pnpm --filter @smarteverything/app exec npx expo-doctor",
     "check:licenses": "tsx tooling/check-licenses.ts",
     "generate:licenses": "tsx tooling/generate-licenses.ts",
-    "check:links": "markdown-link-check --quiet -c .markdown-link-check.json README.md docs/STANDARDS.md",
+    "check:links": "markdown-link-check --quiet -c .markdown-link-check.json README.md docs/IOS-READINESS.md docs/STANDARDS.md",
     "check:pinned": "tsx tooling/check-pinned-versions.ts",
     "check:secrets": "gitleaks detect --no-banner --redact",
     "check:spelling": "cspell \"**/*.{ts,tsx,md,json,yaml,yml}\" --no-progress --no-summary --cache --cache-location .cache/cspell/",

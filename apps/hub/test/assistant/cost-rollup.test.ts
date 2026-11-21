@@ -28,11 +28,11 @@ async function replyInNewChat(): Promise<{ chatId: string; profileId: string; me
   const now = (): Date => new Date();
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now,
   });
-  const chat = new ChatDirectory(store, files).create(
+  const chat = await new ChatDirectory(store, files).create(
     { profileId, role: 'owner' },
     { engine: TEST_ENGINE },
   );

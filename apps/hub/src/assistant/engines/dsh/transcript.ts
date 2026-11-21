@@ -74,39 +74,66 @@ function timelineOf(parts: readonly ChatTimelinePart[]): ChatTimelineEmbed {
 
 export class NativeTranscripts {
   private readonly turns = new Map<string, TurnState>();
+  private readonly writing = new Set<Promise<unknown>>();
 
   constructor(
     private readonly store: Store,
     private readonly conversation: ConversationLog,
   ) {}
 
-  appended(sessionId: string, events: readonly TranscriptEvent[]): void {
-    const owner = this.store.dshSessions.ownerOf(sessionId);
-    const first = events[0];
-    if (owner === undefined || first === undefined) return;
-    const chat = this.store.aiChats.find(owner.chat_id);
-    if (chat === undefined) return;
-    let state = this.turns.get(sessionId) ?? this.restored(chat, owner, first.seq);
-    for (const event of events)
-      if (event.seq >= owner.inherited_event_count)
-        state = this.fold({ chat, state, project: true }, event);
-    this.turns.set(sessionId, state);
+  async settled(): Promise<void> {
+    while (this.writing.size > 0) await Promise.allSettled([...this.writing]);
   }
 
-  private restored(chat: AiChatRow, owner: DshSessionMetadata, before: number): TurnState {
-    const start = owner.inherited_event_count;
-    if (before <= start) return fresh();
-    const prior = this.store.dshSessions.readAll(owner.header.id, owner.profile_id, {
-      offset: start,
-      length: before - start,
-    });
-    return prior.reduce<TurnState>(
-      (state, event) => this.fold({ chat, state, project: false }, event),
-      fresh(),
+  private written(
+    work: Promise<unknown>,
+    failure: string,
+    fields: Readonly<Record<string, string>>,
+  ): void {
+    this.writing.add(work);
+    background(
+      work.finally(() => {
+        this.writing.delete(work);
+      }),
+      failure,
+      fields,
     );
   }
 
-  private fold(folding: Folding, event: TranscriptEvent): TurnState {
+  async appended(sessionId: string, events: readonly TranscriptEvent[]): Promise<void> {
+    const { host } = this.store;
+    const owner = await host.call('dshSessions', 'ownerOf', sessionId);
+    const first = events[0];
+    if (owner === undefined || first === undefined) return;
+    const chat = await host.call('aiChats', 'find', owner.chat_id);
+    if (chat === undefined) return;
+    let state = this.turns.get(sessionId) ?? (await this.restored(chat, owner, first.seq));
+    for (const event of events)
+      if (event.seq >= owner.inherited_event_count)
+        state = await this.fold({ chat, state, project: true }, event);
+    this.turns.set(sessionId, state);
+  }
+
+  private async restored(
+    chat: AiChatRow,
+    owner: DshSessionMetadata,
+    before: number,
+  ): Promise<TurnState> {
+    const start = owner.inherited_event_count;
+    if (before <= start) return fresh();
+    const prior = await this.store.host.call(
+      'dshSessions',
+      'readAll',
+      owner.header.id,
+      owner.profile_id,
+      { offset: start, length: before - start },
+    );
+    let state = fresh();
+    for (const event of prior) state = await this.fold({ chat, state, project: false }, event);
+    return state;
+  }
+
+  private async fold(folding: Folding, event: TranscriptEvent): Promise<TurnState> {
     const { state } = folding;
     if (event.type === 'turn/start') return fresh();
     if (event.type === 'user/message') return this.user(folding, event.data);
@@ -116,50 +143,62 @@ export class NativeTranscripts {
     return state;
   }
 
-  private user(folding: Folding, data: unknown): TurnState {
+  private async user(folding: Folding, data: unknown): Promise<TurnState> {
     const message = USER.safeParse(data);
     if (!message.success || message.data.id === undefined) return folding.state;
     const id = nativeInputId(data);
     if (id === undefined) return folding.state;
     const state =
-      this.store.harnessDeliveries.find(id) === undefined
+      (await this.store.host.call('harnessDeliveries', 'find', id)) === undefined
         ? folding.state
         : { ...folding.state, owned: true };
     const relay = folding.project ? nativeRelay(data) : undefined;
-    if (relay !== undefined) this.relayed(folding.chat, relay.id, relay.sender, relay.text);
+    if (relay !== undefined) await this.relayed(folding.chat, relay.id, relay.sender, relay.text);
     return state;
   }
 
-  private relayed(chat: AiChatRow, id: string, senderSessionId: string, text: string): void {
-    if (this.store.assistantChat.find(id) !== undefined) return;
-    const author = this.senderTitle(senderSessionId);
-    const row = this.conversation.person({
-      chat,
-      clientId: null,
-      author,
-      text,
-      files: [],
-      origin: {
-        source: 'chat',
-        plugin_id: null,
-        device_id: null,
-        name: author,
-        hops: this.store.assistantEvents.currentHops(chat.id),
-      },
-      messageId: id,
-    });
-    background(this.conversation.stateOf(row.id, 'delivered'), 'dsh.transcript_state_failed', {
-      messageId: row.id,
-    });
+  private async relayed(
+    chat: AiChatRow,
+    id: string,
+    senderSessionId: string,
+    text: string,
+  ): Promise<void> {
+    const { host } = this.store;
+    if ((await host.call('assistantChat', 'find', id)) !== undefined) return;
+    const author = await this.senderTitle(senderSessionId);
+    const hops = await host.call('assistantEvents', 'currentHops', chat.id);
+    this.written(
+      this.conversation
+        .person({
+          chat,
+          clientId: null,
+          author,
+          text,
+          files: [],
+          origin: {
+            source: 'chat',
+            plugin_id: null,
+            device_id: null,
+            name: author,
+            hops,
+          },
+          messageId: id,
+        })
+        .then((row) => this.conversation.stateOf(row.id, 'delivered')),
+      'dsh.transcript_state_failed',
+      { messageId: id },
+    );
   }
 
-  private senderTitle(sessionId: string): string {
-    const sender = this.store.dshSessions.ownerOf(sessionId);
-    const chat = sender === undefined ? undefined : this.store.aiChats.find(sender.chat_id);
+  private async senderTitle(sessionId: string): Promise<string> {
+    const { host } = this.store;
+    const sender = await host.call('dshSessions', 'ownerOf', sessionId);
+    const chat =
+      sender === undefined ? undefined : await host.call('aiChats', 'find', sender.chat_id);
     return chat?.title ?? 'Agent';
   }
 
-  private reply(folding: Folding, data: unknown): TurnState {
+  private async reply(folding: Folding, data: unknown): Promise<TurnState> {
     const { state } = folding;
     const message = ASSISTANT.safeParse(data);
     if (state.owned || !message.success) return state;
@@ -167,19 +206,24 @@ export class NativeTranscripts {
     const parts = [...state.parts, ...messageParts(id, content)];
     const text = textsOf(content).join('');
     if (text.trim() === '') return { ...state, parts };
-    if (folding.project && this.store.assistantChat.find(id) === undefined) {
-      const row = this.conversation.responderInChat({
-        chat: folding.chat,
-        replyTo: null,
-        text,
-        model: source?.model ?? null,
-        messageId: id,
-        steps: settledSteps(state.tools),
-      });
-      background(
-        this.conversation.timeline(row.id, timelineOf(parts)),
+    if (
+      folding.project &&
+      (await this.store.host.call('assistantChat', 'find', id)) === undefined
+    ) {
+      const timeline = timelineOf(parts);
+      this.written(
+        this.conversation
+          .responderInChat({
+            chat: folding.chat,
+            replyTo: null,
+            text,
+            model: source?.model ?? null,
+            messageId: id,
+            steps: settledSteps(state.tools),
+          })
+          .then((row) => this.conversation.timeline(row.id, timeline)),
         'dsh.transcript_timeline_failed',
-        { messageId: row.id },
+        { messageId: id },
       );
     }
     return { ...state, tools: [], parts: [] };

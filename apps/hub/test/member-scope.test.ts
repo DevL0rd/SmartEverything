@@ -8,7 +8,7 @@ import {
   ownedChat,
   reachesChat,
   type ChatOwner,
-} from '../src/assistant/chat-directory';
+} from '../src/assistant/chat-ownership';
 import { admitConfined } from '../src/server/confinement';
 import { chatOwnerOf, clientOf, confinedChatOf, roleOfCaller } from '../src/server/auth';
 import { captureLogs } from './support/logs';
@@ -177,18 +177,15 @@ describe('the acting person of an AI tool call', () => {
     expect(clientOf(caller).role).toBe('member');
     expect(confinedChatOf(caller)).toBe(ownerChat.id);
     expect(chatOwnerOf(caller).confinedTo).toBe(ownerChat.id);
-    const admit = (name: EndpointName, input: OperationInput): void => {
+    const admit = (name: EndpointName, input: OperationInput): Promise<void> =>
       admitConfined(opened.store, name, caller, input);
-    };
-    expect(() => {
-      admit('readAiProjectFiles', { params: { chatId: sibling.id } });
-    }).toThrow(/someone else/);
-    expect(() => {
-      admit('readAiProjectFiles', { params: { chatId: ownerChat.id } });
-    }).not.toThrow();
-    expect(() => {
-      admit('listSchedules', {});
-    }).toThrow(/owner/);
+    await expect(admit('readAiProjectFiles', { params: { chatId: sibling.id } })).rejects.toThrow(
+      /someone else/,
+    );
+    await expect(
+      admit('readAiProjectFiles', { params: { chatId: ownerChat.id } }),
+    ).resolves.toBeUndefined();
+    await expect(admit('listSchedules', {})).rejects.toThrow(/owner/);
     for (const name of [
       'createSchedule',
       'cancelSchedule',
@@ -196,9 +193,7 @@ describe('the acting person of an AI tool call', () => {
       'readUsageTotals',
       'listUsageLedger',
     ] as const) {
-      expect(() => {
-        admit(name, {});
-      }).toThrow(/owner/);
+      await expect(admit(name, {})).rejects.toThrow(/owner/);
     }
   });
 

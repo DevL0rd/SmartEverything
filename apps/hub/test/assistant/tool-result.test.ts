@@ -44,14 +44,14 @@ function request(chat: AiChatRow, callId: string, cursor = '0', limit = 10): Too
 }
 
 describe('reading the full result of a tool call', () => {
-  it('pages through an output that the timeline clips', () => {
+  it('pages through an output that the timeline clips', async () => {
     const chat = rig.newChat(rig.hub.target);
     replyWith(chat, timeline('call-1', 'ls', '0123456789abcdefghij0123'));
     const { store } = rig.opened;
 
-    const first = readToolResult(store, request(chat, 'call-1'));
-    const second = readToolResult(store, request(chat, 'call-1', first.nextCursor ?? '0'));
-    const last = readToolResult(store, request(chat, 'call-1', second.nextCursor ?? '0'));
+    const first = await readToolResult(store, request(chat, 'call-1'));
+    const second = await readToolResult(store, request(chat, 'call-1', first.nextCursor ?? '0'));
+    const last = await readToolResult(store, request(chat, 'call-1', second.nextCursor ?? '0'));
 
     expect([first.text, second.text, last.text]).toStrictEqual([
       '0123456789',
@@ -61,11 +61,11 @@ describe('reading the full result of a tool call', () => {
     expect([first.total_chars, first.nextCursor, last.nextCursor]).toStrictEqual([24, '10', null]);
   });
 
-  it('reads the input of a call when asked', () => {
+  it('reads the input of a call when asked', async () => {
     const chat = rig.newChat(rig.hub.target);
     replyWith(chat, timeline('call-1', 'echo hello', 'hello'));
 
-    const page = readToolResult(rig.opened.store, {
+    const page = await readToolResult(rig.opened.store, {
       ...request(chat, 'call-1', '0', 100),
       field: 'input',
     });
@@ -73,30 +73,30 @@ describe('reading the full result of a tool call', () => {
     expect(page).toMatchObject({ field: 'input', text: 'echo hello', nextCursor: null });
   });
 
-  it('finds a call in an earlier reply of the chat', () => {
+  it('finds a call in an earlier reply of the chat', async () => {
     const chat = rig.newChat(rig.hub.target);
     replyWith(chat, timeline('old-call', 'a', 'old output'));
     replyWith(chat, timeline('new-call', 'b', 'new output'));
 
-    const page = readToolResult(rig.opened.store, request(chat, 'old-call', '0', 100));
+    const page = await readToolResult(rig.opened.store, request(chat, 'old-call', '0', 100));
 
     expect(page.text).toBe('old output');
   });
 
-  it('does not reach a call of another chat', () => {
+  it('does not reach a call of another chat', async () => {
     const mine = rig.newChat(rig.hub.target);
     const other = rig.newChat(rig.hub.target);
     replyWith(other, timeline('their-call', 'a', 'secret'));
 
-    expect(() => readToolResult(rig.opened.store, request(mine, 'their-call'))).toThrow(
+    await expect(readToolResult(rig.opened.store, request(mine, 'their-call'))).rejects.toThrow(
       'no tool call their-call',
     );
   });
 
-  it('says so when the chat has no such call', () => {
+  it('says so when the chat has no such call', async () => {
     const chat = rig.newChat(rig.hub.target);
 
-    expect(() => readToolResult(rig.opened.store, request(chat, randomUUID()))).toThrow(
+    await expect(readToolResult(rig.opened.store, request(chat, randomUUID()))).rejects.toThrow(
       'no tool call',
     );
   });

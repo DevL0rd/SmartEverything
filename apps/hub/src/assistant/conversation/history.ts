@@ -26,16 +26,19 @@ export function transcriptLine(row: AssistantMessageRow): string {
   return `${who}: ${row.text}`;
 }
 
-export function chatContext(store: Store, chatId: string): ChatContext {
-  const latest = store.assistantChat.latestWithEmbed(chatId, 'compaction');
+export async function chatContext(
+  store: Pick<Store, 'host'>,
+  chatId: string,
+): Promise<ChatContext> {
+  const latest = await store.host.call('assistantChat', 'latestWithEmbed', chatId, 'compaction');
   const marker = latest === undefined ? null : compactionOf(latest);
   if (latest !== undefined && marker === null) {
     throw new Error(`The compaction note ${latest.id} has no readable end point.`);
   }
   return {
     summary: latest?.text ?? null,
-    rows: store.assistantChat
-      .since(chatId, marker?.through_at ?? null)
-      .filter((row) => !isHelperDialogueMirror(row) && compactionOf(row) === null),
+    rows: (
+      await store.host.call('assistantChat', 'since', chatId, marker?.through_at ?? null)
+    ).filter((row) => !isHelperDialogueMirror(row) && compactionOf(row) === null),
   };
 }

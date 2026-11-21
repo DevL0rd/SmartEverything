@@ -157,19 +157,19 @@ export function liveSink(parts: LiveSinkParts): RunSink {
 export interface TraceWatchSourceParts {
   readonly viewers: Pick<Viewers, 'hold' | 'release'>;
   readonly owners: TraceOwners;
-  readonly store: TraceProfiles;
-  readonly runs: (subject: string) => readonly TraceRun[];
+  readonly profiles: TraceProfiles;
+  readonly runs: (subject: string) => Promise<readonly TraceRun[]>;
   readonly now: () => string;
 }
 
 export function traceWatchSource(parts: TraceWatchSourceParts): TraceSource {
   return {
     viewers: parts.viewers,
-    allowed: (client: ClientRow, subject: string): boolean =>
-      traceAllowed(client, subject, parts.owners, parts.store),
-    keyframe: (subject: string): AutomationTraceNotice | null => {
+    allowed: (client: ClientRow, subject: string): Promise<boolean> =>
+      traceAllowed(client, subject, parts.owners, parts.profiles),
+    keyframe: async (subject: string): Promise<AutomationTraceNotice | null> => {
       const parsed = traceSubjectOf(subject);
-      const runs = parts.runs(subject);
+      const runs = await parts.runs(subject);
       const automationId = parsed?.kind === 'automation' ? parsed.id : runs[0]?.automationId;
       return automationId === undefined
         ? null

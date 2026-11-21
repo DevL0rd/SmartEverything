@@ -8,8 +8,8 @@ export const developerRoutes = ({ developerDevices, watchCaptures, store }: Serv
     readDeveloperDevice: bound(E.readDeveloperDevice, ({ caller }) => ({
       developer: developerDevices.isDeveloper(clientOf(caller)),
     })),
-    setDeveloperDevice: bound(E.setDeveloperDevice, ({ body, caller }) => ({
-      developer: developerDevices.set(clientOf(caller), body.developer),
+    setDeveloperDevice: bound(E.setDeveloperDevice, async ({ body, caller }) => ({
+      developer: await developerDevices.set(clientOf(caller), body.developer),
     })),
     saveWatchCaptures: bound(E.saveWatchCaptures, async ({ body, caller }) => {
       const client = clientOf(caller);

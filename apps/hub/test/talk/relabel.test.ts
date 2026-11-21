@@ -1,17 +1,16 @@
+import { testStore, type TestStore, type SeededStore } from '../support/store';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
-import type { Store } from '../../src/store/store';
 import { TALK_NEW_CHANNEL } from '@smarteverything/domain';
 import { TalkService } from '../../src/talk/talk-service';
 import { addClient, type TestClient } from '../support/socket-client';
 import { captureLogs, testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 
 let test: TestStore;
 let service: TalkService;
 let alice: TestClient;
 let bob: TestClient;
 let channelId: string;
-let writes: MockInstance<Store['host']['write']>;
+let writes: MockInstance<SeededStore['host']['write']>;
 
 function relabels(): number {
   return writes.mock.calls.filter(([unit]) => unit === 'talkRelabel').length;

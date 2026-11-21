@@ -33,16 +33,16 @@ export function startRouter(ctx: Context): PluginStop {
   const streams = new RouterStreams(ctx.data.publish, (stream, value) => {
     ctx.viewers.publish(ROUTER_EXTERNAL_ID, stream, value);
   });
-  const publish = (enriched: RouterSnapshot, full: boolean, audience: WireAudience): void => {
-    streams.publish(enriched, full, audience);
+  const publish = (enriched: RouterSnapshot, audience: WireAudience): void => {
+    streams.publish(enriched, audience);
     presence.index(enriched);
   };
   const collector = createCollector(ctx, {
     record: (snapshot) => {
       sync.update(presence.enrich(snapshot));
     },
-    publish: (snapshot, full, audience) => {
-      publish(presence.enrich(snapshot), full, audience);
+    publish: (snapshot, audience) => {
+      publish(presence.enrich(snapshot), audience);
     },
   });
   const latest = (): RouterSnapshot =>
@@ -51,7 +51,7 @@ export function startRouter(ctx: Context): PluginStop {
     if (collector !== null) {
       const enriched = presence.enrich(collector.latest);
       sync.update(enriched);
-      publish(enriched, true, 'everyone');
+      publish(enriched, 'everyone');
     }
   };
   const speedTests = new SpeedTestRunner(ctx);
@@ -72,7 +72,7 @@ export function startRouter(ctx: Context): PluginStop {
   );
   registerRouterPickers(ctx, { snapshot: latest });
   if (collector === null) {
-    streams.publish(notSetUp(), true, 'everyone');
+    streams.publish(notSetUp(), 'everyone');
     return () => Promise.resolve();
   }
   return startMonitoring(ctx, collector, sync);

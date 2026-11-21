@@ -206,6 +206,50 @@ describe('computer session', () => {
     ]);
   });
 
+  it('asks the computer for disk usage at the disk space pace', () => {
+    const viewers = new Viewers<DeviceDetail>();
+    const { recorded, send } = start(viewers);
+    send({ type: 'hello', hello: HELLO });
+    viewers.hold('drive', [{ target: 'device:device-1', topic: 'disk_usage' }]);
+    expect(recorded.demands.at(-1)).toEqual({
+      type: 'demand',
+      demand: { topics: { disk_usage: 10_000 }, history: DEFAULT_HISTORY_POLICY },
+    });
+  });
+
+  it('passes on only the parts of a key frame that changed', () => {
+    const { recorded, session, send } = start(new Viewers());
+    send({ type: 'hello', hello: HELLO });
+    const usage = {
+      disks: [
+        {
+          mount: '/',
+          device: '/dev/nvme0n1p2',
+          label: null,
+          filesystem: 'btrfs',
+          usedBytes: 400,
+          totalBytes: 1000,
+        },
+      ],
+    };
+    const keyFrame = (at: number, cpuLoad: number): unknown => ({
+      type: 'sample',
+      at: new Date(at).toISOString(),
+      seq: 0,
+      key: true,
+      parts: { summary: summary(cpuLoad), disk_usage: usage },
+    });
+    send(keyFrame(AT, 10));
+    send(keyFrame(AT + 30_000, 20));
+    send(keyFrame(AT + 60_000, 20));
+    expect(recorded.notices.map((notice) => Object.keys(notice.parts))).toEqual([
+      ['summary', 'disk_usage'],
+      ['summary'],
+      [],
+    ]);
+    expect(session.view()?.parts.disk_usage).toEqual(usage);
+  });
+
   it('leaves processes out of the demand while the processes permission is off', () => {
     const viewers = new Viewers<DeviceDetail>();
     const scopes = { ...DEFAULT_COMPUTER_SCOPES, processes: false };

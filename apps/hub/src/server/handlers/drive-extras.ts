@@ -134,7 +134,12 @@ export function extrasOf(deps: DriveDeps, parts: ExtrasParts): DriveExtras {
   const sharing = sharingOf(deps, parts.env, parts.shares, parts.placements);
   return {
     content: { store, links: deps.links },
-    zipServing: { store, links: deps.links, now: deps.now },
+    zipServing: {
+      item: (itemId) => store.host.call('driveItems', 'find', itemId, null),
+      root: (rootId) => store.host.call('driveRoots', 'find', rootId),
+      links: deps.links,
+      now: deps.now,
+    },
     iconServing: {
       folder: (itemId) => store.host.call('driveItems', 'find', itemId, null),
       icon: (itemId) => store.host.call('driveFolderIcons', 'find', itemId),

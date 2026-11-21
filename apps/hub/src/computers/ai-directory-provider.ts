@@ -37,7 +37,7 @@ export async function startClaudeCommand(
   runtimes: ComputerRuntimeDirectory,
   operation: {
     readonly input: AiNativeCommandWrite;
-    readonly authorize: () => void;
+    readonly authorize: () => Promise<void>;
     readonly configuration?: CodexCommandConfiguration;
   },
 ): Promise<AiNativeCommandReceipt> {

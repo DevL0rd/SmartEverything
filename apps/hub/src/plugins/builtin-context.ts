@@ -48,7 +48,7 @@ export interface BuiltinContextOptions {
     change: Partial<PluginConfiguration>,
     by?: ToolCaller,
   ) => Promise<void>;
-  readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
+  readonly submit: (commands: readonly NewCommand[]) => Promise<CommandRow[]>;
   readonly signals: { readonly emit: (signal: SignalInput) => void };
   readonly home: PluginHomeFacts;
   readonly now: () => Date;

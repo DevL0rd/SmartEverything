@@ -15,7 +15,7 @@ interface Rig {
   readonly shell: { fail: boolean };
 }
 
-function rig(): Rig {
+function rig(growth = 1000): Rig {
   const lines: string[] = [];
   const recorded: RouterSnapshot[] = [];
   const published: RouterSnapshot[] = [];
@@ -26,7 +26,7 @@ function rig(): Rig {
     collect: (line) => {
       lines.push(line);
       if (control.fail) return Promise.reject(new Error('router unreachable'));
-      bytes += 1000;
+      bytes += growth;
       return Promise.resolve(
         collectReply({
           at: Date.now() / 1000,
@@ -48,7 +48,7 @@ function rig(): Rig {
     record: (snapshot): void => {
       recorded.push(snapshot);
     },
-    publish: (snapshot, _full, audience): void => {
+    publish: (snapshot, audience): void => {
       published.push(snapshot);
       audiences.push(audience);
     },
@@ -96,6 +96,17 @@ describe('router recording', () => {
     expect(audiences.filter((audience) => audience === 'viewers')).toHaveLength(
       published.length - everyone,
     );
+  });
+
+  it('sends nothing to everyone after the first frames while the router reports the same values', async () => {
+    const { collector, recorded, audiences } = rig(0);
+    collector.setCadence('slow');
+    await vi.advanceTimersByTimeAsync(5_000);
+    const settled = audiences.length;
+    await vi.advanceTimersByTimeAsync(120_000);
+    collector.stop();
+    expect(recorded.length).toBeGreaterThan(120);
+    expect(audiences).toHaveLength(settled);
   });
 
   it('asks for the full frame every 10 s when watched and every 30 s otherwise', async () => {

@@ -1,5 +1,5 @@
 import type { DriveItem, DriveVersion } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { DRIVE_PAGE_SIZE } from '../page-size';
 
 export interface Tree {
@@ -9,7 +9,7 @@ export interface Tree {
   readonly bytes: number;
 }
 
-type TreeStore = Pick<Store, 'driveItems' | 'driveVersions'>;
+type TreeStore = Pick<HostStore, 'driveItems' | 'driveVersions'>;
 
 function childrenOf(store: TreeStore, folder: DriveItem): DriveItem[] {
   const children: DriveItem[] = [];

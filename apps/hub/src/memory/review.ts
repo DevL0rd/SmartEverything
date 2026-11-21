@@ -112,23 +112,23 @@ export class MemoryReview {
           )
           .map((rating) => ({ id: rating.id, importance: rating.significance })),
       );
-      for (const entry of answer.splits) this.splitOne(standing, group, current, entry);
+      for (const entry of answer.splits) await this.splitOne(standing, group, current, entry);
     }
     return permission.check();
   }
 
-  private splitOne(
+  private async splitOne(
     standing: Standing,
     group: string,
     batch: ReadonlyMap<string, number>,
     entry: MemorySplit,
-  ): void {
+  ): Promise<void> {
     if (!batch.has(entry.id)) {
       log.warn('memory.split_ignored', { group, reason: 'unknown_id' });
       return;
     }
     try {
-      const parts = this.ports.writer.split(standing.who, entry.id, entry.parts);
+      const parts = await this.ports.writer.split(standing.who, entry.id, entry.parts);
       log.info('memory.split', { group, parts: parts.length });
     } catch (cause) {
       if (!(cause instanceof ApiError)) throw cause;

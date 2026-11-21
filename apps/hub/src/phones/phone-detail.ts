@@ -10,7 +10,6 @@ import {
   type Role,
 } from '@smarteverything/domain';
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
-import type { Store } from '../store/store';
 import type { PhoneDetails } from './phone-detail-copy';
 import type { PhoneTarget } from './phone-nodes';
 
@@ -23,11 +22,8 @@ export function phoneViewerOfCaller(caller: Caller): PhoneViewer {
   return { role: roleOfCaller(caller), profileId: profileIdOf(caller) };
 }
 
-export function phoneViewerOfClient(
-  store: Pick<Store, 'profiles'>,
-  client: ClientRow,
-): PhoneViewer {
-  return { role: client.role, profileId: store.profiles.activeOf(client.id).id };
+export function phoneViewerOfClient(profileId: string, client: ClientRow): PhoneViewer {
+  return { role: client.role, profileId };
 }
 
 export function tierOfViewer(

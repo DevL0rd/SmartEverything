@@ -1,9 +1,7 @@
-import { pluginWidgetType } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import { pluginWidgetType, type PluginRow } from '@smarteverything/domain';
 
-export function boardTypes(store: Store): string[] {
-  const types = store.plugins
-    .list()
+export function boardTypes(plugins: readonly PluginRow[]): string[] {
+  const types = plugins
     .filter((plugin) => plugin.enabled)
     .flatMap((plugin) =>
       plugin.manifest.contributes.widgets.map((widget) => pluginWidgetType(plugin.id, widget.id)),

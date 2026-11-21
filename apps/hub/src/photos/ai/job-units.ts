@@ -11,7 +11,7 @@ import type { PhotoAnalysisRow, PhotoPet } from '../../store/repositories/photo-
 import type { PhotoEmbedding } from '../../store/repositories/photo-embeddings';
 import type { PhotoFaceRow } from '../../store/repositories/photo-faces';
 import { inList } from '../../store/sql';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { PhotoConsent, type ConsentSwitches } from './consent';
 import { PHOTOS_AI_AREA } from './defaults';
 import type { MediaItem } from './env';
@@ -84,15 +84,15 @@ const NEEDS_KEY_RESUME = [
       where f.item_id = drive_media_jobs.item_id and f.rev = drive_media_jobs.rev and f.kind = 'pet')`,
 ] as const;
 
-function consentOf(store: Store): PhotoConsent {
+function consentOf(store: HostStore): PhotoConsent {
   return new PhotoConsent(store, log);
 }
 
-function isCurrent(store: Store, target: AiJobTarget): boolean {
+function isCurrent(store: HostStore, target: AiJobTarget): boolean {
   return store.driveItems.find(target.itemId, null)?.rev === target.rev;
 }
 
-function requested(store: Store, request: AiJobRequest): DriveMediaJob | null {
+function requested(store: HostStore, request: AiJobRequest): DriveMediaJob | null {
   const { kind, itemId, rev, modelVersion } = request;
   if (request.rerun)
     store.context.sql.run(

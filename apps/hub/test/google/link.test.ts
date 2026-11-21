@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { GoogleLink, GoogleLinkError } from '../../src/google/link';
+import { GoogleLink, GoogleLinkError, type GoogleLinkOptions } from '../../src/google/link';
 import { scopesFor } from '../../src/google/oauth';
 import { GoogleRelinkRequired, GoogleTokens } from '../../src/google/tokens';
 import { SecretStore } from '../../src/secrets/store';
@@ -21,6 +21,18 @@ import {
   type FakeGoogle,
 } from '../fakes/google';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
+
+function hostedAccounts(): GoogleLinkOptions['accounts'] {
+  return {
+    find: (...args) => Promise.resolve(accounts.find(...args)),
+    insert: (...args) => Promise.resolve(accounts.insert(...args)),
+    update: (...args) => Promise.resolve(accounts.update(...args)),
+    remove: (...args): Promise<void> => {
+      accounts.remove(...args);
+      return Promise.resolve();
+    },
+  };
+}
 
 const REDIRECT = 'http://127.0.0.1:53682/callback';
 const EMAIL = 'ann@example.test';
@@ -58,19 +70,19 @@ beforeEach(async () => {
   accounts = new GoogleAccountsRepository(context);
   tokens = new GoogleTokens({
     secrets,
-    accounts,
+    accounts: hostedAccounts(),
     fetch: google.fetch,
     nowMs: (): number => google.clock.nowMs(),
   });
-  link = new GoogleLink({ secrets, accounts, tokens, fetch: google.fetch });
+  link = new GoogleLink({ secrets, accounts: hostedAccounts(), tokens, fetch: google.fetch });
 });
 
 afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-function begin(profileId = ann): { url: string; state: string } {
-  const started = link.begin({
+async function begin(profileId = ann): Promise<{ url: string; state: string }> {
+  const started = await link.begin({
     profileId,
     client: 'desktop',
     redirectUri: REDIRECT,
@@ -80,7 +92,7 @@ function begin(profileId = ann): { url: string; state: string } {
 }
 
 async function linked(profileId = ann): Promise<void> {
-  const started = begin(profileId);
+  const started = await begin(profileId);
   const consent = google.oauth.consent(started.url, EMAIL);
   await link.complete({
     profileId,
@@ -95,8 +107,8 @@ function tokenRequests(): number {
 }
 
 describe('link', () => {
-  it('requests only the Calendar and Tasks scopes with PKCE, offline access and consent', () => {
-    const url = new URL(begin().url);
+  it('requests only the Calendar and Tasks scopes with PKCE, offline access and consent', async () => {
+    const url = new URL((await begin()).url);
     expect(url.searchParams.get('scope')?.split(' ')).toStrictEqual(
       scopesFor({ calendar: 'write', tasks: 'write' }),
     );
@@ -136,7 +148,7 @@ describe('link', () => {
   });
 
   it('refuses a wrong state, another person state and a mismatching redirect, and still completes with the right one', async () => {
-    const started = begin();
+    const started = await begin();
     const consent = google.oauth.consent(started.url, EMAIL);
     const attempt = (profileId: string, state: string, redirectUri = REDIRECT): Promise<unknown> =>
       link.complete({ profileId, state, code: consent.code, redirectUri });
@@ -152,8 +164,8 @@ describe('link', () => {
   });
 
   it('completes only once per state and a new begin replaces the earlier attempt', async () => {
-    const first = begin();
-    const second = begin();
+    const first = await begin();
+    const second = await begin();
     const consent = google.oauth.consent(second.url, EMAIL);
     await expect(
       link.complete({
@@ -181,7 +193,7 @@ describe('link', () => {
 
   it('restores the earlier state when Google refuses the code', async () => {
     await linked();
-    const started = begin();
+    const started = await begin();
     await expect(
       link.complete({
         profileId: ann,
@@ -194,20 +206,20 @@ describe('link', () => {
     expect(secrets.googleAccount(ann)).not.toBeNull();
   });
 
-  it('cancelling removes a row that had no earlier link', () => {
-    const started = begin();
-    link.cancel(ann, started.state);
+  it('cancelling removes a row that had no earlier link', async () => {
+    const started = await begin();
+    await link.cancel(ann, started.state);
     expect(accounts.find(ann)).toBeUndefined();
   });
 
   it('refuses to begin without a configured client', async () => {
     await secrets.update((current) => ({ ...current, googleApp: null }));
-    expect(() => begin()).toThrow(GoogleLinkError);
+    await expect(begin()).rejects.toThrow(GoogleLinkError);
     expect(accounts.find(ann)).toBeUndefined();
   });
 
   it('marks a link needing attention when a requested scope was not granted', async () => {
-    const started = begin();
+    const started = await begin();
     const consent = google.oauth.consent(
       started.url.replace(/calendar\.events/, 'tasks.readonly'),
       EMAIL,
@@ -291,7 +303,7 @@ describe('tokens', () => {
     tokens.invalidate(ann);
     const offline = new GoogleTokens({
       secrets,
-      accounts,
+      accounts: hostedAccounts(),
       fetch: (): Promise<Response> => Promise.reject(new Error('offline')),
       nowMs: (): number => google.clock.nowMs(),
     });
@@ -324,7 +336,7 @@ describe('unlink', () => {
     await linked();
     const failing = new GoogleLink({
       secrets,
-      accounts,
+      accounts: hostedAccounts(),
       tokens,
       fetch: (url, init): Promise<Response> =>
         url.endsWith('/revoke')
@@ -339,7 +351,7 @@ describe('unlink', () => {
 
 describe('secrecy', () => {
   it('puts no token, code or verifier into any row, log line or event', async () => {
-    const started = begin();
+    const started = await begin();
     const consent = google.oauth.consent(started.url, EMAIL);
     await link.complete({
       profileId: ann,

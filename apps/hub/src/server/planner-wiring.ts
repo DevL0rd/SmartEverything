@@ -68,19 +68,31 @@ function plannerChannels(
 
 function forwardNotices(context: ServerContext, alerts: Pick<OwnerAlerts, 'raise'>): () => void {
   const { live, store } = context;
+  let order: Promise<void> = Promise.resolve();
+  const inOrder = (work: () => Promise<void> | void): void => {
+    order = order.then(work).catch((cause: unknown) => {
+      context.log.error('planner.notice_failed', cause);
+    });
+  };
   return store.feed.subscribeNotices((notice) => {
     if (notice.type === 'planner_summary') {
-      live.profileNotice(notice, notice.personId, 'everyone');
+      inOrder(() => {
+        live.profileNotice(notice, notice.personId, 'everyone');
+      });
     } else if (notice.type === 'planner_ring') {
-      const ring = store.plannerRings.find(notice.ringId);
-      if (ring !== undefined) live.profileNotice(notice, ring.profile_id, 'everyone');
+      inOrder(async () => {
+        const ring = await store.host.call('plannerRings', 'find', notice.ringId);
+        if (ring !== undefined) live.profileNotice(notice, ring.profile_id, 'everyone');
+      });
     } else if (
       notice.type === 'planner_invited' ||
       notice.type === 'planner_rsvp' ||
       notice.type === 'planner_assigned'
     ) {
-      live.profileNotice(notice, notice.personId, 'everyone');
-      alerts.raise(alertOf(notice));
+      inOrder(() => {
+        live.profileNotice(notice, notice.personId, 'everyone');
+        alerts.raise(alertOf(notice));
+      });
     }
   });
 }

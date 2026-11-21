@@ -34,7 +34,7 @@ import { PHOTO_FOLDER_RECEIPT, PHOTO_FOLDER_RECEIPTS } from '../../src/photos/fo
 import { PHOTOS_FOLDER_MIGRATION } from '../../src/store/migrations/photos-folder';
 import { recoverIntents, TMP_DIRECTORY } from '../../src/drive/intents';
 import { nodeFiles } from '../../src/drive/versions';
-import { BackupService, type BackupEnv, type BackupStore } from '../../src/photos/backup';
+import { BackupService, type BackupEnv } from '../../src/photos/backup';
 import { BackupRecords } from '../../src/photos/backup-records';
 import { PHOTOS_FOLDER } from '../../src/photos/membership';
 import { LibraryReader } from '../../src/photos/library';
@@ -45,7 +45,7 @@ import { DevicesRepository } from '../../src/store/repositories/devices';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { DriveBackupRepository } from '../../src/store/repositories/drive-backup';
 import type { Sql } from '../../src/store/sql';
-import { openStore, type Store } from '../../src/store/store';
+import { openSeededStore, type SeededStore } from '../support/store';
 import { testStoreHost } from '../support/store-host';
 import { captureLogs, testLogger } from '../support/logs';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
@@ -61,7 +61,7 @@ const SETTINGS: BackupSettings = {
 
 let database: DatabaseSync;
 let context: StoreContext;
-let store: BackupStore;
+let store: SeededStore & { readonly driveBackup: DriveBackupRepository };
 let sql: Sql;
 let base = '';
 let service: BackupService;
@@ -171,13 +171,13 @@ function clientFor(profileId: string): string {
   return id;
 }
 
-let hub: Store;
+let hub: SeededStore;
 
 beforeEach(async () => {
   captureLogs();
   base = await realpath(await mkdtemp(join(tmpdir(), 'photos-backup-')));
   const log = testLogger();
-  hub = openStore({
+  hub = await openSeededStore({
     host: testStoreHost(),
     path: join(base, 'test.db'),
     log,
@@ -204,13 +204,13 @@ beforeEach(async () => {
     now: () => new Date(NOW),
     purge: { rearm: (): void => undefined },
   };
-  env = { ...changeEnv, store, sql };
+  env = changeEnv;
   service = new BackupService(env);
-  records = new BackupRecords(env);
+  records = new BackupRecords({ store, sql, log, now: (): Date => new Date(NOW) });
 });
 
 afterEach(async () => {
-  hub.close();
+  await hub.close();
   await rm(base, { recursive: true, force: true });
 });
 

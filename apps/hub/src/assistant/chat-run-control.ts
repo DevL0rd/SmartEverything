@@ -19,7 +19,7 @@ export async function compactChat(
   chatId: string,
   clientId?: string,
 ): Promise<boolean> {
-  const chat = chats.own(owner, chatId);
+  const chat = await chats.own(owner, chatId);
   admitChatExecution(chat);
   const engine = engines.forMutation(chat, owner.role);
   if (engine?.status(chat).state === 'working') {
@@ -52,7 +52,7 @@ export async function interruptChat(
   owner: ChatOwner,
   chatId: string,
 ): Promise<void> {
-  const chat = chats.own(owner, chatId);
+  const chat = await chats.own(owner, chatId);
   admitChatExecution(chat);
   const engine = engines.forMutation(chat, owner.role);
   if (delivery.stopChat(chatId)) {

@@ -5,14 +5,9 @@ import {
   type AiChatRuntimeProvider,
   type CodexProviderEvent,
 } from '@smarteverything/domain';
-import type { ComputerRunnerDeps } from './runner';
 import type { ComputerEvent } from './provider-state';
-import { claudeAgents } from '../claude/agents';
-export function providerAgents(
-  deps: ComputerRunnerDeps,
-  chat: AiChatRow,
-  event: ComputerEvent,
-): void {
+import { claudeAgents, type AgentsSource } from '../claude/agents';
+export function providerAgents(deps: AgentsSource, chat: AiChatRow, event: ComputerEvent): void {
   if (chat.engine.kind === 'codex') {
     codexAgents(deps, chat, event);
     return;
@@ -26,7 +21,7 @@ export function providerAgents(
     return;
   }
 }
-function codexAgents(deps: ComputerRunnerDeps, chat: AiChatRow, event: ComputerEvent): void {
+function codexAgents(deps: AgentsSource, chat: AiChatRow, event: ComputerEvent): void {
   const parsed = CODEX_PROVIDER_EVENT.safeParse(event);
   if (!parsed.success || chat.engine.kind !== 'codex') return;
   const source = parsed.data;
@@ -78,7 +73,7 @@ function matchesRun(
   );
 }
 
-function lostAgents(deps: ComputerRunnerDeps, chat: AiChatRow, event: ComputerEvent): void {
+function lostAgents(deps: AgentsSource, chat: AiChatRow, event: ComputerEvent): void {
   for (const run of deps.store.aiAgentRuns.list(chat.id, { limit: 200 }).runs) {
     if (
       run.source === 'smarteverything' ||
@@ -91,7 +86,7 @@ function lostAgents(deps: ComputerRunnerDeps, chat: AiChatRow, event: ComputerEv
       state: 'unknown',
       last_known_state: run.state,
       observability_reason: 'The provider connection ended before a child completion was observed.',
-      updated_at: deps.now().toISOString(),
+      updated_at: deps.now,
       source_seq: run.source_seq + 1,
       supported_actions: [],
     });

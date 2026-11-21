@@ -170,7 +170,7 @@ export async function sendChatFileLinkToChat(
   now = new Date(),
 ): ReturnType<typeof sendChatFile> {
   const delivery = await sendChatFile(input, now);
-  new ConversationLog(store).responderInChat({
+  await new ConversationLog(store).responderInChat({
     chat: await store.host.call('aiChats', 'chat', input.chat.id),
     replyTo: null,
     messageId: delivery.runId,
@@ -231,7 +231,7 @@ export async function sendChatFileToChat(
     signal: new AbortController().signal,
   });
   authorize();
-  const message = new ConversationLog(store).responderInChat({
+  const message = await new ConversationLog(store).responderInChat({
     chat,
     replyTo: null,
     kind: 'update',

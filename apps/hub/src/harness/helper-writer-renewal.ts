@@ -1,6 +1,7 @@
 import { ApiError, harnessTargetKey } from '@smarteverything/domain';
 import type { DshSessionOpened, DshWriterClaim } from '@smarteverything/domain';
 import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { DshSessionPrincipal } from '../store/repositories/dsh-session-claims';
 import type { HarnessGrant } from './grant';
 import { durableStoreUnit } from '../store/host/unit';
@@ -15,7 +16,7 @@ export interface HelperWriterRenewal {
 }
 
 export function renewHelperWriter(
-  store: Store,
+  store: HostStore,
   { child, principal, grant, held }: HelperWriterRenewal,
 ): DshSessionOpened {
   const previous = store.harnessSessions.state(child.session_id);
@@ -59,7 +60,7 @@ export interface HelperWriterResume {
 }
 
 function resumedHelperWriter(
-  store: Store,
+  store: HostStore,
   { id, parent, principal, grant, held }: HelperWriterResume & { readonly held: HeldChats },
 ): DshSessionOpened {
   store.dshSessions.verifyWriter(parent, principal);

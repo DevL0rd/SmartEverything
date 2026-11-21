@@ -11,7 +11,7 @@ import { placedDevices } from './targets';
 const NOTHING = z.strictObject({});
 
 export async function homesOf(store: Store, caller: Caller): Promise<Record<string, unknown>> {
-  const settings = store.settings.read();
+  const settings = store.live.home.settings.read();
   const counts = await store.host.read('mcpHomeCounts', null);
   return {
     homes: [

@@ -2,12 +2,12 @@ import { Logger } from '@smarteverything/logging';
 import type { PhotoPartnerShareRow } from '../../store/repositories/photo-partner-shares';
 import type { ChangeFeed } from '../../store/feed';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { recordDelivered, unsavedPartnerItemIds } from './partner-items';
 import { SavedAlbums } from './saved';
 
 export type AutoSaveStore = Pick<
-  Store,
+  HostStore,
   'context' | 'write' | 'driveAlbums' | 'photoPartnerShares' | 'profiles'
 >;
 

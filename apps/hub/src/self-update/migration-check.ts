@@ -40,26 +40,31 @@ function vacuumInto(source: string, target: string): void {
   }
 }
 
-export function checkMigrationsOf(database: string, scratchRoot: string): MigrationCheckResult {
+async function migratedVersion(copy: string, pass: number): Promise<number> {
+  const store = await openStore({
+    path: copy,
+    log: new Logger(`hub.migration-check-pass-${String(pass)}`),
+    now: () => new Date(),
+    systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    driveFolders: null,
+    host: { script: BUNDLED_STORE_HOST, readers: 1 },
+  });
+  await store.close();
+  return schemaVersion(copy);
+}
+
+export async function checkMigrationsOf(
+  database: string,
+  scratchRoot: string,
+): Promise<MigrationCheckResult> {
   mkdirSync(scratchRoot, { recursive: true, mode: 0o700 });
   const scratch = mkdtempSync(join(scratchRoot, 'release-migration-'));
   const copy = join(scratch, COPY_FILE);
   try {
     vacuumInto(database, copy);
     const from = schemaVersion(copy);
-    const versions = Array.from({ length: PASSES }, (_, pass) => {
-      const store = openStore({
-        path: copy,
-        log: new Logger(`hub.migration-check-pass-${String(pass + 1)}`),
-        now: () => new Date(),
-        systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        driveFolders: null,
-        host: { script: BUNDLED_STORE_HOST, readers: 1 },
-      });
-      store.close();
-      return schemaVersion(copy);
-    });
-    const [first = 0, second = 0] = versions;
+    const first = await migratedVersion(copy, 1);
+    const second = await migratedVersion(copy, PASSES);
     if (first !== second)
       throw new MigrationCheckError(
         `a second open moved the schema from ${String(first)} to ${String(second)}, so the migrations are not idempotent`,
@@ -70,9 +75,9 @@ export function checkMigrationsOf(database: string, scratchRoot: string): Migrat
   }
 }
 
-export function runMigrationCheck(argv: readonly string[]): void {
+export async function runMigrationCheck(argv: readonly string[]): Promise<void> {
   const [database, scratchRoot] = argv;
   if (database === undefined || scratchRoot === undefined)
     throw new MigrationCheckError('usage: migration-check.mjs <database> <scratch folder>');
-  process.stdout.write(`${JSON.stringify(checkMigrationsOf(database, scratchRoot))}\n`);
+  process.stdout.write(`${JSON.stringify(await checkMigrationsOf(database, scratchRoot))}\n`);
 }

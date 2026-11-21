@@ -10,13 +10,13 @@ import {
   type DriveSharedWithMeEntry,
   type DriveShare,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { canRead, itemAccess, type DriveActor, type ItemAccess } from '../access';
 import { GRANT_PAGE_SIZE, type GrantPage } from '../grants';
 
 type GrantsStore = Pick<
-  Store,
+  HostStore,
   'driveGrants' | 'driveItems' | 'driveRoots' | 'driveShares' | 'driveNotifications' | 'profiles'
 >;
 

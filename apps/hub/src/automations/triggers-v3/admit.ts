@@ -14,6 +14,7 @@ import type {
 } from '@smarteverything/flow/interpret/frames';
 import { triggerScope, type TriggerFire } from './payload';
 import { AUTOMATION_LEVEL } from '@smarteverything/flow/interpret/kept';
+import { ReadSuspended } from '@smarteverything/flow/interpret/read-pending';
 
 interface AdmissionReads {
   readonly nodes: readonly FlowNode[];
@@ -90,7 +91,7 @@ function nodeResult(node: FlowNode, reads: AdmissionReads, snapshot: Snapshot): 
   }
   const inputs = inputsOf(node, snapshot);
   if (!inputs.ok) return inputs;
-  return reads.port.node({
+  const result = reads.port.node({
     kind: node.kind,
     node: at,
     inputs: inputs.value,
@@ -98,6 +99,8 @@ function nodeResult(node: FlowNode, reads: AdmissionReads, snapshot: Snapshot): 
     activation: node.id,
     ...AUTOMATION_LEVEL,
   });
+  if ('pending' in result) throw new ReadSuspended(node.kind);
+  return result;
 }
 
 function withReads(reads: AdmissionReads | undefined, snapshot: Snapshot): Checked<Snapshot> {

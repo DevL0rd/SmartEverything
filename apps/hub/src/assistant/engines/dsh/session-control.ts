@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ApiError, type AiChatRow, type HarnessRuntimeReceipt } from '@smarteverything/domain';
-import { effectiveClientById } from '../../../server/person-access';
+import { effectiveClientOf } from '../../../server/person-access';
 import type { HarnessService } from '../../../harness/service';
 import { OwnEngineSelections } from '../../../harness/own-selection';
 import { openConversation } from '../../../harness/opening';
@@ -12,17 +12,19 @@ export async function ensureNativeControlSession(
   service: HarnessService,
   original: AiChatRow,
 ): Promise<AiChatRow> {
-  const clientId = controlClientId(service, original, currentControlCaller());
-  new OwnEngineSelections(service).migrate(original.id);
-  const chat = service.store.aiChats.chat(original.id);
-  if (sessionAttached(service, service.binding(chat).session_id, chat.profile_id)) return chat;
+  const clientId = await controlClientId(service, original, currentControlCaller());
+  await new OwnEngineSelections(service).migrate(original.id);
+  const { host } = service.store;
+  const chat = await host.call('aiChats', 'chat', original.id);
+  if (await sessionAttached(service, service.binding(chat).session_id, chat.profile_id))
+    return chat;
   if (clientId === undefined || clientId === null)
     throw new ApiError(
       'conflict',
       'This native maintenance request has no recorded initiating app authority.',
     );
-  const client = effectiveClientById(service.store, clientId);
-  if (service.store.profiles.activeOf(clientId).id !== chat.profile_id)
+  const client = await effectiveClientOf(service.store, clientId);
+  if ((await host.call('profiles', 'activeOf', clientId)).id !== chat.profile_id)
     throw new ApiError(
       'forbidden',
       'The initiating app no longer has this conversation profile active.',
@@ -33,19 +35,17 @@ export async function ensureNativeControlSession(
     authority: { kind: 'manual', profileId: chat.profile_id },
     clientId,
   });
-  return service.store.aiChats.chat(chat.id);
+  return host.call('aiChats', 'chat', chat.id);
 }
 
-function controlClientId(
+async function controlClientId(
   service: HarnessService,
   original: AiChatRow,
   caller: ReturnType<typeof currentControlCaller>,
-): string | null | undefined {
+): Promise<string | null | undefined> {
   if (caller?.kind === 'client') return caller.client.id;
-  return service.store.assistantChat
-    .since(original.id, null)
-    .toReversed()
-    .find((row) => row.client_id !== null)?.client_id;
+  const rows = await service.store.host.call('assistantChat', 'since', original.id, null);
+  return rows.toReversed().find((row) => row.client_id !== null)?.client_id;
 }
 
 export async function nativeControl(
@@ -57,7 +57,10 @@ export async function nativeControl(
   const { kind } = request;
   const startedAt = performance.now();
   const admitted = await ensureNativeControlSession(service, chat);
-  const state = service.state({ profileId: admitted.profile_id, role: 'member' }, admitted.id);
+  const state = await service.state(
+    { profileId: admitted.profile_id, role: 'member' },
+    admitted.id,
+  );
   if (state.epoch === null) {
     controlRefused(chat.id, kind);
     throw new ApiError('conflict', 'Native writer authority is unavailable.');

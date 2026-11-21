@@ -9,7 +9,7 @@ import { Go2rtcError, type Go2rtcClient } from '../cameras/go2rtc-client';
 import { listenOnly } from '../cameras/viewers';
 import { deviceTarget } from '../metrics/viewers';
 import { vacuumVideoSourceOf } from '../state/inventory';
-import type { Store } from '../store/store';
+import type { HomeMirror } from '../store/home-mirror';
 import type { VacuumCommandIo } from './command-service';
 import type { ViewerSource } from './viewer-demand';
 import {
@@ -34,7 +34,7 @@ export interface VacuumVideoPorts {
 }
 
 export interface VacuumVideoOptions extends VacuumVideoPorts {
-  readonly devices: Pick<Store['devices'], 'byId'>;
+  readonly devices: Pick<HomeMirror['devices'], 'byId'>;
   readonly viewers: ViewerSource;
   readonly io: (deviceId: string) => VacuumCommandIo | null;
   readonly now: () => Date;

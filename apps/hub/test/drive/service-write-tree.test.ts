@@ -3,6 +3,7 @@ import { setImmediate } from 'node:timers/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeEnv } from '../../src/drive/changes';
+import { hostQuotaSource } from '../../src/drive/quotas';
 import { abandonIntent, manifestPath, TRASH_DIRECTORY } from '../../src/drive/intents';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveReadService } from '../../src/drive/service-read';
@@ -75,8 +76,7 @@ function writerDeps(): Omit<ConstructorParameters<typeof DriveTreeWriter>[0], 'e
       removeItems: noAlbums,
     },
     guard: {
-      status: (profileId): ReturnType<TestStore['store']['driveQuotas']['status']> =>
-        opened.store.driveQuotas.status(profileId),
+      status: hostQuotaSource(opened.store),
       space: (): Promise<{ totalBytes: number; freeBytes: number }> =>
         Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },

@@ -1,3 +1,4 @@
+import { hostMemoryChats, hostMemoryRows } from '../../src/store/host/hosted';
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AssistantMessageRow, CallTurn } from '@smarteverything/domain';
@@ -146,8 +147,8 @@ beforeEach(async () => {
   chatId = chat();
   manager = new FakeManager();
   service = new MemoryService(
-    opened.store.aiMemories,
-    opened.store.aiChats,
+    hostMemoryRows(opened.store.host),
+    hostMemoryChats(opened.store.host),
     new FakeMemoryEmbedder(),
   );
   learner = new MemoryLearner({ store: opened.store, memory: service, manager });

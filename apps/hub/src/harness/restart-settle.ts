@@ -1,9 +1,10 @@
 import { Logger } from '@smarteverything/logging';
+import { durableStoreUnit } from '../store/host/unit';
 import type { HarnessSessionsRepository } from '../store/repositories/harness-sessions';
 
 const log = new Logger('hub.harness');
 
-export function settleRestartedSessions(sessions: HarnessSessionsRepository): void {
+function settleRestartedSessions(sessions: HarnessSessionsRepository): void {
   for (const id of sessions.switchingSessions()) {
     log.warn('harness.switch_interrupted', { harnessSession: id });
     sessions.settleSwitching(id, {
@@ -20,3 +21,8 @@ export function settleRestartedSessions(sessions: HarnessSessionsRepository): vo
     sessions.settleStoppedWork(session.session_id);
   }
 }
+
+export const HARNESS_RESTART_SETTLE_UNIT = durableStoreUnit((store, _input: null): null => {
+  settleRestartedSessions(store.harnessSessions);
+  return null;
+});

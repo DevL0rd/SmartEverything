@@ -5,16 +5,21 @@ import {
   type CapabilityKey,
   type DeviceCapability,
   type DeviceRow,
+  type HistoryRow,
   type JsonValue,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { parseInputs } from './inputs';
-import { ReadFailure, outputsOf, type ReadHandlers, type ReadResult } from './read-port';
+import {
+  ReadFailure,
+  outputsOf,
+  type ReadHandlers,
+  type ReadResult,
+  type ReadScope,
+} from './read-port';
 import { DEVICE_REF } from './refs';
 import { deviceById } from './targets';
 import type { WorldReadDeps } from './deps';
-
-const EPOCH = '1970-01-01T00:00:00.000Z';
 
 const DEVICE_GET = z.object({ device: DEVICE_REF, control: z.string().min(1) });
 
@@ -63,20 +68,33 @@ export function controlValue(
   return executor.intendedValue(device.id, control, row?.observed_at) ?? current;
 }
 
-export function lastChange(
-  deps: WorldReadDeps,
+export function rowsOf(
+  found: Readonly<Record<string, readonly HistoryRow[]>>,
   deviceId: string,
+): readonly HistoryRow[] {
+  const rows = found[deviceId];
+  if (rows === undefined) {
+    throw new ReadFailure('Failed', `The history of ${deviceId} did not come back`);
+  }
+  return rows;
+}
+
+export function recentChanges(
+  scope: Pick<ReadScope, 'fetch'>,
+  deviceIds: readonly string[],
   control: string,
+): Readonly<Record<string, readonly HistoryRow[]>> {
+  return deviceIds.length === 0
+    ? {}
+    : scope.fetch('worldLatest', { capability: control, deviceIds, limit: 2 });
+}
+
+export function lastChange(
+  recent: readonly HistoryRow[],
   value: JsonValue | undefined,
 ): ControlChange | undefined {
   if (value === undefined) return undefined;
-  const [latest, before] = deps.store.state.history({
-    capabilities: [control],
-    deviceIds: [deviceId],
-    from: EPOCH,
-    order: 'desc',
-    limit: 2,
-  });
+  const [latest, before] = recent;
   if (latest === undefined || !jsonEquals(latest.value, value)) return undefined;
   return {
     changedAt: latest.observed_at,
@@ -86,16 +104,17 @@ export function lastChange(
 
 export function deviceReadHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
-    'device.get': (inputs): ReadResult => {
+    'device.get': (inputs, scope): ReadResult => {
       const { device: id, control } = parseInputs('device.get', DEVICE_GET, inputs);
       const device = deviceById(deps.world, id);
       readableControl(device, control);
       const value = controlValue(deps, device, controlKey(control));
-      const change = lastChange(deps, device.id, control, value);
-      const sinceMs =
-        change === undefined
+      const change =
+        value === undefined
           ? undefined
-          : deps.clock.now().getTime() - Date.parse(change.changedAt);
+          : lastChange(rowsOf(recentChanges(scope, [device.id], control), device.id), value);
+      const sinceMs =
+        change === undefined ? undefined : scope.now().getTime() - Date.parse(change.changedAt);
       return outputsOf({
         value: value ?? null,
         reading: value,

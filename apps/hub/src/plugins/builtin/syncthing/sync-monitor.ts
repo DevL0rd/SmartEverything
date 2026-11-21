@@ -19,6 +19,16 @@ const RATE_MS = 1_000;
 const WIRE_QUIET_MS = 10_000;
 export const ACTIVITY_KEPT = 200;
 
+function signatureOf(snapshot: SyncthingSnapshot): string {
+  const { at: _at, uptimeSeconds: _uptime, summary, peers, ...rest } = snapshot;
+  const { downloadBytesPerSecond: _down, uploadBytesPerSecond: _up, ...counts } = summary;
+  return JSON.stringify({
+    ...rest,
+    summary: counts,
+    peers: peers.map(({ inBytesPerSecond: _in, outBytesPerSecond: _out, ...peer }) => peer),
+  });
+}
+
 export interface MonitorOptions {
   readonly rest: SyncthingRest;
   readonly overdueHours: number;
@@ -83,7 +93,7 @@ export class SyncthingMonitor {
 
   start(): void {
     this.options.record(this.#latest);
-    this.options.publish(this.#latest, 'everyone');
+    this.options.publish(this.#latest, this.#wire.sent(signatureOf(this.#latest)));
     this.#streams.start();
     this.#rateLoop.runNow();
   }
@@ -173,7 +183,7 @@ export class SyncthingMonitor {
       this.#ratesRecovered();
       this.#latest = this.#build();
       this.options.record(this.#latest);
-      const audience = this.#wire.due(this.#watched);
+      const audience = this.#wire.due(this.#watched, false, signatureOf(this.#latest));
       if (audience !== null) {
         this.options.publish(this.#latest, audience);
       }
@@ -221,7 +231,7 @@ export class SyncthingMonitor {
   #publish(): void {
     this.#latest = this.#build();
     this.options.record(this.#latest);
-    this.options.publish(this.#latest, 'everyone');
+    this.options.publish(this.#latest, this.#wire.sent(signatureOf(this.#latest)));
     this.#watchOverdue();
   }
 

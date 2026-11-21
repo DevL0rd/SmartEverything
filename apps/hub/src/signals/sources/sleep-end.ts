@@ -1,4 +1,4 @@
-import type { Store } from '../../store/store';
+import type { StoreHost } from '../../store/host/host';
 
 const HOUR_MS = 3_600_000;
 
@@ -6,9 +6,15 @@ const LOOKBACK_MS = 36 * HOUR_MS;
 
 const RECENT_MS = 12 * HOUR_MS;
 
-export function recentSleepEnd(store: Store, profileId: string, now: Date): string | null {
+export async function recentSleepEnd(
+  host: Pick<StoreHost, 'call'>,
+  profileId: string,
+  now: Date,
+): Promise<string | null> {
   const nowMs = now.getTime();
-  const records = store.health.records(
+  const records = await host.call(
+    'health',
+    'records',
     {
       types: ['SleepSession'],
       from: new Date(nowMs - LOOKBACK_MS).toISOString(),

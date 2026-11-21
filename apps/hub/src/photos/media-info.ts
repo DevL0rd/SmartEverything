@@ -19,7 +19,7 @@ import {
 import { DriveMediaRepository, type DriveMediaRow } from '../store/repositories/drive-media';
 import type { StoredPhotoDescription } from '../store/repositories/photo-descriptions';
 import { inList } from '../store/sql';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { placeNumber } from './places-schema';
 
 const TIME_SOURCES: Readonly<Record<DriveMediaRow['time_source'], MediaTimeSource | null>> = {
@@ -142,14 +142,14 @@ function jobOf(job: DriveMediaJob): MediaJob[] {
   ];
 }
 
-function mediaInfoOf(store: Store, itemId: string): MediaInfo {
+function mediaInfoOf(store: HostStore, itemId: string): MediaInfo {
   const jobs = new DriveMediaJobsRepository(store.context).forItem(itemId);
   const row = new DriveMediaRepository(store.context).find(itemId);
   const description = describedBy(store.photoDescriptions.find(itemId));
   return row === undefined ? emptyInfo(itemId, jobs, description) : infoOf(row, jobs, description);
 }
 
-function mediaProcessingOf(store: Store, rootIds: readonly string[]): MediaProcessing {
+function mediaProcessingOf(store: HostStore, rootIds: readonly string[]): MediaProcessing {
   const roots = inList('i.root_id', 'roots', rootIds);
   const counts = store.context.sql.all(
     STATE_COUNT,

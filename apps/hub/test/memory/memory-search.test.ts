@@ -1,3 +1,4 @@
+import { hostMemoryChats, hostMemoryRows } from '../../src/store/host/hosted';
 import { remember } from '../support/memory-service';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cosine, rank } from '../../src/memory/search';
@@ -23,7 +24,11 @@ beforeEach(async () => {
   captureLogs();
   opened = await testStore();
   embedder = new FakeMemoryEmbedder();
-  service = new MemoryService(opened.store.aiMemories, opened.store.aiChats, embedder);
+  service = new MemoryService(
+    hostMemoryRows(opened.store.host),
+    hostMemoryChats(opened.store.host),
+    embedder,
+  );
   owner = person(opened.store.profiles.first().id, 'owner');
   ida = person(opened.store.profiles.create({ name: 'Ida' }).id, 'member');
   kid = person(opened.store.profiles.create({ name: 'Kid' }).id, 'member');
@@ -77,7 +82,7 @@ describe('searching memories', () => {
       true,
     );
 
-    service.change(ida, added.id, { text: 'Has a dog' });
+    await service.change(ida, added.id, { text: 'Has a dog' });
     const found = await service.search(ida, 'pet', undefined);
     expect(found.map((line) => line.text)).toStrictEqual(['Has a dog']);
   });

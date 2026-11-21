@@ -1,19 +1,17 @@
 import {
   ApiError,
   targetCapability,
-  type PlannerAlarmSound,
   type PlannerChallenge,
   type PlannerRingTarget,
   type PlannerSunrise,
 } from '@smarteverything/domain';
-import type { AlarmSoundCheck } from '../../planner/alarm-sound-check';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { profileIdOf, roleOfCaller, type Caller } from '../auth';
 import type { Refusal } from '../person-access';
-import { devicesReachWhy } from '../person-scope';
+import { devicesReachWhy } from '../person-scope-units';
 
 export function requireTargets(
-  store: Store,
+  store: HostStore,
   targets: readonly PlannerRingTarget[] | undefined,
 ): void {
   for (const target of targets ?? []) {
@@ -31,7 +29,7 @@ export function requireTargets(
 }
 
 export function requireAutomation(
-  context: { readonly store: Pick<Store, 'automations'> },
+  context: { readonly store: Pick<HostStore, 'automations'> },
   caller: Caller,
   automationId: string | null | undefined,
 ): void {
@@ -43,7 +41,7 @@ export function requireAutomation(
   if (!visible) throw new ApiError('not_found', 'There is no such automation.');
 }
 
-function reachesPhone(store: Store, targets: readonly PlannerRingTarget[]): boolean {
+function reachesPhone(store: HostStore, targets: readonly PlannerRingTarget[]): boolean {
   return targets.some((target) =>
     target.kind === 'client'
       ? store.clients.find(target.clientId)?.platform === 'android'
@@ -52,7 +50,7 @@ function reachesPhone(store: Store, targets: readonly PlannerRingTarget[]): bool
 }
 
 export function requireChallenge(
-  store: Store,
+  store: HostStore,
   challenge: PlannerChallenge,
   targets: readonly PlannerRingTarget[],
 ): void {
@@ -64,16 +62,8 @@ export function requireChallenge(
   }
 }
 
-export async function requireSound(
-  sounds: Pick<AlarmSoundCheck, 'assertUsable'>,
-  profileId: string,
-  sound: PlannerAlarmSound | undefined,
-): Promise<void> {
-  if (sound !== undefined) await sounds.assertUsable(profileId, sound);
-}
-
 export function sunriseRefusal(
-  store: Store,
+  store: HostStore,
   caller: Caller,
   sunrise: PlannerSunrise | null | undefined,
 ): Refusal | null {

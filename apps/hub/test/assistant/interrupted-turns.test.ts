@@ -50,16 +50,17 @@ beforeEach(async () => {
   const now = (): Date => new Date();
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now,
   });
   const chats = new ChatDirectory(store, files);
-  chatId = chats.create({ profileId, role: 'owner' }, { engine: TEST_ENGINE }).id;
+  chatId = (await chats.create({ profileId, role: 'owner' }, { engine: TEST_ENGINE })).id;
   log = new ConversationLog(store);
   delivery = new CountingDelivery({
     events: hostedDeliveryEvents(store),
-    route: (): Routing => ({ kind: 'blocked', reason: 'not routed in this test' }),
+    route: (): Promise<Routing> =>
+      Promise.resolve({ kind: 'blocked', reason: 'not routed in this test' }),
     delivered: (): void => undefined,
     failed: (): void => undefined,
     retrying: (): void => undefined,

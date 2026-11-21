@@ -9,9 +9,10 @@ import type { NativeInputHistory } from '@smarteverything/harness';
 import { ApiError, CHAT_TIMELINE_EMBED } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 import type { HarnessDelivery } from '../../../store/repositories/harness-deliveries';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
-import { helperParentMessageId } from '../../delegation/helper-dialogue';
+import { helperParentMessageId } from '../../delegation/helper-delivery';
 import { HUB_RESTARTED } from '../../interruption';
 import { completionFailure, type NativeCompletion } from './projector-completion';
 import type { ConversationProjector } from './projector';
@@ -28,7 +29,7 @@ const UNCONFIRMED: NativeCompletion = {
 };
 
 interface DeliveryHistory {
-  readonly metadata: NonNullable<Awaited<ReturnType<Store['dshSessions']['stat']>>>;
+  readonly metadata: NonNullable<Awaited<ReturnType<HostStore['dshSessions']['stat']>>>;
   readonly events: ReturnType<typeof readNativeHistory>;
 }
 

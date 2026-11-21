@@ -45,7 +45,7 @@ export class HubConnections {
   }
 
   metadata(): HubConnectionMetadata {
-    const settings = this.store.settings.read();
+    const settings = this.store.live.home.settings.read();
     const remoteAvailable =
       settings.public_url !== null && settings.public_url_verified_at !== null;
     const endpoints: HubEndpoint[] = [];

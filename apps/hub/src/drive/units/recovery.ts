@@ -1,10 +1,11 @@
 import type { DriveItem } from '@smarteverything/domain';
 import type { DriveIntent } from '../../store/repositories/drive-intents';
 import type { DriveItemDraft } from '../../store/repositories/drive-items';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import type { ChangeActor } from '../changes';
-import { announce, appendFeed, identityOf, isoOf, newVersion } from '../change-rows';
+import { identityOf, isoOf, newVersion } from '../change-rows';
+import { announce, appendFeed } from './change-feed';
 import type { FileItem } from '../file-item';
 import { shaOfVersionPath, type FileStamp } from '../intents';
 import { namesSharing } from '../shared-names';
@@ -44,7 +45,7 @@ function addedOf(input: FinishCommitInput): { draft: DriveItemDraft; op: 'create
   return [{ draft: input.added, op: 'create' }];
 }
 
-export function finishCommitIn(store: Store, input: FinishCommitInput): readonly DriveItem[] {
+export function finishCommitIn(store: HostStore, input: FinishCommitInput): readonly DriveItem[] {
   const { rootId, intent, existing, stamp } = input;
   const env = { store };
   if (intent.versionPath !== null && existing !== undefined) {

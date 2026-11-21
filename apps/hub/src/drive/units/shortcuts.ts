@@ -10,7 +10,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { DriveShortcutRecord } from '../../store/repositories/drive-shortcuts';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import {
   accessSql,
   canRead,
@@ -25,11 +25,11 @@ import { DriveReadRules } from './read';
 import { shortcutFrom } from '../social/shortcut-from';
 
 type ShortcutReadStore = Pick<
-  Store,
+  HostStore,
   'driveShortcuts' | 'driveItems' | 'driveRoots' | 'driveGrants'
 >;
 
-type ShortcutStore = ShortcutReadStore & Pick<Store, 'context'>;
+type ShortcutStore = ShortcutReadStore & Pick<HostStore, 'context'>;
 
 interface ShortcutsEnv {
   readonly store: ShortcutStore;
@@ -276,7 +276,7 @@ class ShortcutRules {
   }
 }
 
-function rules(store: Store): ShortcutRules {
+function rules(store: HostStore): ShortcutRules {
   return new ShortcutRules({ store, read: new DriveReadRules(store) });
 }
 

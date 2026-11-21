@@ -1,8 +1,8 @@
 import { ApiError, type PlannerCollectionRow } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { collectionRoleOf } from '../sharing/visibility';
 
-export type FeedAccessStore = Pick<Store, 'plannerCollections' | 'plannerShares'>;
+export type FeedAccessStore = Pick<HostStore, 'plannerCollections' | 'plannerShares'>;
 
 export type FeedAccessNeed = 'view' | 'edit';
 

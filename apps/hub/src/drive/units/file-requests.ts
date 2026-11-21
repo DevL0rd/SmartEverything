@@ -7,7 +7,7 @@ import {
   type DriveItem,
 } from '@smarteverything/domain';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { canRead, canShare, itemAccess, type DriveActor } from '../access';
 import type { FileRequestActor, FileRequestPage } from '../sharing/file-requests';
@@ -15,7 +15,7 @@ import type { FileRequestActor, FileRequestPage } from '../sharing/file-requests
 export const FILE_REQUEST_PAGE_SIZE = 50;
 
 type FileRequestsStore = Pick<
-  Store,
+  HostStore,
   'driveFileRequests' | 'driveItems' | 'driveRoots' | 'driveGrants' | 'profiles'
 >;
 

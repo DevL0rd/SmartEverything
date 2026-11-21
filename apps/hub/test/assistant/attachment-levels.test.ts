@@ -33,7 +33,7 @@ beforeEach(async () => {
   test = await testStore();
   files = new AssistantFiles({
     layout: hubLayout(test.directory, {}),
-    chat: test.store.assistantChat,
+    store: test.store,
     attachments: test.store.live.attachments,
     now: (): Date => new Date(),
   });

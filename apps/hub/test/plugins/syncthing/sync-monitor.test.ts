@@ -90,6 +90,17 @@ describe('syncthing transfer rates', () => {
     expect(published.length).toBeLessThanOrEqual(5);
   });
 
+  it('sends nothing to everyone after the first frame while nothing but the time changes', async () => {
+    const { monitor, recorded, published } = monitorWith();
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(12_000);
+    const settled = published.length;
+    await vi.advanceTimersByTimeAsync(70_000);
+    monitor.stop();
+    expect(recorded.length).toBeGreaterThanOrEqual(80);
+    expect(published).toHaveLength(settled);
+  });
+
   it('sends every sample while watched and a fresh frame the moment the page opens', async () => {
     const { monitor, recorded, published } = monitorWith();
     monitor.start();

@@ -13,10 +13,10 @@ import {
   DriveTransferAnsweredError,
   DriveTransferOpenError,
 } from '../../store/repositories/drive-transfers';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { inLockedFolder, itemAccess, type DriveActor } from '../access';
-import { announce, appendFeed } from '../change-rows';
+import { announce, appendFeed } from './change-feed';
 import type { ChangeActor } from '../changes';
 import { collectTree, type Tree } from '../sharing/transfer-tree';
 import { TransferRows } from '../sharing/transfer-rows';
@@ -55,7 +55,7 @@ function transferActor(profileId: string): ChangeActor {
 }
 
 function personalDriveOf(
-  store: Pick<Store, 'driveRoots'>,
+  store: Pick<HostStore, 'driveRoots'>,
   profileId: string,
 ): StoredDrive | undefined {
   return store.driveRoots
@@ -63,7 +63,7 @@ function personalDriveOf(
     .find((drive) => drive.scope === 'person' && drive.ownerProfileId === profileId);
 }
 
-function ownItem(store: Store, actor: DriveActor, itemId: string): DriveItem {
+function ownItem(store: HostStore, actor: DriveActor, itemId: string): DriveItem {
   const item = store.driveItems.find(itemId, actor.profileId);
   const drive = item === undefined ? undefined : store.driveRoots.find(item.rootId);
   const access =
@@ -80,7 +80,7 @@ function ownItem(store: Store, actor: DriveActor, itemId: string): DriveItem {
   return item;
 }
 
-function requireRecipient(store: Store, actor: DriveActor, toProfileId: string): void {
+function requireRecipient(store: HostStore, actor: DriveActor, toProfileId: string): void {
   if (toProfileId === actor.profileId) {
     throw new ApiError('invalid_request', 'An item cannot be given to its own owner.');
   }
@@ -93,7 +93,7 @@ function requireRecipient(store: Store, actor: DriveActor, toProfileId: string):
 }
 
 function alreadyOffered(
-  store: Store,
+  store: HostStore,
   actor: DriveActor,
   offered: DriveTransferOffer,
 ): DriveTransfer | undefined {
@@ -109,7 +109,7 @@ function alreadyOffered(
 }
 
 function offer(
-  store: Store,
+  store: HostStore,
   input: { readonly actor: DriveActor; readonly offer: DriveTransferOffer },
 ): DriveTransfer {
   const { actor } = input;
@@ -142,7 +142,7 @@ function offer(
   }
 }
 
-function settle(store: Store, input: TransferSettle): DriveTransfer {
+function settle(store: HostStore, input: TransferSettle): DriveTransfer {
   let settled: DriveTransfer;
   try {
     settled = store.driveTransfers.settle(input.id, input.state);
@@ -165,7 +165,7 @@ function settle(store: Store, input: TransferSettle): DriveTransfer {
   return settled;
 }
 
-function plan(store: Store, transfer: DriveTransfer): TransferPlan {
+function plan(store: HostStore, transfer: DriveTransfer): TransferPlan {
   const top = store.driveItems.find(transfer.itemId, null);
   if (top === undefined) {
     throw new ApiError('not_found', 'The item that was offered is gone.');
@@ -182,7 +182,7 @@ function plan(store: Store, transfer: DriveTransfer): TransferPlan {
 }
 
 function trashedUnder(
-  store: Store,
+  store: HostStore,
   input: { readonly rootId: string; readonly folderIds: readonly string[] },
 ): DriveTrashEntry[] {
   return new TransferRows(store.context)
@@ -191,13 +191,13 @@ function trashedUnder(
 }
 
 function unreferenced(
-  store: Store,
+  store: HostStore,
   input: { readonly rootId: string; readonly shas: readonly string[] },
 ): string[] {
   return input.shas.filter((sha) => store.driveVersions.references(input.rootId, sha) === 0);
 }
 
-function rewrite(store: Store, move: TransferRewrite): string[] {
+function rewrite(store: HostStore, move: TransferRewrite): string[] {
   const { transfer, tree } = move;
   const rows = new TransferRows(store.context);
   const ids = new Set(tree.items.map((item) => item.id));

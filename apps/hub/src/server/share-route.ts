@@ -36,7 +36,7 @@ const STRIPPED_MIME: Readonly<Record<string, string>> = {
 export interface ShareRouteEnv {
   readonly shares: DriveShares;
   readonly layout: DerivedLayout;
-  readonly removeLocationOutside: (sharedBy: string) => boolean;
+  readonly removeLocationOutside: (sharedBy: string) => Promise<boolean>;
 }
 
 interface Exchange {
@@ -134,7 +134,7 @@ async function serveFile(exchange: Exchange, item: FileItem): Promise<void> {
     pathFailure,
   );
   await recordUse(exchange, item);
-  if (isStrippable(item) && env.removeLocationOutside(access.share.createdBy)) {
+  if (isStrippable(item) && (await env.removeLocationOutside(access.share.createdBy))) {
     const source = await strippedSource(env, item, access, resolved.absolute);
     await serveBytes(source, request, response);
     return;

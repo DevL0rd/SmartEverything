@@ -1,5 +1,5 @@
 import type { DeviceRow, PluginSearchEntry, PluginSearchHit } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 function pathOf(
   localDevices: ReadonlyMap<string, DeviceRow>,
@@ -18,8 +18,8 @@ function pathOf(
 }
 
 export interface SearchHitStore {
-  readonly devices: Pick<Store['devices'], 'list'>;
-  readonly pluginData: Pick<Store['pluginData'], 'searchEntries'>;
+  readonly devices: Pick<HostStore['devices'], 'list'>;
+  readonly pluginData: Pick<HostStore['pluginData'], 'searchEntries'>;
 }
 
 export function searchHitsOf(store: SearchHitStore): PluginSearchHit[] {

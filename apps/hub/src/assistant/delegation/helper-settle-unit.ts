@@ -6,7 +6,7 @@ import {
 } from '@smarteverything/domain';
 import { durableStoreUnit, storeUnit } from '../../store/host/unit';
 import type { StoredEvent } from '../../store/repositories/assistant-events';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { HUB_RESTARTED } from '../interruption';
 import { responderMessage } from '../conversation-log';
 import { interruptionCode } from '../interruption';
@@ -21,7 +21,7 @@ export interface HelperSettlement {
   readonly relayed: boolean;
 }
 
-function settle(store: Store, input: HelperSettlement): void {
+function settle(store: HostStore, input: HelperSettlement): void {
   const row = store.assistantChat.find(input.parentMessageId);
   const dialogue = row === undefined ? undefined : helperDialogueOf(row);
   if (row === undefined || dialogue?.direction !== 'to_helper' || row.state !== null) return;
@@ -60,7 +60,7 @@ export interface ReconciledHelper {
 }
 
 function restoreAnsweredHelperMessage(
-  store: Store,
+  store: HostStore,
   message: AssistantMessageRow | undefined,
 ): AssistantMessageRow | undefined {
   if (message === undefined) return undefined;
@@ -76,7 +76,7 @@ function restoreAnsweredHelperMessage(
   return reply;
 }
 
-function reconcileOne(store: Store, event: StoredEvent): ReconciledHelper {
+function reconcileOne(store: HostStore, event: StoredEvent): ReconciledHelper {
   const message =
     event.message_id === null ? undefined : store.assistantChat.find(event.message_id);
   store.assistantEvents.mark(event.id, 'answered_at');
@@ -86,7 +86,7 @@ function reconcileOne(store: Store, event: StoredEvent): ReconciledHelper {
   return { event, text: message?.reason ?? HUB_RESTARTED, ok: false };
 }
 
-function reconcile(store: Store, _input: null): readonly ReconciledHelper[] {
+function reconcile(store: HostStore, _input: null): readonly ReconciledHelper[] {
   return store.assistantEvents
     .settledHelperEvents()
     .filter((event) => store.harnessDeliveries.find(event.id)?.state !== 'admitted')

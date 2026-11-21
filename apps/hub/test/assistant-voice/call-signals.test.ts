@@ -48,8 +48,8 @@ function deskOf(): CallDesk {
     provider,
     responder: {
       ready: (): null => null,
-      chatForCall: (): string => chatId,
-      request: (): string => 'event-1',
+      chatForCall: (): Promise<string> => Promise.resolve(chatId),
+      request: (): Promise<string> => Promise.resolve('event-1'),
       callEnded: (): void => undefined,
     },
     tools: new ToolHub([]),

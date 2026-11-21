@@ -5,7 +5,7 @@ import type {
   DriveRoot,
   DriveTrashEntry,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { SqlFilter } from '../store/sql';
 
 export interface DriveActor {
@@ -17,7 +17,7 @@ export type DriveAccess = 'own' | 'shared' | 'none';
 
 export type ItemAccess = 'own' | 'shared' | DriveGrantRole | 'none';
 
-type AccessStore = Pick<Store, 'driveGrants' | 'driveItems'>;
+type AccessStore = Pick<HostStore, 'driveGrants' | 'driveItems'>;
 
 type Owned = Pick<DriveRoot, 'scope' | 'ownerProfileId'>;
 

@@ -47,7 +47,7 @@ function writableControls(
   target: DeviceTarget,
   reference: string,
 ): readonly PresentedCapability[] {
-  return resolveTarget(ports.store, target).flatMap((device) => {
+  return resolveTarget(ports.store.live.home, target).flatMap((device) => {
     const presented = targetCapability(device, reference);
     return presented?.writable === true ? [presented] : [];
   });

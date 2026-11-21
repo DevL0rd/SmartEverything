@@ -7,8 +7,8 @@ import {
   type ClientRow,
   type SnapshotTables,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
-import { reachableRows, scopesOfClient } from './person-scope';
+import type { HostStore } from '../store/host/host-store';
+import { reachableRows, scopesOfClient } from './person-scope-units';
 
 function withoutAreas(tables: SnapshotTables, scopes: AccessScopes): SnapshotTables {
   const missing = new Set(
@@ -28,7 +28,7 @@ function withoutAreas(tables: SnapshotTables, scopes: AccessScopes): SnapshotTab
 }
 
 export function reachableSnapshot(
-  store: Store,
+  store: HostStore,
   client: ClientRow,
   tables: SnapshotTables,
 ): SnapshotTables {
@@ -38,7 +38,7 @@ export function reachableSnapshot(
 }
 
 function devicesReached(
-  store: Store,
+  store: HostStore,
   scope: AccessScopes['devices'],
   tables: SnapshotTables,
 ): SnapshotTables {

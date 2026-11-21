@@ -11,13 +11,13 @@ export interface AttachContext {
   readonly clientId: string;
 }
 
-export function sessionAttached(
+export async function sessionAttached(
   service: HarnessService,
   sessionId: string | null,
   profileId: string,
-): boolean {
+): Promise<boolean> {
   if (sessionId === null) return false;
-  const claim = service.store.dshSessions.attached(sessionId, profileId);
+  const claim = await service.store.host.call('dshSessions', 'attached', sessionId, profileId);
   if (claim === null) return false;
   if (!service.directory.holds(claim.target, sessionId, claim.epoch)) return false;
   const host = service.directory.registered(claim.target).host;
@@ -33,14 +33,14 @@ export async function ensureAttached(
   expectedEpoch?: number,
 ): Promise<AiHarnessSession> {
   const { owner, chatId } = context;
-  const chat = service.own(owner, chatId);
+  const chat = await service.own(owner, chatId);
   const sessionId = service.binding(chat).session_id;
   if (sessionId !== null && expectedEpoch !== undefined) {
-    const session = service.state(owner, chatId);
+    const session = await service.state(owner, chatId);
     if (session.epoch !== expectedEpoch || session.state === 'switching')
       throw new ApiError('conflict', 'This action needs the current stable session epoch.');
   }
-  if (!sessionAttached(service, sessionId, chat.profile_id))
+  if (!(await sessionAttached(service, sessionId, chat.profile_id)))
     await openConversation(service, {
       owner,
       chatId,
@@ -54,25 +54,29 @@ export async function readSession(
   service: HarnessService,
   context: AttachContext,
 ): Promise<AiHarnessSession> {
-  const chat = service.own(context.owner, context.chatId);
+  const chat = await service.own(context.owner, context.chatId);
   const binding = service.binding(chat);
   const host = service.directory
     .list()
     .find((entry) => sameTarget(entry.target, binding.execution_target));
   const switching =
     binding.session_id !== null &&
-    service.state(context.owner, context.chatId).state === 'switching';
+    (await service.state(context.owner, context.chatId)).state === 'switching';
   if (
     host?.online !== true ||
     switching ||
-    managedHelper(service, chat.profile_id, binding.session_id)
+    (await managedHelper(service, chat.profile_id, binding.session_id))
   )
     return service.state(context.owner, context.chatId);
   return ensureAttached(service, context);
 }
 
-function managedHelper(service: HarnessService, profileId: string, id: string | null): boolean {
+async function managedHelper(
+  service: HarnessService,
+  profileId: string,
+  id: string | null,
+): Promise<boolean> {
   if (id === null) return false;
-  const header = service.store.dshSessions.stat(id, profileId)?.header;
+  const header = (await service.store.host.call('dshSessions', 'stat', id, profileId))?.header;
   return header?.origin === 'subagent' && header.parentSession !== undefined;
 }

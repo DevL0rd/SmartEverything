@@ -4,7 +4,9 @@ import { deviceTarget, type Viewers, type DeviceDetail } from '../metrics/viewer
 
 const KEY_FRAME_WAIT_MS = 3_000;
 
-const READ_TOPICS = SAMPLE_TOPICS.filter((topic) => topic !== 'processes');
+const READ_TOPICS = SAMPLE_TOPICS.filter(
+  (topic) => topic !== 'processes' && topic !== 'disk_usage',
+);
 
 export type FreshViewers = Pick<Viewers<DeviceDetail>, 'hold' | 'release' | 'demand'>;
 

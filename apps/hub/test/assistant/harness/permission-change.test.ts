@@ -42,11 +42,11 @@ function change(epoch: number, permission: AiHarnessPermission): AiHarnessPermis
 function confirmFromHost(
   chat: AiChatRow,
   epoch: number,
-): (request: HarnessRuntimeRequest) => HarnessRuntimeReceipt {
-  return (request) => {
+): (request: HarnessRuntimeRequest) => Promise<HarnessRuntimeReceipt> {
+  return async (request) => {
     if (request.kind === 'permission') {
-      const session = rig.service.state(rig.owner, chat.id);
-      rig.service.publish({
+      const session = await rig.service.state(rig.owner, chat.id);
+      await rig.service.publish({
         kind: 'state',
         session_id: session.session_id,
         chat_id: chat.id,
@@ -97,7 +97,7 @@ describe('changing the Access of a chat that is open on a machine', () => {
   it('settles a change left pending by a restart when the chat is opened again', async () => {
     const { chat, epoch, close } = await openOn(rig.desk);
     const input = change(epoch, READ_ONLY);
-    const session = rig.service.state(rig.owner, chat.id);
+    const session = await rig.service.state(rig.owner, chat.id);
     rig.opened.store.harnessSessions.begin(input.operation_id, session.session_id, {
       kind: 'permission',
       ...input,

@@ -9,7 +9,8 @@ import type {
   EmbeddedBrowserScope,
 } from '@smarteverything/domain';
 import { withProviderToolAuthority } from '../../src/assistant/engines/computer/tool-authority';
-import { eventAuthority } from '../../src/assistant/turn-authority';
+import { authorityScope } from '../../src/assistant/turn-authority';
+import { issueEventAuthority } from '../../src/assistant/event-authority-issue';
 import type { Caller } from '../../src/server/auth';
 import { EmbeddedBrowserAuthority } from '../../src/browser/embedded-browser-authority';
 import { EmbeddedBrowserControllers } from '../../src/browser/embedded-browser-controllers';
@@ -62,15 +63,15 @@ function nativeBrowserCall<T>(work: (actor: Caller) => T): T {
       client: store.clients.byId(rig.clientId),
       via: 'assistant',
       chatId: chat,
-      authority: eventAuthority(store, event),
+      authority: issueEventAuthority(store, event, authorityScope()),
     }),
   );
 }
 
-function viewer(
+async function viewer(
   clientId: string,
   seen?: EmbeddedBrowserRequest['operation'][],
-): EmbeddedBrowserScope {
+): Promise<EmbeddedBrowserScope> {
   const scope: EmbeddedBrowserScope = {
     viewerId: randomUUID(),
     generation: randomUUID(),
@@ -78,7 +79,7 @@ function viewer(
     profileId: rig.owner.profileId,
     chatId: chat,
   };
-  controllers.register({
+  await controllers.register({
     scope,
     close: (): void => undefined,
     perform: (request): Promise<EmbeddedBrowserResult> => {
@@ -94,15 +95,15 @@ function viewer(
 
 describe('embedded browser routing and actions', () => {
   it('reads the newest viewer even when another device sent the message', async () => {
-    viewer(rig.clientId);
-    const desktop = viewer('desktop-client');
+    await viewer(rig.clientId);
+    const desktop = await viewer('desktop-client');
     const snapshot = await controllers.read(caller(), chat, { view: 'tabs' });
     expect(snapshot.viewerId).toBe(desktop.viewerId);
   });
 
   it('reads and opens the native preview on the initiating app even after another device registers', async () => {
-    const phone = viewer(rig.clientId);
-    viewer('desktop-client');
+    const phone = await viewer(rig.clientId);
+    await viewer('desktop-client');
     await nativeBrowserCall(async (actor) => {
       const snapshot = await controllers.read(actor, chat, { view: 'tabs' });
       const result = await controllers.edit(actor, chat, {
@@ -114,7 +115,7 @@ describe('embedded browser routing and actions', () => {
   });
 
   it('refuses a native preview on another app unless its viewer was requested', async () => {
-    const desktop = viewer('desktop-client');
+    const desktop = await viewer('desktop-client');
     await nativeBrowserCall(async (actor) => {
       const action = { kind: 'open', path: 'workspace/site' } as const;
       await expect(controllers.edit(actor, chat, { action })).rejects.toThrow(
@@ -126,8 +127,8 @@ describe('embedded browser routing and actions', () => {
   });
 
   it('reads a chosen viewer when asked for one', async () => {
-    const phone = viewer(rig.clientId);
-    viewer('desktop-client');
+    const phone = await viewer(rig.clientId);
+    await viewer('desktop-client');
     const snapshot = await controllers.read(caller(), chat, {
       view: 'tabs',
       viewerId: phone.viewerId,
@@ -136,7 +137,7 @@ describe('embedded browser routing and actions', () => {
   });
 
   it('edits the chosen viewer without a generation handshake', async () => {
-    const phone = viewer(rig.clientId);
+    const phone = await viewer(rig.clientId);
     const result = await controllers.edit(caller(), chat, {
       viewerId: phone.viewerId,
       action: { kind: 'reload', tabId: randomUUID() },
@@ -146,7 +147,7 @@ describe('embedded browser routing and actions', () => {
 
   it('lets a reconnecting viewer replace its earlier socket', async () => {
     const closed: string[] = [];
-    const register = (scope: EmbeddedBrowserScope): void => {
+    const register = (scope: EmbeddedBrowserScope): Promise<void> =>
       controllers.register({
         scope,
         close: (): void => {
@@ -158,27 +159,26 @@ describe('embedded browser routing and actions', () => {
             tabId: null,
           }),
       });
-    };
-    const first = viewer(rig.clientId);
+    const first = await viewer(rig.clientId);
     const stale = { ...first, generation: randomUUID() };
-    register(stale);
+    await register(stale);
     const current = { ...first, generation: randomUUID() };
-    register(current);
+    await register(current);
     const snapshot = await controllers.read(caller(), chat, { view: 'tabs' });
     expect(snapshot.viewerId).toBe(first.viewerId);
     expect(snapshot.generation).toBe(current.generation);
     expect(closed).toEqual([stale.generation]);
   });
 
-  it('refuses another device that claims the same viewer', () => {
-    const phone = viewer(rig.clientId);
-    expect(() => {
+  it('refuses another device that claims the same viewer', async () => {
+    const phone = await viewer(rig.clientId);
+    await expect(
       controllers.register({
         scope: { ...phone, clientId: 'desktop-client', generation: randomUUID() },
         close: (): void => undefined,
         perform: (): Promise<never> => Promise.reject(new Error('unused')),
-      });
-    }).toThrow('This browser viewer is already registered.');
+      }),
+    ).rejects.toThrow('This browser viewer is already registered.');
   });
 
   it('names the problem in words when no browser is open', async () => {
@@ -196,7 +196,7 @@ describe('embedded browser routing and actions', () => {
       profileId: rig.owner.profileId,
       chatId: chat,
     };
-    controllers.register({
+    await controllers.register({
       scope,
       close: (): void => undefined,
       perform: (request): Promise<EmbeddedBrowserResult> => {
@@ -222,7 +222,7 @@ describe('embedded browser routing and actions', () => {
 
   it('opens an address given alone and mints its own request id', async () => {
     const seen: EmbeddedBrowserRequest[] = [];
-    controllers.register({
+    await controllers.register({
       scope: {
         viewerId: randomUUID(),
         generation: randomUUID(),
@@ -251,7 +251,7 @@ describe('embedded browser routing and actions', () => {
 
   it('opens a project folder at its index.html and refuses escapes', async () => {
     const seen: EmbeddedBrowserRequest[] = [];
-    controllers.register({
+    await controllers.register({
       scope: {
         viewerId: randomUUID(),
         generation: randomUUID(),
@@ -318,7 +318,7 @@ describe('embedded browser routing and actions', () => {
       },
     }).id;
     const seen: EmbeddedBrowserRequest['operation'][] = [];
-    viewer(rig.clientId, seen);
+    await viewer(rig.clientId, seen);
     await nativeBrowserCall((actor) =>
       controllers.edit(actor, chat, { action: { kind: 'open', port: 8765 } }),
     );
@@ -342,7 +342,7 @@ describe('embedded browser routing and actions', () => {
   it('acts on the selected tab when no tab is named', async () => {
     const tab = randomUUID();
     const seen: EmbeddedBrowserRequest['operation'][] = [];
-    controllers.register({
+    await controllers.register({
       scope: {
         viewerId: randomUUID(),
         generation: randomUUID(),
@@ -366,7 +366,7 @@ describe('embedded browser routing and actions', () => {
   it('reports the tabs the phone has right now, not a remembered list', async () => {
     const tab = randomUUID();
     let open = true;
-    controllers.register({
+    await controllers.register({
       scope: {
         viewerId: randomUUID(),
         generation: randomUUID(),
@@ -406,7 +406,7 @@ describe('embedded browser routing and actions', () => {
 
   it('closes a tab the phone already closed and returns the phone snapshot', async () => {
     const seen: EmbeddedBrowserRequest['operation'][] = [];
-    controllers.register({
+    await controllers.register({
       scope: {
         viewerId: randomUUID(),
         generation: randomUUID(),

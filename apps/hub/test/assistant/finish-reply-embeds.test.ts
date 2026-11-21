@@ -40,11 +40,11 @@ beforeEach(async () => {
   const owner = { profileId: store.profiles.activeOf(client.id).id, role: 'owner' as const };
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: (): Date => new Date(),
   });
-  chat = new ChatDirectory(store, files).create(owner, {
+  chat = await new ChatDirectory(store, files).create(owner, {
     engine: TEST_ENGINE,
   });
   conversation = new ConversationLog(store);

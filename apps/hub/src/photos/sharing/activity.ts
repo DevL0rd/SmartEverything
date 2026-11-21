@@ -11,12 +11,12 @@ import { decodeCursor, encodeCursor } from '../../drive/search';
 import type { DriveActor } from '../../drive/access';
 import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
 import type { PhotoAlbumActivityRow } from '../../store/repositories/photo-album-activity';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { requireAccess } from './access';
 import type { AlbumSeen } from './seen';
 
 export type ActivityStore = Pick<
-  Store,
+  HostStore,
   'context' | 'write' | 'driveAlbums' | 'photoAlbumMembers' | 'photoAlbumActivity'
 >;
 

@@ -1,11 +1,11 @@
 import type { DriveItem, DriveTrashEntry } from '@smarteverything/domain';
 import { z } from 'zod';
-import { announce, appendFeed } from '../drive/change-rows';
+import { announce, appendFeed } from '../drive/units/change-feed';
 import { repathItem, type RepathTarget } from '../drive/service-write-repath';
 import { storeUnit } from '../store/host/unit';
 import type { DriveItemIdentity } from '../store/repositories/drive-items';
 import type { StoredDrive } from '../store/repositories/drive-roots';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 const RELOCATION = z.strictObject({
   item_id: z.string(),
@@ -41,7 +41,7 @@ export interface ById {
   readonly id: string;
 }
 
-function sql(store: Store): Store['context']['sql'] {
+function sql(store: HostStore): HostStore['context']['sql'] {
   return store.context.sql;
 }
 

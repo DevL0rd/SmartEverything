@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { effectiveRow } from '../../../server/person-access';
+import { effectiveRowOf } from '../../../server/person-access';
 import {
   CLIENT_TOKEN,
   MCP_APPROVAL_CODE,
@@ -53,7 +53,7 @@ export class ApprovalCodes {
 
   private async ownerToken(token: string): Promise<ApprovalOutcome> {
     const client = await this.store.host.call('clients', 'byTokenHash', hashClientToken(token));
-    if (client === undefined || effectiveRow(this.store, client).role !== 'owner') {
+    if (client === undefined || (await effectiveRowOf(this.store, client)).role !== 'owner') {
       return { approved: false, reason: 'That is not the token of an owner of this home.' };
     }
     return { approved: true };

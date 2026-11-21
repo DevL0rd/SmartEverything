@@ -1,7 +1,11 @@
 import { z } from 'zod';
-import type { AiChatRow, AiAgentRun } from '@smarteverything/domain';
-import type { ComputerRunnerDeps } from '../computer/ports';
-import type { ComputerEvent } from '../computer/provider-state';
+import type {
+  AiChatRow,
+  AiAgentRun,
+  CodexProviderEvent,
+  ProviderEvent,
+} from '@smarteverything/domain';
+import type { HostStore } from '../../../store/host/host-store';
 import { blankAgentRun } from '../../agent-runs/run-rows';
 import {
   CLAUDE_AGENT_TASK,
@@ -13,10 +17,15 @@ import {
   TERMINAL_AGENT_STATES,
   type ClaudeAgentTask,
 } from './agent-task';
+export interface AgentsSource {
+  readonly store: HostStore;
+  readonly now: string;
+}
+
 export function claudeAgents(
-  deps: ComputerRunnerDeps,
+  deps: AgentsSource,
   chat: AiChatRow,
-  event: ComputerEvent,
+  event: ProviderEvent | CodexProviderEvent,
 ): void {
   if (event.kind !== 'runtime' || chat.engine.kind !== 'claude') return;
   const envelope = CLAUDE_AGENT_ENVELOPE.safeParse(event.payload);
@@ -33,7 +42,7 @@ export function claudeAgents(
         chat,
         'claude',
         JSON.stringify([task.task_id, task.run_id ?? null]),
-        deps.now().toISOString(),
+        deps.now,
       ),
       runtime: 'claude' as const,
       device_id: chat.engine.device_id,
@@ -48,7 +57,7 @@ export function claudeAgents(
         jobId: event.job_id,
         seq: envelope.data._source_sequence,
         subtype,
-        now: deps.now().toISOString(),
+        now: deps.now,
       }),
     );
   }

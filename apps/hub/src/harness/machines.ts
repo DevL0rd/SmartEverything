@@ -18,12 +18,14 @@ function visibleHosts(service: HarnessService, owner: ChatOwner): AiHarnessHost[
   return service.directory.visible(owner.role, '');
 }
 
-export function listMachines(
+export async function listMachines(
   service: HarnessService,
   owner: ChatOwner,
   chatId: string,
-): AiMachineList {
-  const current = harnessTargetKey(service.binding(service.own(owner, chatId)).execution_target);
+): Promise<AiMachineList> {
+  const current = harnessTargetKey(
+    service.binding(await service.own(owner, chatId)).execution_target,
+  );
   return {
     machines: visibleHosts(service, owner).map((host) => ({
       id: machineId(host.target),
@@ -57,7 +59,7 @@ export async function switchMachine(
   wanted: string,
 ): Promise<AiMachineSwitchResult> {
   const host = resolveMachine(visibleHosts(service, owner), wanted);
-  const chat = service.own(owner, chatId);
+  const chat = await service.own(owner, chatId);
   const result = await service.switch(owner, chatId, {
     operation_id: randomUUID(),
     target: host.target,

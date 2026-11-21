@@ -2,7 +2,7 @@ import { dependencyKeys, readIndex } from '@smarteverything/flow/compile/reads';
 import { WEBHOOK_SOURCE } from '@smarteverything/domain';
 import type { Checked } from '@smarteverything/flow/interpret/frames';
 import type { Cancel } from '../clock';
-import { conditionParts } from './engine-v3-admission';
+import { conditionParts, withFetched } from './engine-v3-admission';
 import type { Subject } from './engine-v3-start';
 import type { EngineV3Ports, Loaded } from './engine-v3-types';
 import { evaluateCondition } from './triggers-v3/admit';
@@ -33,7 +33,7 @@ function conditionHost(
     clock: ports.clock,
     keysOf: (condition) => dependencyKeys(index, condition),
     watch: ports.watchKeys,
-    evaluate: (entry): Checked<boolean> => {
+    evaluate: (entry): Promise<Checked<boolean>> => {
       const at = ports.clock.now().toISOString();
       const fire: TriggerFire = {
         automationId: entry.automationId,
@@ -43,7 +43,9 @@ function conditionHost(
         at,
         payload: { at },
       };
-      return evaluateCondition(conditionParts(ports, subject, fire), entry.condition, fire);
+      return withFetched(ports, (fetching) =>
+        evaluateCondition(conditionParts(ports, subject, fire, fetching), entry.condition, fire),
+      );
     },
     ...output,
   };

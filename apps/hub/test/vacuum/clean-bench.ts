@@ -170,7 +170,7 @@ export class Bench {
         save: (_deviceId, clean): void => {
           this.cleans.set(clean.id, clean);
         },
-        get: (_deviceId, id) => this.cleans.get(id),
+        has: (_deviceId, id) => this.cleans.has(id),
         rename: (_deviceId, from, to): void => {
           const held = this.cleans.get(from);
           if (held === undefined) return;

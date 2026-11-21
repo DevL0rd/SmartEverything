@@ -211,6 +211,7 @@ function startComputer(
             gpu: () => null,
             memory: () => null,
             disks: () => null,
+            disk_usage: () => null,
             network: () => null,
             sensors: () => null,
             power: () => null,

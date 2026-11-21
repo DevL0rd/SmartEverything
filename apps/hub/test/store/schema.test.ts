@@ -1,12 +1,11 @@
+import { openSeededStore, testStore, type TestStore, closedStore } from '../support/store';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import type { RowChange } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { MIGRATIONS } from '../../src/store/migrations';
-import { openStore } from '../../src/store/store';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 import { testStoreHost } from '../support/store-host';
 
 let opened: TestStore;
@@ -25,9 +24,9 @@ const HEAD = Math.max(...MIGRATIONS.map((migration) => migration.version));
 const VERSION = z.object({ version: z.number(), name: z.string() });
 
 describe('store schema', () => {
-  it('migrates once, records the version and turns on WAL and foreign keys', () => {
+  it('migrates once, records the version and turns on WAL and foreign keys', async () => {
     const path = join(opened.directory, 'test.db');
-    const again = openStore({
+    const again = await openSeededStore({
       host: testStoreHost(),
       path,
       log: testLogger(),
@@ -35,7 +34,7 @@ describe('store schema', () => {
       systemTimeZone: 'UTC',
       driveFolders: null,
     });
-    again.close();
+    await closedStore(again);
     const database = new DatabaseSync(path);
     expect(
       z.array(VERSION).parse(database.prepare('select version, name from schema_version').all()),
@@ -51,7 +50,7 @@ describe('store schema', () => {
     ).toStrictEqual([{ version: HEAD }, { version: HEAD }]);
   });
 
-  it('refuses a database written by a newer server', () => {
+  it('refuses a database written by a newer server', async () => {
     const path = join(opened.directory, 'test.db');
     const database = new DatabaseSync(path);
     database
@@ -60,8 +59,8 @@ describe('store schema', () => {
       )
       .run();
     database.close();
-    expect(() =>
-      openStore({
+    await expect(
+      openSeededStore({
         host: testStoreHost(),
         path,
         log: testLogger(),
@@ -69,7 +68,7 @@ describe('store schema', () => {
         systemTimeZone: 'UTC',
         driveFolders: null,
       }),
-    ).toThrow(
+    ).rejects.toThrow(
       `The database is at schema version ${String(HEAD + 1)}, but this server only knows up to ${String(HEAD)}; a newer server wrote it.`,
     );
   });

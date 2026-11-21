@@ -51,7 +51,7 @@ afterEach(async () => {
 });
 
 function viewer(person: TestPerson): PhoneViewer {
-  return phoneViewerOfClient(test.store, person.client);
+  return phoneViewerOfClient(test.store.profiles.activeOf(person.client.id).id, person.client);
 }
 
 describe('who sees which tier of a phone', () => {

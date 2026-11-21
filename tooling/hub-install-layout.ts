@@ -14,6 +14,7 @@ export const UPDATE_ENTRY_FILES = {
   watchdog: 'watchdog.mjs',
   step: 'step.mjs',
   migrationCheck: 'migration-check.mjs',
+  storeHost: 'store-host.mjs',
 } as const;
 
 const DESKTOP_PAYLOAD = [

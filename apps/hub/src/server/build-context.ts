@@ -39,6 +39,7 @@ import { MediaLinks } from './media-links';
 import { PublicUrlVerifier } from './public-url';
 import { WatchCaptureStore } from '../watch-captures/capture-store';
 import { DeveloperDevices } from '../watch-captures/developer-devices';
+import { hostFoods } from '../store/host/hosted';
 import { ReleasePublications } from '../self-update/release-publications';
 
 export function statusOf(options: BuildOptions): {
@@ -137,12 +138,13 @@ function accessOf(options: BuildOptions, live: LiveHub, talk: TalkService): Acce
   });
 }
 
-function modalitiesOf(store: Store, file: StoredAttachment): readonly string[] | null {
+async function modalitiesOf(
+  store: Store,
+  file: StoredAttachment,
+): Promise<readonly string[] | null> {
   if (file.message_id === null) return null;
-  const chat = store.aiChats.chat(store.assistantChat.message(file.message_id).chat_id);
-  if (chat.engine.kind !== 'dsh') return null;
-  const model = chat.engine.model;
-  return store.live.aiModels.row(model)?.input_modalities ?? null;
+  const model = await store.host.read('attachmentChatModel', { messageId: file.message_id });
+  return model === null ? null : (store.live.aiModels.row(model)?.input_modalities ?? null);
 }
 
 function outboundOf(
@@ -159,10 +161,10 @@ function outboundOf(
     mediaNotes: new MediaNotes({
       provider: new OpenRouterMediaNotes(openRouter.client, options.layout.tmp),
       transcriptionProvider: new OpenRouterTranscription(openRouter.client, options.layout.tmp),
-      chat: options.store.assistantChat,
+      store: options.store.host,
       ledger: options.store.host,
       filesRoot: options.layout.system.ai.assistant,
-      describeImages: (): boolean => options.store.assistantChat.settings().describe_images,
+      describeImages: (): boolean => options.store.live.home.assistant.read().describe_images,
       inputModalities: (file) => modalitiesOf(options.store, file),
       log: options.log.forArea('hub.assistant'),
     }),
@@ -245,7 +247,7 @@ function developerOf(
   options: BuildOptions,
 ): Pick<ServerContext, 'developerDevices' | 'watchCaptures'> {
   return {
-    developerDevices: new DeveloperDevices(options.store.settingsKv),
+    developerDevices: new DeveloperDevices(options.store.live.home.saved),
     watchCaptures: new WatchCaptureStore(
       options.layout.system.developer.watchCaptures,
       options.clock.now,
@@ -368,7 +370,7 @@ function connectionContext(
 
 function foodLookupOf(options: BuildOptions, log: Logger): FoodLookup {
   return new FoodLookup({
-    foods: options.store.foods,
+    foods: hostFoods(options.store.host),
     fetch: options.fetch,
     now: options.clock.now,
     version: options.version,

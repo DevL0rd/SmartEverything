@@ -1,3 +1,4 @@
+import { settleWithHost } from '../../support/host-settle';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { dirname, join } from 'node:path';
@@ -184,13 +185,14 @@ export class RigV3 {
     });
   }
 
-  settle(): Promise<void> {
-    return turns();
+  async settle(): Promise<void> {
+    await turns();
+    await settleWithHost();
   }
 
   async advance(milliseconds: number): Promise<void> {
     this.clock.advanceTo(new Date(this.clock.now().getTime() + milliseconds).toISOString());
-    await turns();
+    await this.settle();
   }
 
   async until(done: () => boolean): Promise<void> {

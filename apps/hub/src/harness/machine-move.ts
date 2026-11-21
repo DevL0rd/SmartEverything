@@ -35,11 +35,11 @@ export type MoveOutcome =
 export async function moveConversation(service: HarnessService, move: Move): Promise<MoveOutcome> {
   const { session } = move;
   const from = service.directory.registered(session.target).host;
-  service.store.harnessSessions.markSwitching(session.session_id);
+  await service.store.host.call('harnessSessions', 'markSwitching', session.session_id);
   let detached = false;
   let asked: readonly AiHarnessInteraction[] = [];
   try {
-    const cwd = targetWorkspace(service, move);
+    const cwd = await targetWorkspace(service, move);
     detached = true;
     asked = await detachSource(service, move);
     const to = await attachTarget(service, move, cwd, asked);
@@ -61,13 +61,19 @@ async function settleFailure(
     readonly asked: readonly AiHarnessInteraction[];
   },
 ): Promise<MoveOutcome> {
-  service.store.aiChats.update(move.chat.id, { engine: move.chat.engine });
+  await service.store.host.call('aiChats', 'update', move.chat.id, { engine: move.chat.engine });
   try {
     if (failure.reattach) await attachSource(service, move, failure.asked);
-    else service.store.harnessSessions.settleSwitching(move.session.session_id, null);
+    else
+      await service.store.host.call(
+        'harnessSessions',
+        'settleSwitching',
+        move.session.session_id,
+        null,
+      );
   } catch (cause) {
     log.error('machine_move.restore_failed', cause, { chat_id: move.chat.id });
-    service.store.harnessSessions.settleSwitching(move.session.session_id, {
+    await service.store.host.call('harnessSessions', 'settleSwitching', move.session.session_id, {
       code: 'operation_failed',
       message: failure.reason,
       retry_at: null,
@@ -115,7 +121,7 @@ async function attachTarget(
   asked: readonly AiHarnessInteraction[],
 ): Promise<{ readonly host: AiHarnessHost; readonly cwd: string }> {
   const binding = service.binding(move.chat);
-  service.store.aiChats.update(move.chat.id, {
+  await service.store.host.call('aiChats', 'update', move.chat.id, {
     engine: {
       ...binding,
       execution_target: move.target,
@@ -154,13 +160,20 @@ async function attachSource(
   await service.directory.execute(move.session.target, randomUUID(), open);
 }
 
-function targetWorkspace(service: HarnessService, move: Move): string {
+async function targetWorkspace(service: HarnessService, move: Move): Promise<string> {
   if (move.target.kind === 'server') return service.chatFolder(move.chat);
   const host = service.directory.get(move.target).host;
   const cwd =
     move.directory?.path ??
-    service.store.dshSessions.workspace(move.session.session_id, move.target, move.owner.profileId)
-      ?.cwd ??
+    (
+      await service.store.host.call(
+        'dshSessions',
+        'workspace',
+        move.session.session_id,
+        move.target,
+        move.owner.profileId,
+      )
+    )?.cwd ??
     host.workspace?.default_directory ??
     host.workspace?.home_directory;
   if (cwd === undefined)

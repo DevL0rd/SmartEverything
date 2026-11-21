@@ -1,3 +1,4 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -10,7 +11,6 @@ import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { PLANNER_CLOCK_WAVE2_MIGRATION } from '../../src/store/migrations/planner-clock-wave2';
 import { Sql } from '../../src/store/sql';
-import { openStore } from '../../src/store/store';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { TEST_ENGINE } from '../support/engine';
 import { testStoreHost } from '../support/store-host';
@@ -61,7 +61,11 @@ function seedLive(database: DatabaseSync): void {
   for (const id of [1, 2, 3, 4, 5]) add.run(id, SESSION, NOW, `line ${String(id)} kettle`);
   database.prepare('delete from transcript_lines where id in (4, 5)').run();
   database.prepare('update transcript_line_sequence set next_id = 6').run();
-  database.prepare("insert into rooms (id, name, position) values ('r1', 'Hall', 0)").run();
+  database
+    .prepare(
+      "insert into rooms (id, name, position) values ('0e000000-0000-4000-8000-0000000000a1', 'Hall', 0)",
+    )
+    .run();
 }
 
 function tableCounts(database: DatabaseSync, skip: readonly string[]): Record<string, number> {
@@ -84,8 +88,8 @@ function tableCounts(database: DatabaseSync, skip: readonly string[]): Record<st
   );
 }
 
-function open(): ReturnType<typeof openStore> {
-  return openStore({
+function open(): ReturnType<typeof openSeededStore> {
+  return openSeededStore({
     host: testStoreHost(),
     path,
     log: testLogger(),
@@ -96,14 +100,14 @@ function open(): ReturnType<typeof openStore> {
 }
 
 describe('migrating a live schema-80 database', () => {
-  it('backs the database up first, reaches head, then discards the backup with every row and foreign key intact', () => {
+  it('backs the database up first, reaches head, then discards the backup with every row and foreign key intact', async () => {
     const before = build(LIVE);
     seedLive(before);
     const counts = tableCounts(before, ['transcript_line_sequence']);
     before.close();
 
-    const store = open();
-    store.close();
+    const store = await open();
+    await closedStore(store);
 
     const migrated = new DatabaseSync(path);
     expect(
@@ -139,11 +143,11 @@ describe('migrating a live schema-80 database', () => {
     expect(readdirSync(directory).filter((name) => name.endsWith('.sqlite'))).toStrictEqual([]);
   });
 
-  it('never reuses transcript ids that were deleted before the rebuild and keeps search working', () => {
+  it('never reuses transcript ids that were deleted before the rebuild and keeps search working', async () => {
     const before = build(LIVE);
     seedLive(before);
     before.close();
-    const store = open();
+    const store = await open();
     const added = store.transcripts.append(SESSION, {
       at: NOW,
       speaker_id: null,
@@ -159,7 +163,7 @@ describe('migrating a live schema-80 database', () => {
       text: 'second',
       bot: false,
     });
-    store.close();
+    await closedStore(store);
     const database = new DatabaseSync(path);
     expect(
       z
@@ -180,9 +184,9 @@ describe('migrating a live schema-80 database', () => {
     database.close();
   });
 
-  it('issues strictly increasing speech commit ids without keeping rows', () => {
+  it('issues strictly increasing speech commit ids without keeping rows', async () => {
     build(LIVE).close();
-    const store = open();
+    const store = await open();
     expect(store.speech.watermark()).toBe(0);
     const issued = [
       store.speech.nextCommit(),
@@ -191,15 +195,15 @@ describe('migrating a live schema-80 database', () => {
     ];
     expect(issued).toStrictEqual([1, 2, 3]);
     expect(store.speech.watermark()).toBe(3);
-    store.close();
+    await closedStore(store);
     const database = new DatabaseSync(path);
     expect(
       COUNT.parse(database.prepare('select count(*) as count from speech_commits').get()).count,
     ).toBe(0);
     database.close();
-    const reopened = open();
+    const reopened = await open();
     expect(reopened.speech.nextCommit()).toBe(4);
-    reopened.close();
+    await closedStore(reopened);
   });
 });
 
@@ -212,7 +216,7 @@ describe('migrating a schema-84 database to unbounded text', () => {
   function seedBounded(database: DatabaseSync): void {
     database
       .prepare(
-        "insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at) values (?, 'Ann', 'amber', '{}', 0, ?, ?)",
+        "insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at) values (?, 'Ann', 'amber', json_object('steps', null, 'move_kcal', null, 'active_minutes', null, 'sleep_minutes', null, 'hydration_ml', null), 0, ?, ?)",
       )
       .run(PROFILE, NOW, NOW);
     const add = database.prepare(
@@ -232,7 +236,7 @@ describe('migrating a schema-84 database to unbounded text', () => {
       .run(SESSION, NOW, 'y'.repeat(4000));
   }
 
-  it('keeps every row, link and index, then stores a 100000-character message and a 20000-character line', () => {
+  it('keeps every row, link and index, then stores a 100000-character message and a 20000-character line', async () => {
     const before = build(84);
     seedBounded(before);
     expect(() =>
@@ -244,7 +248,7 @@ describe('migrating a schema-84 database to unbounded text', () => {
     ).toThrow(/CHECK/);
     before.close();
 
-    const store = open();
+    const store = await open();
     const chat = store.aiChats.create({
       profileId: PROFILE,
       kind: 'chat',
@@ -282,7 +286,7 @@ describe('migrating a schema-84 database to unbounded text', () => {
       bot: false,
     });
     expect(store.assistantChat.message(message.id).text.length).toBe(100_000);
-    store.close();
+    await closedStore(store);
 
     const database = new DatabaseSync(path, { enableForeignKeyConstraints: true });
     const messages = z
@@ -349,14 +353,14 @@ describe('migrating a schema-84 database to unbounded text', () => {
 });
 
 describe('migration backups', () => {
-  it('takes no backup for a new database or one already at head', () => {
-    open().close();
-    open().close();
+  it('takes no backup for a new database or one already at head', async () => {
+    await closedStore(await open());
+    await closedStore(await open());
     expect(readdirSync(directory).filter((name) => name.endsWith('.sqlite'))).toStrictEqual([]);
     expect(logs.events()).not.toContain('store.backed_up');
   });
 
-  it('discards every pre-migration copy once the new schema has started', () => {
+  it('discards every pre-migration copy once the new schema has started', async () => {
     for (const name of [
       'hub.db.v10-before-v20.sqlite',
       'hub.db.v40-before-v50.sqlite',
@@ -365,16 +369,16 @@ describe('migration backups', () => {
       writeFileSync(join(directory, name), 'x');
     }
     build(LIVE).close();
-    open().close();
+    await closedStore(await open());
     expect(readdirSync(directory).filter((name) => name.endsWith('.sqlite'))).toStrictEqual([
       'other.db.v1-before-v2.sqlite',
     ]);
   });
 
-  it('migrates nothing when the backup cannot be written', () => {
+  it('migrates nothing when the backup cannot be written', async () => {
     build(LIVE).close();
     mkdirSync(`${path}.v${String(LIVE)}-before-v${String(HEAD)}.sqlite`);
-    expect(() => open()).toThrow(/could not be backed up/);
+    await expect(open()).rejects.toThrow(/could not be backed up/);
     expect(readdirSync(directory).filter((name) => name.endsWith('.partial'))).toStrictEqual([]);
     const database = new DatabaseSync(path);
     expect(
@@ -383,7 +387,7 @@ describe('migration backups', () => {
     database.close();
   });
 
-  it('keeps the copy while a start fails and discards it after the next healthy start', () => {
+  it('keeps the copy while a start fails and discards it after the next healthy start', async () => {
     build(LIVE).close();
     const database = new DatabaseSync(path, { enableForeignKeyConstraints: true });
     expect(() =>
@@ -405,7 +409,7 @@ describe('migration backups', () => {
       COUNT.parse(kept.prepare('select max(version) as count from schema_version').get()).count,
     ).toBe(LIVE);
     kept.close();
-    open().close();
+    await closedStore(await open());
     expect(readdirSync(directory).filter((name) => name.endsWith('.sqlite'))).toStrictEqual([]);
   });
 });
@@ -442,7 +446,7 @@ describe('migrating planner alarms and preferences to the clock wave 2 shapes', 
   function seedOld(database: DatabaseSync): void {
     database
       .prepare(
-        "insert into profiles (id, name, colour, fitness_goals, created_at, updated_at) values (?, 'Ann', 'aqua', '{}', ?, ?)",
+        "insert into profiles (id, name, colour, fitness_goals, created_at, updated_at) values (?, 'Ann', 'aqua', json_object('steps', null, 'move_kcal', null, 'active_minutes', null, 'sleep_minutes', null, 'hydration_ml', null), ?, ?)",
       )
       .run(PROFILE, NOW, NOW);
     const alarm = database.prepare(

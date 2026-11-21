@@ -13,12 +13,11 @@ import { BASE, ROBOT, ROBOT_ID, STATUS, resting, sceneOf } from './clean-bench';
 function storeOf(): MapStore {
   const scenes = new Map<string, VacuumScene>();
   return {
-    save: (deviceId, scene): void => {
+    save: (deviceId, scene): Promise<void> => {
       scenes.set(`${deviceId}|${String(scene.index)}`, scene);
+      return Promise.resolve();
     },
-    at: (deviceId, _slot, index) => scenes.get(`${deviceId}|${String(index)}`),
-    latest: () => [...scenes.values()].at(-1),
-    has: (deviceId, _slot, index) => scenes.has(`${deviceId}|${String(index)}`),
+    at: (deviceId, _slot, index) => Promise.resolve(scenes.get(`${deviceId}|${String(index)}`)),
   };
 }
 
@@ -26,6 +25,7 @@ describe('vacuum clean tracker assembly', () => {
   it('reads the map facts from the cache and the task id from the given source', () => {
     captureLogs();
     const cache = new MapCache(storeOf());
+    cache.hold(ROBOT_ID, []);
     const map = cleanMapOf(cache, () => 42);
     expect(map(ROBOT_ID)).toStrictEqual({ taskId: 42, index: null, rooms: new Map(), trail: [] });
     cache.save(ROBOT_ID, sceneOf(9));
@@ -39,12 +39,12 @@ describe('vacuum clean tracker assembly', () => {
     const saved: string[] = [];
     const tracker = cleanTrackerOf(
       {
-        store: { devices: { find: (id: string) => (id === ROBOT_ID ? ROBOT : undefined) } },
+        devices: { find: (id: string) => (id === ROBOT_ID ? ROBOT : undefined) },
         cleans: {
           save: (_deviceId, clean): void => {
             saved.push(clean.outcome ?? 'open');
           },
-          get: () => undefined,
+          has: () => false,
           open: () => undefined,
           rename: (): void => undefined,
         },

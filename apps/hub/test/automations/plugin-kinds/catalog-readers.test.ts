@@ -29,6 +29,7 @@ import { graphAutomation } from '../../automations-v3/support/graph-of';
 import { node, programOf, saveAutomation, trigger } from '../../support/automation-fixture';
 import { captureLogs, testLogger } from '../../support/logs';
 import { testStore, type TestStore } from '../../support/store';
+import { noReads } from '../../support/direct-fetch';
 import { ONLINE_VALUE, POSTED_TRIGGER, POST_NODE, manifestWith } from './fixtures';
 
 const POST = 'plugin.chat_hub.post_message';
@@ -145,8 +146,16 @@ describe('hub readers resolve kinds through the catalog', () => {
       instance: '',
       kept: () => ({ ok: true, value: undefined }),
     };
-    const withKinds = readPort({ reads, persistent, kinds: lookupWith([reading]) }, 'auto');
-    const withoutKinds = readPort({ reads, persistent, kinds: createKindCatalog() }, 'auto');
+    const withKinds = readPort(
+      { reads, persistent, kinds: lookupWith([reading]) },
+      'auto',
+      noReads(),
+    );
+    const withoutKinds = readPort(
+      { reads, persistent, kinds: createKindCatalog() },
+      'auto',
+      noReads(),
+    );
     withKinds.node(request);
     withoutKinds.node(request);
     expect(seen).toEqual([{ device: { device: 'lamp' } }, { device: 'lamp' }]);

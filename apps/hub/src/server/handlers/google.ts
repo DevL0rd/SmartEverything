@@ -13,7 +13,7 @@ import type { GoogleAccountPatch } from '../../store/repositories/google-account
 import type { GoogleHub } from '../../services';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound, type RouteOf } from '../router';
-import { plannerProfileOf } from './planner-profile';
+import { plannerProfileFor } from './planner-profile';
 
 export type GoogleContext = Pick<ServerContext, 'store' | 'secrets'>;
 
@@ -54,8 +54,11 @@ function headerOf(headers: PushHeaders, name: string): string | null {
   return typeof value === 'string' ? value : (value[0] ?? null);
 }
 
-export function receivePush(receiver: GoogleServices['receiver'], request: PushRequest): void {
-  const outcome: PushOutcome = receiver.receive({
+export async function receivePush(
+  receiver: GoogleServices['receiver'],
+  request: PushRequest,
+): Promise<void> {
+  const outcome: PushOutcome = await receiver.receive({
     channelId: request.channelId,
     token: headerOf(request.headers, 'x-goog-channel-token'),
     resourceId: headerOf(request.headers, 'x-goog-resource-id'),
@@ -84,10 +87,10 @@ function requestOf(
 }
 
 function startRoute(context: GoogleContext, google: GoogleServices): RouteOf<'googleLinkStart'> {
-  return bound(E.googleLinkStart, ({ query, body, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
-    return linking(() => {
-      const started = google.link.begin({
+  return bound(E.googleLinkStart, async ({ query, body, caller }) => {
+    const profileId = await plannerProfileFor(context, caller, query.personId);
+    return linking(async () => {
+      const started = await google.link.begin({
         profileId,
         client: body.platform,
         redirectUri: body.redirectUri,
@@ -99,8 +102,8 @@ function startRoute(context: GoogleContext, google: GoogleServices): RouteOf<'go
 }
 
 function finishRoute(context: GoogleContext, google: GoogleServices): RouteOf<'googleLinkFinish'> {
-  return bound(E.googleLinkFinish, ({ query, body, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
+  return bound(E.googleLinkFinish, async ({ query, body, caller }) => {
+    const profileId = await plannerProfileFor(context, caller, query.personId);
     return linking(async () => {
       const row = await google.link.complete({ profileId, ...body });
       if (row.status === 'linked') {
@@ -113,7 +116,7 @@ function finishRoute(context: GoogleContext, google: GoogleServices): RouteOf<'g
 
 function unlinkRoute(context: GoogleContext, google: GoogleServices): RouteOf<'googleUnlink'> {
   return bound(E.googleUnlink, async ({ query, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
+    const profileId = await plannerProfileFor(context, caller, query.personId);
     await google.channels.release(profileId);
     await google.link.unlink(profileId);
     google.runner.forget(profileId);
@@ -123,7 +126,7 @@ function unlinkRoute(context: GoogleContext, google: GoogleServices): RouteOf<'g
 
 function syncRoute(context: GoogleContext, google: GoogleServices): RouteOf<'googleSync'> {
   return bound(E.googleSync, async ({ query, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
+    const profileId = await plannerProfileFor(context, caller, query.personId);
     const outcome = await google.runner.sync(profileId, 'manual');
     if (outcome === 'unlinked') {
       throw new ApiError('conflict', 'Link a Google account first.');
@@ -147,7 +150,7 @@ function logRoute(context: GoogleContext): RouteOf<'googleSyncLog'> {
     const entries = await context.store.host.call(
       'googleSyncLog',
       'list',
-      plannerProfileOf(context, caller, query.personId),
+      await plannerProfileFor(context, caller, query.personId),
     );
     return before === undefined
       ? entries
@@ -174,7 +177,7 @@ function accountRoute(context: GoogleContext): RouteOf<'googleAccount'> {
     return await context.store.host.call(
       'googleAccounts',
       'update',
-      plannerProfileOf(context, caller, query.personId),
+      await plannerProfileFor(context, caller, query.personId),
       patch,
     );
   });
@@ -182,7 +185,7 @@ function accountRoute(context: GoogleContext): RouteOf<'googleAccount'> {
 
 function choiceRoute(context: GoogleContext, google: GoogleServices): RouteOf<'googleChoice'> {
   return bound(E.googleChoice, async ({ query, body, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
+    const profileId = await plannerProfileFor(context, caller, query.personId);
     const { choice } = await context.store.host.call(
       'googleSyncLog',
       'byId',
@@ -204,9 +207,9 @@ function choiceRoute(context: GoogleContext, google: GoogleServices): RouteOf<'g
 }
 
 function pushRoute(google: GoogleServices): RouteOf<'googlePush'> {
-  return bound(E.googlePush, (input) => {
+  return bound(E.googlePush, async (input) => {
     const { headers } = PUSH_HEADERS.parse(input);
-    receivePush(google.receiver, { channelId: input.params.channelId, headers });
+    await receivePush(google.receiver, { channelId: input.params.channelId, headers });
     return DONE_REPLY;
   });
 }

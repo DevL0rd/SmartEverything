@@ -9,7 +9,7 @@ import {
 import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { PhoneRings } from '../../src/planner/phone-rings';
-import { plannerPreferencesOf } from '../../src/planner/preferences';
+import { DEFAULT_PREFERENCES } from '../../src/planner/preferences';
 import type { Bound } from '../../src/server/router';
 import type { plannerClockRoutes } from '../../src/server/handlers/planner-clock';
 import {
@@ -50,7 +50,9 @@ afterEach(async () => {
 describe('alarms', () => {
   it('adds an alarm with the stored person defaults', async () => {
     const made = await alarm(ann, { time: '07:00', days: [1, 2, 3, 4, 5], label: 'Work' });
-    const defaults = plannerPreferencesOf(test.store, ann.profileId).clock;
+    const defaults = (
+      test.store.plannerPreferences.find(ann.profileId)?.preferences ?? DEFAULT_PREFERENCES
+    ).clock;
     expect(made).toMatchObject({
       profile_id: ann.profileId,
       time: '07:00',

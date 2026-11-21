@@ -75,7 +75,8 @@ describe('the file I/O threads at start', () => {
 
   it('fails loudly when the running pool differs from the configured value', async () => {
     seed({ fileIoThreads: 3 });
-    const { confirmFileIoThreads } = await module();
-    await expect(confirmFileIoThreads(file)).rejects.toThrow(/thread pool has \d+ threads/);
+    const { applyFileIoThreads, confirmFileIoThreads } = await module();
+    const applied = applyFileIoThreads(file);
+    await expect(confirmFileIoThreads(applied)).rejects.toThrow(/thread pool has \d+ threads/);
   });
 });

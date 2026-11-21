@@ -3,6 +3,7 @@ import { mkdir, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeEnv } from '../../src/drive/changes';
+import { hostQuotaSource } from '../../src/drive/quotas';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveReadService } from '../../src/drive/service-read';
 import { DriveTreeWriter } from '../../src/drive/service-write-tree';
@@ -58,8 +59,7 @@ beforeEach(async () => {
       removeItems: noAlbums,
     },
     guard: {
-      status: (profileId): ReturnType<TestStore['store']['driveQuotas']['status']> =>
-        store.driveQuotas.status(profileId),
+      status: hostQuotaSource(store),
       space: (): Promise<{ totalBytes: number; freeBytes: number }> =>
         Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },

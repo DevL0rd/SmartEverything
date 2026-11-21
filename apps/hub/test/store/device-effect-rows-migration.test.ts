@@ -1,3 +1,4 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,7 +8,6 @@ import { z } from 'zod';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import { testStoreHost } from '../support/store-host';
 
@@ -73,10 +73,10 @@ function seedBefore(): void {
 }
 
 describe('migrating a schema-90 database to temporary changes stored as rows', () => {
-  it('keeps every active temporary change with its base and drops controls that have none', () => {
+  it('keeps every active temporary change with its base and drops controls that have none', async () => {
     seedBefore();
 
-    const store = openStore({
+    const store = await openSeededStore({
       host: testStoreHost(),
       path,
       log: testLogger(),
@@ -85,7 +85,7 @@ describe('migrating a schema-90 database to temporary changes stored as rows', (
       driveFolders: null,
     });
     const targets = store.deviceEffects.list();
-    store.close();
+    await closedStore(store);
 
     expect(targets).toStrictEqual([
       {

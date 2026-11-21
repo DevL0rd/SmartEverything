@@ -19,11 +19,7 @@ beforeEach(async () => {
     if (signal.source === 'call') heard.push(signal);
   });
   opened.store.feed.subscribe((change: RowChange) => {
-    const context = feedContextOf(
-      new Date('2026-10-18T10:00:00.000Z'),
-      () => 'UTC',
-      () => null,
-    );
+    const context = feedContextOf(new Date('2026-10-18T10:00:00.000Z'), () => 'UTC');
     feedSignals(change, context).forEach(bus.emit);
   });
 });

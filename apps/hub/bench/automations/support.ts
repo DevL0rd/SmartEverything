@@ -14,6 +14,7 @@ import { RunDriver } from '../../src/automations/driver/admission';
 import type { DriverPorts, Ending, RunKind } from '../../src/automations/driver/ports';
 import { SimulatedClock } from '../../src/clock/simulated';
 import { START, stateAt } from '../../test/automations-v3/driver/support';
+import { noReads } from '../../test/support/direct-fetch';
 
 const OUT = fileURLToPath(
   new URL('../../../../tmp/automations-v2/bench/results.jsonl', import.meta.url),
@@ -126,6 +127,17 @@ function sinkOf(
   };
 }
 
+function benchDriver(ports: DriverPorts, yielded: () => void): RunDriver {
+  return new RunDriver({
+    ports,
+    decisions: { record: (): void => undefined },
+    yieldNow: (resume): void => {
+      yielded();
+      setImmediate(resume);
+    },
+  });
+}
+
 export function realDriver(measureBytes = false): RealDriver {
   const slices: Slices = { count: 0, records: 0, bytes: 0, yields: 0 };
   let done: (finished: Finished) => void = () => undefined;
@@ -153,13 +165,8 @@ export function realDriver(measureBytes = false): RealDriver {
       },
     ),
   };
-  const driver = new RunDriver({
-    ports,
-    decisions: { record: (): void => undefined },
-    yieldNow: (resume): void => {
-      slices.yields += 1;
-      setImmediate(resume);
-    },
+  const driver = benchDriver(ports, () => {
+    slices.yields += 1;
   });
   return {
     driver,
@@ -169,6 +176,7 @@ export function realDriver(measureBytes = false): RealDriver {
       driver.run({
         state: stateAt(Date.parse(START)),
         context: contextOf(body),
+        reads: noReads(),
         name: 'Bench',
         kind: 'live',
         startedBy: null,

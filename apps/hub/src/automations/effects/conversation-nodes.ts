@@ -49,10 +49,10 @@ const PERSON = z.union([ID, PERSON_REF]);
 
 const EXTENSIONS = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' } as const;
 
-function identityOf(ports: ConversationEffectPorts): Identity {
+async function identityOf(ports: ConversationEffectPorts): Promise<Identity> {
   const authority = currentExecutionAuthority();
   return {
-    profileId: authority?.profile_id ?? ports.integration.ownerProfileId(),
+    profileId: authority?.profile_id ?? (await ports.integration.ownerProfileId()),
     role: authority === undefined ? 'owner' : executionRole(authority),
   };
 }
@@ -148,7 +148,7 @@ function chatPost(ports: ConversationEffectPorts): EffectHandler {
     if (ask.text === '' && ask.picture === undefined)
       return invalid('Give some text or a picture.');
     try {
-      const who = identityOf(ports);
+      const who = await identityOf(ports);
       const target = ask.person ?? who.profileId;
       if (who.role !== 'owner' && target !== who.profileId) {
         throw new IntegrationError('Forbidden', 'You can post only to your own chat.');
@@ -257,7 +257,7 @@ function transcriptRead(ports: ConversationEffectPorts): EffectHandler {
     const ask = checked.value;
     try {
       const reading: Reading = {
-        who: identityOf(ports),
+        who: await identityOf(ports),
         args: {
           view: ask.search === undefined ? 'feed' : 'search',
           ...scopeOf(ask.source),
@@ -315,7 +315,7 @@ function listeningSet(ports: ConversationEffectPorts): EffectHandler {
       );
     }
     try {
-      const who = identityOf(ports);
+      const who = await identityOf(ports);
       await deliver({
         kind: request.kind,
         mode: modeOf(request),

@@ -36,6 +36,7 @@ class BrowserConnection {
   private performed = 0;
   private answered = 0;
   private failed = 0;
+  private turn: Promise<void> = Promise.resolve();
   constructor(
     private readonly socket: WebSocket,
     private readonly clientId: string,
@@ -43,7 +44,7 @@ class BrowserConnection {
   ) {
     log.info('browser.socket_opened', { clientId });
     socket.on('message', (data, binary) => {
-      this.received(data, binary);
+      this.turn = this.turn.then(() => this.received(data, binary));
     });
     socket.once('close', (code) => {
       this.ended(code);
@@ -60,7 +61,7 @@ class BrowserConnection {
   readonly close = (): void => {
     this.socket.close(1001, 'Browser authority ended');
   };
-  private received(data: RawData, binary: boolean): void {
+  private async received(data: RawData, binary: boolean): Promise<void> {
     try {
       if (binary)
         throw new ApiError('invalid_request', 'Browser control accepts bounded JSON only.');
@@ -72,11 +73,15 @@ class BrowserConnection {
             'forbidden',
             'A browser socket registers its exact authenticated client once.',
           );
-        this.controllers.register({
+        await this.controllers.register({
           scope: message.scope,
           perform: this.perform,
           close: this.close,
         });
+        if (this.socket.readyState !== WebSocket.OPEN) {
+          this.controllers.disconnect(this.close);
+          return;
+        }
         this.scope = message.scope;
         log.info('browser.registered', {
           clientId: this.clientId,

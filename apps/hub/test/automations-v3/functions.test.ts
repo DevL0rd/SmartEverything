@@ -29,9 +29,9 @@ let rig: ProgramRig;
 let service: AutomationFunctions;
 let member: Caller;
 
-beforeEach(() => {
+beforeEach(async () => {
   captureLogs();
-  rig = programRig();
+  rig = await programRig();
   member = {
     kind: 'client',
     client: rig.member.client,
@@ -40,8 +40,8 @@ beforeEach(() => {
   service = automationFunctions(rig.env);
 });
 
-afterEach(() => {
-  rig.close();
+afterEach(async () => {
+  await rig.close();
 });
 
 function functionOf(extra: Partial<FunctionV3> = {}): FunctionV4 {

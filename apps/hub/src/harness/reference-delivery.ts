@@ -12,10 +12,12 @@ export function attachHarnessReferences(
   return service;
 }
 
-export function deliveryReferences(
+export async function deliveryReferences(
   service: HarnessService,
   event: StoredEvent,
-): readonly AiMessageReference[] {
+): Promise<readonly AiMessageReference[]> {
   if (event.message_id === null) return [];
-  return service.store.assistantChat.message(event.message_id).references ?? [];
+  return (
+    (await service.store.host.call('assistantChat', 'message', event.message_id)).references ?? []
+  );
 }

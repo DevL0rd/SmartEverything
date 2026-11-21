@@ -9,17 +9,14 @@ import type {
   DshWriterClaim,
 } from '@smarteverything/domain';
 import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 import type { HarnessGrant } from '../../../harness/grant';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import type { DshSessionOpened } from '../../../store/repositories/dsh-sessions';
 import type { DshSessionPrincipal } from '../../../store/repositories/dsh-session-claims';
-import { ConversationLog } from '../../conversation-log';
-import {
-  authorityScope,
-  issueEventAuthority,
-  withAuthoritySource,
-  type AuthorityScope,
-} from '../../turn-authority';
+import { addPersonMessage } from '../../store-units';
+import { authorityScope, withAuthoritySource, type AuthorityScope } from '../../turn-authority';
+import { issueEventAuthority } from '../../event-authority-issue';
 import { durableStoreUnit } from '../../../store/host/unit';
 import {
   assertHeldQueued,
@@ -52,7 +49,7 @@ export function childTitle(label: string, task: string): string {
   return line.slice(0, 60).trim() === '' ? UNNAMED_CHILD : line.slice(0, 60).trim();
 }
 
-function parentOf(store: Store, launch: NativeChildLaunch): AiChatRow {
+function parentOf(store: HostStore, launch: NativeChildLaunch): AiChatRow {
   const parentSession = launch.header.parentSession;
   if (launch.header.origin !== 'subagent' || parentSession === undefined)
     throw new ApiError('invalid_request', 'A native child session must name its parent session.');
@@ -129,20 +126,19 @@ function runOf(parts: RunParts): AiAgentRun {
 
 function taskEvent(
   ports: {
-    readonly store: Store;
-    readonly conversation: ConversationLog;
+    readonly store: HostStore;
     readonly held: HeldChats;
   },
   parent: AiChatRow,
   chat: AiChatRow,
   task: string,
 ): StoredEvent {
-  const { store, conversation, held } = ports;
+  const { store, held } = ports;
   const hops = store.assistantEvents.currentHops(parent.id) + 1;
   const row =
     task === ''
       ? undefined
-      : conversation.person({
+      : addPersonMessage(store, {
           chat,
           clientId: null,
           author: parent.title,
@@ -167,7 +163,7 @@ function taskEvent(
 }
 
 export function adoptNativeChild(
-  store: Store,
+  store: HostStore,
   launch: NativeChildLaunch,
   held: HeldChats,
 ): NativeChildProjection {
@@ -194,8 +190,7 @@ export function adoptNativeChild(
     authority: launch.principal,
     held,
   });
-  const conversation = new ConversationLog(store);
-  const event = taskEvent({ store, conversation, held }, parent, child, launch.task);
+  const event = taskEvent({ store, held }, parent, child, launch.task);
   const run = store.aiAgentRuns.upsert(runOf({ parent, child, event, launch, opened }));
   return { chat: child, run, opened };
 }
@@ -216,7 +211,7 @@ export interface SubagentSessionAdoption {
 }
 
 function adoptedSubagentSession(
-  store: Store,
+  store: HostStore,
   { create, held, scope }: SubagentSessionAdoption,
 ): NativeChildProjection {
   const { parentClaim, parentGrant, header } = create;
@@ -268,7 +263,7 @@ export function adoptSubagentSession(
 }
 
 function projectChildOpening(
-  store: Store,
+  store: HostStore,
   opened: DshSessionOpened,
   grant: HarnessGrant,
   cwd: string,

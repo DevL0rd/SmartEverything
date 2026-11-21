@@ -2,7 +2,7 @@ import type { DriveItem } from '@smarteverything/domain';
 import { MAX_FRAME_BYTES, type Attr } from '@smarteverything/domain/drive-mount';
 import type { DriveInode } from '../../store/repositories/drive-inodes';
 import type { DriveItemEntry } from '../../store/repositories/drive-items';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { driveAccess, itemAccess, type DriveActor, type ItemAccess } from '../access';
 import { attrOf, sizeOf } from '../posix/attr';
@@ -70,7 +70,7 @@ class NodeReader {
   private baseItem: DriveItem | null | undefined;
 
   constructor(
-    private readonly store: Store,
+    private readonly store: HostStore,
     private readonly scope: NodeScope,
   ) {}
 
@@ -160,7 +160,10 @@ class NodeReader {
     return { inode, item, access, nlink: this.store.driveInodes.linkCount(inode.id) };
   }
 
-  window(directory: PosixNode, after: string | null): ReturnType<Store['driveItems']['children']> {
+  window(
+    directory: PosixNode,
+    after: string | null,
+  ): ReturnType<HostStore['driveItems']['children']> {
     return this.store.driveItems.children({
       rootId: this.scope.driveId,
       parentId: directory.item?.id ?? null,
@@ -199,20 +202,20 @@ class NodeReader {
   }
 }
 
-export function nodeIn(store: Store, input: NodeInput): PosixNode {
+export function nodeIn(store: HostStore, input: NodeInput): PosixNode {
   const reader = new NodeReader(store, input.scope);
   if (input.mode === 'crossing') return reader.crossing(input.ino);
   return input.mode === 'directory' ? reader.directory(input.ino) : reader.node(input.ino);
 }
 
-export function childIn(store: Store, input: ChildInput): FoundChild {
+export function childIn(store: HostStore, input: ChildInput): FoundChild {
   const reader = new NodeReader(store, input.scope);
   const parent = input.crossing ? reader.crossing(input.parentIno) : reader.node(input.parentIno);
   if (parent.inode.type !== 'dir') throw posix('ENOTDIR', 'That is not a folder.');
   return { parent, child: reader.childOf(parent, input.name) };
 }
 
-export function directoryIn(store: Store, input: DirectoryInput): DirectoryWindow {
+export function directoryIn(store: HostStore, input: DirectoryInput): DirectoryWindow {
   const reader = new NodeReader(store, input.scope);
   const directory = reader.directory(input.ino);
   const after = input.cursor === 0 ? null : (input.after ?? reader.nameAt(directory, input.cursor));

@@ -9,31 +9,31 @@ export interface SessionCallers {
 }
 
 export function messageOfEvent(
-  events: Pick<Store['assistantEvents'], 'event'>,
-): (eventId: string) => string | null {
-  return (eventId) => events.event(eventId).message_id;
+  store: Pick<Store, 'host'>,
+): (eventId: string) => Promise<string | null> {
+  return async (eventId) => (await store.host.call('assistantEvents', 'event', eventId)).message_id;
 }
 
 export class HarnessMemorySessions implements MemorySessions {
   constructor(
     private readonly callers: SessionCallers,
-    private readonly messageOf: (eventId: string) => string | null,
+    private readonly messageOf: (eventId: string) => Promise<string | null>,
     private readonly textOf: (messageId: string) => Promise<string>,
   ) {}
 
   async latest(sessionId: string): Promise<LatestMessage | null> {
-    const id = this.principal(sessionId).messageId;
+    const id = (await this.principal(sessionId)).messageId;
     return id === null ? null : { id, text: await this.textOf(id) };
   }
 
-  principal(sessionId: string): MemoryPrincipal {
+  async principal(sessionId: string): Promise<MemoryPrincipal> {
     const caller = this.callers.caller(sessionId);
     const event = caller.authority?.event_id;
     return {
       profileId: caller.profileId,
       role: caller.role,
       chatId: caller.chatId,
-      messageId: event === undefined ? null : this.messageOf(event),
+      messageId: event === undefined ? null : await this.messageOf(event),
     };
   }
 }

@@ -4,7 +4,7 @@ import type { DriveItemsRepository } from '../../store/repositories/drive-items'
 import type { PhotoDescriptionsRepository } from '../../store/repositories/photo-descriptions';
 import { PhotoDeviceZonesRepository } from '../../store/repositories/photo-device-zones';
 import type { PhotoMetaOverridesRepository } from '../../store/repositories/photo-meta-overrides';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { overrideFacts } from '../../photos/organise/override';
 import type { MediaFacts, Moment } from '../metadata-read';
@@ -177,7 +177,7 @@ export function recordMetadata(parts: MetadataParts, input: MetadataRecordInput)
   return { recorded: true, zone };
 }
 
-function partsOf(store: Store): MetadataParts {
+function partsOf(store: HostStore): MetadataParts {
   return {
     items: store.driveItems,
     descriptions: store.photoDescriptions,

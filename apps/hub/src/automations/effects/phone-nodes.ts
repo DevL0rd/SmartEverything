@@ -22,7 +22,7 @@ import { runDeviceOperation } from './device-operation';
 export interface PhoneEffectPorts {
   readonly store: Store;
   readonly tools: Pick<ToolHub, 'check' | 'call'>;
-  readonly ownerProfileId: () => string;
+  readonly ownerProfileId: () => Promise<string>;
 }
 
 const ID = z.string().min(1);
@@ -186,9 +186,9 @@ async function phoneOf(store: Store, id: string): Promise<string> {
 async function phonesOf(store: Store, targets: Targets): Promise<readonly string[]> {
   if (targets.phone !== undefined) return [await phoneOf(store, targets.phone)];
   const person = targets.person;
-  const owned = store.devices
-    .list()
-    .filter((device) => device.kind === 'phone' && device.details['profileId'] === person);
+  const owned = (await store.host.call('devices', 'list')).filter(
+    (device) => device.kind === 'phone' && device.details['profileId'] === person,
+  );
   if (owned.length === 0) throw new IntegrationError('NotFound', 'That person has no phone.');
   return owned.map((device) => device.id);
 }
@@ -203,7 +203,7 @@ export async function sendPhoneAction(
   phone: string,
   action: PhoneAction,
 ): Promise<void> {
-  const profileId = currentExecutionAuthority()?.profile_id ?? ports.ownerProfileId();
+  const profileId = currentExecutionAuthority()?.profile_id ?? (await ports.ownerProfileId());
   const answer = await runDeviceOperation(
     ports.tools,
     {

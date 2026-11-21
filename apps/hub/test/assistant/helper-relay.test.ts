@@ -36,7 +36,7 @@ beforeEach(async () => {
   owner = { profileId: store.profiles.activeOf(clientId).id, role: 'owner' };
   files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now,
   });
@@ -54,8 +54,8 @@ afterEach(async () => {
   await opened.close();
 });
 
-function chat(title: string): AiChatRow {
-  return chats.create(owner, { title, engine: TEST_ENGINE });
+async function chat(title: string): Promise<AiChatRow> {
+  return await chats.create(owner, { title, engine: TEST_ENGINE });
 }
 
 function sender(chatId: string): AskSender {
@@ -93,8 +93,8 @@ function expectHelperMessage(event: StoredEvent, helper: AiChatRow, text: string
 
 describe('helper messages in the parent thread', () => {
   it('shows an explicit chat_send from the parent to its helper without queuing a parent turn', async () => {
-    const parent = chat('Coordinator');
-    const helper = chats.create(owner, {
+    const parent = await chat('Coordinator');
+    const helper = await chats.create(owner, {
       title: 'Check the data',
       engine: CLAUDE_TEST_ENGINE,
       parent_id: parent.id,
@@ -123,12 +123,12 @@ describe('helper messages in the parent thread', () => {
         ],
       },
     ]);
-    expect(chatContext(store, parent.id).rows).toEqual([]);
+    expect((await chatContext(store, parent.id)).rows).toEqual([]);
   });
 
   it('shows a direct chat_send from the helper as a named participant and delivers it to the parent', async () => {
-    const parent = chat('Coordinator');
-    const helper = chats.create(owner, {
+    const parent = await chat('Coordinator');
+    const helper = await chats.create(owner, {
       title: 'Check the data',
       engine: CLAUDE_TEST_ENGINE,
       parent_id: parent.id,
@@ -146,10 +146,10 @@ describe('helper messages in the parent thread', () => {
   });
 
   it('delivers one named parent message for an unwaited helper completion', async () => {
-    const parent = chat('Coordinator');
+    const parent = await chat('Coordinator');
     const { store } = opened;
     const question = 'Please check the totals.';
-    new ConversationLog(store).person({
+    await new ConversationLog(store).person({
       chat: parent,
       clientId,
       author: 'Pat',
@@ -167,8 +167,8 @@ describe('helper messages in the parent thread', () => {
     expect(received(task)).toMatchObject({ text: 'Check the data', embeds: [] });
     store.assistantEvents.mark(task.id, 'answered_at');
     const text = 'The totals match.';
-    delegation.finished(task, text, true);
-    delegation.finished(task, text, true);
+    await delegation.finished(task, text, true);
+    await delegation.finished(task, text, true);
     await delegation.settled();
     const pending = store.assistantEvents.pending();
     expect(pending).toHaveLength(1);
@@ -180,7 +180,7 @@ describe('helper messages in the parent thread', () => {
       question,
       text,
     ]);
-    expect(chatContext(store, parent.id).rows.at(-1)).toEqual(received(report));
+    expect((await chatContext(store, parent.id)).rows.at(-1)).toEqual(received(report));
     await expect(providerMessages({ store, files }, parent, report, false)).resolves.toEqual([
       { role: 'user', content: [{ type: 'text', text: question }] },
       { role: 'user', content: [{ type: 'text', text }] },
@@ -188,9 +188,9 @@ describe('helper messages in the parent thread', () => {
   });
 
   it('keeps a message to an unrelated chat attributed to the helper’s working chat', async () => {
-    const parent = chat('Coordinator');
-    const other = chat('Other chat');
-    const helper = chats.create(owner, {
+    const parent = await chat('Coordinator');
+    const other = await chat('Other chat');
+    const helper = await chats.create(owner, {
       title: 'Check the data',
       engine: CLAUDE_TEST_ENGINE,
       parent_id: parent.id,
@@ -212,8 +212,8 @@ describe('helper messages in the parent thread', () => {
   });
 
   it('branches through canonical helper history and skips its transcript-only projections', async () => {
-    const parent = chat('Coordinator');
-    const helper = chats.create(owner, {
+    const parent = await chat('Coordinator');
+    const helper = await chats.create(owner, {
       title: 'Check the data',
       engine: CLAUDE_TEST_ENGINE,
       parent_id: parent.id,
@@ -227,12 +227,12 @@ describe('helper messages in the parent thread', () => {
     });
     const delivery = store.assistantEvents.event(outbound.eventId);
     store.assistantEvents.mark(delivery.id, 'answered_at');
-    delegation.finished(delivery, 'The totals match.', true);
+    await delegation.finished(delivery, 'The totals match.', true);
     await delegation.settled();
     const [report] = store.assistantEvents.pending();
     if (report === undefined) throw new Error('Expected one completion event.');
     const incoming = received(report);
-    conversation.responderInChat({
+    await conversation.responderInChat({
       chat: parent,
       replyTo: null,
       text: 'Supplemental transcript-only update.',
@@ -243,7 +243,7 @@ describe('helper messages in the parent thread', () => {
         helper_name: incoming.author,
       },
     });
-    const reply = conversation.responderInChat({
+    const reply = await conversation.responderInChat({
       chat: parent,
       replyTo: incoming.id,
       text: 'The report is ready.',

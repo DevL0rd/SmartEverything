@@ -17,9 +17,8 @@ import { resolveBudgets, startBudgets } from '@smarteverything/flow/state/budget
 import type { PlanRef, RunState } from '@smarteverything/flow/state/run-state';
 import { z } from 'zod';
 import type { CauseLink } from './driver/admission';
-import type { RunStart } from './driver/ports';
-import { stepContext } from './engine-v3-context';
-import type { ContextPorts } from './engine-v3-context';
+import { runContext } from './engine-v3-context';
+import type { ContextPorts, RunContext } from './engine-v3-context';
 import { triggerPayload, type TriggerFire } from './triggers-v3/payload';
 
 export interface CalleeLookup {
@@ -79,8 +78,8 @@ export function contextOf(
   subject: Pick<Subject, 'id' | 'program' | 'plan' | 'lookup'>,
   triggerKey: string | null,
   ports: ContextPorts,
-): RunStart['context'] {
-  return stepContext(
+): RunContext {
+  return runContext(
     {
       automationId: subject.id,
       plan: subject.plan,

@@ -200,7 +200,7 @@ function lightsOf(
   store: Store,
   ask: LightParams,
 ): { readonly lights: readonly DeviceRow[]; readonly skipped: readonly Skipped[] } {
-  const devices = resolveTarget(store, ask.target);
+  const devices = resolveTarget(store.live.home, ask.target);
   if (devices.length === 0) throw new ApiError('not_found', 'This target has no devices.');
   const skipped: Skipped[] = [];
   const lights: DeviceRow[] = [];

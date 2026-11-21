@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { imageAttachmentOf } from '../assistant/image-attachment';
+import type { HostStore } from '../store/host/host-store';
 import type { Store } from '../store/store';
 import { StoreNotFoundError } from '../store/context';
 import type { StoredAttachment } from '../store/repositories/assistant-chat';
 import { storeUnit } from '../store/host/unit';
-import { deviceIdReachable, scopesOf } from '../server/person-scope';
+import { deviceIdReachable, scopesOf } from '../server/person-scope-units';
 import type { PluginFiles } from './builtin/contract';
 
 export interface PictureLookup {
@@ -19,7 +20,7 @@ export type PictureFound =
   | { readonly kind: 'refused' };
 
 type PictureStore = Pick<
-  Store,
+  HostStore,
   'cameras' | 'devices' | 'personAccess' | 'localDevices' | 'assistantChat'
 >;
 
@@ -27,7 +28,7 @@ function snapshotOf(
   store: PictureStore,
   { pictureId, role, profileId }: PictureLookup,
 ): PictureFound | undefined {
-  let row: ReturnType<Store['cameras']['recording']>;
+  let row: ReturnType<HostStore['cameras']['recording']>;
   try {
     row = store.cameras.recording(pictureId);
   } catch (cause) {

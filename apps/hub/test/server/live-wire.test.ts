@@ -23,7 +23,7 @@ describe('wireText', () => {
     expect(wireText(notice)).toBe(JSON.stringify(notice));
   });
 
-  it('leaves the previous plugin stream value off the wire', () => {
+  it('sends an UPDATE with the new column values only, never the old ones', () => {
     const row = (value: number): object => ({
       plugin_id: 'adguard',
       stream: 'queries',
@@ -45,9 +45,10 @@ describe('wireText', () => {
       operation: 'UPDATE',
       key: { plugin_id: 'adguard', stream: 'queries' },
       set: { value: { rows: Array.from({ length: 50 }, (_, index) => index + 1) } },
-      previous: {},
       seq: 1,
     });
+    const newValue = JSON.stringify({ rows: Array.from({ length: 50 }, (_, index) => index + 1) });
+    expect(wireText(change).length).toBeLessThan(newValue.length + 200);
   });
 
   it('sends an automation run only the counter columns it changed', () => {
@@ -92,7 +93,6 @@ describe('wireText', () => {
       operation: 'UPDATE',
       key: { id: automation.id },
       set: { last_run_at: ran.last_run_at, run_count: 6 },
-      previous: { last_run_at: automation.last_run_at, run_count: 5 },
       seq: 9,
     });
     expect(text.length * 4).toBeLessThan(JSON.stringify(change).length);

@@ -18,6 +18,7 @@ const PART_SCOPES: Readonly<Record<ComputerPartName, ComputerScope | null>> = {
   gpu: 'metrics',
   memory: 'metrics',
   disks: 'metrics',
+  disk_usage: 'metrics',
   network: 'metrics',
   sensors: 'metrics',
   power: 'metrics',
@@ -84,6 +85,17 @@ export class MergedParts {
       ...rest,
       ...(processes === undefined ? {} : { processes: this.mergeProcesses(processes) }),
     };
+  }
+
+  changed(incoming: ComputerPartsUpdate): ComputerPartsUpdate {
+    const sampled: ReadonlySet<string> = new Set(SAMPLE_TOPICS);
+    return pickParts(
+      incoming,
+      (name) =>
+        !sampled.has(name) ||
+        name === 'processes' ||
+        JSON.stringify(incoming[name]) !== JSON.stringify(this.parts[name]),
+    );
   }
 
   retain(topics: ReadonlySet<string>): void {

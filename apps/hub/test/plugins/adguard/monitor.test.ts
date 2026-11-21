@@ -36,12 +36,12 @@ interface Rig {
   readonly published: AdGuardSnapshot[];
 }
 
-function rig(): Rig {
+function rig(growth = 10): Rig {
   let queries = 0;
   const { fetcher, calls } = fakeHttp({
     'GET /control/status': STATUS,
     'GET /control/stats': () => {
-      queries += 10;
+      queries += growth;
       return statsReply(queries, queries / 5);
     },
     'GET /control/clients': { clients: [], auto_clients: [] },
@@ -97,6 +97,15 @@ describe('AdGuard recording', () => {
     expect(recorded.filter((entry) => entry.rate !== null).length).toBeGreaterThanOrEqual(59);
     expect(recorded.at(-1)?.rate?.lookupsPerSecond).toBeCloseTo(10, 0);
     expect(published.length).toBeLessThanOrEqual(3);
+  });
+
+  it('sends nothing to everyone after the first frame while the counters stay the same', async () => {
+    const { monitor, recorded, published } = rig(0);
+    monitor.setCadence('slow');
+    await vi.advanceTimersByTimeAsync(185_000);
+    monitor.stop();
+    expect(recorded.length).toBeGreaterThanOrEqual(180);
+    expect(published).toHaveLength(1);
   });
 
   it('reads stats every second, status every 10 s and clients and filters every minute', async () => {

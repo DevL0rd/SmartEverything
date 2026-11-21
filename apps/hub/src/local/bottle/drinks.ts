@@ -5,7 +5,7 @@ import type {
   BottleReadingsRepository,
   StoredDrink,
 } from '../../store/repositories/bottle-readings';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { HomeClock } from './clock';
 import type { BottleEntryConfig } from './config';
 
@@ -17,7 +17,7 @@ export interface DrinkItem {
 }
 
 export interface DrinksDeps {
-  readonly store: Pick<Store, 'healthEntries'>;
+  readonly store: Pick<HostStore, 'healthEntries'>;
   readonly readings: Pick<
     BottleReadingsRepository,
     'insertDrink' | 'attachEntry' | 'drink' | 'entryVersion' | 'setDrinkMl'

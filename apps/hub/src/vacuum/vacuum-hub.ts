@@ -1,6 +1,7 @@
 import {
   ApiError,
   NO_FAULT_TEXT,
+  presentDevice,
   VACUUM_FAULT_KEY,
   VACUUM_ROOM_LINKS_KEY,
   type CapabilityKey,
@@ -27,21 +28,19 @@ import { VacuumEventFeed, isVacuumFeedKey } from './event-feed';
 import { VacuumLinkSlot, type VacuumDeviceIo } from './link';
 import { VacuumLiveRoute, type LiveRouteUpdate, type RouteTimer } from './live-route';
 import { VacuumLiveScene } from './live-scene';
-import { MapCache } from './map-cache';
+import { hostMapStore, MapCache } from './map-cache';
+import { CleanBook } from './clean-book';
 import type { MapDecoder } from './map-decode';
 import { MapFetcher, type MapIdentity } from './map-fetch';
 import { VacuumMapPublication } from './map-publication';
 import { VacuumMapService } from './map-service';
 import { pushedObjectsOf } from './pushed-objects';
-import { VacuumRoomLinks } from './room-links';
+import { hostRoomLinks, VacuumRoomLinks } from './room-links';
 import type { ViewerSource } from './viewer-demand';
 import { VacuumVideo, type VacuumVideoPorts } from './video-session';
 
 export interface VacuumHubPorts {
-  readonly store: Pick<
-    Store,
-    'devices' | 'vacuumScenes' | 'vacuumCleans' | 'vacuumRoomLinks' | 'rooms'
-  >;
+  readonly store: Pick<Store, 'live' | 'host'>;
   readonly state: {
     readonly valueOf: (deviceId: string, key: CapabilityKey) => JsonValue | undefined;
     readonly push: (provider: Provider, update: StateUpdate) => void;
@@ -60,6 +59,10 @@ const FAULT_SOURCES: ReadonlySet<CapabilityKey> = new Set([
   vacuumPropertyKey('fault'),
 ]);
 
+function isVacuum(device: DeviceRow | undefined): device is DeviceRow {
+  return device !== undefined && presentDevice(device).family === 'vacuum';
+}
+
 function isMapVacuum(device: DeviceRow | undefined): device is DeviceRow {
   return device?.provider === 'xiaomi' && isVacuumModel(device.model);
 }
@@ -67,6 +70,7 @@ function isMapVacuum(device: DeviceRow | undefined): device is DeviceRow {
 export class VacuumHub {
   readonly link = new VacuumLinkSlot();
   readonly cache: MapCache;
+  private readonly book: CleanBook;
   private readonly tasks = new Map<string, number | null>();
   private readonly attached = new Set<string>();
   private readonly videoFollows = new Map<string, () => void>();
@@ -82,7 +86,8 @@ export class VacuumHub {
   private started = false;
 
   constructor(private readonly ports: VacuumHubPorts) {
-    this.cache = new MapCache(ports.store.vacuumScenes);
+    this.cache = new MapCache(hostMapStore(ports.store.host));
+    this.book = new CleanBook(ports.store.host);
     this.liveScene = new VacuumLiveScene({
       cache: this.cache,
       route: (deviceId): Route | null => this.route.route(deviceId),
@@ -102,7 +107,7 @@ export class VacuumHub {
     });
     this.video = new VacuumVideo({
       ...ports.video,
-      devices: ports.store.devices,
+      devices: ports.store.live.home.devices,
       viewers: ports.viewers,
       io: (deviceId): VacuumDeviceIo | null => this.ioOf(deviceId),
       now: ports.now,
@@ -138,19 +143,37 @@ export class VacuumHub {
     return this.cleans.claim(device, event);
   }
 
-  start(devices: readonly DeviceRecord[]): void {
+  async start(devices: readonly DeviceRecord[]): Promise<void> {
+    const vacuums = devices.filter((device) =>
+      isVacuum(this.ports.store.live.home.devices.find(device.id)),
+    );
+    const held = await this.ports.store.host.read('vacuumHeld', {
+      deviceIds: vacuums.map((device) => device.id),
+    });
+    for (const { deviceId, scenes, cleanIds, open } of held) {
+      this.cache.hold(deviceId, scenes);
+      this.book.hold(deviceId, cleanIds, open);
+    }
     this.started = true;
     this.sync(devices);
   }
 
   sync(devices: readonly DeviceRecord[]): void {
     if (!this.started) return;
+    for (const device of devices) {
+      if (!isVacuum(this.ports.store.live.home.devices.find(device.id))) continue;
+      this.cache.holdEmpty(device.id);
+      this.book.holdEmpty(device.id);
+    }
     const present = new Set(devices.map((device) => device.id));
     for (const deviceId of [...this.attached].filter((id) => !present.has(id))) {
       this.detach(deviceId);
     }
     for (const device of devices) {
-      if (!this.attached.has(device.id) && isMapVacuum(this.ports.store.devices.find(device.id))) {
+      if (
+        !this.attached.has(device.id) &&
+        isMapVacuum(this.ports.store.live.home.devices.find(device.id))
+      ) {
         this.attach(device.id);
       }
     }
@@ -169,10 +192,14 @@ export class VacuumHub {
 
   routes(): VacuumRouteServices {
     return {
-      devices: this.ports.store.devices,
+      devices: this.ports.store.live.home.devices,
       scenes: this.cache,
       maps: this.maps,
-      cleans: this.ports.store.vacuumCleans,
+      cleans: {
+        list: (deviceId, query) =>
+          this.ports.store.host.call('vacuumCleans', 'list', deviceId, query),
+        get: (deviceId, id) => this.ports.store.host.call('vacuumCleans', 'get', deviceId, id),
+      },
       video: this.video,
       roomLinks: this.roomLinks,
       control: {
@@ -193,7 +220,7 @@ export class VacuumHub {
   }
 
   private seedFaults(deviceId: string): void {
-    const device = this.ports.store.devices.find(deviceId);
+    const device = this.ports.store.live.home.devices.find(deviceId);
     if (device === undefined) return;
     this.feed.baseline(
       device.external_id,
@@ -224,12 +251,12 @@ export class VacuumHub {
   }
 
   private ioOf(deviceId: string): VacuumDeviceIo | null {
-    const device = this.ports.store.devices.find(deviceId);
+    const device = this.ports.store.live.home.devices.find(deviceId);
     return device === undefined ? null : this.link.io(device.external_id);
   }
 
   private identityOf(deviceId: string): MapIdentity | null {
-    const device = this.ports.store.devices.find(deviceId);
+    const device = this.ports.store.live.home.devices.find(deviceId);
     return isMapVacuum(device) ? { model: device.model, did: device.external_id } : null;
   }
 
@@ -240,7 +267,7 @@ export class VacuumHub {
   }
 
   private recordFeed(change: StateChange): void {
-    const device = this.ports.store.devices.find(change.deviceId);
+    const device = this.ports.store.live.home.devices.find(change.deviceId);
     if (device === undefined) return;
     const occurredAt = this.ports.now().toISOString();
     const events = this.feed.observe({ ...change, externalId: device.external_id, occurredAt });
@@ -261,7 +288,7 @@ export class VacuumHub {
   }
 
   private owned(deviceId: string): DeviceRow | undefined {
-    const device = this.ports.store.devices.find(deviceId);
+    const device = this.ports.store.live.home.devices.find(deviceId);
     if (device === undefined) this.ports.log.warn('vacuum.device_unknown', { deviceId });
     return device;
   }
@@ -291,8 +318,8 @@ export class VacuumHub {
   private roomLinksOf(): VacuumRoomLinks {
     const { store, state, now, log } = this.ports;
     return new VacuumRoomLinks({
-      links: store.vacuumRoomLinks,
-      rooms: store.rooms,
+      links: hostRoomLinks(store.host),
+      rooms: store.live.home.rooms,
       scene: (deviceId): VacuumScene | undefined => this.cache.latest(deviceId, 'current'),
       stored: (deviceId): JsonValue | undefined => state.valueOf(deviceId, VACUUM_ROOM_LINKS_KEY),
       publish: (deviceId, text): void => {
@@ -313,8 +340,8 @@ export class VacuumHub {
     const { store, state, events, now, log } = this.ports;
     return cleanTrackerOf(
       {
-        store,
-        cleans: store.vacuumCleans,
+        devices: store.live.home.devices,
+        cleans: this.book,
         map: cleanMapOf(this.cache, (deviceId) => this.tasks.get(deviceId) ?? null),
         now,
         log,

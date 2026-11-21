@@ -1,0 +1,214 @@
+import {
+  type API_ENDPOINTS as E,
+  ApiError,
+  modelDeviceIdentity,
+  modelIdentityKey,
+  type DeviceModels,
+  type DeviceRow,
+  type ModelCatalogRow,
+  type ModelDevice,
+  type ModelMetadataIndex,
+  type ModelOverrideRow,
+  type ModelOverrideScope,
+  type ModelResolution,
+} from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
+import { z } from 'zod';
+import type { ModelCatalogService } from '../../models/catalog-service';
+import {
+  modelDeviceOf,
+  modelViewOf,
+  resolveDeviceModel,
+  type ModelResolveSources,
+} from '../../models/device-model';
+import type { DevicesRepository } from '../../store/repositories/devices';
+import type { ModelAssetsRepository } from '../../store/repositories/model-assets';
+import type { ModelOverridesRepository } from '../../store/repositories/model-overrides';
+
+export interface ModelStoreSources extends ModelResolveSources {
+  readonly devices: Pick<DevicesRepository, 'byId'>;
+  readonly catalog: Pick<ModelCatalogService, 'catalog' | 'reportTie' | 'storeUserSpec'>;
+  readonly overrides: Pick<ModelOverridesRepository, 'all' | 'set' | 'reset'>;
+  readonly assets: Pick<ModelAssetsRepository, 'find' | 'bytes' | 'save' | 'saveGlb'>;
+  readonly metadata: Pick<ModelMetadataIndex, 'find'>;
+}
+
+export type ModelListing = z.output<typeof E.listModels.query>;
+
+export type ModelOverrideInput = z.output<typeof E.setDeviceModelOverride.body>;
+
+type Listing = ModelListing;
+
+type OverrideInput = ModelOverrideInput;
+
+const log = new Logger('hub.models');
+
+const SPEC_FINISHES = z.looseObject({
+  finishes: z.record(z.string(), z.unknown()).optional(),
+  defaultFinish: z.string().optional(),
+});
+
+interface Finishes {
+  readonly finishes: readonly string[];
+  readonly defaultFinish: string | null;
+}
+
+const NO_FINISHES: Finishes = { finishes: [], defaultFinish: null };
+
+function overrideTarget(scope: ModelOverrideScope, subject: ModelDevice): string {
+  switch (scope) {
+    case 'device':
+      return subject.id;
+    case 'identity':
+      return modelIdentityKey(modelDeviceIdentity(subject));
+    case 'family':
+      return subject.family;
+  }
+}
+
+function haystackOf(row: ModelCatalogRow, metadata: ModelStoreSources['metadata']): string {
+  const names = metadata.find(row.id)?.names;
+  return [row.id, row.title, row.category, ...row.aliases, ...row.brands]
+    .concat(names === undefined ? [] : [names.display, ...names.synonyms])
+    .join('\n')
+    .toLowerCase();
+}
+
+export function listModels(
+  rows: readonly ModelCatalogRow[],
+  query: Listing,
+  metadata: ModelStoreSources['metadata'],
+): ModelCatalogRow[] {
+  const words = (query.q ?? '')
+    .toLowerCase()
+    .split(/\s+/u)
+    .filter((word) => word !== '');
+  return rows.filter((row) => {
+    if (
+      query.category !== undefined &&
+      row.category.toLowerCase() !== query.category.toLowerCase()
+    ) {
+      return false;
+    }
+    if (query.family !== undefined && !row.match.families.includes(query.family)) return false;
+    const haystack = words.length === 0 ? '' : haystackOf(row, metadata);
+    return words.every((word) => haystack.includes(word));
+  });
+}
+
+function finishesOf(assets: ModelStoreSources['assets'], hash: string | null): Finishes {
+  if (hash === null) return NO_FINISHES;
+  const stored = assets.bytes(hash);
+  if (stored?.kind !== 'spec') return NO_FINISHES;
+  const spec = SPEC_FINISHES.parse(JSON.parse(new TextDecoder().decode(stored.bytes)));
+  return {
+    finishes: Object.keys(spec.finishes ?? {}),
+    defaultFinish: spec.defaultFinish ?? null,
+  };
+}
+
+function specHashOf(services: ModelStoreSources, resolution: ModelResolution): string | null {
+  const { main } = resolution;
+  if (main === null) return null;
+  return main.kind === 'asset'
+    ? main.hash
+    : (services.catalog.catalog().find(main.modelId)?.spec_sha256 ?? null);
+}
+
+function applying(
+  overrides: readonly ModelOverrideRow[],
+  subject: ModelDevice,
+): ModelOverrideRow[] {
+  const keys = new Set(
+    (['device', 'identity', 'family'] as const).map(
+      (scope) => `${scope}\n${overrideTarget(scope, subject)}`,
+    ),
+  );
+  return overrides.filter((row) => keys.has(`${row.scope}\n${row.target}`));
+}
+
+export function deviceModels(services: ModelStoreSources, device: DeviceRow): DeviceModels {
+  const { subject, resolution, overrides } = resolveDeviceModel(services, device);
+  const catalog = services.catalog.catalog();
+  const finishes = finishesOf(services.assets, specHashOf(services, resolution));
+  return {
+    device_id: device.id,
+    model: modelViewOf(resolution),
+    params: { ...resolution.params },
+    identity: {
+      brand: subject.brand,
+      model_string: subject.model,
+      hardware_model: subject.hardwareModel ?? subject.product ?? null,
+    },
+    candidates: resolution.candidates.flatMap((id) => {
+      const row = catalog.find(id);
+      return row === undefined ? [] : [{ id: row.id, title: row.title, category: row.category }];
+    }),
+    finishes: [...finishes.finishes],
+    default_finish: finishes.defaultFinish,
+    overrides: applying(overrides, subject),
+    issues: [...resolution.issues],
+  };
+}
+
+function checkedSource(services: ModelStoreSources, input: OverrideInput): string | null {
+  if (input.model_id !== undefined) {
+    const row = services.catalog.catalog().find(input.model_id);
+    if (row === undefined) {
+      throw new ApiError('not_found', `There is no model ${input.model_id} in the catalogue.`);
+    }
+    return row.spec_sha256;
+  }
+  const asset = input.asset_hash === undefined ? undefined : services.assets.find(input.asset_hash);
+  if (asset === undefined) {
+    throw new ApiError('not_found', 'There is no uploaded model file with this hash.');
+  }
+  return asset.kind === 'spec' ? asset.sha256 : null;
+}
+
+function checkedFinish(services: ModelStoreSources, input: OverrideInput): void {
+  const specHash = checkedSource(services, input);
+  if (input.finish === undefined) return;
+  if (!finishesOf(services.assets, specHash).finishes.includes(input.finish)) {
+    throw new ApiError('invalid_request', `This model has no finish named ${input.finish}.`);
+  }
+}
+
+export function setOverride(
+  services: ModelStoreSources,
+  device: DeviceRow,
+  input: OverrideInput,
+  setBy: string,
+): ModelOverrideRow {
+  checkedFinish(services, input);
+  const target = overrideTarget(input.scope, modelDeviceOf(device));
+  const row = services.overrides.set({
+    scope: input.scope,
+    target,
+    modelId: input.model_id,
+    assetHash: input.asset_hash,
+    finish: input.finish,
+    params: input.params,
+    setBy,
+  });
+  log.info('model_override.set', {
+    deviceId: device.id,
+    scope: row.scope,
+    modelId: row.model_id,
+    assetHash: row.asset_hash,
+    finish: row.finish,
+    setBy: row.set_by,
+  });
+  return row;
+}
+
+export function resetOverride(
+  services: ModelStoreSources,
+  device: DeviceRow,
+  scope: ModelOverrideScope,
+): z.output<typeof E.resetDeviceModelOverride.response> {
+  const target = overrideTarget(scope, modelDeviceOf(device));
+  const removed = services.overrides.reset(scope, target) !== undefined;
+  log.info('model_override.reset', { deviceId: device.id, scope, removed });
+  return { scope, target, removed };
+}

@@ -10,12 +10,12 @@ export async function closeNativeHistory(
   owner: ChatOwner,
   active: boolean,
 ): Promise<void> {
-  service.own(owner, chat.id);
+  await service.own(owner, chat.id);
   const id = service.binding(chat).session_id;
   if (id === null) return;
-  const claim = service.store.dshSessions.attached(id, owner.profileId);
+  const claim = await service.store.host.call('dshSessions', 'attached', id, owner.profileId);
   if (claim === null || !service.directory.holds(claim.target, id, claim.epoch)) return;
-  const session = service.state(owner, chat.id);
+  const session = await service.state(owner, chat.id);
   if (session.state === 'switching')
     throw new ApiError('conflict', 'Finish the machine change before changing this history.');
   const control = { session_id: id, expected_epoch: claim.epoch };

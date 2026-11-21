@@ -1,3 +1,4 @@
+import { testStore, type TestStore, type SeededStore } from '../support/store';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -14,10 +15,8 @@ import type { OperatingContext } from '../../src/extensions/mcp/tools/acting';
 import { DRIVE_EDIT } from '../../src/extensions/mcp/tools/drive-edits';
 import { DRIVE_READ } from '../../src/extensions/mcp/tools/drive-reads';
 import { SelectionImages } from '../../src/extensions/mcp/tools/selected-tool';
-import type { Store } from '../../src/store/store';
 import { operatingContext, selected, type Answers, type Call } from './mcp-rig';
 import { captureLogs } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 import { sharedDriveRoot } from '../store/drive-roots-fixture';
 
 const ROOT = randomUUID();
@@ -36,7 +35,7 @@ let context: OperatingContext;
 function operating(client: ClientRow, profile: ProfileRow): OperatingContext {
   return operatingContext(
     {
-      store: (): Store => opened.store,
+      store: (): SeededStore => opened.store,
       record: (call): void => {
         calls.push(call);
       },

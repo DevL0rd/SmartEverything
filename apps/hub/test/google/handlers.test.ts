@@ -123,15 +123,6 @@ async function linkAnn(): Promise<void> {
   await rig.hub.runner.sync(rig.ann.profileId, 'manual');
 }
 
-function thrownBy(work: () => void): unknown {
-  try {
-    work();
-  } catch (cause) {
-    return cause;
-  }
-  return null;
-}
-
 async function readLog(person: TestPerson, query: object = {}): Promise<GoogleSyncLogEntry[]> {
   return z
     .array(GOOGLE_SYNC_LOG_ENTRY)
@@ -372,11 +363,9 @@ describe('push receiver', () => {
     const { channelId, resourceId } = await openChannel();
     const good = channelToken(KEY, channelId);
     for (const sent of [headers('wrong', resourceId), {}, headers(good, 'elsewhere')]) {
-      expect(
-        thrownBy(() => {
-          receivePush(rig.hub.receiver, { channelId, headers: sent });
-        }),
-      ).toMatchObject({ code: 'forbidden' });
+      await expect(
+        receivePush(rig.hub.receiver, { channelId, headers: sent }),
+      ).rejects.toMatchObject({ code: 'forbidden' });
     }
     await expect(
       rig.routes.googlePush.run(
@@ -394,11 +383,11 @@ describe('push receiver', () => {
       rig.test.store.googleSyncLog
         .list(rig.ann.profileId)
         .filter((entry) => entry.trigger === 'push' && entry.product === 'calendar').length;
-    receivePush(rig.hub.receiver, {
+    await receivePush(rig.hub.receiver, {
       channelId,
       headers: headers(good, resourceId, 'sync'),
     });
-    receivePush(rig.hub.receiver, { channelId, headers: headers(good, resourceId) });
+    await receivePush(rig.hub.receiver, { channelId, headers: headers(good, resourceId) });
     await vi.waitFor(() => {
       expect(pushes()).toBe(1);
     });

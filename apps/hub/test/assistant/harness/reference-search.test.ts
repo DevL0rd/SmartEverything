@@ -76,7 +76,7 @@ beforeEach(async () => {
       });
     },
   });
-  projects = new ProjectFilesService(rig.opened.layout, rig.opened.store.aiChats);
+  projects = new ProjectFilesService(rig.opened.layout, rig.opened.store.live.chats);
   references = new ReferenceService(rig.opened.store, projects);
   references.attachNative(['dsh'], harnessReferences(rig.service));
   const created = rig.newChat(rig.desk.target);

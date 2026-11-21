@@ -5,7 +5,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { SecretStore } from '../secrets/store';
-import type { SettingsKvRepository } from '../store/repositories/settings-kv';
+import type { HomeMirror } from '../store/home-mirror';
 
 const SETTINGS_KEY = 'mail';
 const PASSWORD_REFERENCE = 'mail.password';
@@ -26,7 +26,7 @@ export interface MailConfig extends StoredSettings {
 }
 
 export interface MailSettingsDeps {
-  readonly settingsKv: Pick<SettingsKvRepository, 'read' | 'save'>;
+  readonly saved: Pick<HomeMirror['saved'], 'read' | 'save'>;
   readonly secrets: Pick<SecretStore, 'apiKey' | 'saveApiKey' | 'removeApiKey'>;
 }
 
@@ -52,14 +52,14 @@ export class MailSettingsStore {
     } else if (password.action === 'clear' || settings.user === null) {
       await this.deps.secrets.removeApiKey(PASSWORD_REFERENCE);
     }
-    this.deps.settingsKv.save(SETTINGS_KEY, STORED_SETTINGS.parse(settings));
+    await this.deps.saved.save(SETTINGS_KEY, STORED_SETTINGS.parse(settings));
     const view = this.view();
     if (view === null) throw new Error('The mail settings were saved but cannot be read back.');
     return view;
   }
 
   private stored(): StoredSettings | null {
-    const raw = this.deps.settingsKv.read(SETTINGS_KEY);
+    const raw = this.deps.saved.read(SETTINGS_KEY);
     return raw === null ? null : STORED_SETTINGS.parse(raw);
   }
 }

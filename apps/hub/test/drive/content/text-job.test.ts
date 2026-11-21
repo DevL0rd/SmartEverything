@@ -20,7 +20,7 @@ import {
   folderIconFile,
 } from '../../../src/drive/content/folder-icon/refresh';
 import { DriveSearch } from '../../../src/drive/search';
-import { updateDriveSettings } from '../../../src/drive/settings';
+import { saveDriveSettings } from '../../../src/drive/units/settings';
 import { DriveFeedRepository } from '../../../src/store/repositories/drive-feed';
 import { DriveFolderIconsRepository } from '../../../src/store/repositories/drive-folder-icons';
 import { DriveItemTextRepository } from '../../../src/store/repositories/drive-item-text';
@@ -305,7 +305,7 @@ describe('reading the text of a drive', () => {
     put('old.txt', 'kept words');
     await scan();
     await readText();
-    updateDriveSettings(
+    saveDriveSettings(
       { settingsKv: fixture.settings, write: (work) => fixture.context.write(work) },
       { contentIndexing: false },
     );
@@ -315,7 +315,7 @@ describe('reading the text of a drive', () => {
     expect(stateOf('new.txt')).toBeUndefined();
     expect(searchFor('kept')).toEqual(['old.txt']);
     expect(searchFor('unread')).toEqual([]);
-    updateDriveSettings(
+    saveDriveSettings(
       { settingsKv: fixture.settings, write: (work) => fixture.context.write(work) },
       { contentIndexing: true },
     );
@@ -326,7 +326,7 @@ describe('reading the text of a drive', () => {
   it('starts nothing while indexing is paused', async () => {
     put('a.txt', 'paused words');
     await scan();
-    updateDriveSettings(
+    saveDriveSettings(
       { settingsKv: fixture.settings, write: (work) => fixture.context.write(work) },
       { indexingPaused: true },
     );
@@ -420,7 +420,7 @@ describe('folder icons during the job', () => {
   });
 
   it('keeps reading icons while content indexing is off', async () => {
-    updateDriveSettings(
+    saveDriveSettings(
       { settingsKv: fixture.settings, write: (work) => fixture.context.write(work) },
       { contentIndexing: false },
     );

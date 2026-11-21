@@ -1,7 +1,6 @@
-import { background } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { AiAgentRun, AiChatRow } from '@smarteverything/domain';
-import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 import type { ConversationLog } from '../../conversation-log';
 
 interface LiveEvent {
@@ -39,14 +38,14 @@ interface LiveRun {
   readonly chatId: string;
 }
 
-function liveRun(store: Store, sessionId: string): LiveRun | undefined {
+function liveRun(store: HostStore, sessionId: string): LiveRun | undefined {
   const run = store.aiAgentRuns.currentOfSession(sessionId);
   if (run?.completed_at !== null || run.child_chat_id === null) return undefined;
   return { run, chatId: run.child_chat_id };
 }
 
 export function touchNativeChild(
-  store: Store,
+  store: HostStore,
   sessionId: string,
   appended: LiveEvents,
 ): AiAgentRun | undefined {
@@ -72,40 +71,48 @@ function taskOf(events: LiveEvents): string | undefined {
   return undefined;
 }
 
-function recordTask(
-  ports: { readonly store: Store; readonly conversation: ConversationLog },
-  chat: AiChatRow,
-  run: AiAgentRun,
-  task: string,
-): void {
-  const { store, conversation } = ports;
-  const parent = store.aiChats.chat(run.parent_chat_id);
-  const row = conversation.person({
+export interface ChildTask {
+  readonly chat: AiChatRow;
+  readonly author: string;
+  readonly hops: number;
+  readonly task: string;
+}
+
+export async function recordNativeChildTask(
+  conversation: ConversationLog,
+  child: ChildTask,
+): Promise<void> {
+  const { chat, author: parentTitle, hops, task } = child;
+  const row = await conversation.person({
     chat,
     clientId: null,
-    author: parent.title,
+    author: parentTitle,
     text: task,
     files: [],
     origin: {
       source: 'chat',
       plugin_id: null,
       device_id: null,
-      name: parent.title,
-      hops: store.assistantEvents.event(run.source_id).hops,
+      name: parentTitle,
+      hops,
     },
   });
-  background(conversation.stateOf(row.id, 'delivered'), 'dsh.child_task_state_failed', {
-    messageId: row.id,
-  });
+  await conversation.stateOf(row.id, 'delivered');
 }
 
-export function projectNativeChildTask(
-  ports: { readonly store: Store; readonly conversation: ConversationLog },
+export function nativeChildTask(
+  store: HostStore,
   sessionId: string,
   appended: LiveEvents,
-): void {
-  const live = liveRun(ports.store, sessionId);
-  if (live?.run.task !== null) return;
+): ChildTask | null {
+  const live = liveRun(store, sessionId);
+  if (live?.run.task !== null) return null;
   const task = taskOf(appended);
-  if (task !== undefined) recordTask(ports, ports.store.aiChats.chat(live.chatId), live.run, task);
+  if (task === undefined) return null;
+  return {
+    chat: store.aiChats.chat(live.chatId),
+    author: store.aiChats.chat(live.run.parent_chat_id).title,
+    hops: store.assistantEvents.event(live.run.source_id).hops,
+    task,
+  };
 }

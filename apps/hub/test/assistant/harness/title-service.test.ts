@@ -94,7 +94,7 @@ async function openDshChat(): Promise<{
     rig.owner.profileId,
     rig.service.directory.get(rig.hub.target).host,
   );
-  rig.service.native(
+  await rig.service.native(
     HARNESS_NATIVE_FRAME.parse({
       session_id: request.claim.session_id,
       epoch: request.claim.epoch,
@@ -117,6 +117,7 @@ async function openDshChat(): Promise<{
         { claim: request.claim, expected_next_seq: appended.next_seq },
         principal,
       );
+      await rig.service.ingested();
     },
   };
 }
@@ -153,13 +154,9 @@ function reply(chatId: string): StoredEvent {
   };
 }
 
-async function settled(): Promise<void> {
-  for (let round = 0; round < 10; round += 1) await Promise.resolve();
-}
-
 describe('the title service', () => {
   it('names a dsh chat from the title the session logged for its first prompt', async () => {
-    titleService('unused');
+    const { titles } = titleService('unused');
     const opened = await openDshChat();
 
     await opened.log([
@@ -168,6 +165,7 @@ describe('the title service', () => {
         '"Garden lights 🌙."',
       ),
     ]);
+    await titles.settled();
 
     const chat = rig.opened.store.aiChats.chat(opened.chatId);
     expect(chat.title).toBe('Garden lights');
@@ -175,7 +173,7 @@ describe('the title service', () => {
   });
 
   it('keeps the default title for the first-words fallback, a person rename and replayed history', async () => {
-    titleService('unused');
+    const { titles } = titleService('unused');
     const opened = await openDshChat();
 
     await opened.log([
@@ -183,17 +181,19 @@ describe('the title service', () => {
       titleEvent({ kind: 'user' }, 'Renamed in the log'),
       titleEvent({ kind: 'provider', provider: 'p' }, 'Copied title', { historyReplay: true }),
     ]);
+    await titles.settled();
 
     expect(rig.opened.store.aiChats.chat(opened.chatId).title).toBe('New chat');
     expect(rig.opened.store.aiChats.titleAuto(opened.chatId)).toBe(true);
   });
 
   it('never renames a dsh chat the person named', async () => {
-    titleService('unused');
+    const { titles } = titleService('unused');
     const opened = await openDshChat();
     rig.opened.store.aiChats.update(opened.chatId, { title: 'Holiday' });
 
     await opened.log([titleEvent({ kind: 'provider', provider: 'p' }, 'Garden lights')]);
+    await titles.settled();
 
     expect(rig.opened.store.aiChats.chat(opened.chatId).title).toBe('Holiday');
   });
@@ -220,7 +220,7 @@ describe('the title service', () => {
 
     titles.afterReply(reply(opened.chatId), 'Done.', true);
     titles.afterReply(reply(claude.id), 'Done.', true);
-    await settled();
+    await titles.settled();
 
     expect(requests.map((request) => request.chatId)).toEqual([claude.id]);
     expect(rig.opened.store.aiChats.chat(claude.id).title).toBe('Garden lights');

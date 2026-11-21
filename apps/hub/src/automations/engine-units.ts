@@ -7,7 +7,7 @@ import { interfaceOf } from '@smarteverything/flow/functions/interface-hash';
 import type { FunctionInterface } from '@smarteverything/flow/functions/interface-hash';
 import type { PlanRef } from '@smarteverything/flow/state/run-state';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { AutomationFunctionsRepository } from '../store/repositories/automation-functions';
 import type {
   AutomationNodeStateRepository,
@@ -145,7 +145,7 @@ export function bootRecords(rows: Pick<EngineRows, 'records'>): readonly Automat
   return rows.records.waiting();
 }
 
-export function engineRowsOf(store: Store): EngineRows {
+export function engineRowsOf(store: HostStore): EngineRows {
   return {
     plans: store.automationPlans,
     functions: store.automationFunctions,

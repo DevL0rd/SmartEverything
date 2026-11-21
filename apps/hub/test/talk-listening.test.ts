@@ -181,7 +181,7 @@ beforeEach(async () => {
       ledger: test.store.host,
       log: testLogger('transcriber'),
     }),
-    budget: { capReached: (): boolean => false },
+    budget: { capReached: (): Promise<boolean> => Promise.resolve(false) },
     names: (): string[] => ['Jarvis'],
     keyPresent: (): boolean => keyPresent,
     clock,

@@ -1,3 +1,4 @@
+import { testStore, type TestStore, type SeededStore } from '../support/store';
 import { driveFolderOf } from '../../src/data-layout/drive-folders';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
@@ -15,15 +16,13 @@ import { photoSourceRoutes } from '../../src/photos/sources/routes';
 import type { SourceViewer, SourcesEnv } from '../../src/photos/sources/shapes';
 import { captureLogs, testLogger } from '../support/logs';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
-import type { Store } from '../../src/store/store';
-import { testStore, type TestStore } from '../support/store';
 
 const NOW = '2026-11-07T08:00:00.000Z';
 const PAGE = 200;
 
 let opened: TestStore;
 let database: DatabaseSync;
-let store: Store;
+let store: SeededStore;
 let base = '';
 let env: SourcesEnv;
 let alice = '';

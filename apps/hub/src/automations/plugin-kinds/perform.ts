@@ -9,6 +9,7 @@ import {
   type ErrorClass,
   type PluginNode,
   type PluginOrigin,
+  type PluginRow,
 } from '@smarteverything/domain';
 import type { EffectRequest, NodeResult, Outputs } from '@smarteverything/flow/interpret/frames';
 import { background, Logger } from '@smarteverything/logging';
@@ -40,7 +41,7 @@ export interface PluginNodeDeclaration {
 }
 
 export interface PluginNodePorts {
-  readonly store: Pick<Store, 'plugins' | 'host'>;
+  readonly store: Pick<Store, 'live' | 'host'>;
   readonly events: Pick<EventRouter, 'record'>;
   readonly clock: Pick<Clock, 'now'>;
   readonly signals: Pick<SignalBus, 'subscribe'>;
@@ -56,7 +57,7 @@ interface Who {
 }
 
 export function pluginNodeDeclaration(
-  plugins: Pick<Store['plugins'], 'list'>,
+  plugins: { readonly list: () => readonly PluginRow[] },
   kindId: string,
 ): PluginNodeDeclaration | undefined {
   for (const row of plugins.list()) {
@@ -299,7 +300,7 @@ export function pluginNodePerformer(ports: PluginNodePorts): EffectHandler {
   const context = { ports, dispatchers: new PluginDispatchers() };
   return async (params, request, run) => {
     const found =
-      pluginNodeDeclaration(ports.store.plugins, request.kind) ??
+      pluginNodeDeclaration(ports.store.live.home.plugins, request.kind) ??
       ports.drivers?.declaration(request.kind);
     if (found === undefined)
       return failed('Unreachable', `No installed plugin declares ${request.kind}.`, 'unavailable');

@@ -1,11 +1,11 @@
 import { z } from 'zod';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 const SEEN = z.record(z.string(), z.record(z.string(), z.string()));
 
 const KEY = 'photos-album-seen';
 
-export type SeenStore = Pick<Store, 'settingsKv'>;
+export type SeenStore = Pick<HostStore, 'settingsKv'>;
 
 export class AlbumSeen {
   constructor(private readonly store: SeenStore) {}

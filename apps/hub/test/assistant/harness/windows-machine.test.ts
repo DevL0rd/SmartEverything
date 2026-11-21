@@ -40,7 +40,7 @@ describe('machine_read for a Windows computer', () => {
       host,
     });
 
-    const { machines } = listMachines(rig.service, rig.owner, chat.id);
+    const { machines } = await listMachines(rig.service, rig.owner, chat.id);
 
     expect(machines.find((machine) => machine.name === 'Laptop')).toStrictEqual({
       id: host.target.kind === 'device' ? host.target.device_id : '',

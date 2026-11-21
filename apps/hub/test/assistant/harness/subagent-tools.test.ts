@@ -58,6 +58,7 @@ async function parentAndHelper(
   const chat = made.newChat(made.hub.target);
   if (parentTools !== null) made.opened.store.aiChats.update(chat.id, { tools: [...parentTools] });
   const open = await made.service.prepare(made.owner, chat.id, made.authority, made.clientId);
+  await made.service.sessions.load(open.claim.session_id);
   const persistence = new LocalHarnessPersistence(made.service);
   persistence.bind(open.claim);
   const header = subagentHeader(open.claim.session_id);
@@ -79,7 +80,9 @@ describe('the hub tools of a helper compared with its parent', () => {
     const access = new HarnessHubTools(rig.service, hubOf(['home_read', 'device_control']));
 
     expect(namesOf(access, helper)).toStrictEqual(namesOf(access, parent));
-    expect(access.declarationNames(helper)).toStrictEqual(access.declarationNames(parent));
+    expect(access.declarationNames(access.session(helper))).toStrictEqual(
+      access.declarationNames(access.session(parent)),
+    );
     expect(namesOf(access, helper)).toStrictEqual(['device_control', 'home_read']);
   });
 
@@ -91,8 +94,10 @@ describe('the hub tools of a helper compared with its parent', () => {
     const offered = namesOf(access, helper);
     expect(offered).toContain('home_read');
     expect(offered).not.toContain('device_control');
-    expect(access.declarationNames(helper)).toContain('tool_search');
-    expect(access.catalogue(helper).map((entry) => entry.name)).not.toContain('device_control');
+    expect(access.declarationNames(access.session(helper))).toContain('tool_search');
+    expect(access.catalogue(access.session(helper)).map((entry) => entry.name)).not.toContain(
+      'device_control',
+    );
   });
 
   it('refuse a tool the parent does not allow by name, through the generic call too', async () => {

@@ -10,21 +10,21 @@ import type { Store } from '../store/store';
 
 export const COMPUTER_NOT_BOUND_TO_PERSON = 'computer_not_bound_to_person';
 
-type NodeStore = Pick<Store, 'computerNodes' | 'personAccess' | 'now'>;
+type NodeStore = Pick<Store, 'host' | 'now'>;
 
 function refused(message: string): ApiError {
   return new ApiError('forbidden', message, COMPUTER_NOT_BOUND_TO_PERSON);
 }
 
-export function nodeCaller(store: NodeStore, node: ComputerNodeRow): Caller {
+export async function nodeCaller(store: NodeStore, node: ComputerNodeRow): Promise<Caller> {
   if (node.revoked_at !== null) {
     throw refused('This computer was unpaired and can no longer reach the library.');
   }
-  const profileId = store.computerNodes.personOf(node.device_id);
-  if (profileId === null) {
+  const held = await store.host.read('driveNodeStanding', node.device_id);
+  if (held === null) {
     throw refused('This computer is not paired for a person, so it cannot reach the library.');
   }
-  const standing = store.personAccess.standing(profileId);
+  const { profileId, standing } = held;
   if (!standing.known || isExpired(standing, store.now().toISOString())) {
     throw refused('The access of the person this computer is paired for has ended.');
   }

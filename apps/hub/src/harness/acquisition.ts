@@ -14,7 +14,12 @@ export async function acquireNative(
   location: { readonly id: string; readonly cwd: string },
 ): Promise<DshSessionOpened> {
   const principal = service.hostPrincipal(chat.profile_id, host);
-  const metadata = service.store.dshSessions.stat(location.id, chat.profile_id);
+  const metadata = await service.store.host.call(
+    'dshSessions',
+    'stat',
+    location.id,
+    chat.profile_id,
+  );
   const attach = {
     target: host.target,
     runtime_instance: host.runtime_instance,
@@ -29,7 +34,7 @@ export async function acquireNative(
     );
     return withModelPolicy(service, acquired, principal);
   }
-  const seed = nativeForkSeed(service.store, chat);
+  const seed = await nativeForkSeed(service.store, chat);
   const created = await service.store.live.dshSessions.create(
     {
       ...attach,
@@ -54,7 +59,7 @@ export async function acquireNative(
 async function seedOpened(
   service: HarnessService,
   opened: DshSessionOpened,
-  seed: ReturnType<typeof nativeForkSeed>,
+  seed: Awaited<ReturnType<typeof nativeForkSeed>>,
   principal: ReturnType<HarnessService['hostPrincipal']>,
 ): Promise<DshSessionOpened> {
   if (opened.metadata.next_seq === 0) {
@@ -78,7 +83,15 @@ async function withModelPolicy(
 ): Promise<DshSessionOpened> {
   const { session_id } = opened.claim;
   const { profile_id, next_seq } = opened.metadata;
-  if (service.store.dshSessions.recorded(session_id, profile_id, SUBAGENT_MODEL_POLICY_EVENT))
+  if (
+    await service.store.host.call(
+      'dshSessions',
+      'recorded',
+      session_id,
+      profile_id,
+      SUBAGENT_MODEL_POLICY_EVENT,
+    )
+  )
     return opened;
   const events = modelPolicyEvents(service, profile_id, next_seq);
   if (events.length === 0) return opened;
@@ -89,8 +102,13 @@ async function withModelPolicy(
   return reopened(service, opened);
 }
 
-function reopened(service: HarnessService, opened: DshSessionOpened): DshSessionOpened {
-  const metadata = service.store.dshSessions.stat(
+async function reopened(
+  service: HarnessService,
+  opened: DshSessionOpened,
+): Promise<DshSessionOpened> {
+  const metadata = await service.store.host.call(
+    'dshSessions',
+    'stat',
     opened.claim.session_id,
     opened.metadata.profile_id,
   );

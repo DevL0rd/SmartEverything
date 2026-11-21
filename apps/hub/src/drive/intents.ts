@@ -164,21 +164,7 @@ export async function moveWithin(
   }
 }
 
-export type DriveFileStore = Pick<
-  Store,
-  | 'driveGrants'
-  | 'driveInodes'
-  | 'driveIntents'
-  | 'driveMountCommits'
-  | 'drivePlacements'
-  | 'driveVersions'
-  | 'driveTrash'
-  | 'driveRoots'
-  | 'driveShortcuts'
-  | 'driveUploads'
-  | 'host'
-  | 'write'
->;
+export type DriveFileStore = Pick<Store, 'host'>;
 
 export interface FileEnv {
   readonly files: DriveFiles;

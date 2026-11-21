@@ -1,4 +1,4 @@
-import { ApiError, type TranscriptSource } from '@smarteverything/domain';
+import { ApiError, type DeviceRow, type TranscriptSource } from '@smarteverything/domain';
 import { roleOfCaller, type Caller } from '../server/auth';
 import type { Store } from '../store/store';
 import { personOfDevice } from '../listening/listening-rows';
@@ -26,8 +26,13 @@ export function admitTranscriptReader(caller: Caller): void {
     throw new ApiError('forbidden', 'Only the home owner’s AI reads camera transcripts.');
 }
 
+export interface SourceHome {
+  readonly devices: { readonly find: (id: string) => DeviceRow | undefined };
+  readonly computerNodes: { readonly personOf: (deviceId: string) => string | null };
+}
+
 export function admitTranscriptSource(
-  store: Store,
+  home: SourceHome,
   caller: Caller,
   source: TranscriptSource,
   sourceId: string | undefined,
@@ -44,32 +49,32 @@ export function admitTranscriptSource(
       );
     return;
   }
-  const device = sourceId === undefined ? undefined : store.devices.find(sourceId);
-  if (device === undefined || personOfDevice(store, device) !== profileIdOf(caller)) {
+  const device = sourceId === undefined ? undefined : home.devices.find(sourceId);
+  if (device === undefined || personOfDevice(home, device) !== profileIdOf(caller)) {
     throw new ApiError('forbidden', `Members read only the speech of their own ${source}.`);
   }
 }
 
 export function admittedSource(
-  store: Store,
+  home: SourceHome,
   caller: Caller,
   asked: TranscriptSource | undefined,
   sourceId: string | undefined,
 ): TranscriptSource | undefined {
   const source = asked ?? (roleOfCaller(caller) === 'owner' ? undefined : 'camera');
-  if (source !== undefined) admitTranscriptSource(store, caller, source, sourceId);
+  if (source !== undefined) admitTranscriptSource(home, caller, source, sourceId);
   return source;
 }
 
-export function transcriptReaderScope(
-  store: Store,
+export async function transcriptReaderScope(
+  store: Pick<Store, 'host' | 'live'>,
   caller: Caller,
   selection: TranscriptSelection,
-): TranscriptScope {
+): Promise<TranscriptScope> {
   admitTranscriptCaller(caller);
   if (selection.sessionId === undefined) {
     const source = selection.source ?? 'camera';
-    admitTranscriptSource(store, caller, source, selection.sourceId);
+    admitTranscriptSource(store.live.home, caller, source, selection.sourceId);
     return {
       source,
       ...(selection.sourceId === undefined ? {} : { sourceIds: [selection.sourceId] }),
@@ -77,7 +82,7 @@ export function transcriptReaderScope(
   }
   if (selection.source !== undefined || selection.sourceId !== undefined)
     throw new ApiError('invalid_request', 'Select a session or a source, not both.');
-  const session = store.transcripts.byId(selection.sessionId);
-  admitTranscriptSource(store, caller, session.source, session.source_id);
+  const session = await store.host.call('transcripts', 'byId', selection.sessionId);
+  admitTranscriptSource(store.live.home, caller, session.source, session.source_id);
   return { source: session.source, sessionId: session.id };
 }

@@ -64,7 +64,7 @@ beforeEach(async () => {
     store,
     new AssistantFiles({
       layout: hubLayout(opened.directory, {}),
-      chat: store.assistantChat,
+      store: store,
       attachments: store.live.attachments,
       now,
     }),
@@ -84,15 +84,15 @@ afterEach(async () => {
   await opened.close();
 });
 
-function chat(title: string): AiChatRow {
-  return chats.create(owner, { title, engine: TEST_ENGINE });
+async function chat(title: string): Promise<AiChatRow> {
+  return await chats.create(owner, { title, engine: TEST_ENGINE });
 }
 
-function claudeChat(title: string): AiChatRow {
-  return chats.create(owner, {
+async function claudeChat(title: string): Promise<AiChatRow> {
+  return await chats.create(owner, {
     title,
     engine: CLAUDE_TEST_ENGINE,
-    parent_id: chat('Coordinator').id,
+    parent_id: (await chat('Coordinator')).id,
   });
 }
 
@@ -100,9 +100,9 @@ function pendingIn(chatId: string): StoredEvent[] {
   return opened.store.assistantEvents.pending().filter((event) => event.chat_id === chatId);
 }
 
-function finish(event: StoredEvent, text: string, ok = true): void {
+async function finish(event: StoredEvent, text: string, ok = true): Promise<void> {
   opened.store.assistantEvents.mark(event.id, 'answered_at');
-  delegation.finished(event, text, ok);
+  await delegation.finished(event, text, ok);
 }
 
 function only(events: readonly StoredEvent[]): StoredEvent {
@@ -116,8 +116,8 @@ function only(events: readonly StoredEvent[]): StoredEvent {
 
 describe('chat to chat messages', () => {
   it('queues an AI message and reports the answer back to the asking chat', async () => {
-    const a = chat('Planner');
-    const b = chat('Research');
+    const a = await chat('Planner');
+    const b = await chat('Research');
     const result = await delegation.ask(sender(a.id), b.id, {
       text: 'Find the cheapest flight',
       wait: false,
@@ -128,7 +128,7 @@ describe('chat to chat messages', () => {
     expect(asked).toMatchObject({ kind: 'chat', report_to: a.id, hops: 1 });
     const row = opened.store.assistantChat.message(asked.message_id ?? '');
     expect(row.origin).toMatchObject({ source: 'chat', name: 'Planner', hops: 1 });
-    finish(asked, 'Tuesday, 80 EUR');
+    await finish(asked, 'Tuesday, 80 EUR');
     const report = only(pendingIn(a.id));
     expect(report).toMatchObject({ kind: 'report', hops: 2, report_to: null });
     expect(opened.store.assistantChat.message(report.message_id ?? '').text).toBe(
@@ -137,40 +137,46 @@ describe('chat to chat messages', () => {
   });
 
   it('reports a long answer whole', async () => {
-    const a = chat('Planner');
-    const b = chat('Research');
+    const a = await chat('Planner');
+    const b = await chat('Research');
     await delegation.ask(sender(a.id), b.id, { text: 'Go', wait: false, timeoutSeconds: 60 });
     const answer = 'x'.repeat(40_000);
-    finish(only(pendingIn(b.id)), answer);
+    await finish(only(pendingIn(b.id)), answer);
     const report = only(pendingIn(a.id));
     expect(opened.store.assistantChat.message(report.message_id ?? '').text).toBe(answer);
   });
 
   it('returns the reply to a waiting sender instead of reporting it', async () => {
-    const a = chat('Planner');
-    const b = chat('Research');
+    const a = await chat('Planner');
+    const b = await chat('Research');
     const waiting = delegation.ask(sender(a.id), b.id, {
       text: 'Hi',
       wait: true,
       timeoutSeconds: 60,
     });
-    finish(only(pendingIn(b.id)), 'Hello');
+    await vi.waitFor(() => {
+      expect(pendingIn(b.id)).toHaveLength(1);
+    });
+    await finish(only(pendingIn(b.id)), 'Hello');
     await expect(waiting).resolves.toMatchObject({ state: 'answered', text: 'Hello' });
     expect(pendingIn(a.id)).toHaveLength(0);
   });
 
   it('answers working after the timeout and reports the late result', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    const a = chat('Planner');
-    const b = chat('Research');
+    const a = await chat('Planner');
+    const b = await chat('Research');
     const waiting = delegation.ask(sender(a.id), b.id, {
       text: 'Slow job',
       wait: true,
       timeoutSeconds: 5,
     });
+    await vi.waitFor(() => {
+      expect(pendingIn(b.id)).toHaveLength(1);
+    });
     await vi.advanceTimersByTimeAsync(5000);
     await expect(waiting).resolves.toMatchObject({ state: 'working', text: null });
-    finish(only(pendingIn(b.id)), 'boom', false);
+    await finish(only(pendingIn(b.id)), 'boom', false);
     const report = only(pendingIn(a.id));
     expect(opened.store.assistantChat.message(report.message_id ?? '').text).toBe(
       'It could not finish: boom',
@@ -178,12 +184,12 @@ describe('chat to chat messages', () => {
   });
 
   it('refuses a chat messaging itself and other people’s chats', async () => {
-    const a = chat('Planner');
+    const a = await chat('Planner');
     await expect(
       delegation.ask(sender(a.id), a.id, { text: 'x', wait: false, timeoutSeconds: 60 }),
     ).rejects.toThrow('cannot message itself');
     const other = opened.store.profiles.create({ name: 'Sam' });
-    const theirs = chats.create({ profileId: other.id, role: 'member' }, { title: 'Theirs' });
+    const theirs = await chats.create({ profileId: other.id, role: 'member' }, { title: 'Theirs' });
     await expect(
       delegation.ask(sender(a.id), theirs.id, { text: 'x', wait: false, timeoutSeconds: 60 }),
     ).rejects.toThrow('belongs to someone else');
@@ -192,8 +198,8 @@ describe('chat to chat messages', () => {
 
 describe('hand-offs', () => {
   it('keeps handing work on and counts every hand-off', async () => {
-    const a = chat('Planner');
-    const b = chat('Research');
+    const a = await chat('Planner');
+    const b = await chat('Research');
     const current = opened.store.assistantEvents.add({
       id: crypto.randomUUID(),
       kind: 'report',
@@ -215,7 +221,7 @@ describe('hand-offs', () => {
 describe('subagents', () => {
   it('queues an explicitly selected Claude helper without moving the SmartEverything parent', async () => {
     await opened.store.live.computers.load();
-    const parent = chat('Coordinator');
+    const parent = await chat('Coordinator');
     const request = {
       task: 'Review the change',
       engine: CLAUDE_TEST_ENGINE,
@@ -253,8 +259,8 @@ describe('subagents', () => {
     expect(store.aiChats.usingEngine('claude')).toHaveLength(1);
   });
 
-  it('keeps retired native history readable while excluding it from ordinary lists and defaults', () => {
-    const current = chat('Current coordinator');
+  it('keeps retired native history readable while excluding it from ordinary lists and defaults', async () => {
+    const current = await chat('Current coordinator');
     clock += 1_000;
     const { store } = opened;
     const retired = store.aiChats.create({
@@ -267,17 +273,17 @@ describe('subagents', () => {
       sourceKey: null,
       engine: CLAUDE_TEST_ENGINE,
     });
-    expect(chats.own(owner, retired.id)).toEqual(retired);
-    expect(chats.defaultChat(owner.profileId).id).toBe(current.id);
+    expect(await chats.own(owner, retired.id)).toEqual(retired);
+    expect((await chats.defaultChat(owner.profileId)).id).toBe(current.id);
     expect(store.aiChats.chats({ profileId: owner.profileId, archived: false })).toEqual([current]);
-    expect(chats.search(owner, { q: 'Retired', archived: true, limit: 10 })).toEqual([]);
-    expect(() => chats.create(owner, { engine: CLAUDE_TEST_ENGINE })).toThrow(
+    expect(await chats.search(owner, { q: 'Retired', archived: true, limit: 10 })).toEqual([]);
+    await expect(chats.create(owner, { engine: CLAUDE_TEST_ENGINE })).rejects.toThrow(
       /when creating a new chat or starting a helper/,
     );
   });
 
   it('starts a child chat with its tool list and keeps members off owner engines', async () => {
-    const parent = claudeChat('Planner');
+    const parent = await claudeChat('Planner');
     const result = await delegation.subagent(sender(parent.id), parent.id, {
       task: 'Compare two kettles\nwith details',
       tools: ['home_search'],
@@ -294,7 +300,7 @@ describe('subagents', () => {
   });
 
   it('follows the helper through its run row from queued to completed', async () => {
-    const parent = claudeChat('Planner');
+    const parent = await claudeChat('Planner');
     const started = await delegation.subagent(sender(parent.id), parent.id, {
       task: 'Compare two kettles',
       wait: false,
@@ -308,12 +314,12 @@ describe('subagents', () => {
       supported_actions: ['open_chat'],
     });
     const event = only(pendingIn(started.chatId));
-    expect(delegation.admit(event)).toBe(true);
+    expect(await delegation.admit(event)).toBe(true);
     expect(aiAgentRuns.read(started.eventId)).toMatchObject({
       state: 'running',
       supported_actions: ['open_chat', 'interrupt'],
     });
-    finish(event, 'Both are fine');
+    await finish(event, 'Both are fine');
     expect(aiAgentRuns.read(started.eventId)).toMatchObject({
       state: 'completed',
       result: 'Both are fine',
@@ -323,7 +329,7 @@ describe('subagents', () => {
   });
 
   it('marks a helper that failed or was stopped', async () => {
-    const parent = claudeChat('Planner');
+    const parent = await claudeChat('Planner');
     const failed = await delegation.subagent(sender(parent.id), parent.id, {
       task: 'First',
       wait: false,
@@ -334,8 +340,8 @@ describe('subagents', () => {
       wait: false,
       timeoutSeconds: 60,
     });
-    finish(only(pendingIn(failed.chatId)), 'boom', false);
-    finish(only(pendingIn(stopped.chatId)), STOPPED_BY_USER, false);
+    await finish(only(pendingIn(failed.chatId)), 'boom', false);
+    await finish(only(pendingIn(stopped.chatId)), STOPPED_BY_USER, false);
     expect(opened.store.aiAgentRuns.read(failed.eventId)).toMatchObject({
       state: 'failed',
       error: 'boom',
@@ -344,19 +350,22 @@ describe('subagents', () => {
   });
 
   it('returns the helper answer to a waiting parent instead of reporting it', async () => {
-    const parent = claudeChat('Planner');
+    const parent = await claudeChat('Planner');
     const waiting = delegation.subagent(sender(parent.id), parent.id, {
       task: 'Compare two kettles',
       wait: true,
       timeoutSeconds: 60,
     });
-    finish(only(opened.store.assistantEvents.pending()), 'Kettle A');
+    await vi.waitFor(() => {
+      expect(opened.store.assistantEvents.pending()).toHaveLength(1);
+    });
+    await finish(only(opened.store.assistantEvents.pending()), 'Kettle A');
     await expect(waiting).resolves.toMatchObject({ state: 'answered', text: 'Kettle A' });
     expect(pendingIn(parent.id)).toHaveLength(0);
   });
 
   it('refuses a child that would widen the tools of its parent', async () => {
-    const parent = opened.store.aiChats.update(claudeChat('Planner').id, {
+    const parent = opened.store.aiChats.update((await claudeChat('Planner')).id, {
       tools: ['home_search'],
     });
     await expect(
@@ -370,14 +379,14 @@ describe('subagents', () => {
   });
 
   it('lets any chat of the person message an existing subagent whatever its tool list', async () => {
-    const parent = claudeChat('Planner');
+    const parent = await claudeChat('Planner');
     const child = await delegation.subagent(sender(parent.id), parent.id, {
       task: 'Compare two kettles',
       tools: ['home_search'],
       wait: false,
       timeoutSeconds: 60,
     });
-    const peer = opened.store.aiChats.update(chat('Reviewer').id, { tools: [] });
+    const peer = opened.store.aiChats.update((await chat('Reviewer')).id, { tools: [] });
 
     const result = await delegation.ask(sender(peer.id), child.chatId, {
       text: 'Any update?',

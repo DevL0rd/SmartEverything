@@ -68,16 +68,19 @@ function speechTriggersOf(program: AutomationV4): readonly SpeechTrigger[] {
     });
 }
 
-export function speechPlan(
-  store: Store,
+export async function speechPlan(
+  store: Pick<Store, 'live' | 'host'>,
   caller: Caller,
   program: AutomationV4,
   prior: SpeechPrincipal | null,
-): SpeechPlan {
+): Promise<SpeechPlan> {
   const triggers = speechTriggersOf(program);
   if (triggers.length === 0 && prior === null) return { kind: 'none' };
-  const principal = speechPrincipal(store, caller);
+  const principal = speechPrincipal(caller);
   requireSamePrincipal(prior, principal);
-  if (triggers.length === 0) return { kind: 'remove', principal };
-  return { kind: 'bind', principal, bound: admitSpeechSources(store, principal, triggers) };
+  if (triggers.length === 0) {
+    await store.host.read('speechCaller', principal);
+    return { kind: 'remove', principal };
+  }
+  return { kind: 'bind', principal, bound: await admitSpeechSources(store, principal, triggers) };
 }

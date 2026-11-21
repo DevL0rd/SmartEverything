@@ -26,7 +26,7 @@ export class ComputerRuntimePorts {
   }
   startRuntimeCommand(
     input: AiNativeCommandWrite,
-    authorize: () => void,
+    authorize: () => Promise<void>,
     configuration?: CodexCommandConfiguration,
   ): ReturnType<ComputerRuntimeDirectory['startCommand']> {
     return this.runtimes.startCommand(input, authorize, configuration);

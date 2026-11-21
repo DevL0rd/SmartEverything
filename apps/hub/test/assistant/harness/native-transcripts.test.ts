@@ -5,13 +5,18 @@ import { DSH_SESSION_EVENTS_WRITE } from '@smarteverything/domain';
 import type { DshSessionEvent, DshWriterClaim } from '@smarteverything/domain';
 import { LocalHarnessPersistence } from '../../../src/harness/local-persistence';
 import { ConversationLog } from '../../../src/assistant/conversation-log';
-import { watchNativeSessions } from '../../../src/assistant/engines/dsh/children';
+import {
+  watchNativeSessions,
+  type NativeSessionWatch,
+} from '../../../src/assistant/engines/dsh/children';
 import { addMessage } from './support/native-conversation';
 import { useRig, type Rig } from './support/rig';
 
 let rig: Rig;
+const watches: NativeSessionWatch[] = [];
 useRig((made) => {
   rig = made;
+  watches.length = 0;
 });
 
 const NOW = '2026-10-25T05:00:00.000Z';
@@ -107,6 +112,8 @@ function writer(claim: DshWriterClaim): Writer {
         },
         principal,
       );
+      await rig.service.ingested();
+      for (const watch of watches) await watch.settled();
     },
   };
 }
@@ -146,7 +153,7 @@ async function parentChat(): Promise<{
 describe('the chat messages of a native conversation', () => {
   it('keeps every auto-started reply once, in order, and leaves hub turns to the live reply', async () => {
     const { store } = rig.opened;
-    watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
+    watches.push(watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW)));
     const parent = await parentChat();
     const session = writer(parent.claim);
     const closing = randomUUID();
@@ -175,7 +182,7 @@ describe('the chat messages of a native conversation', () => {
 
   it('shows a helper the message its parent sent and the answer it gave to it', async () => {
     const { store } = rig.opened;
-    watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
+    watches.push(watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW)));
     const parent = await parentChat();
     const persistence = new LocalHarnessPersistence(rig.service);
     persistence.bind(parent.claim);
@@ -215,18 +222,20 @@ describe('the chat messages of a native conversation', () => {
     ]);
 
     const chatId = run?.child_chat_id ?? '';
-    expect(rows(chatId)).toStrictEqual([
-      ['person', 'Count the lamps.', []],
-      ['responder', 'Three lamps.', []],
-      ['person', 'And the fans?', []],
-      ['responder', 'Two fans.', ['send_message']],
-    ]);
+    await vi.waitFor(() => {
+      expect(rows(chatId)).toStrictEqual([
+        ['person', 'Count the lamps.', []],
+        ['responder', 'Three lamps.', []],
+        ['person', 'And the fans?', []],
+        ['responder', 'Two fans.', ['send_message']],
+      ]);
+    });
     expect(store.assistantChat.messages({ chatId, limit: 50 })[1]?.author).toBe(parentTitle);
   });
 
   it('shows the thinking and tools of a reply in the order they happened', async () => {
     const { store } = rig.opened;
-    watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
+    watches.push(watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW)));
     const parent = await parentChat();
     const session = writer(parent.claim);
     const reply = randomUUID();

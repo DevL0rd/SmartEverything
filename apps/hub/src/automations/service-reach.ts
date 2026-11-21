@@ -17,9 +17,9 @@ import { assertPhoneCommandAllowed } from '../phones/phone-access';
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
 import { commandRole } from '../server/commands';
 import type { Refusal } from '../server/person-access';
-import { devicesReachWhy } from '../server/person-scope';
+import { devicesReachWhy } from '../server/person-scope-units';
 import { installedSignalSources } from '../signals/sources/installed';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 const SIGNAL_KIND = 'trigger.signal';
 
@@ -56,7 +56,11 @@ export function requireOwnerForTriggers(
   }
 }
 
-export function requireVisibleComputers(store: Store, caller: Caller, manifest: Manifest): void {
+export function requireVisibleComputers(
+  store: HostStore,
+  caller: Caller,
+  manifest: Manifest,
+): void {
   const viewer = viewerOf(caller);
   for (const id of manifest.uses.computer) {
     const device = store.devices.find(id);
@@ -66,7 +70,7 @@ export function requireVisibleComputers(store: Store, caller: Caller, manifest: 
   }
 }
 
-function reachedDevices(store: Store, uses: Manifest['uses']): readonly DeviceRow[] {
+function reachedDevices(store: HostStore, uses: Manifest['uses']): readonly DeviceRow[] {
   const direct = [...uses.device, ...uses.camera, ...uses.phone].flatMap(
     (id) => store.devices.find(id) ?? [],
   );
@@ -112,7 +116,11 @@ export function reached<T>(work: () => T): Reached<T> {
   }
 }
 
-export function requireReachableTargets(store: Store, caller: Caller, manifest: Manifest): void {
+export function requireReachableTargets(
+  store: HostStore,
+  caller: Caller,
+  manifest: Manifest,
+): void {
   const devices = reachedDevices(store, manifest.uses);
   const why = devicesReachWhy(
     store,
@@ -123,7 +131,7 @@ export function requireReachableTargets(store: Store, caller: Caller, manifest: 
   requirePhoneAccess(caller, devices, manifest.uses.control);
 }
 
-export function requireKnownSignals(store: Store, program: AutomationV4): void {
+export function requireKnownSignals(store: HostStore, program: AutomationV4): void {
   const sources = installedSignalSources(store);
   for (const trigger of program.triggers) {
     const source = literalOf(trigger, 'source');

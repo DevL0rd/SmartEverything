@@ -29,12 +29,7 @@ function wireRows(change: LiveChange): LiveChange {
 }
 
 function wireFrame(change: LiveChange): LiveFrameOut & { readonly seq: number } {
-  const frame = liveFrameOf(wireRows(change));
-  const seq = change.seq;
-  if (frame.table === 'plugin_streams' && frame.operation === 'UPDATE') {
-    return { ...frame, previous: {}, seq };
-  }
-  return { ...frame, seq };
+  return { ...liveFrameOf(wireRows(change)), seq: change.seq };
 }
 
 export function wireText(message: LiveMessage): string {

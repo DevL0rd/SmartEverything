@@ -5,8 +5,10 @@ import {
   type CommittedNotice,
   type DriveChangedNotice,
   type LiveChange,
+  type RowChange,
 } from '@smarteverything/domain';
 import type { CommittedSpeech } from '../transcripts/speech';
+import { QuietTotals } from './quiet-totals';
 import type { Logger } from '@smarteverything/logging';
 
 export type ChangeListener = (change: LiveChange) => void;
@@ -19,6 +21,7 @@ interface FeedEvents {
   row: [change: LiveChange];
   notice: [notice: CommittedNotice];
   speech: [speech: CommittedSpeech];
+  access: [];
   commit: [];
 }
 
@@ -59,6 +62,7 @@ export class ChangeFeed {
   private heldChange: HeldChange | null = null;
   private readonly heldProgress = new Map<string, { superseded: boolean }>();
   private delivered = 0;
+  private quiet: QuietTotals | null = null;
   private counts = { rows: 0, notices: 0, speech: 0, commits: 0, discards: 0, maxHeld: 0 };
 
   constructor(private readonly log: Logger) {
@@ -133,6 +137,14 @@ export class ChangeFeed {
     };
   }
 
+  subscribeAccess(listener: () => void): Unsubscribe {
+    const guarded = this.guard('access', listener);
+    this.emitter.on('access', guarded);
+    return (): void => {
+      this.emitter.off('access', guarded);
+    };
+  }
+
   subscribeCommitted(listener: CommitListener): Unsubscribe {
     const guarded = this.guard('commit', listener);
     this.emitter.on('commit', guarded);
@@ -194,6 +206,12 @@ export class ChangeFeed {
     });
   }
 
+  accessChanged(): void {
+    this.dispatch(() => {
+      this.emitter.emit('access');
+    });
+  }
+
   committed(): void {
     this.counts.commits += 1;
     this.emitter.emit('commit');
@@ -205,8 +223,26 @@ export class ChangeFeed {
     });
   }
 
+  quietTotals(quietMs: number): void {
+    this.quiet = new QuietTotals(quietMs, (row) => {
+      this.deliver(row);
+    });
+  }
+
+  settleTotals(): void {
+    this.quiet?.settleAll();
+  }
+
   emit(change: unknown, onSequence?: (seq: number) => void): void {
     const row = ROW_CHANGE.parse(change);
+    if (this.quiet !== null) {
+      if (onSequence === undefined && this.quiet.hold(row)) return;
+      this.quiet.settleFor(row);
+    }
+    this.deliver(row, onSequence);
+  }
+
+  private deliver(row: RowChange, onSequence?: (seq: number) => void): void {
     this.dispatch(() => {
       this.delivered += 1;
       this.counts.rows += 1;

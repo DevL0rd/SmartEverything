@@ -1,9 +1,12 @@
 import type {
   AssistantSettings,
   CameraRow,
+  DeviceGroupRow,
   DeviceRow,
   JsonValue,
   LiveChange,
+  PluginRow,
+  RoomRow,
   SettingsRow,
   StateRow,
   TalkChannelRow,
@@ -30,6 +33,10 @@ export const MIRRORED_SAVED_KEYS = [
   'reach.speaker_standby_off',
   'reach.quiet',
   'reach.framing',
+  'budget',
+  'mail',
+  'developer-devices',
+  'harness_sources',
 ] as const;
 
 export type MirroredSavedKey = (typeof MIRRORED_SAVED_KEYS)[number];
@@ -43,6 +50,9 @@ export const HOME_MIRROR_UNIT = storeUnit((store, _input: null) => ({
   cameras: store.cameras.list(),
   state: store.state.list(),
   settings: store.settings.read(),
+  rooms: store.rooms.list(),
+  plugins: store.plugins.list(),
+  groups: store.deviceGroups.list(),
 }));
 
 function externalKey(provider: string, externalId: string): string {
@@ -62,6 +72,9 @@ type Mirrored = Extract<
   | { table: 'device_state' }
   | { table: 'settings' }
   | { table: 'talk_channels' }
+  | { table: 'rooms' }
+  | { table: 'plugins' }
+  | { table: 'device_groups' }
 >;
 
 const MIRRORED: ReadonlySet<LiveChange['table']> = new Set([
@@ -70,10 +83,32 @@ const MIRRORED: ReadonlySet<LiveChange['table']> = new Set([
   'device_state',
   'settings',
   'talk_channels',
+  'rooms',
+  'plugins',
+  'device_groups',
 ]);
 
 function mirrored(change: LiveChange): change is Mirrored {
   return MIRRORED.has(change.table);
+}
+
+function keyedChanged<T extends { readonly id: string }>(
+  rows: Map<string, T>,
+  record: T | null,
+  oldRecord: T | null,
+): void {
+  if (record !== null) rows.set(record.id, record);
+  else if (oldRecord !== null) rows.delete(oldRecord.id);
+}
+
+function roomOrder(a: RoomRow, b: RoomRow): number {
+  if (a.position !== b.position) return a.position < b.position ? -1 : 1;
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : 1;
+}
+
+function groupOrder(a: DeviceGroupRow, b: DeviceGroupRow): number {
+  if (a.name !== b.name) return a.name < b.name ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 function channelOrder(a: TalkChannelRow, b: TalkChannelRow): number {
@@ -89,6 +124,9 @@ export class HomeMirror {
   private readonly cameraRows = new Map<string, CameraRow>();
   private readonly stateRows = new Map<string, Map<string, StateRow>>();
   private readonly channelRows = new Map<string, TalkChannelRow>();
+  private readonly roomRows = new Map<string, RoomRow>();
+  private readonly pluginRows = new Map<string, PluginRow>();
+  private readonly groupRows = new Map<string, DeviceGroupRow>();
   private settingsRow: SettingsRow | null = null;
   private listeningSaved: Saved = null;
   private readonly savedRows = new Map<MirroredSavedKey, Saved>();
@@ -136,10 +174,37 @@ export class HomeMirror {
     },
   };
 
+  readonly deviceGroups = {
+    list: (): DeviceGroupRow[] => {
+      this.assertReady();
+      return [...this.groupRows.values()].sort(groupOrder);
+    },
+    find: (id: string): DeviceGroupRow | undefined => {
+      this.assertReady();
+      return this.groupRows.get(id);
+    },
+    byId: (id: string): DeviceGroupRow => {
+      const group = this.deviceGroups.find(id);
+      if (group === undefined) throw new StoreNotFoundError('device group', id);
+      return group;
+    },
+  };
+
   readonly state = {
+    list: (): StateRow[] => {
+      this.assertReady();
+      return [...this.stateRows.values()].flatMap((rows) => [...rows.values()]);
+    },
     value: (deviceId: string, capability: string): JsonValue | undefined => {
       this.assertReady();
       return this.stateRows.get(deviceId)?.get(capability)?.value;
+    },
+    withCapability: (capability: string): StateRow[] => {
+      this.assertReady();
+      return [...this.stateRows.values()].flatMap((rows) => {
+        const row = rows.get(capability);
+        return row === undefined ? [] : [row];
+      });
     },
     ofDevice: (deviceId: string): StateRow[] => {
       this.assertReady();
@@ -154,6 +219,33 @@ export class HomeMirror {
       this.assertReady();
       if (this.settingsRow === null) throw new StoreNotFoundError('settings row', '1');
       return this.settingsRow;
+    },
+  };
+
+  readonly rooms = {
+    list: (): RoomRow[] => {
+      this.assertReady();
+      return [...this.roomRows.values()].sort(roomOrder);
+    },
+    find: (id: string): RoomRow | undefined => {
+      this.assertReady();
+      return this.roomRows.get(id);
+    },
+    byId: (id: string): RoomRow => {
+      const room = this.rooms.find(id);
+      if (room === undefined) throw new StoreNotFoundError('room', id);
+      return room;
+    },
+  };
+
+  readonly plugins = {
+    list: (): PluginRow[] => {
+      this.assertReady();
+      return [...this.pluginRows.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    },
+    find: (id: string): PluginRow | undefined => {
+      this.assertReady();
+      return this.pluginRows.get(id);
     },
   };
 
@@ -239,6 +331,9 @@ export class HomeMirror {
     for (const row of home.state) this.putState(row);
     this.settingsRow = home.settings;
     for (const channel of home.channels) this.channelRows.set(channel.id, channel);
+    for (const room of home.rooms) this.roomRows.set(room.id, room);
+    for (const plugin of home.plugins) this.pluginRows.set(plugin.id, plugin);
+    for (const group of home.groups) this.groupRows.set(group.id, group);
     this.listeningSaved = home.listening;
     for (const { key, value } of home.saved) this.savedRows.set(key, value);
     this.assistantSaved = home.assistant;
@@ -262,6 +357,15 @@ export class HomeMirror {
         return;
       case 'talk_channels':
         this.channelChanged(change.record, change.oldRecord);
+        return;
+      case 'rooms':
+        keyedChanged(this.roomRows, change.record, change.oldRecord);
+        return;
+      case 'plugins':
+        keyedChanged(this.pluginRows, change.record, change.oldRecord);
+        return;
+      case 'device_groups':
+        keyedChanged(this.groupRows, change.record, change.oldRecord);
         return;
     }
   }

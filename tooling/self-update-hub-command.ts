@@ -19,7 +19,7 @@ import {
   stageGithubRelease,
 } from '../apps/hub/src/releases/github-source.ts';
 import { releaseStaging, type ReleaseStaging } from '../apps/hub/src/releases/staging.ts';
-import { buildSourceOf } from '../apps/hub/src/self-update/build-source.ts';
+import { buildSourceOf } from './build-source-file.ts';
 import { SERVICE_READY } from '../apps/hub/src/service/configuration.ts';
 import {
   HUB_RELEASE_BUSY_EXIT,

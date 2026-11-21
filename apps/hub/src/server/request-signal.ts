@@ -16,6 +16,11 @@ export function currentRequestSignal(): AbortSignal | undefined {
   return requests.getStore()?.signal;
 }
 
+export function apartFromResponse<T>(work: () => Promise<T>): Promise<T> {
+  const current = requests.getStore();
+  return current === undefined ? work() : requests.run({ signal: current.signal }, work);
+}
+
 export function withSignal<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
   return requests.run({ signal }, work);
 }

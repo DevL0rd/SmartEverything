@@ -84,8 +84,11 @@ function hubFailure(release: HubUpdateRelease): StepOutcome {
   };
 }
 
-function refusedBuild(layout: HubLayout, component: PipelineComponent): StepOutcome | null {
-  const refusal = hubBuildRefusal(layout, component);
+async function refusedBuild(
+  layout: HubLayout,
+  component: PipelineComponent,
+): Promise<StepOutcome | null> {
+  const refusal = await hubBuildRefusal(layout, component);
   return refusal === null ? null : { status: 'failed', message: refusal, rollback: 'none' };
 }
 
@@ -144,7 +147,8 @@ export async function executeHub(
   const runId = step.runId;
   if (runId === null) throw new Error('A Hub step needs a request ID before it runs.');
   if ((await readHubUpdate(deps.layout, runId)) === null) {
-    const early = refusedBuild(deps.layout, 'hub') ?? (await startHub(deps, runId, revision.tip));
+    const early =
+      (await refusedBuild(deps.layout, 'hub')) ?? (await startHub(deps, runId, revision.tip));
     if (early !== null) return early;
   }
   const release = await deps.finished(runId);
@@ -197,7 +201,7 @@ export async function executePublication(
   revision: UpdateRevision,
   step: UpdateRevisionStep,
 ): Promise<StepOutcome> {
-  const refused = refusedBuild(deps.layout, step.component);
+  const refused = await refusedBuild(deps.layout, step.component);
   if (refused !== null) return refused;
   const { script, input } = await publicationInput(deps, revision, step);
   const server = await deps.publicServer();

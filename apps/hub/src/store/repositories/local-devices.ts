@@ -83,6 +83,7 @@ export class LocalDevicesRepository {
         now: this.context.now(),
       },
     );
+    this.context.accessChanged();
     return this.byExternalId(entry.externalId);
   }
 
@@ -92,6 +93,7 @@ export class LocalDevicesRepository {
       'update local_devices set config = $config where external_id = $externalId',
       { externalId, config: jsonText(config) },
     );
+    this.context.accessChanged();
   }
 
   remove(externalId: string): void {
@@ -100,5 +102,6 @@ export class LocalDevicesRepository {
       'delete from local_devices where external_id = $externalId',
       { externalId },
     );
+    this.context.accessChanged();
   }
 }

@@ -217,7 +217,7 @@ export class MapFetcher {
 
   private async settle(target: MapTarget): Promise<void> {
     const scene =
-      this.ports.cache.at(target.deviceId, target.slot, target.index) ??
+      (await this.ports.cache.at(target.deviceId, target.slot, target.index)) ??
       (await this.attempt(target));
     if (scene !== null) this.publish(target, scene);
   }

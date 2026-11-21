@@ -1,6 +1,6 @@
 import { mkdir, open, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { backup, type DatabaseSync } from 'node:sqlite';
+import { copiedDatabase } from '../store/database-copy';
 import { integrityOf } from '../store/integrity';
 import {
   DRIVE_ROOT_SCOPES,
@@ -61,7 +61,8 @@ export const BACKUP_MANIFEST_LINE = z.discriminatedUnion('kind', [
 export type BackupManifestLine = z.infer<typeof BACKUP_MANIFEST_LINE>;
 
 export interface BackupEnvironment {
-  readonly database: DatabaseSync;
+  readonly database: string;
+  readonly busyTimeoutMs: number;
   readonly store: BackupStore;
   readonly log: Logger;
 }
@@ -207,8 +208,11 @@ export class DriveBackups {
     if (await exists(target)) {
       throw new BackupCopyError(`${target} already exists; a backup never overwrites a file.`);
     }
-    await backup(this.env.database, target, {
+    await copiedDatabase({
+      source: this.env.database,
+      target,
       rate: COPY_PAGES_PER_STEP,
+      busyTimeoutMs: this.env.busyTimeoutMs,
       progress: ({ totalPages, remainingPages }) => {
         this.env.log.debug('drive.backup_progress', { totalPages, remainingPages });
       },

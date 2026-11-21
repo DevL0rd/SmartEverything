@@ -86,7 +86,7 @@ function viewDeps(
     fleet: parts.fleet,
     clock: parts.home,
     holder: (device): WatchBridge | null => parts.bridges.holderOf(device),
-    series: (deviceId, capability): MetricSeries =>
+    series: (deviceId, capability): Promise<MetricSeries> =>
       hub.drivers.metrics.read(deviceId, capability, '30d'),
     now,
   };
@@ -95,7 +95,7 @@ function viewDeps(
 export function buildWiring(context: ExtensionContext, clock: Clock): Wiring {
   const { store, hub, log } = context;
   const slot = new SinkSlot();
-  const home = homeClock(store);
+  const home = homeClock(store.live.home.settings);
   const fleet = new Fleet({ store, log });
   const bridges = new WatchBridges({
     observe: (externalId, values): Promise<void> => hub.local.observe(externalId, values),

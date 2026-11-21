@@ -38,39 +38,47 @@ function canStartStandalone(caller: Caller): boolean {
   );
 }
 
-function chatMeterHistory(
+async function chatMeterHistory(
   context: ChatContext,
   chat: AiChatRow,
   owner: ChatOwner,
-): AiChatMeterSample[] {
-  const local = context.store.aiChats.meterHistory(chat.id);
+): Promise<AiChatMeterSample[]> {
+  const { host } = context.store;
+  const local = await host.call('aiChats', 'meterHistory', chat.id);
   const engine = chat.engine;
   if (engine.kind !== 'dsh') {
     if (owner.role !== 'owner') return local;
     const scope = nativeSubscriptionScope(chat.profile_id, engine.kind, engine.device_id);
-    return [...local, ...context.store.aiWeeklySubscriptionHistory.read(scope)];
+    return [...local, ...(await host.call('aiWeeklySubscriptionHistory', 'read', scope))];
   }
   const route = context.harness.routes.supplierRoute(chat.profile_id, engine.model_route_id);
   const scope = route === undefined ? undefined : modelSubscriptionScope(route);
   return scope === undefined
     ? local
-    : [...local, ...context.store.aiWeeklySubscriptionHistory.read(scope)];
+    : [...local, ...(await host.call('aiWeeklySubscriptionHistory', 'read', scope))];
 }
 
 const chatRoutes = (context: ChatContext) =>
   ({
-    listAiChats: bound(E.listAiChats, ({ query, caller }) =>
+    listAiChats: bound(E.listAiChats, async ({ query, caller }) =>
       context.assistant.chats.visible(
         ownerOf(caller),
-        context.store.aiChats.chats({ profileId: profileIdOf(caller), ...query }),
+        await context.store.host.call('aiChats', 'chats', {
+          profileId: profileIdOf(caller),
+          ...query,
+        }),
       ),
     ),
     searchAiChats: bound(E.searchAiChats, ({ query, caller }) =>
       context.assistant.searchChats(ownerOf(caller), query),
     ),
-    readAiChatMeterHistory: bound(E.readAiChatMeterHistory, ({ params, caller }) => {
+    readAiChatMeterHistory: bound(E.readAiChatMeterHistory, async ({ params, caller }) => {
       const owner = ownerOf(caller);
-      return chatMeterHistory(context, context.assistant.chats.own(owner, params.chatId), owner);
+      return chatMeterHistory(
+        context,
+        await context.assistant.chats.own(owner, params.chatId),
+        owner,
+      );
     }),
     branchAiChat: bound(E.branchAiChat, ({ params, body, caller }) =>
       context.assistant.branchChat(
@@ -103,7 +111,7 @@ function removalRoute(context: ChatContext): RouteOf<'removeAiChat'> {
   return bound(E.removeAiChat, async ({ params, query, caller }) => {
     const owner = ownerOf(caller);
     const runId = query.expected_inactive_run_id;
-    const inactiveOnly = removalNeedsInactive(
+    const inactiveOnly = await removalNeedsInactive(
       store,
       params.chatId,
       runId !== undefined || query.inactive_helper === 'true',
@@ -113,7 +121,7 @@ function removalRoute(context: ChatContext): RouteOf<'removeAiChat'> {
       params.chatId,
       !inactiveOnly
         ? undefined
-        : (scope): void => {
+        : (scope): Promise<void> =>
             admitInactiveRemoval(
               {
                 store,
@@ -123,8 +131,7 @@ function removalRoute(context: ChatContext): RouteOf<'removeAiChat'> {
                 status: (chat) => assistant.engineStatus(chat),
               },
               scope,
-            );
-          },
+            ),
       inactiveOnly,
     );
     return DONE_REPLY;
@@ -133,12 +140,14 @@ function removalRoute(context: ChatContext): RouteOf<'removeAiChat'> {
 
 const messageRoutes = (context: ChatContext) =>
   ({
-    listAiChatMessages: bound(E.listAiChatMessages, ({ params, query, caller }) => {
-      context.assistant.chats.own(ownerOf(caller), params.chatId);
-      return wireMessages(context.assistant.messages(params.chatId, query.before, query.limit));
+    listAiChatMessages: bound(E.listAiChatMessages, async ({ params, query, caller }) => {
+      await context.assistant.chats.own(ownerOf(caller), params.chatId);
+      return wireMessages(
+        await context.assistant.messages(params.chatId, query.before, query.limit),
+      );
     }),
-    readAiToolResult: bound(E.readAiToolResult, ({ params, query, caller }) => {
-      context.assistant.chats.own(ownerOf(caller), params.chatId);
+    readAiToolResult: bound(E.readAiToolResult, async ({ params, query, caller }) => {
+      await context.assistant.chats.own(ownerOf(caller), params.chatId);
       return readToolResult(context.store, { ...params, ...query, cursor: query.cursor });
     }),
     sendAiChatMessage: bound(E.sendAiChatMessage, ({ params, body, caller }) =>
@@ -149,11 +158,14 @@ const messageRoutes = (context: ChatContext) =>
         params.chatId,
       ),
     ),
-    setAiChatMessageReaction: bound(E.setAiChatMessageReaction, ({ params, body, caller }) => {
-      const reactions = context.assistant.react(caller, params, body);
-      requestSequence(context.store.feed.seq);
-      return [...reactions];
-    }),
+    setAiChatMessageReaction: bound(
+      E.setAiChatMessageReaction,
+      async ({ params, body, caller }) => {
+        const reactions = await context.assistant.react(caller, params, body);
+        requestSequence(context.store.feed.seq);
+        return [...reactions];
+      },
+    ),
     retryAiChatMessage: bound(E.retryAiChatMessage, ({ params, body, caller }) => {
       return context.assistant.retry(ownerOf(caller), params, body.from, {
         clientId: caller.kind === 'service' ? null : clientOf(caller).id,

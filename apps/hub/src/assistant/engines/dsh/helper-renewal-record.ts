@@ -3,7 +3,7 @@ import { DSH_WRITER_CLAIM } from '@smarteverything/domain';
 import type { DshWriterClaim } from '@smarteverything/domain';
 import type { HELPER_SETTLEMENT_PROOF_DATA } from '@smarteverything/harness/process';
 import type { z } from 'zod';
-import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 
 export type HelperSettlement = z.infer<typeof HELPER_SETTLEMENT_PROOF_DATA>;
 
@@ -21,7 +21,7 @@ export function renewalId(child: DshWriterClaim): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-export function recordHelperRenewal(store: Store, input: HelperRenewalRecord): void {
+export function recordHelperRenewal(store: HostStore, input: HelperRenewalRecord): void {
   const id = renewalId(input.child);
   store.harnessSessions.begin(id, input.child.session_id, {
     kind: 'helper-claim-renewal',

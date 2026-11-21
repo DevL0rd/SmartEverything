@@ -2,21 +2,27 @@ import {
   FITNESS_GOAL_KEYS,
   HEALTH_METRICS,
   HEALTH_METRIC_UNITS,
-  areaInScope,
   effectiveFitnessGoals,
   localClock,
   type FitnessGoalKey,
+  type HealthDailyRow,
   type HealthMetric,
   type ProfileRow,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { currentExecutionAuthority, executionRole } from '../../assistant/turn-authority';
-import { scopesOf } from '../../server/person-scope';
-import type { Store } from '../../store/store';
+import type { StoreHost } from '../../store/host/host';
+import type { WorldHealthAsk } from './history-units';
 import type { WorldReadDeps } from './deps';
 import type { WorldSource } from './world-mirror';
 import { parseInputs } from './inputs';
-import { ReadFailure, outputsOf, type ReadHandlers, type ReadResult } from './read-port';
+import {
+  ReadFailure,
+  outputsOf,
+  type ReadHandlers,
+  type ReadResult,
+  type ReadScope,
+} from './read-port';
 import { PERSON_REF } from './refs';
 import { homeZone } from './zone';
 
@@ -66,18 +72,31 @@ function daysBefore(day: string, back: number): string {
     .slice(0, 10);
 }
 
-export function hydrationOf(store: Pick<Store, 'health'>, profileId: string, day: string): number {
-  const [row] = store.health.dailyRange(profileId, day, day, ['hydration']);
+export async function hydrationOf(
+  host: Pick<StoreHost, 'call'>,
+  profileId: string,
+  day: string,
+): Promise<number> {
+  const [row] = await host.call('health', 'dailyRange', profileId, day, day, ['hydration']);
   return row === undefined ? 0 : millilitresOf(row.value);
 }
 
-function admit(store: Store, person: string): void {
+function scopedReader(person: string): boolean {
   const authority = currentExecutionAuthority();
-  if (authority === undefined || executionRole(authority) === 'owner') return;
+  if (authority === undefined || executionRole(authority) === 'owner') return false;
   if (authority.profile_id !== person)
     throw new ReadFailure('Forbidden', 'Members can only read their own health.');
-  if (!areaInScope(scopesOf(store, person), 'health'))
+  return true;
+}
+
+function dailyRows(
+  scope: ReadScope,
+  ask: Omit<WorldHealthAsk, 'scoped'>,
+): readonly HealthDailyRow[] {
+  const found = scope.fetch('worldHealth', { ...ask, scoped: scopedReader(ask.profileId) });
+  if (found.refused)
     throw new ReadFailure('Forbidden', 'Health is not part of your access; ask the owner.');
+  return found.rows;
 }
 
 function profileOf(world: Pick<WorldSource, 'profiles'>, person: string): ProfileRow {
@@ -100,12 +119,17 @@ function amountsOf(
   };
 }
 
-function healthToday(deps: WorldReadDeps, person: string): ReadResult {
-  admit(deps.store, person);
+function healthToday(deps: WorldReadDeps, person: string, scope: ReadScope): ReadResult {
+  scopedReader(person);
   const profile = profileOf(deps.world, person);
-  const day = todayAt(deps);
+  const day = todayAt({ world: deps.world, clock: scope });
   const amounts = amountsOf(
-    deps.store.health.dailyRange(profile.id, day, day, Object.values(GOAL_METRICS)),
+    dailyRows(scope, {
+      profileId: profile.id,
+      from: day,
+      to: day,
+      metrics: Object.values(GOAL_METRICS),
+    }),
   );
   const goals = effectiveFitnessGoals(profile.fitness_goals);
   const sleep = amounts.sleep_minutes;
@@ -123,13 +147,17 @@ function healthToday(deps: WorldReadDeps, person: string): ReadResult {
 function healthRange(
   deps: WorldReadDeps,
   ask: { readonly person: string; readonly metric: HealthMetric; readonly days: number },
+  scope: ReadScope,
 ): ReadResult {
-  admit(deps.store, ask.person);
+  scopedReader(ask.person);
   const profile = profileOf(deps.world, ask.person);
-  const today = todayAt(deps);
-  const rows = deps.store.health.dailyRange(profile.id, daysBefore(today, ask.days - 1), today, [
-    ask.metric,
-  ]);
+  const today = todayAt({ world: deps.world, clock: scope });
+  const rows = dailyRows(scope, {
+    profileId: profile.id,
+    from: daysBefore(today, ask.days - 1),
+    to: today,
+    metrics: [ask.metric],
+  });
   const values = rows.map((row) => row.value);
   const total = values.reduce((sum, value) => sum + value, 0);
   return outputsOf({
@@ -143,11 +171,11 @@ function healthRange(
 
 export function healthReadHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
-    'health.today': (inputs): ReadResult => {
+    'health.today': (inputs, scope): ReadResult => {
       const { person } = parseInputs('health.today', TODAY_READ, inputs);
-      return healthToday(deps, person);
+      return healthToday(deps, person, scope);
     },
-    'health.range': (inputs): ReadResult =>
-      healthRange(deps, parseInputs('health.range', RANGE_READ, inputs)),
+    'health.range': (inputs, scope): ReadResult =>
+      healthRange(deps, parseInputs('health.range', RANGE_READ, inputs), scope),
   };
 }

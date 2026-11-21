@@ -15,7 +15,7 @@ import {
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { PlannerItemInput } from '../../store/repositories/planner-items';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { jsonOr, recoverable, type Batch } from './calendar-batch';
 import { guestsOfItem, pullAttendees } from './calendar-guests';
 import {
@@ -51,7 +51,7 @@ function masterFirst(rows: readonly PlannerItemRow[]): PlannerItemRow[] {
 }
 
 export class CalendarApplier {
-  constructor(private readonly store: Store) {}
+  constructor(private readonly store: HostStore) {}
 
   private now(): Date {
     return new Date(this.store.context.now());

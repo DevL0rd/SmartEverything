@@ -78,12 +78,12 @@ function wakeTestOf(
     send: (clientId, line): void => {
       context.live.toClient(clientId, { type: 'wake_test_heard', line });
     },
-    transcribe: (pcm16k): Promise<string | null> =>
+    transcribe: async (pcm16k): Promise<string | null> =>
       context.openRouter.keys.current() === null
-        ? Promise.resolve(null)
+        ? null
         : parts.transcriber.transcribe({
             pcm16k,
-            profileId: store.profiles.first().id,
+            profileId: (await store.host.call('profiles', 'first')).id,
             pluginId: null,
             names: [],
             recent: [],
@@ -97,10 +97,10 @@ function wakeTestOf(
     }),
     sensitivity: (source: WakeTestSource) =>
       source.kind === 'camera'
-        ? store.cameras.byDevice(source.key).wake_sensitivity
+        ? store.live.home.cameras.byDevice(source.key).wake_sensitivity
         : switches.read(source.key).sensitivity,
     label: (source: WakeTestSource): string => {
-      const device = store.devices.find(source.key);
+      const device = store.live.home.devices.find(source.key);
       return device === undefined ? source.kind : (device.display_name ?? device.name);
     },
     id: randomUUID,
@@ -124,10 +124,10 @@ function pluginVoiceOf(
     store,
     host: (request): Promise<HostedCall> => voice.host(request),
     turn: (request): Promise<TurnSession> => voice.turn(request),
-    chat: (profileId, title, source): string =>
+    chat: async (profileId, title, source): Promise<string> =>
       (source === null
-        ? context.assistant.chats.conversationChat(profileId)
-        : context.assistant.chats.chatForPlugin(profileId, source, title)
+        ? await context.assistant.chats.conversationChat(profileId)
+        : await context.assistant.chats.chatForPlugin(profileId, source, title)
       ).id,
     keys: { changes: (listener) => voice.keys.changes(listener) },
     ears: parts.remoteEars,
@@ -152,8 +152,10 @@ function cameraListeningOf(
     transcriber: parts.transcriber,
     ready: (cameraId): Promise<void> => options.core.hub.streamReady(cameraId),
     keyPresent: (): boolean => context.openRouter.keys.current() !== null,
-    inConversation: (cameraId): boolean =>
-      store.aiOutreach.open().some((row) => row.how === 'camera' && row.target === cameraId),
+    inConversation: async (cameraId): Promise<boolean> =>
+      (await store.host.call('aiOutreach', 'open')).some(
+        (row) => row.how === 'camera' && row.target === cameraId,
+      ),
     names: (): string[] => assistantNames(store),
     clock,
     log: options.log.forArea('hub.transcripts'),

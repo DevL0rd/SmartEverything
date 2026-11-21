@@ -7,9 +7,9 @@ export const weatherRoutes = ({ store, weather }: ServerContext, now: () => Date
   ({
     readWeather: bound(E.readWeather, async () => {
       await weather.settled();
-      return reportOf(await weather.current(), store.settings.read(), now());
+      return reportOf(await weather.current(), store.live.home.settings.read(), now());
     }),
     refreshWeather: bound(E.refreshWeather, async () =>
-      reportOf(await weather.refresh(), store.settings.read(), now()),
+      reportOf(await weather.refresh(), store.live.home.settings.read(), now()),
     ),
   }) as const;

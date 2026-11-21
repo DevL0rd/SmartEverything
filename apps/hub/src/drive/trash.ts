@@ -2,7 +2,6 @@ import { dirname, extname, basename } from 'node:path';
 import { messageOf } from '@smarteverything/logging';
 import { DRIVE_TRASH_ENTRY, type DriveTrashEntry } from '@smarteverything/domain';
 import type { DriveIntent } from '../store/repositories/drive-intents';
-import type { Store } from '../store/store';
 import {
   abandonIntent,
   locate,
@@ -34,7 +33,7 @@ export interface TrashRequest {
 }
 
 export interface RestoreEnv extends FileEnv {
-  readonly store: DriveFileStore & Pick<Store, 'driveItems'>;
+  readonly store: DriveFileStore;
 }
 
 export interface TrashMove {

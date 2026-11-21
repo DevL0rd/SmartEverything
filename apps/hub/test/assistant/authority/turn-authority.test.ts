@@ -3,11 +3,12 @@ import { type AiChatRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   admitExecutionTool,
-  eventAuthority,
   executionRole,
   foldAuthorities,
   withExecutionAuthority,
+  authorityScope,
 } from '../../../src/assistant/turn-authority';
+import { issueEventAuthority } from '../../../src/assistant/event-authority-issue';
 import type { ConversationAuthority } from '../../../src/harness/authority-contract';
 import type { Caller } from '../../../src/server/auth';
 import { commandPrincipal } from '../../../src/server/commands';
@@ -89,7 +90,7 @@ function authority(overrides: Partial<ConversationAuthority> = {}): Conversation
 describe('a tool grant', () => {
   it('admits a routed tool by its served name, never by the internal part it runs', async () => {
     const granted = chat({ tools: ['device_find'] });
-    const scoped = eventAuthority(opened.store, event(granted, ownerId));
+    const scoped = issueEventAuthority(opened.store, event(granted, ownerId), authorityScope());
     const context = { store: opened.store, actor: null, caller: null };
     const run = (servedTool?: string): unknown =>
       withExecutionAuthority(scoped, () =>
@@ -108,9 +109,17 @@ describe('child turn authority', () => {
   it('intersects a child tool grant with its parent and cannot widen it', () => {
     const parent = chat({ tools: ['a', 'b'] });
     const child = chat({ parent, tools: ['a', 'b'] });
-    const parentAuthority = eventAuthority(opened.store, event(parent, ownerId));
+    const parentAuthority = issueEventAuthority(
+      opened.store,
+      event(parent, ownerId),
+      authorityScope(),
+    );
     const source = { ...parentAuthority, tools: ['a'] };
-    const childAuthority = eventAuthority(opened.store, event(child, ownerId), source);
+    const childAuthority = issueEventAuthority(
+      opened.store,
+      event(child, ownerId),
+      authorityScope(source),
+    );
 
     expect(childAuthority.tools).toEqual(['a']);
     expect(() => {
@@ -124,8 +133,16 @@ describe('child turn authority', () => {
   it('keeps the child chat grant when the parent allows every tool', () => {
     const parent = chat({});
     const child = chat({ parent, tools: ['a'] });
-    const parentAuthority = eventAuthority(opened.store, event(parent, ownerId));
-    const childAuthority = eventAuthority(opened.store, event(child, ownerId), parentAuthority);
+    const parentAuthority = issueEventAuthority(
+      opened.store,
+      event(parent, ownerId),
+      authorityScope(),
+    );
+    const childAuthority = issueEventAuthority(
+      opened.store,
+      event(child, ownerId),
+      authorityScope(parentAuthority),
+    );
 
     expect(childAuthority.tools).toEqual(['a']);
   });
@@ -133,8 +150,16 @@ describe('child turn authority', () => {
   it('makes the child a member when the parent turn is a member, whoever queues it', () => {
     const parent = chat({});
     const child = chat({ parent });
-    const parentAuthority = eventAuthority(opened.store, event(parent, memberId));
-    const childAuthority = eventAuthority(opened.store, event(child, ownerId), parentAuthority);
+    const parentAuthority = issueEventAuthority(
+      opened.store,
+      event(parent, memberId),
+      authorityScope(),
+    );
+    const childAuthority = issueEventAuthority(
+      opened.store,
+      event(child, ownerId),
+      authorityScope(parentAuthority),
+    );
 
     expect(executionRole(parentAuthority)).toBe('member');
     expect(childAuthority.role).toBe('member');
@@ -144,17 +169,24 @@ describe('child turn authority', () => {
   it('keeps an owner parent and owner client as owner', () => {
     const parent = chat({});
     const child = chat({ parent });
-    const parentAuthority = eventAuthority(opened.store, event(parent, ownerId));
+    const parentAuthority = issueEventAuthority(
+      opened.store,
+      event(parent, ownerId),
+      authorityScope(),
+    );
 
-    expect(eventAuthority(opened.store, event(child, ownerId), parentAuthority).role).toBe('owner');
+    expect(
+      issueEventAuthority(opened.store, event(child, ownerId), authorityScope(parentAuthority))
+        .role,
+    ).toBe('owner');
   });
 
   it('refuses a source from another profile', () => {
     const other = opened.store.profiles.create({ name: 'Guest' });
     const target = chat({ profile: other.id });
-    expect(() => eventAuthority(opened.store, event(target, ownerId), authority())).toThrow(
-      'cannot change its initiating profile',
-    );
+    expect(() =>
+      issueEventAuthority(opened.store, event(target, ownerId), authorityScope(authority())),
+    ).toThrow('cannot change its initiating profile');
   });
 
   it('refuses a child that combines two initiating plugins', () => {
@@ -162,7 +194,7 @@ describe('child turn authority', () => {
     const source = authority({ plugin_id: 'one' });
     expect(() =>
       withExecutionAuthority(authority({ plugin_id: 'two' }), () =>
-        eventAuthority(opened.store, event(target, ownerId), source),
+        issueEventAuthority(opened.store, event(target, ownerId), authorityScope(source)),
       ),
     ).toThrow('ambiguous initiating plugins');
   });

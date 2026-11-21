@@ -5,12 +5,12 @@ import { BudgetStopError } from '../ledger/budget';
 import { PersonBudgetStopError } from '../ledger/person-budget';
 import { ImageAdmissionError } from './image-admission';
 
-export function imageReadiness(
+export async function imageReadiness(
   service: ImageOperationService,
   configured: boolean,
   actor: ImageActor,
   chatId: string | undefined,
-): ImageProviderReadiness {
+): Promise<ImageProviderReadiness> {
   const availability = service.availability();
   const base = {
     configured,
@@ -24,8 +24,8 @@ export function imageReadiness(
       reason: 'chat_required',
       detail: 'Select an owned chat to check its metered image-provider grant.',
     };
-  actor.authorize('read', chatId);
-  const refused = imageRefusal(actor, chatId);
+  await actor.authorize('read', chatId);
+  const refused = await imageRefusal(actor, chatId);
   if (refused !== null)
     return { ...base, spend_granted: refused.reason === 'not_configured', ...refused };
   if (!availability.accepting)
@@ -38,12 +38,12 @@ export function imageReadiness(
   return { ...base, spend_granted: true, ready: true, reason: null, detail: null };
 }
 
-function imageRefusal(
+async function imageRefusal(
   actor: ImageActor,
   chatId: string,
-): Pick<ImageProviderReadiness, 'reason' | 'detail'> | null {
+): Promise<Pick<ImageProviderReadiness, 'reason' | 'detail'> | null> {
   try {
-    actor.authorize('provider', chatId);
+    await actor.authorize('provider', chatId);
     return null;
   } catch (cause) {
     if (cause instanceof ImageAdmissionError)

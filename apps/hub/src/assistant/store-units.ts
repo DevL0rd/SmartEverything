@@ -1,9 +1,16 @@
-import { isChatActivity, type AssistantMessageRow } from '@smarteverything/domain';
+import { assistantLabel, isChatActivity, type AssistantMessageRow } from '@smarteverything/domain';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { NewAssistantMessage } from '../store/repositories/assistant-chat';
 import type { NewEvent, StoredEvent } from '../store/repositories/assistant-events';
-import { issueEventAuthority, type AuthorityScope } from './turn-authority';
+import { type AuthorityScope } from './turn-authority';
+import { issueEventAuthority } from './event-authority-issue';
+import {
+  personMessage,
+  responderMessage,
+  type PersonMessage,
+  type ResponderMessage,
+} from './conversation-log';
 
 export interface ConversationMessageInput {
   readonly row: NewAssistantMessage;
@@ -12,7 +19,7 @@ export interface ConversationMessageInput {
 }
 
 export function addConversationMessage(
-  store: Store,
+  store: HostStore,
   input: ConversationMessageInput,
 ): AssistantMessageRow {
   return store.write(() => {
@@ -23,12 +30,31 @@ export function addConversationMessage(
   });
 }
 
+export function addPersonMessage(store: HostStore, input: PersonMessage): AssistantMessageRow {
+  return addConversationMessage(store, {
+    row: personMessage(input),
+    files: input.files.map((file) => file.id),
+    ...(input.messageId === undefined ? {} : { messageId: input.messageId }),
+  });
+}
+
+export function addResponderMessage(
+  store: HostStore,
+  input: ResponderMessage,
+): AssistantMessageRow {
+  return addConversationMessage(store, {
+    row: responderMessage(input, () => assistantLabel(store.assistantChat.settings())),
+    files: (input.files ?? []).map((file) => file.id),
+    ...(input.messageId === undefined ? {} : { messageId: input.messageId }),
+  });
+}
+
 export interface QueuedEventInput {
   readonly event: NewEvent;
   readonly scope: AuthorityScope;
 }
 
-export function queueEventNow(store: Store, input: QueuedEventInput): StoredEvent {
+export function queueEventNow(store: HostStore, input: QueuedEventInput): StoredEvent {
   return store.write(() => {
     const event = store.assistantEvents.add(input.event);
     issueEventAuthority(store, event, input.scope);
@@ -47,7 +73,7 @@ export type SentMessage =
   | { readonly duplicate: true; readonly row: AssistantMessageRow }
   | { readonly duplicate: false; readonly row: AssistantMessageRow; readonly event: StoredEvent };
 
-function sentMessage(store: Store, input: SentMessageInput): SentMessage {
+function sentMessage(store: HostStore, input: SentMessageInput): SentMessage {
   const chatId = input.message.row.chat_id;
   const sent =
     input.clientMessageId === null
@@ -70,7 +96,7 @@ export interface MessageEventInput {
 }
 
 function messageEvent(
-  store: Store,
+  store: HostStore,
   input: MessageEventInput,
 ): { readonly row: AssistantMessageRow; readonly event: StoredEvent } {
   const row = addConversationMessage(store, input.message);

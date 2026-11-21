@@ -1,9 +1,4 @@
-import {
-  CHAT_TIMELINE_EMBED,
-  COMPACTION_EMBED,
-  DSH_SESSION_EVENTS_WRITE,
-  JSON_VALUE,
-} from '@smarteverything/domain';
+import { CHAT_TIMELINE_EMBED, COMPACTION_EMBED, JSON_VALUE } from '@smarteverything/domain';
 import { foldSurface } from '@deepseek-ai/dsh-session';
 import type {
   AssistantMessageRow,
@@ -11,7 +6,7 @@ import type {
   DshSessionEvent,
   ChatTimelinePart,
 } from '@smarteverything/domain';
-import { readNativeHistory } from '@smarteverything/harness/process';
+import { nativeHistoryOf } from './native-history';
 
 export class LegacyHistoryEvents {
   private readonly events: DshSessionEvent[] = [];
@@ -57,8 +52,8 @@ export class LegacyHistoryEvents {
     this.turn += 1;
   }
 
-  history(): ReturnType<typeof readNativeHistory> {
-    return readNativeHistory(this.header, DSH_SESSION_EVENTS_WRITE.parse(this.events));
+  history(): ReturnType<typeof nativeHistoryOf> {
+    return nativeHistoryOf(this.header, this.events);
   }
 
   private recall(row: AssistantMessageRow, attachments: readonly JsonValue[], time: number): void {

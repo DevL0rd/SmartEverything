@@ -25,15 +25,15 @@ export const memoryRoutes = (service: MemoryService) =>
     ),
     changeAiMemory: bound(
       API_ENDPOINTS.changeAiMemory,
-      ({ caller, params, body }) =>
-        service.change(principalOf(caller), params.memoryId, body).memory,
+      async ({ caller, params, body }) =>
+        (await service.change(principalOf(caller), params.memoryId, body)).memory,
     ),
-    removeAiMemory: bound(API_ENDPOINTS.removeAiMemory, ({ caller, params }) => {
-      service.remove(principalOf(caller), params.memoryId);
+    removeAiMemory: bound(API_ENDPOINTS.removeAiMemory, async ({ caller, params }) => {
+      await service.remove(principalOf(caller), params.memoryId);
       return DONE_REPLY;
     }),
-    forgetAiMemories: bound(API_ENDPOINTS.forgetAiMemories, ({ caller, query }) => ({
-      removed: service.forget(principalOf(caller), query.scope),
+    forgetAiMemories: bound(API_ENDPOINTS.forgetAiMemories, async ({ caller, query }) => ({
+      removed: await service.forget(principalOf(caller), query.scope),
     })),
     changeAiMemorySettings: bound(API_ENDPOINTS.changeAiMemorySettings, ({ caller, body }) =>
       service.changeSettings(principalOf(caller), body),

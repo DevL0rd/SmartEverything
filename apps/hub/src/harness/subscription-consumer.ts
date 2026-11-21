@@ -45,14 +45,14 @@ async function admitConsumerCall(
   const execution = service.directory.bound(body.device_id, body.generation, body.runtime_instance);
   requireActor(execution, actor);
   admitConsumerExecution(service, execution);
-  if (body.request.kind === 'stream') admitConsumerWriter(service, body);
+  if (body.request.kind === 'stream') await admitConsumerWriter(service, body);
   const supplier = subscriptionInferenceConnection(service, body.request.route);
   if (supplier.host.target.kind !== 'device')
     throw new ApiError(
       'forbidden',
       'Remote model inference requires its negotiated device supplier.',
     );
-  admitSupplierInference(
+  await admitSupplierInference(
     service,
     {
       device_id: supplier.host.target.device_id,
@@ -62,7 +62,10 @@ async function admitConsumerCall(
     body.request,
   );
 }
-function admitConsumerWriter(service: HarnessService, body: SubscriptionConsumerRequest): void {
+async function admitConsumerWriter(
+  service: HarnessService,
+  body: SubscriptionConsumerRequest,
+): Promise<void> {
   const request = body.request;
   if (request.kind !== 'stream')
     throw new ApiError('invalid_request', 'Expected execution inference.');
@@ -72,7 +75,7 @@ function admitConsumerWriter(service: HarnessService, body: SubscriptionConsumer
     request.execution.runtime_instance !== body.runtime_instance
   )
     throw new ApiError('forbidden', 'The model request names another execution binding.');
-  service.storage.verify(request.claim, body);
+  await service.storage.verify(request.claim, body);
 }
 interface ConsumerCall {
   readonly service: HarnessService;

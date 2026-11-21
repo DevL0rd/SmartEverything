@@ -9,7 +9,7 @@ import {
 } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
 import type { PlannerTimerPatch } from '../../store/repositories/planner-timers';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { nextRing, ringsBetween } from '../alarms';
 import { elapsedOf } from '../stopwatch';
 
@@ -45,7 +45,7 @@ function extension(timer: PlannerTimerRow, milliseconds: number, now: number): P
   };
 }
 
-function dismissTimerRings(store: Store, timer: PlannerTimerRow, now: number): void {
+function dismissTimerRings(store: HostStore, timer: PlannerTimerRow, now: number): void {
   for (const ring of store.plannerRings.forRef('timer', timer.id)) {
     if (ring.outcome === 'rang' && ring.dismissed_at === null) {
       store.plannerRings.update(ring.id, { dismissed_at: iso(now) });
@@ -67,7 +67,7 @@ export interface TimerChange {
 }
 
 function changedTimer(
-  store: Store,
+  store: HostStore,
   { id, profileId, action, nowMs }: TimerChange,
 ): PlannerTimerRow {
   const timer = store.plannerTimers.byId(id, profileId);
@@ -110,7 +110,7 @@ export interface TimerFinish {
   readonly nowMs: number;
 }
 
-function finishedTimer(store: Store, { timer, outcome, nowMs }: TimerFinish): PlannerRingRow {
+function finishedTimer(store: HostStore, { timer, outcome, nowMs }: TimerFinish): PlannerRingRow {
   store.plannerTimers.update(timer.id, timer.profile_id, {
     state: 'done',
     ends_at: null,
@@ -132,7 +132,7 @@ function finishedTimer(store: Store, { timer, outcome, nowMs }: TimerFinish): Pl
 
 export type StopwatchAction = 'begin' | 'pause' | 'lap' | 'reset';
 
-function stopwatchOf(store: Store, profileId: string): PlannerStopwatchRow {
+function stopwatchOf(store: HostStore, profileId: string): PlannerStopwatchRow {
   return (
     store.plannerStopwatch.find(profileId) ??
     store.plannerStopwatch.insert({
@@ -146,7 +146,7 @@ function stopwatchOf(store: Store, profileId: string): PlannerStopwatchRow {
 }
 
 function changedStopwatch(
-  store: Store,
+  store: HostStore,
   {
     profileId,
     action,
@@ -181,7 +181,7 @@ function changedStopwatch(
   });
 }
 
-function openRing(store: Store, profileId: string, ringId: string): PlannerRingRow {
+function openRing(store: HostStore, profileId: string, ringId: string): PlannerRingRow {
   const ring = store.plannerRings.find(ringId);
   if (ring?.profile_id !== profileId) throw new ApiError('not_found', 'That ring does not exist.');
   if (ring.outcome !== 'rang' || ring.dismissed_at !== null) {
@@ -209,7 +209,7 @@ export interface SnoozedRing extends LabelledRing {
 }
 
 function snoozedRing(
-  store: Store,
+  store: HostStore,
   {
     profileId,
     ringId,
@@ -235,7 +235,7 @@ function snoozedRing(
 }
 
 function dismissedRing(
-  store: Store,
+  store: HostStore,
   {
     profileId,
     ringId,
@@ -252,7 +252,7 @@ export interface SnoozeSettlement {
   readonly dismissed: readonly string[];
 }
 
-function settledSnoozes(store: Store, { nowMs }: { readonly nowMs: number }): SnoozeSettlement {
+function settledSnoozes(store: HostStore, { nowMs }: { readonly nowMs: number }): SnoozeSettlement {
   const held: { row: PlannerRingRow; resumeAt: string }[] = [];
   const dismissed: string[] = [];
   for (const profile of store.profiles.list()) {
@@ -276,14 +276,14 @@ function repeats(alarm: PlannerAlarmRow): boolean {
   return alarm.once_on === null && alarm.days.length > 0;
 }
 
-function handledUntil(store: Store, alarm: PlannerAlarmRow): Date {
+function handledUntil(store: HostStore, alarm: PlannerAlarmRow): Date {
   const latestRing = store.plannerRings.forRef('alarm', alarm.id).at(-1)?.due_at;
   const edited = Date.parse(alarm.updated_at);
   return new Date(latestRing === undefined ? edited : Math.max(edited, Date.parse(latestRing)));
 }
 
 function missedAlarms(
-  store: Store,
+  store: HostStore,
   { nowMs, reason }: { readonly nowMs: number; readonly reason: PlannerMissedReason },
 ): PlannerRingRow[] {
   const zone = store.settings.read().time_zone;
@@ -315,7 +315,7 @@ function missedAlarms(
 }
 
 function skippedAlarm(
-  store: Store,
+  store: HostStore,
   {
     profileId,
     alarmId,

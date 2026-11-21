@@ -5,9 +5,12 @@ import {
   type PlannerGuestRow,
   type PlannerItemRow,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
-export type GuestListStore = Pick<Store, 'plannerGuests' | 'profiles' | 'personAccess' | 'write'>;
+export type GuestListStore = Pick<
+  HostStore,
+  'plannerGuests' | 'profiles' | 'personAccess' | 'write'
+>;
 
 export interface GuestToken {
   readonly token: string;

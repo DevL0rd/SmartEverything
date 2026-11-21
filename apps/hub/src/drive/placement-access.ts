@@ -1,9 +1,9 @@
 import type { DrivePlacement } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { driveAccess, itemAccess, type DriveActor, type ItemAccess } from './access';
 
 export type PlacementAccessStore = Pick<
-  Store,
+  HostStore,
   'driveRoots' | 'driveItems' | 'driveGrants' | 'computerNodes'
 >;
 

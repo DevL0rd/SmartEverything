@@ -1,7 +1,7 @@
 import type { DriveItem, DriveThumb } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
 import { DriveMediaRepository, type DriveMediaPatch } from '../../store/repositories/drive-media';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export interface DerivedTarget {
   readonly itemId: string;
@@ -17,14 +17,14 @@ export interface DerivedRecord {
 
 type DerivedItem = Extract<DriveItem, { readonly kind: 'image' | 'video' }>;
 
-function currentOf(store: Store, target: DerivedTarget): DerivedItem | undefined {
+function currentOf(store: HostStore, target: DerivedTarget): DerivedItem | undefined {
   const item = store.driveItems.find(target.itemId, null);
   if (item === undefined || (item.kind !== 'image' && item.kind !== 'video')) return undefined;
   if (item.kind !== target.kind || item.rev !== target.rev) return undefined;
   return new DriveMediaRepository(store.context).find(item.id) === undefined ? undefined : item;
 }
 
-function writeThumb(store: Store, item: DerivedItem, thumb: DriveThumb): void {
+function writeThumb(store: HostStore, item: DerivedItem, thumb: DriveThumb): void {
   store.context.sql.run(
     'record the derived media thumbnail',
     'update drive_items set thumb_state = $state, thumb_reason = $reason where id = $itemId',

@@ -1,6 +1,6 @@
 import type { DriveFeedOp, DriveFeedRow } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { peopleWithAccess, type AudienceStore } from '../social/audience';
 
@@ -10,7 +10,7 @@ const EDIT_OPS: ReadonlySet<DriveFeedOp> = new Set(['update', 'rename', 'move'])
 
 const FEED_BATCH = 500;
 
-type EditNoticeStore = AudienceStore & Pick<Store, 'driveFeed' | 'driveNotifications'>;
+type EditNoticeStore = AudienceStore & Pick<HostStore, 'driveFeed' | 'driveNotifications'>;
 
 export interface EditNoticesPage {
   readonly last: number | null;

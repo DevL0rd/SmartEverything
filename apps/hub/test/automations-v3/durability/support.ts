@@ -26,6 +26,7 @@ import { AutomationRunRecordsRepository } from '../../../src/store/repositories/
 import { Sql } from '../../../src/store/sql';
 import { SimulatedClock as TestClock } from '../../../src/clock/simulated';
 import { captureLogs, testLogger } from '../../support/logs';
+import { noReads } from '../../support/direct-fetch';
 
 const START = '2026-10-18T12:00:00.000Z';
 
@@ -255,6 +256,7 @@ export class Hub {
     this.driver.run({
       state,
       context: contextOf(body, this.home),
+      reads: noReads(),
       name: 'Durable test',
       kind: 'live',
       startedBy: null,
@@ -268,6 +270,7 @@ export class Hub {
     return {
       state,
       context: contextOf(body, this.home),
+      reads: noReads(),
       name: 'Durable test',
       kind: 'live',
       startedBy: null,

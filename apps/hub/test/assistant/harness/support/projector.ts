@@ -14,8 +14,8 @@ export function projectorOf(
       emit: (): void => undefined,
       finished,
     },
-    (): void => undefined,
-    (): void => undefined,
+    (): Promise<void> => Promise.resolve(),
+    (): Promise<void> => Promise.resolve(),
     (): Promise<void> => Promise.resolve(),
   );
 }

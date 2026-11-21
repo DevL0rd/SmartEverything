@@ -46,8 +46,12 @@ function contextOf(chat: AiChatRow): ReferenceContext {
   return {
     caller: { kind: 'service', authority, profileId: rig.owner.profileId, chatId: chat.id },
     chat,
-    authority: { chatId: chat.id, profileId: rig.owner.profileId, validate: () => undefined },
-    validate: () => undefined,
+    authority: {
+      chatId: chat.id,
+      profileId: rig.owner.profileId,
+      validate: (): Promise<void> => Promise.resolve(),
+    },
+    validate: (): Promise<void> => Promise.resolve(),
   };
 }
 
@@ -61,7 +65,7 @@ describe('structured references on a native chat', () => {
   it('find the session of the chat', async () => {
     const chat = await opened();
 
-    const session = nativeReferenceSession(rig.service, contextOf(chat));
+    const session = await nativeReferenceSession(rig.service, contextOf(chat));
 
     expect(session.session_id).toBe(sessionIdOf(chat));
   });
@@ -69,15 +73,15 @@ describe('structured references on a native chat', () => {
   it('tell a person with an older machine to update it', async () => {
     const chat = await opened(false);
 
-    expect(() => nativeReferenceSession(rig.service, contextOf(chat))).toThrow(
+    await expect(nativeReferenceSession(rig.service, contextOf(chat))).rejects.toThrow(
       "This machine's SmartEverything is too old for file references; update it.",
     );
   });
 
-  it('tell a person to start the chat before using references', () => {
+  it('tell a person to start the chat before using references', async () => {
     const chat = rig.newChat(rig.desk.target);
 
-    expect(() => nativeReferenceSession(rig.service, contextOf(chat))).toThrow(
+    await expect(nativeReferenceSession(rig.service, contextOf(chat))).rejects.toThrow(
       'Send a message in this chat first.',
     );
   });

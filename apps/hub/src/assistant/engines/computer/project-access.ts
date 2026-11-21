@@ -1,15 +1,15 @@
 import { ApiError, type NativeManagedProject, type AiChatRow } from '@smarteverything/domain';
 import type { ComputerRunnerDeps } from './ports';
 
-export function managedProviderProject(
+export async function managedProviderProject(
   deps: ComputerRunnerDeps,
   chat: AiChatRow,
   sessionId: string | null,
   cwd: string | undefined,
-): NativeManagedProject | undefined {
+): Promise<NativeManagedProject | undefined> {
   if (chat.engine.kind !== 'claude' && chat.engine.kind !== 'codex')
     throw new ApiError('conflict', 'Managed native projects require a native engine.');
-  const bound = managedBinding(deps, chat.id);
+  const bound = await managedBinding(deps, chat.id);
   if (cwd !== undefined) {
     if (hasManagedSession(bound, sessionId))
       throw new ApiError(
@@ -29,8 +29,11 @@ export function managedProviderProject(
   return { protocol: 1, chat_id: chat.id };
 }
 
-function managedBinding(deps: ComputerRunnerDeps, chat: string): NativeManagedProject | undefined {
-  const retained = deps.store.aiRuntimeProvider.read(chat, false);
+async function managedBinding(
+  deps: ComputerRunnerDeps,
+  chat: string,
+): Promise<NativeManagedProject | undefined> {
+  const retained = await deps.store.host.call('aiRuntimeProvider', 'read', chat, false);
   return retained?.managed_project ?? retained?.context?.managed_project;
 }
 function hasManagedSession(

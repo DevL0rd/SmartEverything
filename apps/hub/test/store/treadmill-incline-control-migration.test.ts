@@ -1,3 +1,4 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,7 +8,6 @@ import { z } from 'zod';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import { testStoreHost } from '../support/store-host';
 
@@ -52,17 +52,19 @@ function seedBefore(): void {
 }
 
 describe('removing the stored one-time incline check result', () => {
-  it('drops inclineControl and keeps the other treadmill settings', () => {
+  it('drops inclineControl and keeps the other treadmill settings', async () => {
     seedBefore();
 
-    openStore({
-      host: testStoreHost(),
-      path,
-      log: testLogger(),
-      now: () => new Date(NOW),
-      systemTimeZone: 'UTC',
-      driveFolders: null,
-    }).close();
+    await closedStore(
+      await openSeededStore({
+        host: testStoreHost(),
+        path,
+        log: testLogger(),
+        now: () => new Date(NOW),
+        systemTimeZone: 'UTC',
+        driveFolders: null,
+      }),
+    );
 
     const database = new DatabaseSync(path);
     const row = STORED.parse(

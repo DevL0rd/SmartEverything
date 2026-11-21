@@ -109,17 +109,23 @@ export class Bench {
         this.persist(provider, event);
       },
       history: (deviceId) =>
-        [...this.stored]
-          .reverse()
-          .filter((entry) => entry.event.externalId === externalIdOf(deviceId))
-          .map((entry) => ({
-            kind: entry.event.kind,
-            occurredAt: entry.event.occurredAt,
-            details: entry.event.details,
-          })),
+        Promise.resolve(
+          [...this.stored]
+            .reverse()
+            .filter((entry) => entry.event.externalId === externalIdOf(deviceId))
+            .map((entry) => ({
+              kind: entry.event.kind,
+              occurredAt: entry.event.occurredAt,
+              details: entry.event.details,
+            })),
+        ),
       now: () => new Date(this.now),
       log: testLogger('laundry'),
     });
+  }
+
+  settled(): Promise<void> {
+    return this.tracker.settled();
   }
 
   restart(): void {

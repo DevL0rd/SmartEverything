@@ -61,7 +61,7 @@ export function healthSummary(
 }
 
 function today(context: ToolContext): string {
-  const clock = localClock(context.clock.now(), context.store.settings.read().time_zone);
+  const clock = localClock(context.clock.now(), context.store.live.home.settings.read().time_zone);
   const two = (value: number): string => String(value).padStart(2, '0');
   return `${String(clock.year)}-${two(clock.month)}-${two(clock.day)}`;
 }

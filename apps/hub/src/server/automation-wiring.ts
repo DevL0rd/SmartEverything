@@ -3,6 +3,13 @@ import { decisionView } from '../automations/decision-view';
 import { automationFunctions } from '../automations/service-functions';
 import { automationPrograms } from '../automations/service-programs';
 import type { ProgramEnv } from '../automations/service-programs';
+import {
+  hostAutomationDecisions,
+  hostAutomationPrograms,
+  hostAutomationTests,
+  hostRunNodes,
+  hostRunRecords,
+} from '../store/host/hosted';
 import type { ServerContext } from './context';
 import { automationFunctionRoutes } from './handlers/automation-functions';
 import { automationProgramReadRoutes } from './handlers/automation-program-reads';
@@ -45,13 +52,13 @@ export function automationRoutes(context: ServerContext, tools: ToolHub): Automa
     ...automationSecretRoutes(hub.automationSecrets),
     ...automationRunRoutes({
       store,
-      programs: store.automations,
-      records: store.automationRunRecords,
-      nodes: store.automationRunNodes,
-      decisions: decisionView(store.automationDecisions, (automationId) =>
+      programs: hostAutomationPrograms(store.host),
+      records: hostRunRecords(store.host),
+      nodes: hostRunNodes(store.host),
+      decisions: decisionView(hostAutomationDecisions(store.host), (automationId) =>
         hub.automationEngine.driver.pendingDecisions(automationId),
       ),
-      tests: store.automationTests,
+      tests: hostAutomationTests(store.host),
       engine: hub.automationEngine,
       rehearsals: hub.automationRehearsals,
     }),

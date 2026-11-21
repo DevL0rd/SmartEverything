@@ -10,7 +10,7 @@ import { startHubHarness } from './harness-wiring';
 import { imageSpendCheck } from './image-authority';
 import { harnessTransportRoutes } from '../harness/transport';
 import { bindMeteredBudget } from '../harness/metered-accounting';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { HubLayout } from '../data-layout';
 import type { Clock } from '../clock';
 import type { RunningExtension, ServerExtension } from '../extensions';
@@ -222,7 +222,7 @@ function voiceOf(options: BuildOptions, context: ServerContext, tools: ToolHub):
     cameras: homeCameras({ store: options.store, video: context.talk.camera.video }),
     roomMedia: new RoomMedia({
       store: options.store,
-      enabled: () => options.store.assistantChat.settings().voice.pause_media_while_speaking,
+      enabled: () => options.store.live.home.assistant.read().voice.pause_media_while_speaking,
       submit: options.core.hub.submit,
       log: options.log.forArea('hub.room-media'),
     }),
@@ -238,7 +238,9 @@ function budgetOf(options: BuildOptions, context: ServerContext, voice: Assistan
     openRouter: context.openRouter,
     alerts: options.alerts,
     note: (chatId, text) => {
-      context.assistant.systemNote(chatId, text, 'Budget');
+      background(context.assistant.systemNote(chatId, text, 'Budget'), 'budget.note_failed', {
+        chatId,
+      });
     },
     clock: options.clock,
     log: options.log.forArea('hub.budget'),
@@ -249,7 +251,11 @@ function budgetOf(options: BuildOptions, context: ServerContext, voice: Assistan
 
 function reconcilerOf(options: BuildOptions, context: ServerContext): Reconciler {
   return new Reconciler({
-    ledger: options.store.ledger,
+    ledger: {
+      usage: options.store.live.usage,
+      pending: () => options.store.host.read('ledgerPendingGenerations', null),
+      reconcile: (id, stats) => options.store.host.write('ledgerReconcile', { id, stats }),
+    },
     client: context.openRouter.client,
     sleep: options.clock.sleep,
     log: context.log,
@@ -279,7 +285,7 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
     }),
     status,
   );
-  await context.computerAi.load();
+  await Promise.all([context.computerAi.load(), context.harness.start()]);
   const stopWatches = startWatchDriver(context);
   const stopHomeServices = await startHomeServices(context);
   await ensureInviteKey(context.secrets);

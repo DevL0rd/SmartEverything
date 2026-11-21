@@ -15,7 +15,7 @@ async function callerOf(
   token: string,
 ): Promise<{ readonly caller: Caller; readonly node: boolean }> {
   if (NODE_AI_TOKEN.safeParse(token).success) {
-    return { caller: nodeCaller(store, await nodes.authenticate(token)), node: true };
+    return { caller: await nodeCaller(store, await nodes.authenticate(token)), node: true };
   }
   return { caller: await authenticate(store, request, 'member', false), node: false };
 }

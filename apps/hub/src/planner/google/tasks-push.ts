@@ -5,8 +5,7 @@ import {
   type FieldMap,
   type GoogleTask,
 } from '@smarteverything/google';
-import type { PlannerItemsRepository } from '../../store/repositories/planner-items';
-import type { Scope, TasksLocal } from './tasks-local';
+import type { Scope, TaskItems, TasksLocal } from './tasks-local';
 import {
   PATCH_FIELDS,
   baseFields,
@@ -35,7 +34,7 @@ function isPreconditionFailure(cause: unknown): boolean {
 
 export class TasksPush {
   constructor(
-    private readonly items: PlannerItemsRepository,
+    private readonly items: TaskItems,
     private readonly wire: TasksWire,
     private readonly local: TasksLocal,
     private readonly now: () => string,
@@ -43,19 +42,17 @@ export class TasksPush {
 
   async push(scope: Scope): Promise<void> {
     const { items } = this;
-    const rows = this.local.tasks(scope).filter((row) => row.status !== 'proposed');
+    const rows = (await this.local.tasks(scope)).filter((row) => row.status !== 'proposed');
     for (const row of this.parentsFirst(rows)) {
-      const current = items.byId(row.id, scope.profileId);
+      const current = await items.byId(row.id, scope.profileId);
       if (current.google === null) await this.insert(scope, current);
       else if (current.google.state === 'synced') await this.pushChanges(scope, current, false);
     }
-    const trashed = items
-      .trashed(scope.profileId)
-      .filter(
-        (row) => row.collection_id === scope.collection.id && typeof row.google?.id === 'string',
-      );
+    const trashed = (await items.trashed(scope.profileId)).filter(
+      (row) => row.collection_id === scope.collection.id && typeof row.google?.id === 'string',
+    );
     for (const row of trashed) await this.pushDelete(scope, row);
-    this.local.applyParents(scope);
+    await this.local.applyParents(scope);
   }
 
   private parentsFirst(rows: readonly PlannerItemRow[]): PlannerItemRow[] {
@@ -67,14 +64,13 @@ export class TasksPush {
     return [...rows].sort((a, b) => depth(a, 0) - depth(b, 0) || a.position - b.position);
   }
 
-  private placement(scope: Scope, item: PlannerItemRow): TaskPlacement {
-    const previous = this.local
-      .tasks(scope)
+  private async placement(scope: Scope, item: PlannerItemRow): Promise<TaskPlacement> {
+    const previous = (await this.local.tasks(scope))
       .filter((row) => row.parent_id === item.parent_id && row.position < item.position)
       .sort((a, b) => b.position - a.position)
       .map((row) => row.google?.id)
       .find((id) => typeof id === 'string');
-    const parent = this.local.googleParent(scope, item);
+    const parent = await this.local.googleParent(scope, item);
     return {
       ...(parent === undefined ? {} : { parent }),
       ...(previous === undefined ? {} : { previous }),
@@ -82,9 +78,10 @@ export class TasksPush {
   }
 
   private async insert(scope: Scope, item: PlannerItemRow): Promise<void> {
-    if (item.parent_id !== null && this.local.googleParent(scope, item) === undefined) return;
-    const fields = this.local.fieldsOf(scope, item);
-    this.items.update(item.id, scope.profileId, {
+    if (item.parent_id !== null && (await this.local.googleParent(scope, item)) === undefined)
+      return;
+    const fields = await this.local.fieldsOf(scope, item);
+    await this.items.update(item.id, scope.profileId, {
       google: {
         id: null,
         calendarOrListId: scope.listId,
@@ -95,9 +92,9 @@ export class TasksPush {
     });
     let task: GoogleTask;
     try {
-      task = await this.wire.insert(scope, this.placement(scope, item), insertBody(fields));
+      task = await this.wire.insert(scope, await this.placement(scope, item), insertBody(fields));
     } catch (cause) {
-      if (!isUncertain(cause)) this.items.update(item.id, scope.profileId, { google: null });
+      if (!isUncertain(cause)) await this.items.update(item.id, scope.profileId, { google: null });
       throw cause;
     }
     const synced = {
@@ -105,12 +102,17 @@ export class TasksPush {
       base: taskFields(task),
       position: googleOrder(task.position),
     };
-    this.store(scope, item.id, task.id, synced);
+    await this.store(scope, item.id, task.id, synced);
     scope.run.count('pushed');
   }
 
-  private store(scope: Scope, itemId: string, googleId: string, synced: Synced): void {
-    this.items.update(itemId, scope.profileId, {
+  private async store(
+    scope: Scope,
+    itemId: string,
+    googleId: string,
+    synced: Synced,
+  ): Promise<void> {
+    await this.items.update(itemId, scope.profileId, {
       position: synced.position,
       google: {
         id: googleId,
@@ -129,7 +131,7 @@ export class TasksPush {
     if (google === null || typeof id !== 'string' || typeof etag !== 'string') {
       throw new Error('A synced task has no Google id or etag.');
     }
-    const mine = this.local.fieldsOf(scope, item);
+    const mine = await this.local.fieldsOf(scope, item);
     const base = baseFields(google.base);
     const patch = requestBody(mine, base, PATCH_FIELDS, etag);
     let synced: Synced = {
@@ -153,7 +155,7 @@ export class TasksPush {
       await this.conflict(scope, item, retried);
       return;
     }
-    this.store(scope, item.id, id, synced);
+    await this.store(scope, item.id, id, synced);
   }
 
   private async moveIfNeeded(
@@ -166,7 +168,7 @@ export class TasksPush {
     if (id === null || id === undefined) return synced;
     if (mine['parent'] === synced.base['parent'] && item.position === synced.position)
       return synced;
-    const task = await this.wire.move(scope, id, this.placement(scope, item), synced.etag);
+    const task = await this.wire.move(scope, id, await this.placement(scope, item), synced.etag);
     scope.run.count('pushed');
     return { etag: task.etag, base: taskFields(task), position: googleOrder(task.position) };
   }
@@ -176,9 +178,9 @@ export class TasksPush {
     if (retried || id === null || id === undefined) {
       throw new GoogleApiError({ kind: 'precondition_failed' });
     }
-    this.local.mergeIn(scope, item, await this.wire.task(scope, id));
-    this.local.applyParents(scope);
-    await this.pushChanges(scope, this.items.byId(item.id, scope.profileId), true);
+    await this.local.mergeIn(scope, item, await this.wire.task(scope, id));
+    await this.local.applyParents(scope);
+    await this.pushChanges(scope, await this.items.byId(item.id, scope.profileId), true);
   }
 
   private async remoteOf(scope: Scope, id: string): Promise<GoogleTask | null> {
@@ -196,7 +198,7 @@ export class TasksPush {
     const remote = await this.remoteOf(scope, id);
     const resolution = remote === null ? 'already_deleted' : this.resolution(item, remote);
     if (remote !== null) await this.settle(scope, resolution, remote);
-    this.items.purge(item.id, scope.profileId);
+    await this.items.purge(item.id, scope.profileId);
     if (resolution !== 'resurrect') scope.run.count('deleted');
   }
 
@@ -218,7 +220,7 @@ export class TasksPush {
       scope.run.count('pushed');
     }
     if (resolution === 'resurrect') {
-      const revived = this.local.importTask(scope, remote);
+      const revived = await this.local.importTask(scope, remote);
       scope.run.conflict(revived.id, 'deleted', 'google', true);
     }
   }

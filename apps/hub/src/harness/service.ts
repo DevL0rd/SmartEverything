@@ -10,16 +10,16 @@ import { Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
 import { CountSummary } from '../providers/count-summary';
 import { RepeatLog } from '../providers/repeat-log';
-import { projectNativeWorkspace } from './workspace-publication';
-import { refusedNativeInput } from './input-refusal';
+import { refusalOf } from './input-refusal';
 import { logPublished, nextProjection, streamedWithoutChange } from './published-event';
 import { HarnessSubscriptions } from './subscriptions';
 import { HarnessConfigurationService } from './configuration';
 import { HarnessExtensions } from './extensions';
 import { prepareConversation } from './preparation';
 import { changePermission, confirmedPermission } from './permission';
-import { ApiError, AI_HARNESS_SESSION } from '@smarteverything/domain';
-import { noteChatMeters } from './chat-meters';
+import { ApiError, AI_HARNESS_SESSION, harnessTargetKey } from '@smarteverything/domain';
+import type { EventInputs, WorkspaceChange } from './store-units';
+import type { HarnessGrant } from './grant';
 import type {
   AiChatRow,
   DshEngine,
@@ -33,29 +33,38 @@ import type {
   AiHarnessEvent,
   AiHarnessPermissionChange,
   HarnessNativeFrame,
+  DshSessionMetadata,
 } from '@smarteverything/domain';
 import type { Store } from '../store/store';
-import { ownedChat, type ChatOwner } from '../assistant/chat-directory';
+import type { ChatOwner } from '../assistant/chat-ownership';
 import type { HarnessAuthority } from '@smarteverything/harness';
 import { HarnessDirectory } from './directory';
 import { HarnessStorage } from './storage';
+import type { StoredSessionLog } from './workspace-routes';
+import { HarnessSessionMirror } from './session-mirror';
+import { answerInteraction } from './answer';
 import { admitChildRoutes } from './child-routes';
 import type { HarnessRoutes } from './routes';
-import { settleRestartedSessions } from './restart-settle';
 import type { DshSessionPrincipal } from '../store/repositories/dsh-session-claims';
+import { HarnessExtensionRows } from './extension-rows';
+import {
+  hostHarnessConfiguration,
+  hostSkillUpdates,
+  hostSubscriptionHistory,
+} from '../store/host/hosted';
 
 export class HarnessService {
   private readonly log = new Logger('hub.harness');
   private readonly events = new CountSummary(this.log, 'harness.events_summary');
   private readonly stale = new RepeatLog(this.log);
   private readonly switching = new Set<string>();
-  private readonly listeners = new Set<(event: AiHarnessEvent) => void>();
-  readonly directory = new HarnessDirectory((request) => {
-    this.admitWork(request);
-  });
+  private readonly listeners = new Set<(event: AiHarnessEvent) => unknown>();
+  readonly directory = new HarnessDirectory((request) => this.admitWork(request));
   private readonly machineListeners = new Set<(chat: AiChatRow, text: string) => void>();
   readonly storage: HarnessStorage;
+  readonly sessions: HarnessSessionMirror;
   readonly configuration: HarnessConfigurationService;
+  private readonly extensionRows: HarnessExtensionRows;
   readonly extensions: HarnessExtensions;
   readonly discovery: HarnessDiscovery;
   readonly sources: HarnessSourceRegistry;
@@ -71,9 +80,7 @@ export class HarnessService {
     options: { readonly layout: HubLayout; readonly clock: Clock },
   ) {
     this.layout = options.layout;
-    this.ingest = new NativeIngest(store, (event) => {
-      this.publish(event);
-    });
+    this.ingest = new NativeIngest(store, (event) => this.publish(event));
     this.dshUsage = new DshUsageLedger({
       amend: (id, change): Promise<unknown> => store.host.write('ledgerAmend', { id, change }),
     });
@@ -83,24 +90,26 @@ export class HarnessService {
     });
     admitChildRoutes(this);
     this.storage = new HarnessStorage(store, this.directory);
+    this.sessions = new HarnessSessionMirror(store);
     this.subscriptions = new HarnessSubscriptions(
       this.directory,
       routes,
-      store.aiWeeklySubscriptionHistory,
+      hostSubscriptionHistory(store.host),
+      () => store.host.call('computerNodes', 'activeDeviceIds'),
     );
+    this.extensionRows = new HarnessExtensionRows(store.host);
     this.configuration = new HarnessConfigurationService(
-      store.harnessConfiguration,
-      store.harnessExtensions,
+      hostHarnessConfiguration(store.host),
+      this.extensionRows,
       this.directory,
     );
     this.extensions = new HarnessExtensions(
-      store.harnessExtensions,
+      this.extensionRows,
       this.configuration,
       { state: options.layout.system.ai.harness, tmp: options.layout.tmp },
       (): Date => options.clock.now(),
     );
-    settleRestartedSessions(store.harnessSessions);
-    this.sources = new HarnessSourceRegistry(store.settingsKv);
+    this.sources = new HarnessSourceRegistry(store.live.home.saved);
     this.discovery = new HarnessDiscovery(
       () => this.extensions.installed(),
       () => this.sources.list().sources.map((entry) => entry.source),
@@ -108,11 +117,22 @@ export class HarnessService {
       (): Date => options.clock.now(),
     );
     this.skillUpdates = new HarnessSkillUpdatesService(
-      store.harnessSkillUpdates,
+      hostSkillUpdates(store.host),
       this.configuration,
       this.extensions,
       options.clock,
     );
+  }
+  async start(): Promise<void> {
+    await this.store.host.write('harnessRestartSettle', null);
+    await this.extensionRows.load();
+    await this.configuration.load();
+  }
+  sessionLog(sessionId: string, profileId: string): Promise<StoredSessionLog | null> {
+    return this.store.host.read('harnessSessionLog', {
+      session_id: sessionId,
+      profile_id: profileId,
+    });
   }
   chatFolder(chat: AiChatRow): string {
     return chatFolder(this.layout, chat);
@@ -120,26 +140,29 @@ export class HarnessService {
   async readyFolder(open: Extract<HarnessRuntimeRequest, { kind: 'open' }>): Promise<void> {
     if (open.claim.target.kind === 'server') await ensureChatFolder(open.cwd);
   }
-  own(owner: ChatOwner, chatId: string): AiChatRow {
-    return ownedChat(this.store, owner, chatId);
+  own(owner: ChatOwner, chatId: string): Promise<AiChatRow> {
+    return this.store.host.read('assistantOwnedChat', { owner, chatId });
   }
   binding(chat: AiChatRow): DshEngine {
     if (chat.engine.kind !== 'dsh')
       throw new ApiError('conflict', 'This chat has a different native engine boundary.');
     return chat.engine;
   }
-  state(owner: ChatOwner, chatId: string): AiHarnessSession {
-    const chat = this.own(owner, chatId);
+  async state(owner: ChatOwner, chatId: string): Promise<AiHarnessSession> {
+    const chat = await this.own(owner, chatId);
     const binding = this.binding(chat);
     if (binding.session_id === null)
       throw new ApiError(
         'conflict',
         'This native chat has not been opened on its selected execution host.',
       );
-    const state = this.store.harnessSessions.state(binding.session_id);
+    const view = await this.store.host.read('harnessSessionView', {
+      session_id: binding.session_id,
+      profile_id: chat.profile_id,
+    });
+    const { state, metadata } = view;
     if (state === undefined)
       throw new ApiError('conflict', 'Native session projection is unavailable.');
-    const metadata = this.store.dshSessions.stat(binding.session_id, chat.profile_id);
     if (metadata === undefined)
       throw new ApiError('conflict', 'Native session metadata is unavailable.');
     if (metadata.chat_id !== chat.id)
@@ -150,7 +173,7 @@ export class HarnessService {
     return AI_HARNESS_SESSION.parse({
       ...state,
       metadata,
-      permission_change: this.store.harnessSessions.permissionChange(binding.session_id),
+      permission_change: view.permission_change,
     });
   }
   permission(
@@ -185,63 +208,8 @@ export class HarnessService {
       effort: binding.effort,
     };
   }
-  async answer(owner: ChatOwner, chatId: string, answer: AiHarnessAnswer): Promise<void> {
-    const chat = this.own(owner, chatId);
-    const id = this.boundSession(chat);
-    const receipt = this.store.harnessSessions.begin(answer.operation_id, id, answer);
-    const fields = {
-      chatId,
-      harnessSession: id,
-      operationId: answer.operation_id,
-      interactionId: answer.interaction_id,
-    };
-    if (receipt.state === 'completed') {
-      this.log.debug('harness.answer_replayed', fields);
-      return;
-    }
-    const session = this.state(owner, chatId);
-    this.assertPending(session, answer, fields);
-    const startedAt = performance.now();
-    try {
-      await this.directory.execute(session.target, answer.operation_id, {
-        kind: 'answer',
-        session_id: session.session_id,
-        expected_epoch: answer.expected_epoch,
-        answer,
-      });
-    } catch (cause) {
-      this.log.error('harness.answer_failed', cause, {
-        ...fields,
-        durationMs: Math.round(performance.now() - startedAt),
-      });
-      throw cause;
-    }
-    this.store.harnessSessions.finish(answer.operation_id, { ok: true });
-    this.log.info('harness.answered', {
-      ...fields,
-      durationMs: Math.round(performance.now() - startedAt),
-    });
-  }
-  private assertPending(
-    session: AiHarnessSession,
-    answer: AiHarnessAnswer,
-    fields: Record<string, string>,
-  ): void {
-    if (
-      session.epoch === answer.expected_epoch &&
-      session.interactions.some((entry) => entry.id === answer.interaction_id)
-    )
-      return;
-    this.log.warn('harness.answer_stale', {
-      ...fields,
-      expectedEpoch: answer.expected_epoch,
-      epoch: session.epoch,
-      pending: session.interactions.length,
-    });
-    throw new ApiError(
-      'conflict',
-      'This interaction is no longer pending at the selected native epoch.',
-    );
+  answer(owner: ChatOwner, chatId: string, answer: AiHarnessAnswer): Promise<void> {
+    return answerInteraction(this, { owner, chatId, answer });
   }
   switch(
     owner: ChatOwner,
@@ -273,23 +241,31 @@ export class HarnessService {
   machineChanged(chat: AiChatRow, text: string): void {
     for (const listener of this.machineListeners) listener(chat, text);
   }
-  turnRunning(chat: AiChatRow): boolean {
-    return this.store.harnessDeliveries.pending(this.boundSession(chat)).length > 0;
+  turnRunning(chat: AiChatRow): Promise<boolean> {
+    return this.store.host.read('harnessTurnRunning', {
+      session_id: this.boundId(chat),
+      profile_id: chat.profile_id,
+      chat_id: chat.id,
+    });
   }
-  onEvent(listener: (event: AiHarnessEvent) => void): () => void {
+  onEvent(listener: (event: AiHarnessEvent) => unknown): () => void {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
     };
   }
-  native(frame: HarnessNativeFrame): void {
-    this.ingest.frame(frame);
+  native(frame: HarnessNativeFrame): Promise<void> {
+    return this.ingest.frame(frame);
   }
-  publish(event: AiHarnessEvent): void {
+  ingested(): Promise<void> {
+    return this.ingest.settled();
+  }
+  async publish(event: AiHarnessEvent): Promise<void> {
     this.events.count(event.kind);
-    const grant = this.storage.grant(event.session_id);
-    const session = this.validateEvent(event);
-    const refusal = refusedNativeInput(this.store, event);
+    const inputs = await this.store.host.read('harnessEventInputs', event);
+    const { grant } = inputs;
+    const session = this.validateEvent(event, inputs.session);
+    const refusal = refusalOf(inputs.refusal);
     if (refusal !== undefined) {
       this.log.warn('harness.input_refused', {
         chatId: event.chat_id,
@@ -300,42 +276,57 @@ export class HarnessService {
       throw refusal;
     }
     logPublished(this.log, event);
-    const policy = event.kind === 'state' ? confirmedPermission(this, event) : undefined;
+    const policy =
+      event.kind === 'state' ? confirmedPermission(event, inputs.permission) : undefined;
+    const workspace =
+      event.kind === 'state' ? this.workspaceChange(event, grant, inputs) : undefined;
     const next = {
-      ...nextProjection(event, session, (state) => this.projected(state)),
+      ...nextProjection(event, session, (state) => this.projected(state, grant, inputs.metadata)),
       ...(policy === undefined ? {} : { permission: policy.permission }),
     };
     const published = event.kind === 'state' ? { ...event, session: next } : event;
-    if (!streamedWithoutChange(event, session, next))
-      this.store.harnessSessions.accept(
+    const accept = !streamedWithoutChange(event, session, next);
+    if (accept || workspace !== undefined)
+      await this.store.host.write('harnessEventAccept', {
         next,
         published,
-        (): void => {
-          if (policy !== undefined) {
-            const chat = this.store.aiChats.chat(event.chat_id);
-            this.store.aiChats.update(chat.id, {
-              engine: { ...this.binding(chat), permission: policy.permission },
-            });
-          }
-          noteChatMeters(this.store, published);
-        },
+        accept,
         policy,
-      );
-    this.deliver(published, grant.profile_id);
+        workspace,
+      });
+    await this.deliver(published, grant.profile_id);
   }
-  private deliver(event: AiHarnessEvent, profileId: string): void {
-    for (const listener of this.listeners) listener(event);
+  private workspaceChange(
+    event: Extract<AiHarnessEvent, { kind: 'state' }>,
+    grant: HarnessGrant,
+    inputs: EventInputs,
+  ): WorkspaceChange | undefined {
+    const directory = event.session.directory;
+    if (directory === null || inputs.workspace === directory.path) return undefined;
+    if (harnessTargetKey(directory.target) !== harnessTargetKey(grant.target))
+      throw new ApiError('forbidden', 'Native workspace publication belongs to another host.');
+    if (inputs.claim === null)
+      throw new ApiError('conflict', 'Native workspace has no current writer.');
+    return {
+      claim: inputs.claim,
+      cwd: directory.path,
+      principal: this.hostPrincipal(grant.profile_id, this.directory.get(grant.target).host),
+      grant,
+    };
+  }
+  private async deliver(event: AiHarnessEvent, profileId: string): Promise<void> {
+    for (const listener of this.listeners) await listener(event);
     this.announce(event, profileId);
   }
-  private boundSession(chat: AiChatRow): string {
+  boundId(chat: AiChatRow): string {
     const id = this.binding(chat).session_id;
     if (id === null) throw new ApiError('conflict', 'This conversation has no native binding.');
-    if (this.store.dshSessions.stat(id, chat.profile_id)?.chat_id !== chat.id)
-      throw new ApiError('forbidden', 'This native binding belongs to another conversation.');
     return id;
   }
-  private validateEvent(event: AiHarnessEvent): AiHarnessSession {
-    const session = this.store.harnessSessions.state(event.session_id);
+  private validateEvent(
+    event: AiHarnessEvent,
+    session: AiHarnessSession | undefined,
+  ): AiHarnessSession {
     if (session?.epoch !== event.epoch || session.chat_id !== event.chat_id) {
       this.stale.warn('harness.event_stale', event.session_id, {
         chatId: event.chat_id,
@@ -349,12 +340,13 @@ export class HarnessService {
     }
     return session;
   }
-  private projected(event: Extract<AiHarnessEvent, { kind: 'state' }>): AiHarnessSession {
-    const grant = this.storage.grant(event.session_id);
-    const metadata = this.store.dshSessions.stat(event.session_id, grant.profile_id);
+  private projected(
+    event: Extract<AiHarnessEvent, { kind: 'state' }>,
+    grant: HarnessGrant,
+    metadata: DshSessionMetadata | undefined,
+  ): AiHarnessSession {
     if (metadata === undefined)
       throw new ApiError('conflict', 'Native state metadata is unavailable.');
-    projectNativeWorkspace(this, event, grant);
     return AI_HARNESS_SESSION.parse({
       ...event.session,
       metadata,
@@ -372,19 +364,20 @@ export class HarnessService {
       platform: host.platform,
     };
   }
-  private admitWork(request: HarnessRuntimeRequest): void {
-    if (request.kind === 'close' || request.kind === 'interrupt') return;
+  private async admitWork(request: HarnessRuntimeRequest): Promise<void> {
+    if (request.kind === 'close') {
+      this.sessions.forget(request.session_id);
+      return;
+    }
+    if (request.kind === 'interrupt') return;
     if (request.kind === 'open') {
       this.store.live.chatWork.assertWorkAllowed(request.chat_id);
       return;
     }
-    const grant = this.store.harnessSessions.grant(request.session_id);
-    if (grant === undefined)
-      throw new ApiError('conflict', 'Native work has no admitted session grant.');
-    const metadata = this.store.dshSessions.stat(request.session_id, grant.profile_id);
-    if (metadata === undefined)
-      throw new ApiError('conflict', 'Native work has no stored conversation.');
-    this.store.live.chatWork.assertWorkAllowed(metadata.chat_id);
+    this.store.live.chatWork.assertWorkAllowed(
+      await this.store.host.read('harnessWorkChat', request.session_id),
+    );
+    await this.sessions.refresh(request.session_id);
   }
   admitTarget(owner: ChatOwner, host: AiHarnessHost): void {
     if (host.target.kind === 'device' && owner.role !== 'owner')

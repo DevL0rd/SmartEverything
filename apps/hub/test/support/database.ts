@@ -1,13 +1,12 @@
+import { testStore, type SeededStore } from './store';
 import { join } from 'node:path';
 import type { HubDatabase } from '../../src/database/port';
 import { storeDatabase } from '../../src/store/hub-database';
-import type { Store } from '../../src/store/store';
-import { testStore } from './store';
 
 type FailableOperation = 'insertEvents' | 'finishCommand';
 
 export interface TestDatabase {
-  readonly store: Store;
+  readonly store: SeededStore;
   readonly database: HubDatabase;
   readonly recordings: string;
   readonly failNext: (operation: FailableOperation) => void;

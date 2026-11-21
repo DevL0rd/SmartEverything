@@ -12,14 +12,14 @@ interface Rig {
   readonly frames: NodeSampleFrame[];
   readonly reads: Partial<Record<SampleTopic, number>>;
   readonly logs: CapturedLogs;
-  readonly state: { load: number; broken: boolean };
+  readonly state: { load: number; broken: boolean; used: number };
 }
 
 function rig(policy = POLICY): Rig {
   const frames: NodeSampleFrame[] = [];
   const reads: Partial<Record<SampleTopic, number>> = {};
   const logs = captureLogs();
-  const state = { load: 10, broken: false };
+  const state = { load: 10, broken: false, used: 400 };
   const counted = <T>(topic: SampleTopic, make: (tick: Tick) => T): ((tick: Tick) => T) => {
     return (tick) => {
       reads[topic] = (reads[topic] ?? 0) + 1;
@@ -37,6 +37,18 @@ function rig(policy = POLICY): Rig {
     gpu: counted('gpu', () => ({ gpus: [] })),
     memory: counted('memory', () => null),
     disks: counted('disks', () => ({ disks: [] })),
+    disk_usage: counted('disk_usage', () => ({
+      disks: [
+        {
+          mount: '/',
+          device: '/dev/sda1',
+          label: null,
+          filesystem: 'ext4',
+          usedBytes: state.used,
+          totalBytes: 1000,
+        },
+      ],
+    })),
     network: counted('network', () => null),
     sensors: counted('sensors', () => ({ sensors: [], fans: [] })),
     power: counted('power', () => null),
@@ -127,6 +139,21 @@ describe('Sampler frames', () => {
     expect(frames).toHaveLength(1);
     expect(frames[0]).toMatchObject({ key: true, seq: 0 });
     expect(partsOf(frames[0])).toEqual(['summary', 'cpu']);
+  });
+
+  it('reads disk usage at its own pace and sends it only when it changed', () => {
+    const { sampler, frames, reads, state } = rig();
+    sampler.start();
+    sampler.demand('hub', { disk_usage: 10_000 });
+    vi.advanceTimersByTime(0);
+    vi.advanceTimersByTime(15_000);
+    expect(frames.map(partsOf)).toEqual([['disk_usage']]);
+    state.used = 410;
+    vi.advanceTimersByTime(10_000);
+    expect(frames.map(partsOf)).toEqual([['disk_usage'], ['disk_usage']]);
+    expect(frames[1]?.key).toBeUndefined();
+    expect(frames[1]?.parts.disk_usage?.disks[0]?.usedBytes).toBe(410);
+    expect(reads.disk_usage).toBe(3);
   });
 
   it('sends only parts whose value changed', () => {

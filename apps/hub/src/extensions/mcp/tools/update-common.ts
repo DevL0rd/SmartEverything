@@ -18,5 +18,5 @@ export function updateError(cause: unknown): never {
 }
 
 export function publicServer(context: ToolContext): string {
-  return httpsPublicServer(context.store.settings.read());
+  return httpsPublicServer(context.store.live.home.settings.read());
 }

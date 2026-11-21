@@ -281,7 +281,7 @@ describe('the day and range reads', () => {
       { store: test.store },
       {
         now: () => new Date(START),
-        preferencesOf: () => preferences,
+        preferencesOf: () => Promise.resolve(preferences),
         catalogueOf: () => {
           throw new Error('no catalogue');
         },

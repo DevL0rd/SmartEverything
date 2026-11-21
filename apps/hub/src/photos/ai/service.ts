@@ -16,6 +16,7 @@ import type { OpenRouterKeys } from '../../openrouter/keys';
 import type { PhotosMeter } from '../../openrouter/photos-usage';
 import { needsKey, OpenRouterVision } from '../../openrouter/vision';
 import type { Store } from '../../store/store';
+import type { PhotoEmbedding } from '../../store/repositories/photo-embeddings';
 import type { HubLayout } from '../../data-layout';
 import type { MediaJobRunner } from '../pipeline/jobs';
 import { EMBEDDING_DIMENSIONS, PHOTOS_AI_AREA } from './defaults';
@@ -29,21 +30,7 @@ import { PhotoAiScheduler } from './scheduler';
 import type { StatusDevice } from './units';
 import { VisionHandler, type VisionClient } from './vision-job';
 
-export type PhotoAiStore = Pick<
-  Store,
-  | 'driveRoots'
-  | 'photoEmbeddings'
-  | 'context'
-  | 'feed'
-  | 'ledger'
-  | 'personal'
-  | 'personAccess'
-  | 'settingsKv'
-  | 'now'
-  | 'reader'
-  | 'driveFeed'
-  | 'host'
->;
+export type PhotoAiStore = Pick<Store, 'feed' | 'now' | 'reader' | 'host'>;
 
 export interface PhotoAiOptions {
   readonly store: PhotoAiStore;
@@ -80,7 +67,10 @@ export class PhotoAi {
   constructor(private readonly options: PhotoAiOptions) {
     const { store } = options;
     this.log = options.log.forArea(PHOTOS_AI_AREA);
-    this.index = new PhotoVectorIndex(store.photoEmbeddings);
+    this.index = new PhotoVectorIndex({
+      after: (itemId, size): Promise<PhotoEmbedding[]> =>
+        store.host.call('photoEmbeddings', 'after', itemId, size),
+    });
     const notice: AiNotice = (value) => {
       store.feed.notice(value);
     };

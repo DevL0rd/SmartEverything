@@ -1,7 +1,30 @@
 import type { VacuumScene, VacuumSlot } from '@smarteverything/domain';
-import type { VacuumScenesRepository } from '../store/repositories/vacuum-scenes';
+import { background } from '@smarteverything/logging';
+import type { StoreHost } from '../store/host/host';
 
-export type MapStore = Pick<VacuumScenesRepository, 'save' | 'at' | 'latest' | 'has'>;
+export interface MapStore {
+  readonly save: (deviceId: string, scene: VacuumScene) => Promise<void>;
+  readonly at: (
+    deviceId: string,
+    slot: VacuumSlot,
+    index: number,
+  ) => Promise<VacuumScene | undefined>;
+}
+
+export function hostMapStore(host: Pick<StoreHost, 'call'>): MapStore {
+  return {
+    save: (deviceId, scene) => host.call('vacuumScenes', 'save', deviceId, scene),
+    at: (deviceId, slot, index) => host.call('vacuumScenes', 'at', deviceId, slot, index),
+  };
+}
+
+export class MapCacheNotLoadedError extends Error {
+  override readonly name = 'MapCacheNotLoadedError';
+
+  constructor(deviceId: string) {
+    super(`The vacuum maps of device ${deviceId} were read before they were loaded.`);
+  }
+}
 
 function keyOf(deviceId: string, slot: VacuumSlot): string {
   return `${deviceId}\u0000${slot}`;
@@ -9,36 +32,38 @@ function keyOf(deviceId: string, slot: VacuumSlot): string {
 
 export class MapCache {
   private readonly newest = new Map<string, VacuumScene>();
+  private readonly held = new Set<string>();
   private readonly robotMaps = new Map<string, Map<number, VacuumScene>>();
 
   constructor(private readonly store: MapStore) {}
 
-  has(deviceId: string, slot: VacuumSlot, index: number): boolean {
-    return (
-      this.newest.get(keyOf(deviceId, slot))?.index === index ||
-      this.store.has(deviceId, slot, index)
-    );
+  hold(deviceId: string, scenes: readonly VacuumScene[]): void {
+    for (const scene of scenes) this.keepNewest(deviceId, scene);
+    this.held.add(deviceId);
   }
 
-  at(deviceId: string, slot: VacuumSlot, index: number): VacuumScene | undefined {
+  holdEmpty(deviceId: string): void {
+    this.held.add(deviceId);
+  }
+
+  async at(deviceId: string, slot: VacuumSlot, index: number): Promise<VacuumScene | undefined> {
     const newest = this.newest.get(keyOf(deviceId, slot));
     return newest?.index === index ? newest : this.store.at(deviceId, slot, index);
   }
 
   latest(deviceId: string, slot: VacuumSlot): VacuumScene | undefined {
-    const key = keyOf(deviceId, slot);
-    const held = this.newest.get(key);
-    if (held !== undefined) return held;
-    const stored = this.store.latest(deviceId, slot);
-    if (stored !== undefined) this.newest.set(key, stored);
-    return stored;
+    if (!this.held.has(deviceId)) throw new MapCacheNotLoadedError(deviceId);
+    return this.newest.get(keyOf(deviceId, slot));
   }
 
   save(deviceId: string, scene: VacuumScene): void {
-    this.store.save(deviceId, scene);
-    const key = keyOf(deviceId, scene.slot);
-    const held = this.latest(deviceId, scene.slot);
-    if (held === undefined || scene.index >= held.index) this.newest.set(key, scene);
+    if (!this.held.has(deviceId)) throw new MapCacheNotLoadedError(deviceId);
+    this.keepNewest(deviceId, scene);
+    background(this.store.save(deviceId, scene), 'vacuum_map.save_failed', {
+      deviceId,
+      slot: scene.slot,
+      index: scene.index,
+    });
   }
 
   saveRobotMap(deviceId: string, scene: VacuumScene): void {
@@ -55,5 +80,11 @@ export class MapCache {
 
   dropRobotMap(deviceId: string, robotMapId: number): void {
     this.robotMaps.get(deviceId)?.delete(robotMapId);
+  }
+
+  private keepNewest(deviceId: string, scene: VacuumScene): void {
+    const key = keyOf(deviceId, scene.slot);
+    const held = this.newest.get(key);
+    if (held === undefined || scene.index >= held.index) this.newest.set(key, scene);
   }
 }

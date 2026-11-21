@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import { basename, dirname } from 'node:path/posix';
 import type { DriveItem } from '@smarteverything/domain';
-import { commitContent, folderDraft, parentOf, recordItem } from '../../drive/changes';
+import { commitContent, folderDraft, parentIn, recordItem } from '../../drive/changes';
 import { identityOf, isoOf } from '../../drive/change-rows';
 import { locate, moveWithin, type DriveWriteRoot } from '../../drive/intents';
 import { DriveWriteError } from '../../drive/write-error';
@@ -21,6 +21,7 @@ import {
   type DavTarget,
 } from './collections';
 import { DavError, guarded, type DavCaller, type DavDeps, type DavExchange } from './dav-auth';
+import type { DriveItemWindow } from '../../store/repositories/drive-items';
 
 const ABSOLUTE = /^https?:\/\/([^/?#]+)([^?#]*)/iu;
 
@@ -150,7 +151,7 @@ async function planOf(
   const overwrite = overwriteOf(request);
   const shallow = shallowOf(request, move);
   const root = writableOf(destination);
-  const parent = parentOf(deps.env, root.id, destination.relPath);
+  const parent = await parentIn(deps.env, root.id, destination.relPath);
   if (destination.item !== undefined && !overwrite) {
     throw new DavError(412, 'The destination exists and Overwrite is F.');
   }
@@ -246,7 +247,7 @@ async function copyChildren(
 ): Promise<void> {
   let after: string | null = null;
   do {
-    const window = plan.deps.store.driveItems.children({
+    const window: DriveItemWindow = await plan.deps.store.host.call('driveItems', 'children', {
       rootId: folder.rootId,
       parentId: folder.id,
       after,

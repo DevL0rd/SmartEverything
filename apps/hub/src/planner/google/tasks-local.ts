@@ -6,10 +6,8 @@ import {
   type PlannerItemRow,
 } from '@smarteverything/domain';
 import { mergeFields, type FieldMap, type GoogleTask } from '@smarteverything/google';
-import type {
-  PlannerItemPatch,
-  PlannerItemsRepository,
-} from '../../store/repositories/planner-items';
+import type { HostedRepository } from '../../store/host/hosted';
+import type { PlannerItemPatch } from '../../store/repositories/planner-items';
 import {
   baseFields,
   baseOf,
@@ -63,32 +61,36 @@ export interface Scope extends TaskTarget {
   readonly collection: PlannerCollectionRow;
 }
 
+export type TaskItems = HostedRepository<
+  'plannerItems',
+  'find' | 'list' | 'trashed' | 'update' | 'insert' | 'byGoogle' | 'trash' | 'purge' | 'byId'
+>;
+
 export class TasksLocal {
-  constructor(private readonly items: PlannerItemsRepository) {}
+  constructor(private readonly items: TaskItems) {}
 
-  googleParent(scope: Scope, item: PlannerItemRow): string | undefined {
+  async googleParent(scope: Scope, item: PlannerItemRow): Promise<string | undefined> {
     if (item.parent_id === null) return undefined;
-    return this.items.find(item.parent_id, scope.profileId)?.google?.id ?? undefined;
+    return (await this.items.find(item.parent_id, scope.profileId))?.google?.id ?? undefined;
   }
 
-  fieldsOf(scope: Scope, item: PlannerItemRow): FieldMap {
-    return itemFields(item, this.googleParent(scope, item));
+  async fieldsOf(scope: Scope, item: PlannerItemRow): Promise<FieldMap> {
+    return itemFields(item, await this.googleParent(scope, item));
   }
 
-  tasks(scope: Scope): PlannerItemRow[] {
+  tasks(scope: Scope): Promise<PlannerItemRow[]> {
     return this.items.list(scope.profileId, {
       collectionIds: [scope.collection.id],
       kind: 'task',
     });
   }
 
-  known(scope: Scope): Map<string, string> {
-    const { items } = this;
-    const trashed = items
-      .trashed(scope.profileId)
-      .filter((row) => row.collection_id === scope.collection.id);
+  async known(scope: Scope): Promise<Map<string, string>> {
+    const trashed = (await this.items.trashed(scope.profileId)).filter(
+      (row) => row.collection_id === scope.collection.id,
+    );
     const etags = new Map<string, string>();
-    for (const row of [...this.tasks(scope), ...trashed]) {
+    for (const row of [...(await this.tasks(scope)), ...trashed]) {
       const id = row.google?.id;
       const etag = row.google?.etag;
       if (typeof id === 'string' && typeof etag === 'string') etags.set(id, etag);
@@ -96,9 +98,9 @@ export class TasksLocal {
     return etags;
   }
 
-  adopt(scope: Scope, item: PlannerItemRow, task: GoogleTask): void {
+  async adopt(scope: Scope, item: PlannerItemRow, task: GoogleTask): Promise<void> {
     const sent = item.google?.base ?? {};
-    this.items.update(item.id, scope.profileId, {
+    await this.items.update(item.id, scope.profileId, {
       google: {
         id: task.id,
         calendarOrListId: scope.listId,
@@ -113,19 +115,19 @@ export class TasksLocal {
     });
   }
 
-  importTask(scope: Scope, task: GoogleTask): PlannerItemRow {
-    const row = this.items.insert(
+  async importTask(scope: Scope, task: GoogleTask): Promise<PlannerItemRow> {
+    const row = await this.items.insert(
       importedTask(task, scope.profileId, scope.collection.id, scope.listId),
     );
     scope.run.parents.set(row.id, task.parent);
     return row;
   }
 
-  mergeIn(scope: Scope, item: PlannerItemRow, task: GoogleTask): void {
+  async mergeIn(scope: Scope, item: PlannerItemRow, task: GoogleTask): Promise<void> {
     const theirs = taskFields(task);
     const result = mergeFields({
       base: baseFields(item.google?.base ?? {}),
-      mine: this.fieldsOf(scope, item),
+      mine: await this.fieldsOf(scope, item),
       theirs,
       mineUpdatedAt: Date.parse(item.updated_at),
       theirsUpdatedAt: Date.parse(task.updated),
@@ -134,7 +136,7 @@ export class TasksLocal {
       scope.run.conflict(item.id, c.field, c.winner === 'mine' ? 'app' : 'google', c.lost);
     }
     const moved = basePosition(item.google?.base ?? {}) !== item.position;
-    this.items.update(item.id, scope.profileId, {
+    await this.items.update(item.id, scope.profileId, {
       ...this.mergedPatch(item, result.merged),
       position: moved ? item.position : googleOrder(task.position),
       google: {
@@ -161,29 +163,29 @@ export class TasksLocal {
     };
   }
 
-  removeLocal(scope: Scope, taskId: string): void {
+  async removeLocal(scope: Scope, taskId: string): Promise<void> {
     const { items } = this;
-    for (const row of items.byGoogle(scope.profileId, scope.listId, taskId)) {
+    for (const row of await items.byGoogle(scope.profileId, scope.listId, taskId)) {
       if (row.deleted_at === null) {
-        items.update(row.id, scope.profileId, { google: null });
-        items.trash(row.id, scope.profileId);
+        await items.update(row.id, scope.profileId, { google: null });
+        await items.trash(row.id, scope.profileId);
       } else {
-        items.purge(row.id, scope.profileId);
+        await items.purge(row.id, scope.profileId);
       }
       scope.run.count('deleted');
     }
   }
 
-  applyParents(scope: Scope): void {
+  async applyParents(scope: Scope): Promise<void> {
     const { items } = this;
     for (const [id, googleParent] of scope.run.parents) {
-      const item = items.find(id, scope.profileId);
+      const item = await items.find(id, scope.profileId);
       if (item === undefined) continue;
       const parent =
         googleParent === undefined
           ? null
-          : (items.byGoogle(scope.profileId, scope.listId, googleParent)[0]?.id ?? null);
-      if (parent !== item.parent_id) items.update(id, scope.profileId, { parent_id: parent });
+          : ((await items.byGoogle(scope.profileId, scope.listId, googleParent))[0]?.id ?? null);
+      if (parent !== item.parent_id) await items.update(id, scope.profileId, { parent_id: parent });
     }
     scope.run.parents.clear();
   }

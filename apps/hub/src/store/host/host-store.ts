@@ -1,15 +1,28 @@
 import { DatabaseSync } from 'node:sqlite';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { DriveFolders } from '../../data-layout/drive-folders';
-import { assembledStore } from '../assemble';
+import type { Ledger } from '../../ledger/ledger';
+import { assembledStore, type Repositories } from '../assemble';
+import type { StoreContext } from '../context';
 import { ChangeFeed } from '../feed';
 import { StoreReader } from '../reader';
 import { durableSessionWrite } from '../repositories/dsh-session-durability';
+import type { SettingsRepository } from '../repositories/settings';
 import { reportedSql } from '../sql-report';
-import type { Store } from '../store';
-import type { StoreHost } from './host';
-import type { StoreLive } from '../live';
-import { StoreHostOnlyMainError } from './errors';
+
+export type HostStore = Repositories & {
+  readonly path: string;
+  readonly context: StoreContext;
+  readonly database: DatabaseSync;
+  readonly feed: ChangeFeed;
+  readonly reader: StoreReader;
+  readonly settings: SettingsRepository;
+  readonly ledger: Ledger;
+  readonly now: () => Date;
+  readonly write: <T>(work: () => T) => T;
+  readonly durableWrite: <T>(work: () => T) => T;
+  readonly close: () => void;
+};
 
 export interface HostStoreOptions {
   readonly path: string;
@@ -33,7 +46,7 @@ function openConnection(options: HostStoreOptions): DatabaseSync {
   return database;
 }
 
-export function openHostStore(options: HostStoreOptions): Store {
+export function openHostStore(options: HostStoreOptions): HostStore {
   const database = openConnection(options);
   const { sql, stop } = reportedSql(database, options.log);
   const feed = new ChangeFeed(options.log);
@@ -55,17 +68,8 @@ export function openHostStore(options: HostStoreOptions): Store {
     now: options.now,
     write: (work) => context.write(work),
     durableWrite: (work) => durableSessionWrite(context, work),
-    startRetention: (): never => {
-      throw new StoreHostOnlyMainError('retention');
-    },
-    get host(): StoreHost {
-      throw new StoreHostOnlyMainError('host');
-    },
-    get live(): StoreLive {
-      throw new StoreHostOnlyMainError('live');
-    },
     close: (): void => {
-      reader.close();
+      background(reader.close(), 'store.host_reader_close_failed');
       stop();
       database.close();
     },

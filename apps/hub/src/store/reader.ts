@@ -64,15 +64,18 @@ export class StoreReader {
     return z.array(schema).parse(rows);
   }
 
-  close(): void {
+  async close(): Promise<void> {
     this.closed = true;
     const worker = this.worker;
     this.worker = null;
     this.failAll(new StoreReadError('', 'the store is closing'));
     if (worker === null) return;
-    worker.terminate().catch((cause: unknown) => {
+    try {
+      await worker.terminate();
+    } catch (cause) {
       this.options.log.error('store.reader_terminate_failed', cause);
-    });
+      throw cause;
+    }
   }
 
   private request(text: string, parameters: SqlParameters): Promise<readonly unknown[]> {

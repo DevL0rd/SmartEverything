@@ -1,30 +1,17 @@
-import { TIME_ZONE } from '@smarteverything/domain';
 import { basename } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
-import { z } from 'zod';
 import type { Logger } from '@smarteverything/logging';
-import type { StoreContext } from './context';
 import { ChangeFeed } from './feed';
 import { CHECKPOINT_FRAMES, StoreCheckpoints } from './checkpoints';
 import { DriveSyncRetention } from './drive-sync-retention';
 import { StoreReader } from './reader';
-import { migrate } from './migrate';
-import { discardMigrationBackups } from './migration-backup';
 import type { DriveFolders } from '../data-layout/drive-folders';
-import { repairPersonAccess } from './person-access-repair';
-import { MIGRATIONS } from './migrations';
-import { durableSessionWrite } from './repositories/dsh-session-durability';
-import type { SettingsRepository } from './repositories/settings';
-import { automationStorageMetrics } from './automation-storage-metrics';
-import { sweepRetention } from './retention';
-import { reportedSql } from './sql-report';
-import type { Sql } from './sql';
-import type { Ledger } from '../ledger/ledger';
-import { assembledStore, type Repositories } from './assemble';
 import { StoreHost } from './host/host';
 import { StoreLive } from './live';
+import { DRIVE_TOTALS_QUIET_MS } from './quiet-totals';
 import { DAY_MS } from '../metrics/minute';
-import { background, messageOf } from '@smarteverything/logging';
+import { background } from '@smarteverything/logging';
+import type { StoreOpened } from './open-unit';
+import { AGED_ROWS, RETENTION_BATCH_ROWS } from './retention';
 
 export interface StoreOptions {
   readonly path: string;
@@ -40,107 +27,86 @@ export interface StoreHostSetup {
   readonly readers: number;
 }
 
-const BUSY_TIMEOUT_MS = 30_000;
+export const STORE_BUSY_TIMEOUT_MS = 5000;
 
 const FEED_SUMMARY_MS = 60_000;
 
 const RETENTION_SWEEP_MS = DAY_MS;
 
-function openDatabase(path: string): DatabaseSync {
-  const database = new DatabaseSync(path, { enableForeignKeyConstraints: true });
-  database.exec(`pragma busy_timeout = ${String(BUSY_TIMEOUT_MS)}`);
-  database.exec('pragma journal_mode = wal');
-  database.exec('pragma synchronous = normal');
-  database.exec('pragma foreign_keys = on');
-  database.exec('pragma wal_autocheckpoint = 0');
-  return database;
-}
-
-const PRAGMA_VALUE = z.record(z.string(), z.union([z.number(), z.string(), z.null()]));
-
-function describeDatabase(database: DatabaseSync, path: string, log: Logger): void {
-  try {
-    const read = (pragma: string): unknown =>
-      Object.values(PRAGMA_VALUE.parse(database.prepare(`pragma ${pragma}`).get() ?? {}))[0];
-    log.debug('store.pragmas_read', () => ({
-      file: basename(path),
-      journalMode: read('journal_mode'),
-      synchronous: read('synchronous'),
-      foreignKeys: read('foreign_keys'),
-      busyTimeoutMs: read('busy_timeout'),
-      pageSize: read('page_size'),
-      pageCount: read('page_count'),
-      freelistCount: read('freelist_count'),
-      walAutocheckpoint: read('wal_autocheckpoint'),
-    }));
-  } catch (cause) {
-    log.warn('store.pragmas_failed', {
-      errorName: cause instanceof Error ? cause.name : typeof cause,
-      reason: messageOf(cause),
-    });
-  }
-}
-
-function startTimeZone(settings: SettingsRepository, options: StoreOptions): void {
-  if (!TIME_ZONE.safeParse(options.systemTimeZone).success) {
-    options.log.warn('settings.system_time_zone_unknown', { timeZone: options.systemTimeZone });
-    return;
-  }
-  const start = settings.initialiseTimeZone(options.systemTimeZone);
-  if (start.initialised) {
-    options.log.info('settings.time_zone_initialised', { from: start.from, to: start.to });
-  }
-}
-
-function seed(
-  settings: SettingsRepository,
-  repositories: Repositories,
-  options: StoreOptions,
-): void {
-  settings.ensure();
-  repositories.weather.ensure();
-  repositories.exchangeRates.ensure();
-  startTimeZone(settings, options);
-}
-
-export type Store = Repositories & {
+export interface Store {
   readonly path: string;
-  readonly context: StoreContext;
-  readonly database: DatabaseSync;
   readonly feed: ChangeFeed;
   readonly reader: StoreReader;
   readonly host: StoreHost;
   readonly live: StoreLive;
-  readonly settings: SettingsRepository;
-  readonly ledger: Ledger;
   readonly now: () => Date;
-  readonly write: <T>(work: () => T) => T;
-  readonly durableWrite: <T>(work: () => T) => T;
   readonly startRetention: () => void;
-  readonly close: () => void;
-};
-
-function migrated(sql: Sql, options: StoreOptions): number {
-  const version = migrate(sql, MIGRATIONS, options.now().toISOString(), options.log);
-  repairPersonAccess(sql, options.log);
-  discardMigrationBackups(sql, options.log);
-  return version;
+  readonly close: () => Promise<void>;
 }
 
-function retentionOf(sql: Sql, options: StoreOptions): { start: () => void; stop: () => void } {
+function idBatches(ids: readonly string[]): string[][] {
+  const batches: string[][] = [];
+  for (let at = 0; at < ids.length; at += RETENTION_BATCH_ROWS)
+    batches.push(ids.slice(at, at + RETENTION_BATCH_ROWS));
+  return batches;
+}
+
+async function sweptAged(host: StoreHost): Promise<Record<string, number>> {
+  const removed: Record<string, number> = {};
+  for (const { table } of AGED_ROWS) {
+    let total = 0;
+    for (;;) {
+      const rows = await host.write('storeRetentionAged', { table });
+      total += rows;
+      if (rows < RETENTION_BATCH_ROWS) break;
+    }
+    removed[table] = total;
+  }
+  return removed;
+}
+
+async function sweptAutomations(host: StoreHost): Promise<Record<string, number>> {
+  const plan = await host.read('storeRetentionPlan', null);
+  let commands = 0;
+  let runs = 0;
+  let nodes = 0;
+  let plans = 0;
+  for (const ids of idBatches(plan.forgetRuns)) {
+    const forgotten = await host.write('storeRetentionRuns', { ids });
+    commands += forgotten.commands;
+    runs += forgotten.runs;
+  }
+  for (const ids of idBatches(plan.dropNodes))
+    nodes += await host.write('storeRetentionNodes', { ids });
+  for (const hashes of idBatches(plan.orphanPlans))
+    plans += await host.write('storeRetentionPlans', { hashes });
+  return {
+    automation_runs: runs,
+    automation_run_commands: commands,
+    automation_run_nodes: nodes,
+    automation_plans: plans,
+  };
+}
+
+function retentionOf(
+  host: StoreHost,
+  options: StoreOptions,
+): { start: () => void; stop: () => void } {
   let timer: NodeJS.Timeout | null = null;
-  const sweep = (): void => {
-    const removed = sweepRetention(sql, options.now());
+  const sweep = async (): Promise<void> => {
+    const removed = { ...(await sweptAged(host)), ...(await sweptAutomations(host)) };
     options.log.debug('store.retention_swept', removed);
-    options.log.debug('store.automation_storage', () => ({
-      tables: automationStorageMetrics(sql),
-    }));
+    const tables = await host.read('storeAutomationStorage', null);
+    options.log.debug('store.automation_storage', { tables });
+  };
+  const swept = (): void => {
+    background(sweep(), 'store.retention_failed');
   };
   return {
     start: (): void => {
       if (timer !== null) return;
-      sweep();
-      timer = setInterval(sweep, RETENTION_SWEEP_MS);
+      swept();
+      timer = setInterval(swept, RETENTION_SWEEP_MS);
       timer.unref();
     },
     stop: (): void => {
@@ -150,71 +116,42 @@ function retentionOf(sql: Sql, options: StoreOptions): { start: () => void; stop
   };
 }
 
-function checkpointsOf(sql: Sql, options: StoreOptions): () => void {
+function backgroundWorkOf(feed: ChangeFeed, options: StoreOptions): () => Promise<void> {
   const checkpoints = new StoreCheckpoints({
     ...options,
-    busyTimeoutMs: BUSY_TIMEOUT_MS,
+    busyTimeoutMs: STORE_BUSY_TIMEOUT_MS,
     frames: CHECKPOINT_FRAMES,
   });
-  const stop = sql.onCommit(() => {
-    checkpoints.trigger();
-  });
-  return (): void => {
-    stop();
-    checkpoints.close();
-  };
-}
-
-function backgroundWorkOf(sql: Sql, options: StoreOptions): () => void {
-  const stopSyncOpRetention = syncOpRetentionOf(sql, options);
-  const stopCheckpoints = checkpointsOf(sql, options);
-  return (): void => {
-    stopSyncOpRetention();
-    stopCheckpoints();
-  };
-}
-
-function syncOpRetentionOf(sql: Sql, options: StoreOptions): () => void {
   const retention = new DriveSyncRetention({
     path: options.path,
-    busyTimeoutMs: BUSY_TIMEOUT_MS,
+    busyTimeoutMs: STORE_BUSY_TIMEOUT_MS,
     now: options.now,
     log: options.log,
   });
-  const stop = sql.onCommit(() => {
+  const stop = feed.subscribeCommitted(() => {
+    checkpoints.trigger();
     retention.observe();
   });
-  return (): void => {
+  return async (): Promise<void> => {
     stop();
-    retention.close();
+    await Promise.all([retention.close(), checkpoints.close()]);
   };
 }
 
-function hostOf(
-  sql: Sql,
-  feed: ChangeFeed,
-  context: StoreContext,
-  options: StoreOptions,
-): StoreHost {
-  const host = new StoreHost({
+function hostOf(feed: ChangeFeed, options: StoreOptions): StoreHost {
+  return new StoreHost({
     script: options.host.script,
     readers: options.host.readers,
     path: options.path,
     driveFolders: options.driveFolders,
-    busyTimeoutMs: BUSY_TIMEOUT_MS,
+    busyTimeoutMs: STORE_BUSY_TIMEOUT_MS,
     log: options.log,
     now: options.now,
     feed,
     committed: (): void => {
-      context.foreignCommitted();
-      sql.committedElsewhere();
       feed.committed();
     },
   });
-  sql.onCommit(() => {
-    host.committedOnMain();
-  });
-  return host;
 }
 
 function summaryOf(feed: ChangeFeed, log: Logger): NodeJS.Timeout {
@@ -225,6 +162,15 @@ function summaryOf(feed: ChangeFeed, log: Logger): NodeJS.Timeout {
   return timer;
 }
 
+async function opened(host: StoreHost, options: StoreOptions): Promise<StoreOpened> {
+  try {
+    return await host.write('storeOpen', { systemTimeZone: options.systemTimeZone });
+  } catch (cause) {
+    await host.close();
+    throw cause;
+  }
+}
+
 function openedLog(options: StoreOptions, version: number, startedAt: number): void {
   options.log.info('store.opened', { version });
   options.log.debug('store.open_timed', () => ({
@@ -233,50 +179,38 @@ function openedLog(options: StoreOptions, version: number, startedAt: number): v
   }));
 }
 
-export function openStore(options: StoreOptions): Store {
+async function loadedLive(host: StoreHost, feed: ChangeFeed, now: () => Date): Promise<StoreLive> {
+  const live = new StoreLive(host, feed, now);
+  await Promise.all([live.home.load(), live.access.load(), live.usage.load(), live.chats.load()]);
+  return live;
+}
+
+export async function openStore(options: StoreOptions): Promise<Store> {
   options.log.debug('store.opening', () => ({ file: basename(options.path) }));
-  const database = openDatabase(options.path);
-  describeDatabase(database, options.path, options.log);
-  const { sql, stop } = reportedSql(database, options.log);
   const startedAt = performance.now();
-  const version = migrated(sql, options);
   const feed = new ChangeFeed(options.log);
-  const { context, settings, ledger, repositories } = assembledStore(sql, feed, options);
-  seed(settings, repositories, options);
+  feed.quietTotals(DRIVE_TOTALS_QUIET_MS);
+  const host = hostOf(feed, options);
+  const { version } = await opened(host, options);
   const feedSummary = summaryOf(feed, options.log);
-  const retention = retentionOf(sql, options);
-  const reader = new StoreReader({ ...options, busyTimeoutMs: BUSY_TIMEOUT_MS });
-  const stopBackground = backgroundWorkOf(sql, options);
-  const host = hostOf(sql, feed, context, options);
+  const retention = retentionOf(host, options);
+  const reader = new StoreReader({ ...options, busyTimeoutMs: STORE_BUSY_TIMEOUT_MS });
+  const stopBackground = backgroundWorkOf(feed, options);
   openedLog(options, version, startedAt);
+  const live = await loadedLive(host, feed, options.now);
   return {
     path: options.path,
-    context,
-    database,
     feed,
     reader,
     host,
-    live: new StoreLive(repositories, host, feed),
-    settings,
-    ...repositories,
-    ledger,
+    live,
     now: options.now,
-    write: (work) => context.write(work),
-    durableWrite: (work) => durableSessionWrite(context, work),
     startRetention: retention.start,
-    close: (): void => {
+    close: async (): Promise<void> => {
       clearInterval(feedSummary);
+      feed.settleTotals();
       retention.stop();
-      stopBackground();
-      reader.close();
-      background(host.close(), 'store.host_close_failed');
-      stop();
-      try {
-        database.close();
-      } catch (cause) {
-        options.log.error('store.close_failed', cause, { file: basename(options.path) });
-        throw cause;
-      }
+      await Promise.all([stopBackground(), reader.close(), host.close()]);
       options.log.info('store.closed', { file: basename(options.path) });
     },
   };

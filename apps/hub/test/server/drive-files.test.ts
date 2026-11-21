@@ -50,14 +50,14 @@ const NODES: Readonly<Record<string, string>> = {
   [UNBOUND_TOKEN]: '0d000000-0000-4000-8000-0000000000a3',
 };
 
-function actorOf(row: ComputerNodeRow): DriveActor {
+function actorOf(row: ComputerNodeRow): Promise<DriveActor> {
   switch (row.device_id) {
     case NODES[OWNER_TOKEN]:
-      return { profileId: ownerProfile };
+      return Promise.resolve({ profileId: ownerProfile });
     case NODES[MEMBER_TOKEN]:
-      return { profileId: memberProfile };
+      return Promise.resolve({ profileId: memberProfile });
     default:
-      throw new ApiError('forbidden', 'computer_not_bound_to_person');
+      return Promise.reject(new ApiError('forbidden', 'computer_not_bound_to_person'));
   }
 }
 
@@ -171,7 +171,9 @@ describe('the Locked folder', () => {
 
   it('mints no link for a locked item', async () => {
     await lock();
-    expect(() => driveFileLink(files, { profileId: memberProfile }, LOCKED_FILE)).toThrow(ApiError);
+    await expect(driveFileLink(files, { profileId: memberProfile }, LOCKED_FILE)).rejects.toThrow(
+      ApiError,
+    );
   });
 });
 
@@ -255,13 +257,13 @@ describe('signed driveFile links', () => {
     await response.arrayBuffer();
   });
 
-  it('gives every person links only to items they may see, the owner included', () => {
+  it('gives every person links only to items they may see, the owner included', async () => {
     const member: DriveActor = { profileId: memberProfile };
     const owner: DriveActor = { profileId: ownerProfile };
-    expect(driveFileLink(files, member, MEMBER_FILE).url).toContain('/file?');
-    expect(() => driveFileLink(files, member, OTHER_FILE)).toThrow(/no such file/);
-    expect(() => driveFileLink(files, owner, OTHER_FILE)).toThrow(/no such file/);
-    expect(driveFileLink(files, owner, OWNER_FILE).url).toContain(OWNER_FILE);
+    expect((await driveFileLink(files, member, MEMBER_FILE)).url).toContain('/file?');
+    await expect(driveFileLink(files, member, OTHER_FILE)).rejects.toThrow(/no such file/);
+    await expect(driveFileLink(files, owner, OTHER_FILE)).rejects.toThrow(/no such file/);
+    expect((await driveFileLink(files, owner, OWNER_FILE)).url).toContain(OWNER_FILE);
   });
 
   it('signs a thumb link with the rev and the size in the path', () => {
@@ -346,7 +348,7 @@ describe('links on the disk', () => {
 
   it('is never signed or served as a file', async () => {
     writeLinkItem();
-    expect(() => driveFileLink(files, { profileId: memberProfile }, LINK)).toThrow(
+    await expect(driveFileLink(files, { profileId: memberProfile }, LINK)).rejects.toThrow(
       /never follows links/u,
     );
     const response = await fetch(`${base}/media/drive/${LINK}/file`, {

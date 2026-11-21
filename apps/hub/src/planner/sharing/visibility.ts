@@ -1,8 +1,8 @@
 import { ApiError, type PlannerCollectionRow, type PlannerItemRow } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export type PlannerAccessStore = Pick<
-  Store,
+  HostStore,
   'plannerCollections' | 'plannerShares' | 'plannerGuests' | 'plannerItems'
 >;
 
@@ -25,7 +25,7 @@ export function mayDo(role: ItemRole, need: ItemNeed): boolean {
 }
 
 export function collectionRoleOf(
-  store: Pick<Store, 'plannerShares'>,
+  store: Pick<HostStore, 'plannerShares'>,
   profileId: string,
   collection: PlannerCollectionRow,
 ): CollectionRole | undefined {
@@ -138,7 +138,7 @@ export function collectionVisibleTo(
 }
 
 export function profilesSeeing(
-  store: PlannerAccessStore & Pick<Store, 'profiles'>,
+  store: PlannerAccessStore & Pick<HostStore, 'profiles'>,
   itemId: string,
 ): string[] {
   const item = store.plannerItems.findAny(itemId);
@@ -150,7 +150,7 @@ export function profilesSeeing(
 }
 
 export function involvedProfiles(
-  store: Pick<Store, 'plannerGuests'>,
+  store: Pick<HostStore, 'plannerGuests'>,
   item: PlannerItemRow,
 ): string[] {
   const guests = store.plannerGuests

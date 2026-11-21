@@ -115,6 +115,7 @@ export function assembleEngineV3(ports: EngineAssemblyPorts): AssembledEngine {
       reads: createWorldReads(ports.world),
       persistent: ports.world.persistent,
       stateMemory: stateMemoryFromRows(ports.memory.state, ports.timers),
+      host: store.host,
     },
     ready: ports.ready,
     effects: performer(handlers),

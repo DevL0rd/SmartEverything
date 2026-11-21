@@ -1,8 +1,11 @@
 import type { DriveItem } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { itemAccess, type ItemAccess } from '../access';
 
-export type AudienceStore = Pick<Store, 'driveRoots' | 'driveItems' | 'driveGrants' | 'profiles'>;
+export type AudienceStore = Pick<
+  HostStore,
+  'driveRoots' | 'driveItems' | 'driveGrants' | 'profiles'
+>;
 
 export interface Person {
   readonly profileId: string;

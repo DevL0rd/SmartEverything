@@ -125,7 +125,7 @@ function pickerRoutes(
           {
             catalogue,
             models: context.store.live.aiModels,
-            personal: context.store.personal,
+            favourites: (owner) => context.store.host.read('aiModelFavourites', owner),
           },
           {
             owner: {

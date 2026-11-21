@@ -24,12 +24,12 @@ export interface HelperProviderInput {
 export interface Engine {
   readonly ownerOnly: boolean;
   readonly kind: EngineKind;
-  readonly activity?: (profileId: string) => readonly ChatActivityNotice[];
+  readonly activity?: (profileId: string) => Promise<readonly ChatActivityNotice[]>;
   readonly helperReady?: (
     chat: AiChatRow,
     role: ChatOwner['role'],
     attachments: boolean,
-  ) => string | null;
+  ) => Promise<string | null>;
   readonly status: (chat: AiChatRow) => EngineStatus;
   readonly deliver: (event: StoredEvent, chat: AiChatRow) => Promise<void>;
   readonly preflightHelperInput?: (input: HelperProviderInput) => Promise<void>;

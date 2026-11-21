@@ -19,7 +19,7 @@ interface EntityRequest {
   readonly caller: ToolCaller;
 }
 
-function entityOptions(
+async function entityOptions(
   store: Store,
   admin: PluginAdmin,
   drivers: Pick<DriverNodes, 'options'>,
@@ -29,7 +29,7 @@ function entityOptions(
   if (driven !== undefined) {
     return driven;
   }
-  const row = store.plugins.byId(request.pluginId);
+  const row = await store.host.call('plugins', 'byId', request.pluginId);
   const declared = row.manifest.contributes.automation.entities.find(
     (entity) => entity.id === request.entity,
   );
@@ -37,10 +37,10 @@ function entityOptions(
     throw new ApiError('not_found', `${row.manifest.name} has no entity named ${request.entity}.`);
   }
   if (row.source !== 'builtin' && row.tool_switches[declared.options] === false) {
-    return Promise.resolve({
+    return {
       state: 'unavailable',
       message: `${row.manifest.name} has its ${declared.options} tool switched off.`,
-    });
+    };
   }
   return admin.choices(request.pluginId, declared.options, request.query, request.caller);
 }

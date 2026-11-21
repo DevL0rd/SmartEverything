@@ -38,8 +38,8 @@ const PROBES: Readonly<Record<FirewallPlatform, Prober>> = {
 };
 
 export interface DeviceMacs {
-  readonly all: () => ReadonlyMap<string, string>;
-  readonly remember: (deviceId: string, mac: string) => void;
+  readonly all: () => Promise<ReadonlyMap<string, string>>;
+  readonly remember: (deviceId: string, mac: string) => Promise<void>;
 }
 
 export interface FirewallMonitorOptions {
@@ -263,7 +263,7 @@ export class FirewallMonitor {
 
   private async learnMacs(): Promise<ReadonlyMap<string, string>> {
     const { system, macs, log } = this.options;
-    const known = new Map(macs.all());
+    const known = new Map(await macs.all());
     const waiting = [...this.cameras, ...this.pushing].filter(
       (device) => !known.has(device.deviceId),
     );
@@ -277,7 +277,7 @@ export class FirewallMonitor {
     for (const device of waiting) {
       const mac = neighbors.get(device.address);
       if (mac !== undefined) {
-        macs.remember(device.deviceId, mac);
+        await macs.remember(device.deviceId, mac);
         known.set(device.deviceId, mac);
         log.info('firewall.mac_learned', { deviceId: device.deviceId });
       }

@@ -32,16 +32,15 @@ function caller(extra: Partial<ToolCaller> = {}): ToolCaller {
 }
 
 describe('the person behind a native session', () => {
-  it('is the profile, role and chat the session grant resolves to, never anything the model sends', () => {
+  it('is the profile, role and chat the session grant resolves to, never anything the model sends', async () => {
     const sessions = new HarnessMemorySessions(
       { caller: (): ToolCaller => caller() },
-      (): string | null => {
-        throw new Error('A session without a turn authority reads no event.');
-      },
+      (): Promise<string | null> =>
+        Promise.reject(new Error('A session without a turn authority reads no event.')),
       (): Promise<string> => Promise.resolve(''),
     );
 
-    expect(sessions.principal('any')).toStrictEqual({
+    expect(await sessions.principal('any')).toStrictEqual({
       profileId: PROFILE,
       role: 'member',
       chatId: CHAT,
@@ -49,18 +48,18 @@ describe('the person behind a native session', () => {
     });
   });
 
-  it('names the message that started the turn when the session runs for an event', () => {
+  it('names the message that started the turn when the session runs for an event', async () => {
     const seen: string[] = [];
     const sessions = new HarnessMemorySessions(
       { caller: (): ToolCaller => caller({ authority: AUTHORITY }) },
-      (id): string | null => {
+      (id): Promise<string | null> => {
         seen.push(id);
-        return MESSAGE;
+        return Promise.resolve(MESSAGE);
       },
       (): Promise<string> => Promise.resolve(''),
     );
 
-    expect(sessions.principal('any').messageId).toBe(MESSAGE);
+    expect((await sessions.principal('any')).messageId).toBe(MESSAGE);
     expect(seen).toStrictEqual([EVENT]);
   });
 });

@@ -14,6 +14,7 @@ import type { z } from 'zod';
 import type { HubConnections } from '../network/connections';
 import { storeUnit } from '../store/host/unit';
 import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 type GrantResponse = z.infer<typeof COMPUTER_MCP_GRANT_RESPONSE>;
 type GrantAddress = Pick<GrantResponse, 'url' | 'pin'>;
@@ -22,7 +23,7 @@ function hashComputerMcpToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 export function computerMcpGrant(
-  store: Store,
+  store: HostStore,
   token: string,
 ): {
   readonly deviceId: string;
@@ -55,7 +56,7 @@ export interface GrantManage {
   readonly pin: string | null;
 }
 
-function computerMcpGrantAddress(store: Store, input: GrantManage): GrantAddress {
+function computerMcpGrantAddress(store: HostStore, input: GrantManage): GrantAddress {
   const settings = store.settings.read();
   if (settings.public_url !== null && settings.public_url_verified_at !== null)
     return { url: new URL('/mcp', settings.public_url).href, pin: null };
@@ -67,7 +68,7 @@ function computerMcpGrantAddress(store: Store, input: GrantManage): GrantAddress
   return { url: new URL('/mcp', input.node.hub_url).href, pin: input.pin };
 }
 
-function managedGrant(store: Store, input: GrantManage): GrantResponse {
+function managedGrant(store: HostStore, input: GrantManage): GrantResponse {
   const { node, request, runtime } = input;
   const address = computerMcpGrantAddress(store, input);
   if (request.action === 'revoke') {

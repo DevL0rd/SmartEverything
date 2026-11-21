@@ -10,21 +10,21 @@ function requestSession(request: HarnessRuntimeRequest): { id: string; epoch: nu
     : { id: request.session_id, epoch: request.expected_epoch };
 }
 
-export function admitComputerRequest(
+export async function admitComputerRequest(
   service: HarnessService,
   binding: RemoteHarness['binding'],
   request: HarnessRuntimeRequest,
-): AiModelRoute | undefined {
+): Promise<AiModelRoute | undefined> {
   const { id, epoch } = requestSession(request);
-  const grant = service.storage.grant(id);
-  const state = service.store.harnessSessions.state(id);
+  const grant = await service.storage.grant(id);
+  const state = await service.store.host.call('harnessSessions', 'state', id);
   if (state?.epoch !== epoch)
     throw new ApiError(
       'conflict',
       'This chat moved to another machine while the request was in flight; try again.',
     );
-  service.storage.principal(id, binding);
-  if (request.kind === 'permission') confirmedPermissionRequest(service, request);
+  await service.storage.principal(id, binding);
+  if (request.kind === 'permission') await confirmedPermissionRequest(service, request);
   if (request.kind !== 'open') return undefined;
   return admitConsumerRoute(
     service,

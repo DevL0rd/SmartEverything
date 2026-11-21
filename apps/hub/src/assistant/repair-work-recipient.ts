@@ -5,9 +5,10 @@ import {
 } from '@smarteverything/domain';
 import type { StoredLogRecord } from '../store/repositories/runtime-log-types';
 import { repairWorkClaims, type RepairWorkClaim } from '../store/repositories/repair-work-claims';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
+import { storeUnit } from '../store/host/unit';
 
-type ClaimStore = Pick<Store, 'aiChats' | 'clients' | 'personAccess' | 'settingsKv'>;
+type ClaimStore = Pick<HostStore, 'aiChats' | 'clients' | 'personAccess' | 'settingsKv'>;
 
 export interface RepairWorkRecipient {
   readonly origin: HubUpdateOrigin;
@@ -22,7 +23,7 @@ function repairWorkComponent(record: StoredLogRecord): RepairWorkComponent | und
 }
 
 export function profileCanClaim(
-  store: Pick<Store, 'clients' | 'personAccess'>,
+  store: Pick<HostStore, 'clients' | 'personAccess'>,
   component: RepairWorkComponent,
   profileId: string,
 ): boolean {
@@ -73,3 +74,15 @@ export function repairWorkRecipient(
         expiresAt: claim.expiresAt,
       };
 }
+
+export const PROFILE_CAN_CLAIM_UNIT = storeUnit(
+  (
+    store,
+    input: { readonly component: RepairWorkComponent; readonly profileId: string },
+  ): boolean => profileCanClaim(store, input.component, input.profileId),
+);
+
+export const REPAIR_RECIPIENT_UNIT = storeUnit(
+  (store, record: StoredLogRecord): RepairWorkRecipient | undefined =>
+    repairWorkRecipient(store, record),
+);

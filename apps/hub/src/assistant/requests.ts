@@ -2,11 +2,11 @@ import { ReferenceSubmissions } from './reference-submission';
 import type { Delegation } from './delegation/delegation';
 import { MessageReplay } from './message-replay';
 import { admitChatExecution } from './native-helpers';
-import { queueEvent, queuedLog } from './request-events';
+import { queueEventSoon, queuedLog } from './request-events';
 import type { ReferenceService } from '../references/service';
 import type { EngineRegistry } from './engines/registry';
 import { outputAuthority } from './turn-authority';
-import { authorityScope, eventAuthority } from './turn-authority';
+import { authorityScope } from './turn-authority';
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@smarteverything/logging';
 import {
@@ -20,12 +20,11 @@ import {
   type MessageOrigin,
 } from '@smarteverything/domain';
 import type { ConversationAuthority } from '../harness/authority-contract';
-import type { StoredEvent } from '../store/repositories/assistant-events';
+import type { NewEvent, StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
 import type { ChatDirectory, ChatOwner } from './chat-directory';
 import { personMessage, type ConversationLog } from './conversation-log';
 import type { SentMessage } from './store-units';
-import { quoteForChat } from './message-quote';
 import type { SendInputs } from './send-inputs';
 import type { AssistantDelivery } from './delivery';
 import type { AssistantFiles } from './files';
@@ -181,23 +180,26 @@ export class AssistantRequests {
     return this.replay.edit(chat, messageId, body, clientId);
   }
 
-  assertReplay(chat: AiChatRow, messageId: string, edit?: AiEdit): void {
-    this.replay.assertReplay(chat, messageId, edit);
+  assertReplay(chat: AiChatRow, messageId: string, edit?: AiEdit): Promise<void> {
+    return this.replay.assertReplay(chat, messageId, edit);
   }
 
-  voice(task: VoiceTask & { readonly chatId: string }): string {
+  async voice(task: VoiceTask & { readonly chatId: string }): Promise<string> {
     const { store } = this.deps;
-    const chat = store.aiChats.chat(task.chatId);
+    const [chat, profile] = await Promise.all([
+      store.host.call('aiChats', 'chat', task.chatId),
+      store.host.call('profiles', 'byId', task.profileId),
+    ]);
     admitChatExecution(chat);
     const eventId = randomUUID();
-    this.queued({
+    await this.queued({
       id: eventId,
       kind: 'voice',
       chat_id: chat.id,
       message_id: task.callMessageId,
       profile_id: task.profileId,
       client_id: task.clientId,
-      text: spokenText(task, store.profiles.byId(task.profileId).name),
+      text: spokenText(task, profile.name),
     });
     this.deps.delivery().added();
     return eventId;
@@ -209,9 +211,12 @@ export class AssistantRequests {
     ownerProfile: () => string,
     actor: ChatOwner,
   ): Promise<AssistantMessageRow> {
-    const { profileId, chat } = this.deps.chats.postTarget(actor, body, ownerProfile);
+    const { profileId, chat } = await this.deps.chats.postTarget(actor, body, ownerProfile);
     admitChatExecution(chat);
-    const quote = quoteForChat(this.deps.store, chat, body.quoteMessageId);
+    const quote = await this.deps.store.host.read('assistantQuote', {
+      chat,
+      id: body.quoteMessageId,
+    });
     log.debug('request.post_received', {
       chatId: chat.id,
       profileId,
@@ -228,7 +233,7 @@ export class AssistantRequests {
         }),
       ),
     );
-    return this.deps.conversation.responderInChat({
+    return await this.deps.conversation.responderInChat({
       chat,
       replyTo: null,
       text: body.text,
@@ -238,16 +243,14 @@ export class AssistantRequests {
     });
   }
 
-  previewError(
+  async previewError(
     id: string,
     scope: { readonly chatId: string; readonly profileId: string; readonly clientId: string },
     text: string,
-  ): void {
-    const added = this.deps.store.write(() => {
-      if (this.deps.store.assistantEvents.find(id) !== undefined) return false;
-      admitChatExecution(this.deps.store.aiChats.chat(scope.chatId));
-      this.deps.store.live.chatWork.holds.assertQueued(scope.chatId);
-      const event = this.deps.store.assistantEvents.add({
+  ): Promise<void> {
+    const { store } = this.deps;
+    const added = await store.host.write('assistantPreviewError', {
+      event: {
         id,
         kind: 'wake',
         chat_id: scope.chatId,
@@ -255,16 +258,16 @@ export class AssistantRequests {
         profile_id: scope.profileId,
         client_id: scope.clientId,
         text,
-      });
-      eventAuthority(this.deps.store, event);
-      return true;
+      },
+      held: store.live.chatWork.holds.held(),
+      scope: authorityScope(),
     });
     log.debug('request.preview_error_queued', { eventId: id, chatId: scope.chatId, added });
     if (added) this.deps.delivery().added();
   }
 
-  runTurn(input: TurnRequest): { chatId: string; eventId: string } {
-    const chat = this.deps.chats.forTurn(input.profileId, input.chatId, input.title);
+  async runTurn(input: TurnRequest): Promise<{ chatId: string; eventId: string }> {
+    const chat = await this.deps.chats.forTurn(input.profileId, input.chatId, input.title);
     log.debug('turn.requested', {
       chatId: chat.id,
       profileId: input.profileId,
@@ -272,14 +275,14 @@ export class AssistantRequests {
       source: input.origin.source,
       newChat: input.chatId === undefined,
     });
-    return { chatId: chat.id, eventId: this.turn(chat, input.text, input.origin) };
+    return { chatId: chat.id, eventId: await this.turn(chat, input.text, input.origin) };
   }
 
-  turn(chat: AiChatRow, text: string, origin: MessageOrigin): string {
+  async turn(chat: AiChatRow, text: string, origin: MessageOrigin): Promise<string> {
     admitChatExecution(chat);
     const eventId = randomUUID();
-    const note = this.deps.conversation.originNote(chat, origin);
-    this.queued({
+    const note = await this.deps.conversation.originNote(chat, origin);
+    await this.queued({
       id: eventId,
       kind: 'wake',
       chat_id: chat.id,
@@ -340,7 +343,7 @@ export class AssistantRequests {
     return { eventId: added.event.id, messageId: added.row.id };
   }
 
-  finished(event: StoredEvent, text: string, ok: boolean): void {
+  async finished(event: StoredEvent, text: string, ok: boolean): Promise<void> {
     log.info('request.finished', {
       eventId: event.id,
       kind: event.kind,
@@ -349,18 +352,14 @@ export class AssistantRequests {
       ok,
       replyLength: text.length,
     });
-    if (!ok) this.deps.store.aiRepairInbox.markFailed(event.id);
-    this.deps.store.assistantEvents.mark(event.id, 'answered_at');
+    await this.deps.store.host.write('assistantRequestFinished', { eventId: event.id, ok });
     if (event.kind === 'voice') {
       this.deps.voiceResult()?.(event.id, text, false);
     }
     this.deps.done(event, text, ok);
   }
 
-  private queued(
-    input: Parameters<Store['assistantEvents']['add']>[0],
-    source?: ConversationAuthority,
-  ): StoredEvent {
-    return queueEvent(this.deps.store, input, source);
+  private queued(input: NewEvent, source?: ConversationAuthority): Promise<StoredEvent> {
+    return queueEventSoon(this.deps.store, input, source);
   }
 }

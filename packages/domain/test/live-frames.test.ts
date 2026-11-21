@@ -54,7 +54,6 @@ describe('live UPDATE frames', () => {
       operation: 'UPDATE',
       key: { id: ID },
       set: { last_run_at: LATER, run_count: 6 },
-      previous: { last_run_at: AT, run_count: 5 },
     });
     expect(LIVE_FRAME.parse(JSON.parse(JSON.stringify(frame)))).toStrictEqual(frame);
   });
@@ -65,8 +64,36 @@ describe('live UPDATE frames', () => {
     expect(framed * 4).toBeLessThan(full);
   });
 
+  it('send a changed JSON column once, with no copy of its old value', () => {
+    const layout = (x: number): typeof automation.layout => ({
+      nodes: Object.fromEntries(
+        Array.from({ length: 40 }, (_, index) => [
+          `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+          { x: x + index, y: index },
+        ]),
+      ),
+      frames: [],
+      comments: [],
+    });
+    const moved = liveFrameOf({
+      ...counterBump,
+      record: { ...automation, layout: layout(1) },
+      oldRecord: { ...automation, layout: layout(0) },
+    });
+    expect(moved).not.toHaveProperty('previous');
+    expect(LIVE_FRAME.parse(JSON.parse(JSON.stringify(moved)))).toStrictEqual(moved);
+    const once = JSON.stringify(layout(1)).length;
+    expect(JSON.stringify(moved).length).toBeLessThan(once + 150);
+  });
+
   it('name a column that became absent in cleared and merge back to the new row', () => {
-    const before = { id: ID, revision: 2, name: 'Home', updatedAt: '2026-11-15T00:00:00Z', isDefault: true };
+    const before = {
+      id: ID,
+      revision: 2,
+      name: 'Home',
+      updatedAt: '2026-11-15T00:00:00Z',
+      isDefault: true,
+    };
     const after = { id: ID, revision: 3, name: 'Home', updatedAt: '2026-11-15T00:00:00Z' };
     const frame = liveFrameOf({
       type: 'change',
@@ -78,7 +105,6 @@ describe('live UPDATE frames', () => {
     expect(frame).toMatchObject({
       key: { id: ID },
       set: { revision: 3 },
-      previous: { revision: 2, isDefault: true },
       cleared: ['isDefault'],
     });
     if (frame.operation !== 'UPDATE') throw new Error('expected an UPDATE frame');

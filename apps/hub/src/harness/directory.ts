@@ -32,7 +32,7 @@ export class HarnessDirectory {
   private readonly listeners = new Set<(frame: NodeHarnessFrame) => void>();
   private readonly ownershipListeners = new Set<(loss: HarnessOwnershipLoss) => void>();
   private readonly offlineListeners = new Set<(host: AiHarnessHost) => void>();
-  constructor(private readonly admit?: (request: HarnessRuntimeRequest) => void) {}
+  constructor(private readonly admit?: (request: HarnessRuntimeRequest) => Promise<void>) {}
   register(connection: HarnessConnection): void {
     const host = AI_HARNESS_HOST.parse(connection.host);
     const registered = { ...connection, host };
@@ -143,7 +143,7 @@ export class HarnessDirectory {
     id: string,
     request: HarnessRuntimeRequest,
   ): Promise<HarnessRuntimeReceipt> {
-    this.admit?.(request);
+    await this.admit?.(request);
     const connection = this.get(target);
     requireReferenceCapability(connection.host, request);
     if (connection.execute === undefined)

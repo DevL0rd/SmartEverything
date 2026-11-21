@@ -87,11 +87,12 @@ function rig(): Rig {
       },
     },
     enabled: (): boolean => enabled.value,
-    submit: (commands): void => {
+    submit: (commands): Promise<void> => {
       if (failing.value) {
-        throw new Error('hub offline');
+        return Promise.reject(new Error('hub offline'));
       }
       sent.push(...commands);
+      return Promise.resolve();
     },
     log: testLogger(),
   });
@@ -175,12 +176,15 @@ describe('RoomMedia', () => {
     expect(summary(sent)).toStrictEqual([`${TV}:paused`, `${RADIO}:pause`]);
   });
 
-  it('never resumes media it failed to pause', () => {
+  it('never resumes media it failed to pause', async () => {
     const r = rig();
     r.failing.value = true;
     expect(() => {
       r.media.speaking(call('a'), true);
     }).not.toThrow();
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
     r.failing.value = false;
     r.media.speaking(call('a'), false);
     expect(r.sent).toStrictEqual([]);

@@ -7,7 +7,6 @@ import type {
 import type { AssistantFiles } from '../files';
 import type { OpenRouterImageCatalog } from '../../openrouter/image-catalog';
 import type { OpenRouterImageProvider } from '../../openrouter/image-provider';
-import type { ImageOperationsRepository } from '../../store/repositories/image-operations';
 import type { Store } from '../../store/store';
 import type { MediaNotes } from '../../transcripts/media-notes';
 
@@ -17,7 +16,7 @@ export interface ImageActor {
   readonly key: string;
   readonly origin?: ImageOperationOrigin;
   readonly signal?: AbortSignal;
-  readonly authorize: (effect: ImageEffect, chatId: string) => void;
+  readonly authorize: (effect: ImageEffect, chatId: string) => Promise<void>;
 }
 export interface ImageFailure {
   readonly code: string;
@@ -25,7 +24,6 @@ export interface ImageFailure {
 }
 export interface ImageServiceOptions {
   readonly store: Store;
-  readonly repository: ImageOperationsRepository;
   readonly files: AssistantFiles;
   readonly notes?: Pick<MediaNotes, 'later'>;
   readonly catalog: OpenRouterImageCatalog;

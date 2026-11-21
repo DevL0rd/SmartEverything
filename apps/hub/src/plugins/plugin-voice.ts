@@ -126,21 +126,10 @@ export interface PluginVoice {
 }
 
 export interface PluginVoiceServices {
-  readonly store: Pick<
-    Store,
-    | 'clients'
-    | 'profiles'
-    | 'personAccess'
-    | 'pluginPeople'
-    | 'assistantChat'
-    | 'now'
-    | 'settings'
-    | 'accessAudit'
-    | 'host'
-  >;
+  readonly store: Pick<Store, 'now' | 'host' | 'live'>;
   readonly host: HostVoice;
   readonly turn: (request: TurnRequest) => Promise<TurnSession>;
-  readonly chat: (profileId: string, title: string, source: string | null) => string;
+  readonly chat: (profileId: string, title: string, source: string | null) => Promise<string>;
   readonly keys: { readonly changes: (listener: () => void) => Unsubscribe };
   readonly ears: Pick<RemoteEars, 'open'>;
   readonly transcripts: Transcripts;
@@ -195,7 +184,7 @@ async function hostCall(
       callId,
       caller,
       opening: {
-        chatId: services.chat(caller.profileId, request.title, null),
+        chatId: await services.chat(caller.profileId, request.title, null),
         text: request.opening,
         outreachId: null,
       },
@@ -253,17 +242,17 @@ function handleOf(session: TurnSession, stop: Unsubscribe): PluginTurn {
   };
 }
 
-function placeOf(
+async function placeOf(
   services: PluginVoiceServices,
   request: PluginTurnRequest,
   chat: { readonly id: string; readonly profileId: string; readonly source: string },
-): string | null {
+): Promise<string | null> {
   const { conversation } = request;
   if (conversation === undefined || conversation.earlier === 0) {
     return request.place;
   }
-  const { assistantChat } = services.store;
-  const rows: readonly CallText[] = assistantChat.callTextsOfSource({
+  const { host } = services.store;
+  const rows: readonly CallText[] = await host.call('assistantChat', 'callTextsOfSource', {
     profileId: chat.profileId,
     sourceKey: chat.source,
     exceptChatId: chat.id,
@@ -271,7 +260,9 @@ function placeOf(
   });
   const memory =
     earlierBlock(rows, conversation.earlier, services.clock.now()) ??
-    (assistantChat.messageIdsOf(chat.id).length === 0 ? FIRST_CONVERSATION : null);
+    ((await host.call('assistantChat', 'messageIdsOf', chat.id)).length === 0
+      ? FIRST_CONVERSATION
+      : null);
   return [request.place, memory].filter((part) => part !== null && part !== '').join('\n\n');
 }
 
@@ -286,7 +277,7 @@ async function openTurn(
     request.conversation === undefined
       ? null
       : identityChatKey(identity.guest, scope.pluginId, request.conversation.key);
-  const chatId = services.chat(caller.profileId, request.title, source);
+  const chatId = await services.chat(caller.profileId, request.title, source);
   const session = await services.turn({
     pluginId: scope.pluginId,
     caller,
@@ -294,7 +285,7 @@ async function openTurn(
     place:
       source === null
         ? request.place
-        : placeOf(services, request, { id: chatId, profileId: caller.profileId, source }),
+        : await placeOf(services, request, { id: chatId, profileId: caller.profileId, source }),
     speaking: {
       hiddenTools: new Set([...TURN_HIDDEN_TOOLS, ...(request.hidden ?? [])]),
       ...(request.ending === undefined ? {} : { ending: request.ending }),

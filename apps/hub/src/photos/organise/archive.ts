@@ -1,9 +1,9 @@
 import type { PhotoArchived, PhotoItemIds } from '@smarteverything/domain';
 import type { DriveActor } from '../../drive/access';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { announceItems, visibleItems, type AnnounceStore, type ItemsChanged } from './items';
 
-export type ArchiveStore = AnnounceStore & Pick<Store, 'context' | 'write' | 'photoArchive'>;
+export type ArchiveStore = AnnounceStore & Pick<HostStore, 'context' | 'write' | 'photoArchive'>;
 
 export class ArchiveService {
   constructor(private readonly store: ArchiveStore) {}

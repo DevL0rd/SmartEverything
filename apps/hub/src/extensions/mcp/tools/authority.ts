@@ -1,11 +1,11 @@
 import { ApiError, MCP_DISCOVERY_TOOLS } from '@smarteverything/domain';
 import {
-  admitExecutionTool,
   currentExecutionAuthority,
   executionRole,
   hubOriginated,
   inheritedOrigin,
   withExecutionAuthority,
+  executionToolAdmitted,
 } from '../../../assistant/turn-authority';
 import type { ConversationAuthority } from '../../../harness/authority-contract';
 import { NATIVE_BRIDGE_REFUSAL, reachesNativeBridge } from '../../../harness/native-bridge';
@@ -30,17 +30,17 @@ export async function scopedToolCall<C extends Scoped>(
       : context.actor;
   return withExecutionAuthority(authority, () => work({ ...context, actor }));
 }
-function admitted(
+async function admitted(
   context: Scoped,
   name: string,
   authority: ConversationAuthority,
 ): Promise<ToolActor> {
   if (!MCP_DISCOVERY_TOOLS.has(name)) {
-    admitExecutionTool(context.store, name, authority);
+    await executionToolAdmitted(context.store, name, authority);
     if (hubOriginated(authority) && reachesNativeBridge(name))
       throw new ApiError('forbidden', NATIVE_BRIDGE_REFUSAL);
   }
-  return actorOf(context, authority);
+  return await actorOf(context, authority);
 }
 async function actorOf(context: Scoped, authority: ConversationAuthority): Promise<ToolActor> {
   const origin = inheritedOrigin([

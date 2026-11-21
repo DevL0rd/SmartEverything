@@ -6,6 +6,7 @@ import {
   AI_MODEL_ROUTE_SELECTION,
   AI_MODEL_CHOICE,
   AI_EFFORT,
+  harnessTargetKey,
 } from '@smarteverything/domain';
 import type {
   AiModelRoute,
@@ -18,6 +19,7 @@ import type {
 } from '@smarteverything/domain';
 import type { Catalogue } from '../openrouter/catalogue';
 import { presetsOf, routeInfoOf, type RouteInfoRuntime } from './route-info';
+import { modelUnavailable } from './model-unavailable';
 
 export class HarnessRoutes {
   private readonly listeners = new Set<() => void>();
@@ -31,6 +33,7 @@ export class HarnessRoutes {
     for (const listener of this.listeners) listener();
   }
   private readonly supplierRoutes = new Map<string, AiModelRoute>();
+  private readonly reports = new Map<string, ReadonlySet<string>>();
   private runtime: RouteInfoRuntime | null = null;
   constructor(
     private readonly catalogue: Catalogue,
@@ -89,6 +92,13 @@ export class HarnessRoutes {
     this.selected(profileId, selected, false);
     return selected;
   }
+  report(target: AiHarnessTarget, routeIds: readonly string[]): void {
+    this.reports.set(harnessTargetKey(target), new Set(routeIds));
+    this.changed();
+  }
+  reported(target: AiHarnessTarget): ReadonlySet<string> | undefined {
+    return this.reports.get(harnessTargetKey(target));
+  }
   publish(route: AiModelRoute): void {
     this.supplierRoutes.set(route.id, AI_MODEL_ROUTE.parse(route));
     this.changed();
@@ -115,19 +125,24 @@ export class HarnessRoutes {
   selected(profileId: string, input: AiModelRouteSelection, background: boolean): AiModelRoute {
     const selection = AI_MODEL_ROUTE_SELECTION.parse(input);
     const route = this.list(profileId).find((entry) => entry.id === selection.route_id);
-    if (route?.state !== 'ready')
+    if (route === undefined)
+      throw modelUnavailable(
+        'This chat’s model route was removed. Choose another model; subscription routes have no paid fallback.',
+      );
+    if (route.state !== 'ready')
       throw new ApiError(
         'conflict',
         'The selected supplying route is unavailable. Subscription routes have no paid fallback.',
       );
     const model = route.models.find((entry) => entry.id === selection.model);
-    if (
-      model === undefined ||
-      (selection.effort !== null && !model.capabilities.efforts.includes(selection.effort))
-    )
+    if (model === undefined)
+      throw modelUnavailable(
+        'This chat’s model is no longer offered on its route. Choose another model.',
+      );
+    if (selection.effort !== null && !model.capabilities.efforts.includes(selection.effort))
       throw new ApiError(
         'invalid_request',
-        'The selected model or effort was not discovered on this supplier.',
+        'The selected effort was not discovered on this model.',
       );
     if (background && !route.background_authorized)
       throw new ApiError('forbidden', 'This route does not authorize background conversation use.');

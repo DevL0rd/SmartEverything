@@ -72,8 +72,7 @@ function pairedDevice(kind: 'phone' | 'computer' = 'computer'): {
 function routes(): ReturnType<typeof photoBackupRoutes> {
   const store = fixture.store;
   const service = new BackupService({
-    store: { ...store, driveBackup: new DriveBackupRepository(store.context) },
-    sql: store.context.sql,
+    store,
     log: testLogger(),
     now: store.now,
     files: nodeFiles,

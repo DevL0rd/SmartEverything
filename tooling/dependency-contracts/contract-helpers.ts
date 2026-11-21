@@ -10,6 +10,8 @@ export const APP_MANIFEST = 'apps/app/package.json';
 
 export const HUB_MANIFEST = 'apps/hub/package.json';
 
+export const HARNESS_MANIFEST = 'packages/harness/package.json';
+
 const MANIFEST = z.looseObject({
   dependencies: z.record(z.string(), z.string()).default({}),
   devDependencies: z.record(z.string(), z.string()).default({}),

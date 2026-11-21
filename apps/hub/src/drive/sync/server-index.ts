@@ -3,14 +3,14 @@ import type { DriveFeedRow, DriveItem, DriveTrashEntry } from '@smarteverything/
 import { blockCount, blockSizeFor, type SyncIndexEntry } from '@smarteverything/domain/drive-sync';
 import type { DriveBlocks } from '../../store/repositories/drive-blocks';
 import { FILE_MODE, FOLDER_MODE, nsOfMoment } from '../../store/repositories/drive-inodes';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { DRIVE_PAGE_SIZE } from '../page-size';
 import type { SyncScope } from './placement-scope';
 import { inScope, toWirePath } from './sync-paths';
 import { metaOf } from './item-meta';
 
 export type SyncIndexStore = Pick<
-  Store,
+  HostStore,
   | 'driveRoots'
   | 'driveItems'
   | 'driveBlocks'

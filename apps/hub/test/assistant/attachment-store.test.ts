@@ -15,10 +15,10 @@ let chatId: string;
 
 beforeEach(async () => {
   rig = await harnessRig();
-  projects = new ProjectFilesService(rig.opened.layout, rig.opened.store.aiChats);
+  projects = new ProjectFilesService(rig.opened.layout, rig.opened.store.live.chats);
   files = new AssistantFiles({
     layout: hubLayout(rig.opened.directory, {}),
-    chat: rig.opened.store.assistantChat,
+    store: rig.opened.store,
     attachments: rig.opened.store.live.attachments,
     now: (): Date => new Date(),
     projects,
@@ -68,7 +68,7 @@ describe('one place for every attachment', () => {
     const layout = layoutFromNames(rig.opened.directory, V1_NAMES, {});
     const v1 = new AssistantFiles({
       layout,
-      chat: rig.opened.store.assistantChat,
+      store: rig.opened.store,
       attachments: rig.opened.store.live.attachments,
       now: (): Date => new Date(),
     });
@@ -140,11 +140,11 @@ it('cannot attach an expired upload while its bytes are being removed', async ()
       files: [file],
       origin,
     });
-  const sent = send(retained);
+  const sent = await send(retained);
   const twoDays = 2 * 24 * 60 * 60 * 1000;
   const cleaner = new AssistantFiles({
     layout: hubLayout(directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: (): Date => new Date(Date.parse(expired.created_at) + twoDays),
   });
@@ -159,7 +159,7 @@ it('cannot attach an expired upload while its bytes are being removed', async ()
   const started = cleaner.start({ profileId, name: 'next.png', mime: 'image/png', bytes: 1 });
   try {
     await removing.wait;
-    expect(() => send(expired)).toThrow('Attach the file again');
+    await expect(send(expired)).rejects.toThrow('Attach the file again');
     expect(store.assistantChat.attachmentsOf(sent.id)).toEqual([
       { ...retained, message_id: sent.id },
     ]);
@@ -167,7 +167,7 @@ it('cannot attach an expired upload while its bytes are being removed', async ()
     finish.release();
     await started;
   }
-  expect(() => send(expired)).toThrow('Attach the file again');
+  await expect(send(expired)).rejects.toThrow('Attach the file again');
   expect(store.assistantChat.messageIdsOf(chatId)).toEqual([sent.id]);
   await expect(readFile(files.pathOf(expired))).rejects.toMatchObject({ code: 'ENOENT' });
   await expect(readFile(files.pathOf(retained))).resolves.toEqual(PNG);
@@ -180,13 +180,20 @@ it('keeps a partially removed upload unbindable and retries cleanup', async () =
   const twoDays = 2 * 24 * 60 * 60 * 1000;
   const cleaner = new AssistantFiles({
     layout: hubLayout(directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: (): Date => new Date(Date.parse(expired.created_at) + twoDays),
   });
   const error = new Error('Attachment metadata removal failed.');
-  const deletion = vi.spyOn(store.assistantChat, 'removeAttachments').mockImplementationOnce(() => {
-    throw error;
+  const host = store.host;
+  const call = host.call.bind(host);
+  let removals = 0;
+  vi.spyOn(host, 'call').mockImplementation((...args) => {
+    if (args[1] === 'removeAttachments') {
+      removals += 1;
+      if (removals === 1) return Promise.reject(error);
+    }
+    return call(...args);
   });
   const next = { profileId, name: 'next.png', mime: 'image/png', bytes: 1 };
   await expect(cleaner.start(next)).rejects.toBe(error);
@@ -194,7 +201,7 @@ it('keeps a partially removed upload unbindable and retries cleanup', async () =
   await expect(readFile(files.pathOf(expired))).rejects.toMatchObject({ code: 'ENOENT' });
 
   const conversation = new ConversationLog(store);
-  expect(() =>
+  await expect(
     conversation.person({
       chat: store.aiChats.chat(chatId),
       clientId: rig.clientId,
@@ -203,11 +210,11 @@ it('keeps a partially removed upload unbindable and retries cleanup', async () =
       files: [expired],
       origin: { source: 'app', plugin_id: null, device_id: null, name: null },
     }),
-  ).toThrow('Attach the file again');
+  ).rejects.toThrow('Attach the file again');
   expect(store.assistantChat.messageIdsOf(chatId)).toEqual([]);
 
   await expect(cleaner.start(next)).resolves.toHaveProperty('uploadId');
-  expect(deletion).toHaveBeenCalledTimes(2);
+  expect(removals).toBe(2);
   expect(() => store.assistantChat.attachment(expired.id)).toThrow();
 });
 

@@ -12,7 +12,7 @@ import {
 import { Logger } from '@smarteverything/logging';
 import { storeUnit } from '../store/host/unit';
 import type { NewClient, NewPairing } from '../store/repositories/clients';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 const lifecycleLog = new Logger('hub.access-lifecycle');
 
@@ -20,7 +20,7 @@ function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-function membersOf(store: Store, profileId: string): ClientRow[] {
+function membersOf(store: HostStore, profileId: string): ClientRow[] {
   return store.clients
     .list()
     .filter((client) => client.profile_id === profileId && client.role === 'member');
@@ -33,7 +33,10 @@ interface Unpairing {
   readonly by: string | null;
 }
 
-function unpair(store: Store, { clients, profileId, reason, by }: Unpairing): readonly string[] {
+function unpair(
+  store: HostStore,
+  { clients, profileId, reason, by }: Unpairing,
+): readonly string[] {
   const codes = store.clients.forgetOpenPairingsOf(profileId);
   for (const client of clients) store.clients.remove(client.id);
   store.accessAudit.record({
@@ -51,7 +54,7 @@ function unpair(store: Store, { clients, profileId, reason, by }: Unpairing): re
   return clients.map((client) => client.id);
 }
 
-function nextStart(store: Store, schedule: QuietHours, now: Date): Date {
+function nextStart(store: HostStore, schedule: QuietHours, now: Date): Date {
   const zone = store.settings.read().time_zone;
   const clock = localClock(now, zone);
   const minute = minuteOfClock(schedule.from);
@@ -61,7 +64,7 @@ function nextStart(store: Store, schedule: QuietHours, now: Date): Date {
     : zonedInstant(shiftedDate(clock, 1), minute, zone);
 }
 
-function nextEdge(store: Store, now: string): number | null {
+function nextEdge(store: HostStore, now: string): number | null {
   const starts = store.personAccess
     .schedules()
     .map(({ schedule }) => nextStart(store, schedule, new Date(now)).getTime());
@@ -73,7 +76,7 @@ function nextEdge(store: Store, now: string): number | null {
   return edges.length === 0 ? null : Math.min(...edges);
 }
 
-function pausedClients(store: Store, now: string): readonly string[] {
+function pausedClients(store: HostStore, now: string): readonly string[] {
   const minute = localClock(new Date(now), store.settings.read().time_zone).minuteOfDay;
   return store.personAccess
     .schedules()

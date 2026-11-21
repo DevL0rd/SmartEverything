@@ -15,7 +15,6 @@ import { z } from 'zod';
 import type { DeviceRecord } from '../../src/database/port';
 import { Viewers, deviceTarget, type DeviceDetail } from '../../src/metrics/viewers';
 import type { VacuumDeviceIo } from '../../src/vacuum/link';
-import { MapCache } from '../../src/vacuum/map-cache';
 import { VacuumHub } from '../../src/vacuum/vacuum-hub';
 import { readVacuumFixture, vacuumObjectName, type VacuumIdentity } from '../support/fake-vacuum';
 import { sealVacuumMap } from '../support/fake-vacuum-cloud';
@@ -224,17 +223,17 @@ afterEach(async () => {
 });
 
 describe('the vacuum composition of the hub', () => {
-  it('does nothing before it starts and attaches the robot once the state is loaded', () => {
+  it('does nothing before it starts and attaches the robot once the state is loaded', async () => {
     hub.sync([robot]);
     viewers.hold('live:1', [{ target: deviceTarget(robot.id), topic: 'live' }]);
     expect(timer.armed()).toBe(0);
-    hub.start([robot]);
+    await hub.start([robot]);
     expect(timer.armed()).toBe(0);
   });
 
   it('fetches a new map index, writes the map version under the robot and caches the scene', async () => {
     bindLink();
-    hub.start([robot]);
+    await hub.start([robot]);
     change(MAP_INDEX, JSON.stringify({ index: 31, obj_name: vacuumObjectName(IDENTITY, 0) }));
     await flush();
     await flush();
@@ -244,10 +243,10 @@ describe('the vacuum composition of the hub', () => {
     expect(hub.cache.latest(robot.id, 'current')?.index).toBe(31);
   });
 
-  it('stores a clean the moment the robot starts, with no map published', () => {
-    hub.start([robot]);
+  it('stores a clean the moment the robot starts, with no map published', async () => {
+    await hub.start([robot]);
     change(STATUS, 4);
-    expect(opened.store.vacuumCleans.open(robot.id)).toMatchObject({
+    expect(await opened.store.host.call('vacuumCleans', 'open', robot.id)).toMatchObject({
       startedAt: NOW,
       endedAt: null,
     });
@@ -256,7 +255,7 @@ describe('the vacuum composition of the hub', () => {
   it('runs the live route only while the map is on screen and the robot works, and writes the pose', async () => {
     bindLink();
     values.set(STATUS, 4);
-    hub.start([robot]);
+    await hub.start([robot]);
     expect(timer.armed()).toBe(0);
     viewers.hold('live:1', [{ target: deviceTarget(robot.id), topic: 'live' }]);
     expect(timer.armed()).toBe(1);
@@ -270,7 +269,7 @@ describe('the vacuum composition of the hub', () => {
     bindLink();
     values.set(STATUS, 4);
     values.set(MAP_INDEX, JSON.stringify({ index: 31, obj_name: vacuumObjectName(IDENTITY, 0) }));
-    hub.start([robot]);
+    await hub.start([robot]);
     viewers.hold('live:1', [{ target: deviceTarget(robot.id), topic: 'live' }]);
     await flush();
     await flush();
@@ -280,12 +279,12 @@ describe('the vacuum composition of the hub', () => {
     expect(scene?.index).toBe(31);
     expect(scene?.trail.flatMap((run) => run.points)).toHaveLength(60);
     expect(scene?.robot).toStrictEqual({ x: 3.43, y: 0, yaw: 0 });
-    const reopened = new MapCache(opened.store.vacuumScenes).latest(robot.id, 'current');
+    const reopened = await opened.store.host.call('vacuumScenes', 'latest', robot.id, 'current');
     expect(reopened?.trail).toStrictEqual(scene?.trail);
   });
 
   it('sends a map command to the robot through the account link and refuses without one', async () => {
-    hub.start([robot]);
+    await hub.start([robot]);
     const { control } = hub.routes();
     await expect(control.run(robot.id, stopCleaning())).rejects.toBeInstanceOf(ApiError);
     bindLink();
@@ -294,8 +293,8 @@ describe('the vacuum composition of the hub', () => {
     expect(writes).toBe(0);
   });
 
-  it('records a new fault of the fault list as an event of the robot', () => {
-    hub.start([robot]);
+  it('records a new fault of the fault list as an event of the robot', async () => {
+    await hub.start([robot]);
     change(FAULTS, JSON.stringify({ fault: [100008] }));
     expect(recorded).toHaveLength(1);
     expect(recorded[0]).toMatchObject({
@@ -304,8 +303,8 @@ describe('the vacuum composition of the hub', () => {
     });
   });
 
-  it('publishes the active error, keeps an alert out of it and clears it with the fault list', () => {
-    hub.start([robot]);
+  it('publishes the active error, keeps an alert out of it and clears it with the fault list', async () => {
+    await hub.start([robot]);
     const faultPushes = (): StateUpdate[] =>
       pushed
         .map((entry) => entry.update)
@@ -334,10 +333,10 @@ describe('the vacuum composition of the hub', () => {
     expect(parseVacuumFault(faultPushes()[1]?.value)).toBeNull();
   });
 
-  it('publishes an unknown code as a fault without a description and clears a stale stored one on start', () => {
+  it('publishes an unknown code as a fault without a description and clears a stale stored one on start', async () => {
     values.set(VACUUM_FAULT_KEY, '{"code":1,"title":"old","hint":"","canHelp":false}');
     values.set(FAULTS, JSON.stringify({ fault: [0] }));
-    hub.start([robot]);
+    await hub.start([robot]);
     const cleared = pushed
       .map((entry) => entry.update)
       .filter((u) => u.capability === VACUUM_FAULT_KEY);
@@ -351,9 +350,9 @@ describe('the vacuum composition of the hub', () => {
     });
   });
 
-  it('does not repeat a fault that is already stored when the hub restarts', () => {
+  it('does not repeat a fault that is already stored when the hub restarts', async () => {
     values.set(FAULTS, JSON.stringify({ fault: [100008] }));
-    hub.start([robot]);
+    await hub.start([robot]);
     change(FAULTS, JSON.stringify({ fault: [100008] }));
     expect(recorded).toHaveLength(0);
     change(FAULTS, JSON.stringify({ fault: [100008, 100009] }));
@@ -363,7 +362,7 @@ describe('the vacuum composition of the hub', () => {
 
   it('closes a live video session before the stop returns, while the link is still bound', async () => {
     bindLink();
-    hub.start([robot]);
+    await hub.start([robot]);
     viewers.hold('camera:1', [{ target: deviceTarget(robot.id), topic: 'video' }]);
     expect(await hub.routes().video.open(robot.id, { password: '4821', sdp: OFFER })).toMatchObject(
       { status: 'live' },
@@ -378,7 +377,7 @@ describe('the vacuum composition of the hub', () => {
 
   it('closes the video session when the last holder of the video demand lets go', async () => {
     bindLink();
-    hub.start([robot]);
+    await hub.start([robot]);
     viewers.hold('camera:1', [{ target: deviceTarget(robot.id), topic: 'video' }]);
     viewers.hold('camera:2', [{ target: deviceTarget(robot.id), topic: 'video' }]);
     await hub.routes().video.open(robot.id, { password: '4821', sdp: OFFER });

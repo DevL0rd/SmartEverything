@@ -296,7 +296,7 @@ function enginePorts(parts: HubEngineParts, wiring: Wiring): EngineAssemblyPorts
     },
     isPulse: (matcher) =>
       matcher.field === undefined || matcher.source !== 'weather'
-        ? kindSpecOf(installedSignalSources(store), matcher)?.pulse === true
+        ? kindSpecOf(installedSignalSources(store.live.home), matcher)?.pulse === true
         : false,
     executor,
     effects: parts.effects,

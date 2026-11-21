@@ -21,7 +21,7 @@ import { commitContent } from '../../src/drive/changes';
 import { syncAuthentication, type SyncEnv } from '../../src/drive/sync/server-ops';
 import { blocksHashOf, firstIndexCursor, indexPage } from '../../src/drive/sync/server-index';
 import { createDriveSync, type DriveSyncParts } from '../../src/drive/sync/server-push';
-import { resolveScope } from '../../src/drive/sync/placement-scope';
+import { resolveScope } from '../../src/drive/units/sync-scope';
 import {
   DRIVE_SYNC_PROTOCOL,
   DriveSyncServer,
@@ -123,9 +123,6 @@ beforeEach(async () => {
     now: (): Date => NOW,
     purge: { rearm: (): void => undefined },
     posix: syncPosixOf(opened.store, () => NOW),
-    conflicts: {
-      find: (id): DriveConflict | undefined => conflictRows.get(id),
-    },
     space: (): ReturnType<SyncEnv['space']> =>
       Promise.resolve({ totalBytes: Number.MAX_SAFE_INTEGER, freeBytes: Number.MAX_SAFE_INTEGER }),
     hasher,

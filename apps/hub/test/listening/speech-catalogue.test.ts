@@ -74,11 +74,7 @@ describe('the speech source catalogue', () => {
     const mine = device('phone', 'Mine', memberProfile);
     device('phone', 'Theirs', crypto.randomUUID());
     const desk = device('computer', 'Desk');
-    const all = await readableSpeechSources(
-      opened.store,
-      speechPrincipal(opened.store, owner),
-      registry,
-    );
+    const all = await readableSpeechSources(opened.store, speechPrincipal(owner), registry);
     expect(all.sources.map((entry) => entry.source)).toEqual(
       expect.arrayContaining([
         { kind: 'phone', deviceId: mine },
@@ -90,11 +86,7 @@ describe('the speech source catalogue', () => {
       transcribe: false,
       state: 'listening',
     });
-    const own = await readableSpeechSources(
-      opened.store,
-      speechPrincipal(opened.store, member),
-      registry,
-    );
+    const own = await readableSpeechSources(opened.store, speechPrincipal(member), registry);
     expect(own.sources.map((entry) => entry.label)).toEqual(['Mine']);
   });
 });

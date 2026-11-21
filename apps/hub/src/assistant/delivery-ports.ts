@@ -10,7 +10,7 @@ export function deliveryPorts(deps: {
   readonly options: Pick<AssistantServiceOptions, 'emit'>;
   readonly conversation: ConversationLog;
   readonly publisher: { readonly publish: () => void };
-  readonly delegation: () => { readonly admit: (event: StoredEvent) => boolean };
+  readonly delegation: () => { readonly admit: (event: StoredEvent) => Promise<boolean> };
   readonly ended: (event: StoredEvent, text: string, ok: boolean) => void;
 }): Pick<DeliveryOptions, 'admit' | 'delivered' | 'failed' | 'retrying' | 'stopped'> {
   const { options, conversation, ended } = deps;
@@ -28,9 +28,9 @@ export function deliveryPorts(deps: {
         },
       );
     },
-    failed: (event, reason): void => {
+    failed: (event, reason, code): void => {
       background(
-        conversation.failed(event, reason).then(publish),
+        conversation.failed(event, reason, code).then(publish),
         'delivery.failure_record_failed',
         {
           eventId: event.id,

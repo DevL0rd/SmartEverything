@@ -7,10 +7,8 @@ import { transcriptionFormat, type TranscriptionProvider } from '../openrouter/t
 import { recordMediaNote } from '../ledger/media-notes';
 import type { OrUsage } from '../openrouter/wire';
 import type { LedgerHost } from '../ledger/units';
-import type {
-  AssistantChatRepository,
-  StoredAttachment,
-} from '../store/repositories/assistant-chat';
+import type { StoredAttachment } from '../store/repositories/assistant-chat';
+import type { StoreHost } from '../store/host/host';
 import { transcribeModel } from './transcriber';
 import { describeFailure } from '@smarteverything/logging';
 
@@ -78,11 +76,11 @@ function noteOf(kind: MediaKind, answer: string): string {
 export interface MediaNotesOptions {
   readonly provider: MediaNoteProvider;
   readonly transcriptionProvider: TranscriptionProvider;
-  readonly chat: AssistantChatRepository;
+  readonly store: Pick<StoreHost, 'call'>;
   readonly ledger: LedgerHost;
   readonly filesRoot: string;
   readonly describeImages: () => boolean;
-  readonly inputModalities: (file: StoredAttachment) => readonly string[] | null;
+  readonly inputModalities: (file: StoredAttachment) => Promise<readonly string[] | null>;
   readonly log: Logger;
 }
 
@@ -96,30 +94,30 @@ export class MediaNotes {
     if (file.transcript !== null) {
       return Promise.resolve(file.transcript);
     }
-    const stored = this.options.chat.attachment(file.id);
-    if (stored.transcript !== null) {
-      return Promise.resolve(stored.transcript);
-    }
     const found = this.running.get(file.id);
     if (found !== undefined) {
       return found;
     }
-    const started = this.generate(stored).finally(() => {
+    const started = this.stored(file).finally(() => {
       this.running.delete(file.id);
     });
     this.running.set(file.id, started);
     return started;
   }
 
-  wants(file: StoredAttachment): boolean {
-    return mediaPlan(file.mime, this.options.inputModalities(file), this.options.describeImages())
-      .describe;
+  private async stored(file: StoredAttachment): Promise<string> {
+    const stored = await this.options.store.call('assistantChat', 'attachment', file.id);
+    return stored.transcript ?? (await this.generate(stored));
+  }
+
+  async wants(file: StoredAttachment): Promise<boolean> {
+    const modalities = await this.options.inputModalities(file);
+    return mediaPlan(file.mime, modalities, this.options.describeImages()).describe;
   }
 
   later(file: StoredAttachment): void {
-    if (!this.wants(file)) return;
-    void Promise.resolve()
-      .then(() => this.ensure(file))
+    void this.wants(file)
+      .then((wanted) => (wanted ? this.ensure(file) : undefined))
       .catch((cause: unknown) => {
         this.options.log.warn('assistant.media_note_failed', {
           attachmentId: file.id,
@@ -143,7 +141,7 @@ export class MediaNotes {
     const text =
       kind === 'audio' ? await this.transcribe(file, data) : await this.describe(file, kind, data);
     const note = noteOf(kind, text);
-    this.options.chat.setTranscript(file.id, note);
+    await this.options.store.call('assistantChat', 'setTranscript', file.id, note);
     return note;
   }
 

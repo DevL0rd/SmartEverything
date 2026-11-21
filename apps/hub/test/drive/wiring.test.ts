@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
 import type { DiskSpace } from '../../src/drive/data-space';
+import { hostQuotaSource } from '../../src/drive/quotas';
 import type { WatchStatus } from '../../src/drive/watcher';
 import { DriveAlbums } from '../../src/drive/service-write-albums';
 import { DriveGrants } from '../../src/drive/grants';
@@ -187,9 +188,6 @@ beforeEach(async () => {
       log: testLogger('drive'),
       now: () => NOW,
       purge: { rearm: (): void => undefined },
-      conflicts: {
-        find: () => undefined,
-      },
     },
     services: {
       read: new DriveReadService(store),
@@ -204,7 +202,7 @@ beforeEach(async () => {
         links: new MediaLinks(() => NOW),
         nodes: {
           authenticate: (token) => nodes.authenticate(token),
-          actorOf: (node) => actorOf(nodeCaller(store, node)),
+          actorOf: async (node) => actorOf(await nodeCaller(store, node)),
         },
         now: () => NOW,
       },
@@ -361,9 +359,6 @@ function driveServices(): DriveServices {
     log: testLogger('drive'),
     now: (): Date => NOW,
     purge: { rearm: (): void => undefined },
-    conflicts: {
-      find: (): undefined => undefined,
-    },
   };
   const albums = new DriveAlbums(store);
   const shares = new DriveShares({
@@ -395,7 +390,7 @@ function driveServices(): DriveServices {
       shares,
       scrub,
       backups,
-      guard: { status: (profileId) => store.driveQuotas.status(profileId), space },
+      guard: { status: hostQuotaSource(store), space },
       scan: (): void => undefined,
       lanes: new DriveRootLanes(),
     }),
@@ -415,7 +410,7 @@ function driveServices(): DriveServices {
       links: new MediaLinks(() => NOW),
       nodes: {
         authenticate: (token) => nodes.authenticate(token),
-        actorOf: (node) => actorOf(nodeCaller(store, node)),
+        actorOf: async (node) => actorOf(await nodeCaller(store, node)),
       },
       now: (): Date => NOW,
     },

@@ -22,11 +22,11 @@ export function albumAudience(recipients: ReadonlySet<string>, log: Logger): Aud
 export type AlbumDelivery = (push: AlbumPush, accept: Audience) => void;
 
 export function watchAlbumActivity(
-  store: Pick<Store, 'context' | 'feed' | 'host'>,
+  store: Pick<Store, 'now' | 'feed' | 'host'>,
   log: Logger,
   deliver: AlbumDelivery,
 ): () => void {
-  let cursor: ActivityCursor = { at: store.context.now(), handled: [] };
+  let cursor: ActivityCursor = { at: store.now().toISOString(), handled: [] };
   let turn: Promise<void> = Promise.resolve();
   const drain = (invite: AlbumActivityRequest['invite'], announce: boolean): void => {
     const drained = turn.then(async () => {

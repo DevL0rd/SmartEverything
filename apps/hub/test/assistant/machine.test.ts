@@ -1,3 +1,4 @@
+import { callPrincipal } from '../../src/assistant-voice/voice-memory';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { machineLabel, ownScreenOf, ownScreenRule } from '../../src/assistant/machine';
 import { conversationNote } from '../../src/assistant-voice/instructions';
@@ -30,11 +31,13 @@ async function noteText(caller: Awaited<ReturnType<typeof callerOf>>): Promise<s
     sourceKey: null,
     engine: TEST_ENGINE,
   });
+  const memory = testVoiceMemory(opened.store);
+  await memory.prepare(callPrincipal({ ...caller, chatId: chat.id }));
   return conversationNote(
     await noteOf({
       store: opened.store,
       tools: new ToolHub([]),
-      memory: testVoiceMemory(opened.store),
+      memory,
       caller,
       chatId: chat.id,
       place: null,

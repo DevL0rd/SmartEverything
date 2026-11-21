@@ -22,6 +22,7 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeEnv } from '../../src/drive/changes';
+import { hostQuotaSource } from '../../src/drive/quotas';
 import type { DriveActor } from '../../src/drive/access';
 import { nodeFiles } from '../../src/drive/versions';
 import { handleMkcol } from '../../src/server/dav/collections';
@@ -104,7 +105,7 @@ function depsOf(): DavDeps {
     store,
     env,
     guard: {
-      status: (profileId) => store.driveQuotas.status(profileId),
+      status: hostQuotaSource(store),
       space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },
     nodes: {
@@ -113,9 +114,10 @@ function depsOf(): DavDeps {
         if (deviceId === undefined) throw new ApiError('unauthorized', 'unknown node token');
         return Promise.resolve(nodeRow(deviceId));
       },
-      actorOf: (node): DriveActor => {
-        if (node.device_id === NODE_IDS[OWNER_NODE]) return { profileId: ownerProfile };
-        throw new ApiError('forbidden', 'computer_not_bound_to_person');
+      actorOf: (node): Promise<DriveActor> => {
+        if (node.device_id === NODE_IDS[OWNER_NODE])
+          return Promise.resolve({ profileId: ownerProfile });
+        return Promise.reject(new ApiError('forbidden', 'computer_not_bound_to_person'));
       },
     },
   };

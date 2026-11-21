@@ -28,6 +28,13 @@ import type { ModuleRegistry } from './providers/registry-types';
 import { startHub, type RunningHub } from './hub';
 import type { SecretStore } from './secrets/store';
 import { storeDatabase } from './store/hub-database';
+import {
+  hostGoogleAccounts,
+  hostGoogleSyncLog,
+  hostGoogleSyncState,
+  hostTaskCollections,
+  hostTaskItems,
+} from './store/host/hosted';
 import type { Store } from './store/store';
 import type { VacuumVideoPorts } from './vacuum/video-session';
 
@@ -102,19 +109,21 @@ export async function googleChannelKey(secrets: SecretStore): Promise<Buffer> {
 
 export function startGoogle(options: GoogleOptions): GoogleHub {
   const { store, secrets, fetch: send, clock, key } = options;
+  const accounts = hostGoogleAccounts(store.host);
+  const states = hostGoogleSyncState(store.host);
   const tokens = new GoogleTokens({
     secrets,
-    accounts: store.googleAccounts,
+    accounts,
     fetch: send,
     nowMs: (): number => clock.now().getTime(),
   });
   const tasks = new TasksSync({
     fetch: send,
     accessToken: (profileId): Promise<string> => tokens.accessToken(profileId),
-    items: store.plannerItems,
-    collections: store.plannerCollections,
-    states: store.googleSyncState,
-    log: store.googleSyncLog,
+    items: hostTaskItems(store.host),
+    collections: hostTaskCollections(store.host),
+    states,
+    log: hostGoogleSyncLog(store.host),
     now: (): string => clock.now().toISOString(),
   });
   const runner = new GoogleSyncRunner({
@@ -127,10 +136,10 @@ export function startGoogle(options: GoogleOptions): GoogleHub {
   channels.start();
   runner.start();
   return {
-    link: new GoogleLink({ secrets, accounts: store.googleAccounts, tokens, fetch: send }),
+    link: new GoogleLink({ secrets, accounts, tokens, fetch: send }),
     runner,
     channels,
-    receiver: new GooglePushReceiver({ states: store.googleSyncState, runner, key }),
+    receiver: new GooglePushReceiver({ states, runner, key }),
     tasks,
     stop: (): void => {
       runner.stop();
@@ -141,8 +150,9 @@ export function startGoogle(options: GoogleOptions): GoogleHub {
 
 export function xiaomiStreamOf(store: Store): (did: string) => string | null {
   return (did) => {
-    const device = store.devices.byExternal('xiaomi', did);
-    return device === undefined ? null : (store.cameras.find(device.id)?.stream_name ?? null);
+    const { home } = store.live;
+    const device = home.devices.byExternal('xiaomi', did);
+    return device === undefined ? null : (home.cameras.find(device.id)?.stream_name ?? null);
   };
 }
 
@@ -172,7 +182,7 @@ function healthOf(options: CoreOptions, parts: HealthParts): CameraHealth {
     faultOf: (deviceId): CameraFault =>
       firewall.blockingAddress(deviceId) === null ? 'camera' : 'firewall',
     probe: reconnectingProbe(raw, (deviceId) => {
-      const device = store.devices.find(deviceId);
+      const device = store.live.home.devices.find(deviceId);
       return device === undefined ? null : cameraSourceOf(device);
     }),
     load: (deviceId): Readonly<Record<string, number>> => load.of(deviceId),
@@ -215,7 +225,7 @@ async function startCameras(
       options.fatal(cause);
     },
   });
-  const settings = store.settings.read();
+  const settings = store.live.home.settings.read();
   const running = await supervisor.start({
     xiaomi: xiaomiLoginsOf(secrets.read().accounts.xiaomi ?? null),
     candidates: settings.webrtc_candidates,
@@ -244,9 +254,9 @@ async function startCameras(
 
 function deviceMacsOf(store: Store, now: () => Date): DeviceMacs {
   return {
-    all: () => store.deviceMacs.all(),
-    remember: (deviceId, mac): void => {
-      store.deviceMacs.remember(deviceId, mac, now().toISOString());
+    all: () => store.host.call('deviceMacs', 'all'),
+    remember: async (deviceId, mac): Promise<void> => {
+      await store.host.call('deviceMacs', 'remember', deviceId, mac, now().toISOString());
     },
   };
 }

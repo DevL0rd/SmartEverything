@@ -38,7 +38,7 @@ const INCOMING_SQL = `((m.role = 'responder' and m.kind in ('text', 'update') an
       and not (json_extract(m.origin, '$.source') = 'plugin'
                and coalesce(json_extract(m.origin, '$.requester'), '') = 'owner')))`;
 
-const CHAT_COLUMNS = `${STORED_COLUMNS}, pending_execution_target, deletion_state, deletion_error,
+export const CHAT_COLUMNS = `${STORED_COLUMNS}, pending_execution_target, deletion_state, deletion_error,
   last_input_tokens, last_cached_tokens, ${CACHE_WINDOW_SQL} as cache_percent,
   exists(select 1 from ai_usage where chat_id = ai_chats.id and ${UNKNOWN_COST_SQL}) as cost_incomplete,
   (select m.origin from assistant_messages m

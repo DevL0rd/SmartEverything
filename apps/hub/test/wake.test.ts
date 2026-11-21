@@ -80,12 +80,12 @@ async function bench(): Promise<Bench> {
     runner: new WakeRunner({
       store: opened.store,
       turns: {
-        run: (input): { chatId: string } => {
+        run: (input): Promise<{ chatId: string }> => {
           if (state.failNext) {
-            throw new Error('The AI backend is not set up.');
+            return Promise.reject(new Error('The AI backend is not set up.'));
           }
           turns.push(input);
-          return { chatId: input.chatId ?? chat.id };
+          return Promise.resolve({ chatId: input.chatId ?? chat.id });
         },
       },
       clock,
@@ -208,11 +208,7 @@ describe('signal bus values', () => {
 });
 
 describe('feed signals', () => {
-  const context = feedContextOf(
-    new Date(START),
-    () => 'UTC',
-    () => null,
-  );
+  const context = feedContextOf(new Date(START), () => 'UTC');
 
   function daily(day: string): RowChange {
     return {

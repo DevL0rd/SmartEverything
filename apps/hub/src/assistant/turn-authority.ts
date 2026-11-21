@@ -1,15 +1,14 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { effectiveClientById, effectiveRow } from '../server/person-access';
 import { ApiError } from '@smarteverything/domain';
 import type { AiChatRow } from '@smarteverything/domain';
 import { providerHubOsBan } from './engines/computer/tool-authority';
-import { CONVERSATION_AUTHORITY } from '../harness/authority-contract';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import { currentRequestSignal } from '../server/request-signal';
-import { effectiveTools } from './tool-scope';
 import { computerEngine } from './engine-kind';
+import { effectiveTools } from './tool-scope';
 
 type Origin = Pick<ConversationAuthority, 'plugin_id' | 'requester' | 'repair_origin'>;
 type Role = 'owner' | 'member';
@@ -53,7 +52,7 @@ export function inheritedOrigin(sources: readonly Origin[]): Origin {
   };
 }
 
-function intersectTools(lists: readonly (readonly string[] | null)[]): string[] | null {
+export function intersectTools(lists: readonly (readonly string[] | null)[]): string[] | null {
   let tools: string[] | null = null;
   for (const list of lists) {
     if (list === null) continue;
@@ -119,107 +118,27 @@ export function withAuthoritySource(
 }
 
 export function eventAuthority(
-  store: Store,
+  store: Pick<Store, 'host'>,
   event: StoredEvent,
   source?: ConversationAuthority,
   repairOrigin?: string,
-): ConversationAuthority {
-  return issueEventAuthority(store, event, authorityScope(source, repairOrigin));
-}
-
-export function issueEventAuthority(
-  store: Store,
-  event: StoredEvent,
-  scope: AuthorityScope,
-): ConversationAuthority {
-  const retained = store.harnessRecovery.authority(event.id);
-  if (retained !== undefined) return retained;
-  const { sources } = scope;
-  if (sources.some((parent) => parent.profile_id !== event.profile_id))
-    throw new ApiError('forbidden', 'Delegated event cannot change its initiating profile.');
-  const chat = store.aiChats.chat(event.chat_id);
-  const principal = initiatingPrincipal(store, event, sources);
-  const origin = originOf(store, event, sources);
-  const hubSource =
-    event.message_id !== null &&
-    store.assistantChat.message(event.message_id).origin?.source === 'hub';
-  const authority = CONVERSATION_AUTHORITY.parse({
-    event_id: event.id,
-    profile_id: event.profile_id,
-    client_id: principal.client_id,
-    kind: principal.kind,
-    role: issuedRole(store, { principal, sources, profileId: event.profile_id, origin }),
-    hub_os_ban:
-      hubSource || scope.providerBan || chat.engine.kind === 'dsh' || sources.some(banned),
-    tools: intersectTools([effectiveTools(store, chat), ...sources.map((parent) => parent.tools)]),
-    ...origin,
-    ...(scope.repairOrigin === null ? {} : { repair_origin: scope.repairOrigin }),
+): Promise<ConversationAuthority> {
+  return store.host.write('assistantEventAuthority', {
+    event,
+    scope: authorityScope(source, repairOrigin),
   });
-  store.harnessRecovery.authorize(authority);
-  return authority;
 }
 
-function banned(authority: ConversationAuthority): boolean {
-  return authority.hub_os_ban;
-}
-
-function originOf(
-  store: Store,
-  event: StoredEvent,
-  sources: readonly ConversationAuthority[],
-): Origin {
-  const message = event.message_id === null ? null : store.assistantChat.message(event.message_id);
-  return inheritedOrigin([
-    ...sources,
-    {
-      plugin_id: message?.origin?.plugin_id ?? null,
-      requester: message?.origin?.requester ?? null,
-    },
-  ]);
-}
-
-function initiatingPrincipal(
-  store: Store,
-  event: StoredEvent,
-  sources: readonly ConversationAuthority[],
-): Pick<ConversationAuthority, 'client_id' | 'kind'> {
-  if (sources.some((parent) => parent.kind === 'service'))
-    return { client_id: null, kind: 'service' };
-  const ids = [...new Set([event.client_id, ...sources.map((parent) => parent.client_id)])].filter(
-    (id): id is string => id !== null,
-  );
-  const member =
-    ids.find((id) => effectiveClientById(store, id).role === 'member') ??
-    sources.find((parent) => parent.role === 'member')?.client_id;
-  const client = member ?? ids[0] ?? null;
-  return { client_id: client, kind: client === null ? 'service' : 'client' };
-}
-
-function issuedRole(
-  store: Store,
-  issue: {
-    readonly principal: Pick<ConversationAuthority, 'client_id' | 'kind'>;
-    readonly sources: readonly ConversationAuthority[];
-    readonly profileId: string;
-    readonly origin: Origin;
-  },
-): Role {
-  const { principal, sources, profileId, origin } = issue;
-  if (sources.some((parent) => executionRole(parent) === 'member')) return 'member';
-  if (principal.client_id !== null)
-    return effectiveClientById(store, principal.client_id).role === 'owner' ? 'owner' : 'member';
-  const ownRequest =
-    origin.requester === 'owner' || (origin.plugin_id === null && origin.requester === null);
-  const ownsProfile = store.clients
-    .list()
-    .some(
-      (client) => client.profile_id === profileId && effectiveRow(store, client).role === 'owner',
-    );
-  return ownRequest && ownsProfile ? 'owner' : 'member';
+export function executionToolAdmitted(
+  store: Pick<Store, 'host'>,
+  name: string,
+  authority: ConversationAuthority,
+): Promise<void> {
+  return store.host.read('assistantExecutionTool', { name, authority });
 }
 
 export function admitExecutionTool(
-  store: Store,
+  store: HostStore,
   name: string,
   authority: ConversationAuthority,
 ): void {
@@ -238,14 +157,14 @@ export function requireOwnerExecution(authority: ConversationAuthority): void {
 
 export function admitExecutionTarget(
   store: Store,
-  chat: AiChatRow,
+  chat: Pick<AiChatRow, 'profile_id' | 'engine'>,
   authority: ConversationAuthority,
 ): void {
   admitExecutionOn(chat, authority, (id) => store.live.computers.isLocal(id));
 }
 
 export function admitExecutionOn(
-  chat: AiChatRow,
+  chat: Pick<AiChatRow, 'profile_id' | 'engine'>,
   authority: ConversationAuthority,
   isLocal: (deviceId: string) => boolean,
 ): void {
@@ -255,7 +174,7 @@ export function admitExecutionOn(
     requireOwnerExecution(authority);
     return;
   }
-  const id = executionDevice(chat);
+  const id = executionDeviceOf(chat);
   if (hubOriginated(authority) && id !== null && isLocal(id))
     throw new ApiError(
       'forbidden',
@@ -263,7 +182,7 @@ export function admitExecutionOn(
     );
 }
 
-function executionDevice(chat: AiChatRow): string | null {
+export function executionDeviceOf(chat: Pick<AiChatRow, 'engine'>): string | null {
   const computer = computerEngine(chat.engine);
   if (computer !== null) return computer.device_id;
   if (chat.engine.kind !== 'dsh' || chat.engine.execution_target.kind === 'server') return null;

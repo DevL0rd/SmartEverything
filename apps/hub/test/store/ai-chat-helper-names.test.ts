@@ -1,12 +1,11 @@
+import { openSeededStore, testStore, type TestStore, closedStore } from '../support/store';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import type { AiChatRow, Engine } from '@smarteverything/domain';
 import type { NewChat } from '../../src/store/repositories/ai-chat-input';
-import { openStore } from '../../src/store/store';
 import { CLAUDE_TEST_ENGINE, TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 import { testStoreHost } from '../support/store-host';
 
 const NOW = '2026-11-05T00:00:00.000Z';
@@ -47,7 +46,7 @@ function chat(
   });
 }
 
-it('keeps distinct helper names separate from task titles and engine families across reloads', () => {
+it('keeps distinct helper names separate from task titles and engine families across reloads', async () => {
   const parent = chat('chat', null);
   const branch = chat('chat', parent.id);
   const helpers = [TEST_ENGINE, CLAUDE_TEST_ENGINE, CODEX_ENGINE].map((engine) =>
@@ -62,7 +61,7 @@ it('keeps distinct helper names separate from task titles and engine families ac
     opened.store.aiChats.update(helper.id, { title: 'Renamed task' });
   }
 
-  const again = openStore({
+  const again = await openSeededStore({
     host: testStoreHost(),
     path: join(opened.directory, 'test.db'),
     log: testLogger('store'),
@@ -78,7 +77,7 @@ it('keeps distinct helper names separate from task titles and engine families ac
       });
     }
   } finally {
-    again.close();
+    await closedStore(again);
   }
 });
 

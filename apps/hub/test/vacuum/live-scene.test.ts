@@ -1,7 +1,7 @@
 import type { VacuumScene, VacuumSlot } from '@smarteverything/domain';
 import type { Route, RouteMode, RoutePoint } from '@smarteverything/xiaomi';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { MapCache, type MapStore } from '../../src/vacuum/map-cache';
+import { MapCache } from '../../src/vacuum/map-cache';
 import { VacuumLiveScene } from '../../src/vacuum/live-scene';
 import { ROBOT_ID, sceneOf } from './clean-bench';
 
@@ -17,7 +17,7 @@ function routeOf(sweeps: number, mops: number): Route {
   return { cursor: points.length, points };
 }
 
-class MemoryScenes implements MapStore {
+class MemoryScenes {
   readonly rows = new Map<string, VacuumScene>();
 
   save(deviceId: string, scene: VacuumScene): void {
@@ -26,16 +26,6 @@ class MemoryScenes implements MapStore {
 
   at(deviceId: string, slot: VacuumSlot, index: number): VacuumScene | undefined {
     return this.rows.get(`${deviceId}|${slot}|${String(index)}`);
-  }
-
-  latest(deviceId: string, slot: VacuumSlot): VacuumScene | undefined {
-    return [...this.rows.values()]
-      .filter((scene) => scene.slot === slot && this.at(deviceId, slot, scene.index) === scene)
-      .sort((a, b) => b.index - a.index)[0];
-  }
-
-  has(deviceId: string, slot: VacuumSlot, index: number): boolean {
-    return this.at(deviceId, slot, index) !== undefined;
   }
 }
 
@@ -46,7 +36,16 @@ let merger: VacuumLiveScene;
 
 beforeEach(() => {
   scenes = new MemoryScenes();
-  cache = new MapCache(scenes);
+  const memory = scenes;
+  cache = new MapCache({
+    save: (deviceId, scene): Promise<void> => {
+      memory.save(deviceId, scene);
+      return Promise.resolve();
+    },
+    at: (deviceId, slot, index): Promise<VacuumScene | undefined> =>
+      Promise.resolve(memory.at(deviceId, slot, index)),
+  });
+  cache.hold(ROBOT_ID, []);
   live = null;
   merger = new VacuumLiveScene({ cache, route: (): Route | null => live });
 });

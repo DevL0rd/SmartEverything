@@ -24,11 +24,12 @@ import {
   type DriveActor,
 } from '../drive/access';
 import { requestSeenBy } from '../store/repositories/drive-access-requests';
-import type { Store } from '../store/store';
-import { channelHidden, deviceIdReachable, presenceInScope, scopesOfClient } from './person-scope';
+import type { HostStore } from '../store/host/host-store';
+import { channelHidden, presenceInScope } from './person-scope';
+import { deviceIdReachable, scopesOfClient } from './person-scope-units';
 
 export type ReachStore = Pick<
-  Store,
+  HostStore,
   'devices' | 'personAccess' | 'profiles' | 'infrared' | 'localDevices'
 >;
 
@@ -125,7 +126,7 @@ export function floorsSeenBy(
 }
 
 export type DriveStore = Pick<
-  Store,
+  HostStore,
   'driveRoots' | 'driveAlbums' | 'driveItems' | 'driveGrants' | 'profiles' | 'computerNodes'
 >;
 

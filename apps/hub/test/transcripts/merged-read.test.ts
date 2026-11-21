@@ -104,8 +104,13 @@ describe('Transcripts.search across sources', () => {
     await opened.close();
   });
 
-  function speak(source: 'camera' | 'phone', sourceId: string, text: string, level?: number): void {
-    const session = transcripts.open({
+  async function speak(
+    source: 'camera' | 'phone',
+    sourceId: string,
+    text: string,
+    level?: number,
+  ): Promise<void> {
+    const session = await transcripts.open({
       source,
       sourceId,
       pluginId: null,
@@ -113,7 +118,7 @@ describe('Transcripts.search across sources', () => {
       retentionDays: null,
       startedAt: new Date(BASE - 60_000).toISOString(),
     });
-    transcripts.add(
+    await transcripts.add(
       session.id,
       {
         at: new Date(BASE - 10_000).toISOString(),
@@ -128,14 +133,16 @@ describe('Transcripts.search across sources', () => {
     );
   }
 
-  it('returns the louder camera or phone line once and keeps each source history whole', () => {
-    speak('camera', 'kitchen', 'the oven is hot', -31);
-    speak('phone', 'pat-phone', 'the oven is hot', -22);
-    const hits = transcripts.search({ words: 'oven', limit: 10 });
+  it('returns the louder camera or phone line once and keeps each source history whole', async () => {
+    await speak('camera', 'kitchen', 'the oven is hot', -31);
+    await speak('phone', 'pat-phone', 'the oven is hot', -22);
+    const hits = await transcripts.search({ words: 'oven', limit: 10 });
     expect(hits.map((hit) => hit.session.source_id)).toEqual(['pat-phone']);
     const kitchen = opened.store.transcripts.list({ source: 'camera', limit: 5 });
     expect(kitchen).toHaveLength(1);
-    expect(transcripts.read(kitchen[0]?.id ?? '', 0, 10).lines).toHaveLength(1);
-    expect(transcripts.search({ words: 'oven', source: 'camera', limit: 10 })).toHaveLength(1);
+    expect((await transcripts.read(kitchen[0]?.id ?? '', 0, 10)).lines).toHaveLength(1);
+    expect(await transcripts.search({ words: 'oven', source: 'camera', limit: 10 })).toHaveLength(
+      1,
+    );
   });
 });

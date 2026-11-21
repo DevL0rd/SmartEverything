@@ -6,10 +6,11 @@ import {
   type AssistantMessageRow,
   type MessageQuote,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import { storeUnit } from '../store/host/unit';
+import type { HostStore } from '../store/host/host-store';
 
 export function quotedMessage(
-  store: Store,
+  store: HostStore,
   chat: Pick<AiChatRow, 'id' | 'profile_id'>,
   id: string,
 ): AssistantMessageRow {
@@ -20,7 +21,7 @@ export function quotedMessage(
 }
 
 export function quoteForChat(
-  store: Store,
+  store: HostStore,
   chat: Pick<AiChatRow, 'id' | 'profile_id'>,
   id: string | undefined,
 ): MessageQuote | null {
@@ -28,7 +29,7 @@ export function quoteForChat(
 }
 
 export function helperAnswerQuote(
-  store: Store,
+  store: HostStore,
   parent: AiChatRow,
   target: AiChatRow,
   id: string | null,
@@ -48,3 +49,21 @@ export function helperAnswerQuote(
     );
   return quote;
 }
+
+export interface QuoteRequest {
+  readonly chat: Pick<AiChatRow, 'id' | 'profile_id'>;
+  readonly id: string | undefined;
+}
+
+export interface HelperQuoteRequest {
+  readonly parent: AiChatRow;
+  readonly target: AiChatRow;
+  readonly id: string | null;
+}
+
+export const QUOTE_UNIT = storeUnit((store, input: QuoteRequest) =>
+  quoteForChat(store, input.chat, input.id),
+);
+export const HELPER_QUOTE_UNIT = storeUnit((store, input: HelperQuoteRequest) =>
+  helperAnswerQuote(store, input.parent, input.target, input.id),
+);

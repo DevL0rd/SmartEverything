@@ -10,7 +10,7 @@ import {
 } from '@smarteverything/domain';
 import type { z } from 'zod';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { hashGuestToken } from '../guests/guest-list';
 
 export interface RsvpAnswer {
@@ -33,7 +33,7 @@ function cancelled(item: PlannerItemRow): boolean {
   return item.deleted_at !== null || item.status === 'cancelled';
 }
 
-function inviteOf(store: Store, token: string): Invite {
+function inviteOf(store: HostStore, token: string): Invite {
   const checked = PLANNER_PUBLIC_TOKEN.safeParse(token);
   if (!checked.success) throw unavailable();
   const guest = store.plannerGuests.byToken(hashGuestToken(checked.data));
@@ -42,7 +42,7 @@ function inviteOf(store: Store, token: string): Invite {
   return { guest, item };
 }
 
-function pageOf(store: Store, token: string): PlannerRsvpPage {
+function pageOf(store: HostStore, token: string): PlannerRsvpPage {
   const { guest, item } = inviteOf(store, token);
   const start = item.start_local;
   if (start === null) throw unavailable();
@@ -63,7 +63,7 @@ function pageOf(store: Store, token: string): PlannerRsvpPage {
 }
 
 function respond(
-  store: Store,
+  store: HostStore,
   {
     token,
     answer,

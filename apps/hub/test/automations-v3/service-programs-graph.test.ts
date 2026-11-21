@@ -17,13 +17,13 @@ import {
 
 let rig: ProgramRig;
 
-beforeEach(() => {
+beforeEach(async () => {
   captureLogs();
-  rig = programRig();
+  rig = await programRig();
 });
 
-afterEach(() => {
-  rig.close();
+afterEach(async () => {
+  await rig.close();
 });
 
 const CONTEXT: DescribeContext = {

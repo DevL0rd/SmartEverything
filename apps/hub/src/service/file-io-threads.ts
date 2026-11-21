@@ -60,12 +60,13 @@ function poolThreads(): number {
 }
 
 export async function confirmFileIoThreads(
-  databaseFile: string | null,
+  result: FileIoThreadsStart | null,
 ): Promise<FileIoThreadsStart> {
   if (started !== null) {
     throw new Error('The file I/O threads were already confirmed in this process.');
   }
-  const result = configuredThreads(databaseFile);
+  if (result === null)
+    throw new Error('The service launcher did not apply the file I/O threads before start.');
   await stat('/');
   const effective = poolThreads();
   if (env['UV_THREADPOOL_SIZE'] !== String(result.threads) || effective !== result.threads) {

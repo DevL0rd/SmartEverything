@@ -108,9 +108,8 @@ function rig(replies: readonly Reply[], options: { readonly stop?: string } = {}
     },
     tools: { list: () => [TOOL, HUMAN_TOOL] },
     budgets: {
-      check: (): void => {
-        if (options.stop !== undefined) throw new Error(options.stop);
-      },
+      check: (): Promise<void> =>
+        options.stop === undefined ? Promise.resolve() : Promise.reject(new Error(options.stop)),
     },
   };
   return { model: new OneShotModel(ports), launches, said, state, emit };

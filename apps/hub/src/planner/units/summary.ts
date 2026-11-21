@@ -1,12 +1,12 @@
 import { PLANNER_SUMMARY, type PlannerItemRow, type PlannerSummary } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { composeDayFromStore, summarise } from '../day';
-import { plannerPreferencesOf } from '../preferences';
+import { plannerPreferencesOf } from './preferences-of';
 import { involvedProfiles, profilesSeeing } from '../sharing/visibility';
 
 function summaryOf(
-  store: Store,
+  store: HostStore,
   { profileId, nowMs }: { readonly profileId: string; readonly nowMs: number },
 ): PlannerSummary {
   const timeZone = store.settings.read().time_zone;

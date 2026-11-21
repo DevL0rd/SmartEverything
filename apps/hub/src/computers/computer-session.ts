@@ -1,7 +1,6 @@
 import {
   NODE_FRAME,
   type AdapterSink,
-  type ComputerAction,
   type ComputerFilesChangedNotice,
   type ComputerLiveNotice,
   type ComputerParts,
@@ -30,17 +29,17 @@ import { demandedTopics, nodeDemandOf } from './computer-demand';
 import { FrameCounter } from './frame-counter';
 import { FreshRead, type FreshViewers } from './fresh-read';
 import { isEarFrame, routeEarFrame, type EarFrame, type EarRoutes } from './ear-frames';
-import { computerExternalId, describeComputer, type ComputerIdentity } from './computer-device';
-import { offeredMachineActions } from './machine-requests';
+import { computerExternalId, type ComputerIdentity } from './computer-device';
 import type { ComputerDirectory } from './computer-directory';
 import { ComputerOfflineError } from './computer-errors';
 import { MergedParts, visibleParts } from './computer-view';
-import { HeadlineRecorder, headlineCapabilities } from './headlines';
+import { HeadlineRecorder } from './headlines';
 import { NodeCalls } from './node-calls';
 import { SessionPlacements } from './computer-placements';
 import type { SessionPlacementSource } from './placements-slot';
 import { RelayStreams } from './relay-streams';
-import { sessionCapabilities, sessionReadings } from './session-readings';
+import { sessionReadings } from './session-readings';
+import { powerActions, sessionDevice } from './session-device';
 
 export interface ComputerSessionOptions
   extends Pick<AppPresenceOptions, 'signals' | 'personOf'>, EarRoutes {
@@ -98,7 +97,7 @@ export class ComputerSession {
     this.drivePlacements = new SessionPlacements({
       placements: options.placements,
       send: options.link.send,
-      mountsDemanded: (deviceId) =>
+      mountsDemanded: (deviceId): boolean =>
         demandedTopics(options.viewers.demand(deviceTarget(deviceId))).has('drive_mounts'),
       log: options.log,
     });
@@ -258,7 +257,7 @@ export class ComputerSession {
   }
 
   private sampleReceived(frame: NodeSampleFrame): void {
-    this.measured(frame.at, frame.parts);
+    this.measured(frame.at, frame.key === true ? this.merged.changed(frame.parts) : frame.parts);
     if (frame.key === true) this.fresh.keyFrame();
   }
 
@@ -341,13 +340,6 @@ export class ComputerSession {
     });
   }
 
-  private actions(): ComputerAction[] {
-    const known = this.known;
-    if (known === null || this.scopes?.power !== true) return [];
-    const wake = this.role === 'pc' && known.hello.interfaces.length > 0 ? ['wake' as const] : [];
-    return [...known.hello.power, ...wake];
-  }
-
   private sessionChanged(known: Known, session: ComputerSessionState): void {
     this.options.log.trace('computer.session_state', { externalId: known.externalId });
     const deviceId = this.deviceId;
@@ -365,22 +357,20 @@ export class ComputerSession {
   }
 
   private describeIfChanged(known: Known): void {
-    const { summary, session } = this.merged.latest;
-    const readings = [
-      ...(summary === undefined ? [] : headlineCapabilities(summary)),
-      ...sessionCapabilities(session ?? null, this.scopes?.apps === true),
-    ];
-    const device = describeComputer(known.hello, readings, {
-      power: this.actions(),
-      machine: offeredMachineActions(this.scopes),
-      ...(this.options.identity === undefined ? {} : { identity: this.options.identity }),
+    const power = powerActions(known.hello, this.scopes, this.role);
+    const device = sessionDevice({
+      hello: known.hello,
+      latest: this.merged.latest,
+      scopes: this.scopes,
+      power,
+      identity: this.options.identity,
     });
     const capabilities = device.capabilities.map((capability) => capability.key).join(',');
     if (capabilities !== this.capabilities) {
       this.options.log.debug('computer.capabilities_changed', () => ({
         externalId: known.externalId,
         count: device.capabilities.length,
-        actions: this.actions().length,
+        actions: power.length,
         first: this.capabilities === '',
       }));
       this.capabilities = capabilities;

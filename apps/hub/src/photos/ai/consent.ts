@@ -1,6 +1,6 @@
 import { PHOTOS_CLIENT_PREFS, type PhotosPref } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export class ConsentUnreadableError extends Error {
   override readonly name = 'ConsentUnreadableError';
@@ -13,7 +13,7 @@ export class ConsentUnreadableError extends Error {
   }
 }
 
-export type ConsentStore = Pick<Store, 'personal' | 'personAccess' | 'driveRoots'>;
+export type ConsentStore = Pick<HostStore, 'personal' | 'personAccess' | 'driveRoots'>;
 
 export interface ConsentSwitches {
   readonly smartSearch: boolean;

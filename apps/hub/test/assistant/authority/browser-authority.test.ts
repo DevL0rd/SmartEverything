@@ -35,47 +35,45 @@ function switchPhoneToAnotherPerson(): void {
 }
 
 describe('the embedded browser follows the chat, not the phone profile', () => {
-  it('keeps controlling the chat after the phone switched to another person', () => {
+  it('keeps controlling the chat after the phone switched to another person', async () => {
     const chat = rig.newChat({ kind: 'server' });
     const authority = new EmbeddedBrowserAuthority(rig.opened.store);
     switchPhoneToAnotherPerson();
-    expect(() => {
-      authority.validate(browserScope(chat.id));
-    }).not.toThrow();
+    await expect(authority.validate(browserScope(chat.id))).resolves.toBeUndefined();
   });
 
-  it('refuses a viewer scope that names a chat that no longer exists', () => {
+  it('refuses a viewer scope that names a chat that no longer exists', async () => {
     const authority = new EmbeddedBrowserAuthority(rig.opened.store);
-    expect(() => {
-      authority.validate(browserScope('0d000000-0000-4000-8000-0000000000aa'));
-    }).toThrow();
+    await expect(
+      authority.validate(browserScope('0d000000-0000-4000-8000-0000000000aa')),
+    ).rejects.toThrow();
   });
 
   it.each(['https://example.com/', 'http://example.com/news', 'http://192.168.1.20:5173/'])(
     'opens the address %s the device can reach',
-    (url) => {
+    async (url) => {
       const chat = rig.newChat({ kind: 'server' });
       const authority = new EmbeddedBrowserAuthority(rig.opened.store);
-      expect(() => {
+      await expect(
         authority.action(browserScope(chat.id), {
           kind: 'open',
           source: { kind: 'public', url },
-        });
-      }).not.toThrow();
+        }),
+      ).resolves.toBeUndefined();
     },
   );
 
   it.each(['https://user:pass@example.com/', 'ftp://example.com/', 'javascript:alert(1)'])(
     'refuses the credentialed or non-web address %s',
-    (url) => {
+    async (url) => {
       const chat = rig.newChat({ kind: 'server' });
       const authority = new EmbeddedBrowserAuthority(rig.opened.store);
-      expect(() => {
+      await expect(
         authority.action(browserScope(chat.id), {
           kind: 'open',
           source: { kind: 'public', url },
-        });
-      }).toThrow('http or https addresses');
+        }),
+      ).rejects.toThrow('http or https addresses');
     },
   );
 });

@@ -8,6 +8,7 @@ import { FLOW_ERRORS } from '../state/errors';
 import type { CancelReason, Completion, Frame, RunState } from '../state/run-state';
 import type { Wait } from '../state/run-state';
 import type { KeptScope, KeptStart } from './kept-types';
+import type { ReadPending } from './read-pending';
 
 export type Outputs = Readonly<Record<string, JsonValue>>;
 
@@ -50,7 +51,7 @@ export interface ReadRequest {
 }
 
 export interface ReadPort {
-  readonly node: (request: ReadRequest) => NodeResult;
+  readonly node: (request: ReadRequest) => NodeResult | ReadPending;
   readonly variable: (name: string, kept?: KeptScope) => Evaluated;
 }
 
@@ -87,6 +88,7 @@ export type StepEvent =
 
 export type Outcome =
   | { readonly kind: 'continue' }
+  | { readonly kind: 'read' }
   | { readonly kind: 'effect'; readonly request: EffectRequest }
   | { readonly kind: 'park'; readonly wait: Wait }
   | {

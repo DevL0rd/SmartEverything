@@ -27,7 +27,7 @@ const SUMMARY = z.object({
 });
 const TEXT = z.object({ type: z.literal('text'), text: z.string() });
 
-export function explicitNativeOriginal(
+export async function explicitNativeOriginal(
   service: HarnessService,
   input: {
     readonly sessionId: string;
@@ -35,16 +35,16 @@ export function explicitNativeOriginal(
     readonly event: DshSessionEvent;
     readonly originalId: string | undefined;
   },
-): StoredAttachment | undefined {
+): Promise<StoredAttachment | undefined> {
   if (input.event.type !== 'tool/result' || input.originalId === undefined) return undefined;
   const result = RESULT.parse(input.event.data);
-  const call = retainedCall(service, input);
+  const call = await retainedCall(service, input);
   const id = explicitReadId(call);
   if (id === undefined) return undefined;
   if (id !== input.originalId)
     throw new ApiError('forbidden', 'Native original differs from its retained explicit read.');
   verifyExplicitResult(call, result);
-  const file = service.store.assistantChat.attachment(id);
+  const file = await service.store.host.call('assistantChat', 'attachment', id);
   if (file.profile_id !== input.profileId)
     throw new ApiError('forbidden', 'Native original belongs to another initiating profile.');
   verifyOriginalSummary(file, result);
@@ -74,20 +74,24 @@ function verifyOriginalSummary(file: StoredAttachment, result: z.infer<typeof RE
     throw new ApiError('forbidden', 'Native original differs from its retained tool result.');
 }
 
-function retainedCall(
+async function retainedCall(
   service: HarnessService,
   input: {
     readonly sessionId: string;
     readonly profileId: string;
     readonly event: DshSessionEvent;
   },
-): z.infer<typeof CALL> {
+): Promise<z.infer<typeof CALL>> {
   const [seq] = z.array(z.int().nonnegative()).length(1).parse(input.event.sourceEventSeqs);
   if (seq === undefined || seq >= input.event.seq || input.event.surfaceOp !== 'append')
     throw new ApiError('forbidden', 'Native explicit read has no original call lineage.');
-  const call = service.store.dshSessions.read(
-    { session_id: input.sessionId, offset: seq, limit: 1 },
-    input.profileId,
+  const call = (
+    await service.store.host.call(
+      'dshSessions',
+      'read',
+      { session_id: input.sessionId, offset: seq, limit: 1 },
+      input.profileId,
+    )
   ).events[0];
   if (call?.seq !== seq || call.type !== 'tool/call')
     throw new ApiError('forbidden', 'Native explicit read has no retained tool call.');

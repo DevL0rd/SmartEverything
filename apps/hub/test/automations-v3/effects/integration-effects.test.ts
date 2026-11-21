@@ -99,7 +99,7 @@ function rig(
     signals: { emit: (signal): void => void seen.emitted.push(signal) },
     replies: seen.replies,
     clock: { now: (): Date => new Date('2026-10-08T12:00:00.000Z') },
-    ownerProfileId: () => PROFILE,
+    ownerProfileId: () => Promise.resolve(PROFILE),
   });
   const run = performer(handlers);
   return {
@@ -310,7 +310,7 @@ describe('health, signal and webhook effects', () => {
         signals: { emit: (): void => undefined },
         replies: seen.replies,
         clock: { now: (): Date => new Date() },
-        ownerProfileId: () => PROFILE,
+        ownerProfileId: () => Promise.resolve(PROFILE),
       }),
     );
     const request: EffectRequest = {

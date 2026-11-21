@@ -45,6 +45,16 @@ function merged(existing: readonly WatchSample[], incoming: readonly WatchSample
   return [...byTime.entries()].sort(([left], [right]) => left - right).map(([, sample]) => sample);
 }
 
+function sameSamples(left: readonly WatchSample[], right: readonly WatchSample[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((sample, index) => {
+      const other = right[index];
+      return other?.time === sample.time && other.value === sample.value;
+    })
+  );
+}
+
 function figure(metric: HealthMetric, value: number): DailyFigure {
   return { metric, value, unit: HEALTH_METRIC_UNITS[metric] };
 }
@@ -75,10 +85,9 @@ export class WatchDaysRepository {
       appendTo(groups, day, sample);
     }
     return this.context.write(() =>
-      [...groups.entries()].map(([day, samples]) => {
-        this.merge(owner, day, batch.kind, samples);
-        return day;
-      }),
+      [...groups.entries()]
+        .filter(([day, samples]) => this.merge(owner, day, batch.kind, samples))
+        .map(([day]) => day),
     );
   }
 
@@ -109,14 +118,18 @@ export class WatchDaysRepository {
     day: string,
     kind: WatchDayRow['kind'],
     samples: readonly WatchSample[],
-  ): void {
+  ): boolean {
     const before = this.find(owner, day, kind) ?? null;
+    const next = merged(before?.samples ?? [], samples);
+    if (before !== null && sameSamples(before.samples, next)) {
+      return false;
+    }
     const row: WatchDayRow = {
       profile_id: owner.profileId,
       device_id: owner.deviceId,
       day,
       kind,
-      samples: merged(before?.samples ?? [], samples),
+      samples: next,
       updated_at: this.context.now(),
     };
     this.context.sql.run(
@@ -134,5 +147,6 @@ export class WatchDaysRepository {
       },
     );
     this.context.changed('watch_days', before === null ? 'INSERT' : 'UPDATE', row, before);
+    return true;
   }
 }

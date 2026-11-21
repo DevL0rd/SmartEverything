@@ -10,7 +10,7 @@ import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { metadataHandler, type MetadataEnvironment } from '../../src/drive/metadata';
 import { collectUnread } from '../../src/drive/units/metadata';
 import { momentOf, readStill, readTimed, routeOf, TimedProbe } from '../../src/drive/metadata-read';
-import { updateDriveSettings } from '../../src/drive/settings';
+import { saveDriveSettings } from '../../src/drive/units/settings';
 import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import {
@@ -373,7 +373,7 @@ describe('the metadata job', () => {
   it('reads nothing while indexing is paused', async () => {
     place('exif-full.jpg');
     await scan();
-    updateDriveSettings(
+    saveDriveSettings(
       { settingsKv: drive.settings, write: (work) => drive.context.write(work) },
       { indexingPaused: true },
     );

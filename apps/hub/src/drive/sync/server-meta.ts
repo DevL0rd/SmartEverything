@@ -4,9 +4,6 @@ import { SETATTR_VALID, type RequestMeta } from '@smarteverything/domain/drive-m
 import type { SyncXattr } from '@smarteverything/domain/drive-sync';
 import { ApiError } from '@smarteverything/domain';
 import type { DriveInode } from '../../store/repositories/drive-inodes';
-import { inodeOfItem } from './item-meta';
-import { parentOf } from '../changes';
-import { announce, appendFeed } from '../change-rows';
 import { PosixScope } from '../posix/env';
 import type { SyncScope } from './placement-scope';
 import { syncActor, type Origin, type SyncEnv } from './server-ops';
@@ -27,10 +24,12 @@ export interface WantedMeta {
   readonly xattrs: readonly SyncXattr[];
 }
 
-export function posixScopeOf({ env, origin, scope }: SyncCall): PosixScope {
-  const { driveInodes } = env.store;
-  const rootInode =
-    scope.base === null ? driveInodes.rootOf(scope.drive.id) : inodeOfItem(env.store, scope.base);
+export function inodeOf(env: SyncEnv, rootId: string, item: DriveItem | null): Promise<DriveInode> {
+  return env.store.host.read('driveSyncInode', { rootId, itemId: item?.id ?? null });
+}
+
+export async function posixScopeOf({ env, origin, scope }: SyncCall): Promise<PosixScope> {
+  const rootInode = await inodeOf(env, scope.drive.id, scope.base);
   return new PosixScope(
     { profileId: origin.profileId, nodeId: origin.deviceId },
     origin.placementId,
@@ -38,14 +37,12 @@ export function posixScopeOf({ env, origin, scope }: SyncCall): PosixScope {
   );
 }
 
-function parentInodeOf({ env, scope }: SyncCall, drivePath: string): number {
-  const parent = parentOf(env, scope.drive.id, drivePath);
-  if (parent !== null) return inodeOfItem(env.store, parent).id;
-  return env.store.driveInodes.rootOf(scope.drive.id).id;
+function parentInodeOf({ env, scope }: SyncCall, drivePath: string): Promise<number> {
+  return env.store.host.read('driveSyncParentInode', { rootId: scope.drive.id, drivePath });
 }
 
-function created({ env, scope }: SyncCall, drivePath: string): DriveItem {
-  const item = env.store.driveItems.byPath(scope.drive.id, drivePath, null);
+async function created({ env, scope }: SyncCall, drivePath: string): Promise<DriveItem> {
+  const item = await env.store.host.call('driveItems', 'byPath', scope.drive.id, drivePath, null);
   if (item === undefined) {
     throw new ApiError('internal', 'The new item is missing after it was made.');
   }
@@ -57,10 +54,16 @@ export async function createSymlink(
   drivePath: string,
   target: string,
 ): Promise<DriveItem> {
-  await call.env.posix.symlink(posixScopeOf(call), {
-    parent: parentInodeOf(call, drivePath),
+  const lease = await call.env.store.host.call(
+    'driveInodeLeases',
+    'grant',
+    call.origin.deviceId,
+    1,
+  );
+  await call.env.posix.symlink(await posixScopeOf(call), {
+    parent: await parentInodeOf(call, drivePath),
     name: basename(drivePath),
-    ino: call.env.store.driveInodeLeases.grant(call.origin.deviceId, 1).start,
+    ino: lease.start,
     target,
     uid: null,
     gid: null,
@@ -74,9 +77,9 @@ export async function createHardLink(
   source: DriveItem,
   drivePath: string,
 ): Promise<DriveItem> {
-  await call.env.posix.link(posixScopeOf(call), {
-    ino: inodeOfItem(call.env.store, source).id,
-    parent: parentInodeOf(call, drivePath),
+  await call.env.posix.link(await posixScopeOf(call), {
+    ino: (await inodeOf(call.env, source.rootId, source)).id,
+    parent: await parentInodeOf(call, drivePath),
     name: basename(drivePath),
     opKey: OP_KEY,
   });
@@ -115,7 +118,7 @@ async function applyXattrs(
     changed = true;
   }
   for (const [name, value] of wanted) {
-    const held = env.store.driveXattrs.get(inodeId, name);
+    const held = await env.store.host.call('driveXattrs', 'get', inodeId, name);
     if (held !== undefined && Buffer.from(held).equals(value)) continue;
     await env.posix.setxattr(ps, { ino: inodeId, name, flags: NO_FLAGS, opKey: OP_KEY }, value);
     changed = true;
@@ -123,12 +126,8 @@ async function applyXattrs(
   return changed;
 }
 
-export function announceChange(env: SyncEnv, origin: Origin, item: DriveItem): void {
-  const current = env.store.driveItems.byId(item.id, null);
-  env.store.write(() => {
-    appendFeed(env, current, 'update', syncActor(origin));
-    announce(env, current.rootId, current.parentId, [current]);
-  });
+export function announceChange(env: SyncEnv, origin: Origin, item: DriveItem): Promise<void> {
+  return env.store.host.write('driveSyncAnnounce', { itemId: item.id, actor: syncActor(origin) });
 }
 
 export async function applyMeta(
@@ -137,10 +136,10 @@ export async function applyMeta(
   wanted: WantedMeta,
 ): Promise<void> {
   const { env, origin } = call;
-  const ps = posixScopeOf(call);
-  const inode = inodeOfItem(env.store, item);
+  const ps = await posixScopeOf(call);
+  const inode = await inodeOf(env, item.rootId, item);
   const request = attributesRequest(inode, item, wanted);
   if (request !== null) await env.posix.setattr(ps, request);
   if (item.kind === 'link') return;
-  if (await applyXattrs(env, ps, inode.id, wanted.xattrs)) announceChange(env, origin, item);
+  if (await applyXattrs(env, ps, inode.id, wanted.xattrs)) await announceChange(env, origin, item);
 }

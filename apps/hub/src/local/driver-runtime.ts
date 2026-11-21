@@ -6,6 +6,7 @@ import type { Viewers, DeviceDetail } from '../metrics/viewers';
 import type { DeviceDriverRegistry } from './device-driver';
 import { DriverHost } from './driver-host';
 import { localDriverSink } from './driver-sink';
+import { hostDeviceMetrics } from '../store/host/hosted';
 
 export interface RunningDrivers {
   readonly registry: DeviceDriverRegistry;
@@ -42,7 +43,7 @@ export function startDrivers(
   return {
     registry: core.drivers,
     metrics: new MetricHistory({
-      store: parts.store.deviceMetrics,
+      store: hostDeviceMetrics(parts.store.host),
       log: parts.logFor('metrics'),
       now: parts.clock.now,
     }),

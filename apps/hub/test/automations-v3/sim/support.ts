@@ -15,12 +15,15 @@ import type {
   ReadPort,
   StepContext,
 } from '@smarteverything/flow/interpret/frames';
+import { READ_PENDING, type ReadPending } from '@smarteverything/flow/interpret/read-pending';
 import { RUN_OPS } from '@smarteverything/flow/interpret/run-automation';
 import { TRY_FRAMES, TRY_OPS } from '@smarteverything/flow/interpret/try';
 import { waitOps } from '@smarteverything/flow/interpret/waits';
 import { resolveBudgets } from '@smarteverything/flow/state/budgets';
 import { ReadFailure } from '../../../src/automations/world-v3/read-port';
+import { ReadNotFetchedError, StepReads } from '../../../src/automations/world-v3/step-reads';
 import type { SimEnv, SimStart } from '../../../src/automations/sim/rig';
+import type { RunStart } from '../../../src/automations/driver/ports';
 import { stateAt } from '../driver/support';
 import { NOW, furnish } from '../world/support';
 import type { Home } from '../world/support';
@@ -127,9 +130,9 @@ function nextDaily(zone: string): (clock: JsonValue, after: number) => Checked<n
   };
 }
 
-function readPort(env: SimEnv, automationId: string): ReadPort {
+function readPort(env: SimEnv, automationId: string, fetching: StepReads): ReadPort {
   return {
-    node: (request): NodeResult => {
+    node: (request): NodeResult | ReadPending => {
       try {
         const { outputs } = env.reads.read(request.kind, request.inputs, {
           automationId,
@@ -137,9 +140,12 @@ function readPort(env: SimEnv, automationId: string): ReadPort {
           nodeKey: request.node.key,
           seed: request.seed,
           activation: request.activation,
+          fetch: fetching.fetch,
+          now: fetching.now,
         });
         return { ok: true, value: outputs };
       } catch (cause) {
+        if (cause instanceof ReadNotFetchedError) return READ_PENDING;
         if (cause instanceof ReadFailure) {
           return { ok: false, class: cause.errorClass, message: cause.message };
         }
@@ -150,12 +156,17 @@ function readPort(env: SimEnv, automationId: string): ReadPort {
   };
 }
 
-function contextOf(body: PlanOp, env: SimEnv, automationId: string): StepContext {
+function contextOf(
+  body: PlanOp,
+  env: SimEnv,
+  automationId: string,
+  fetching: StepReads,
+): StepContext {
   const plan: Plan = { version: 1, subject: 'automation', exits: [], variables: [], body };
   return {
     plan: () => plan,
     pure: () => undefined,
-    reads: readPort(env, automationId),
+    reads: readPort(env, automationId, fetching),
     changeVar: () => ({ ok: true, value: { value: 0, wrapped: false } }),
     limits: resolveBudgets(),
     home: {},
@@ -171,17 +182,21 @@ function contextOf(body: PlanOp, env: SimEnv, automationId: string): StepContext
 
 export function programOf(body: PlanOp, automationId: string = randomUUID()): SimStart {
   return {
-    build: (runId, env, call) => ({
-      state: {
-        ...stateAt(env.clock.now().getTime()),
-        runId,
-        automationId,
-        causeChain: call === null ? [] : call.causeChain,
-      },
-      context: contextOf(body, env, automationId),
-      name: 'Simulated automation',
-      kind: 'simulated',
-      startedBy: null,
-    }),
+    build: (runId, env, call): RunStart => {
+      const reads = new StepReads(env.host, env.clock);
+      return {
+        state: {
+          ...stateAt(env.clock.now().getTime()),
+          runId,
+          automationId,
+          causeChain: call === null ? [] : call.causeChain,
+        },
+        context: contextOf(body, env, automationId, reads),
+        reads,
+        name: 'Simulated automation',
+        kind: 'simulated',
+        startedBy: null,
+      };
+    },
   };
 }

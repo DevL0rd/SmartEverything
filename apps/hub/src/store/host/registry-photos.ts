@@ -161,6 +161,7 @@ import {
 import { PHOTO_TRIPS_UNIT } from '../../photos/trips';
 import { PHOTO_SEARCH_APPLY_UNIT } from '../../photos/search-index';
 import { PHOTO_STACK_COVER_UNIT, PHOTO_STACK_UNIT, PHOTO_STACKS_UNIT } from '../../photos/stacks';
+import { PHOTO_LOCKED_OPEN_UNIT } from '../../photos/organise/locked-units';
 
 export const PHOTOS_READ_UNITS = {
   photoBuckets: PHOTO_BUCKETS_UNIT,
@@ -299,4 +300,5 @@ export const PHOTOS_WRITE_UNITS = {
   photoItemsAnnounce: PHOTO_ITEMS_ANNOUNCE_UNIT,
   photoSearchApply: PHOTO_SEARCH_APPLY_UNIT,
   photoBackupTouch: PHOTO_BACKUP_TOUCH_UNIT,
+  photoLockedOpen: PHOTO_LOCKED_OPEN_UNIT,
 } as const;

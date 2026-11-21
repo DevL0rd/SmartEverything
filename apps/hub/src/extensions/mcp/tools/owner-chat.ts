@@ -6,10 +6,8 @@ import {
   type RepairWorkComponent,
 } from '@smarteverything/domain';
 import { AssistantFiles } from '../../../assistant/files';
-import { profileCanClaim } from '../../../assistant/repair-work-recipient';
 import type { HubLayout } from '../../../data-layout';
 import { sendChatFileLinkToChat, sendChatFileToChat } from '../../../self-update/chat-file';
-import { saveRepairWorkClaim } from '../../../store/repositories/repair-work-claims';
 import {
   defineTool,
   WRITES,
@@ -26,7 +24,7 @@ type ChatFile = Pick<ChatFileSendInput, 'path' | 'name' | 'what'> & {
 };
 
 async function shareLink(context: ToolContext, file: ChatFile): Promise<ToolOutput> {
-  const settings = context.store.settings.read();
+  const settings = context.store.live.home.settings.read();
   const publicUrl = settings.public_url_verified_at === null ? null : settings.public_url;
   if (publicUrl === null)
     throw new ToolError(
@@ -50,7 +48,7 @@ async function share(
   if (link === true) return shareLink(context, file);
   const files = new AssistantFiles({
     layout: context.layout,
-    chat: context.store.assistantChat,
+    store: context.store,
     attachments: context.store.live.attachments,
     now: (): Date => context.clock.now(),
   });
@@ -68,14 +66,18 @@ async function claim(context: ToolContext, component: RepairWorkComponent): Prom
   if (
     chat.archived_at !== null ||
     chat.deletion_state !== null ||
-    !profileCanClaim(context.store, component, chat.profile_id)
+    !(await context.store.host.read('assistantProfileCanClaim', {
+      component,
+      profileId: chat.profile_id,
+    }))
   )
     throw new ToolError('Use an active owner chat and a component you can manage.', 'forbidden');
-  const { expiresAt } = saveRepairWorkClaim(
-    context.store.settingsKv,
-    { component, chatId: chat.id, profileId: chat.profile_id },
-    context.clock.now(),
-  );
+  const { expiresAt } = await context.store.host.write('repairWorkClaim', {
+    component,
+    chatId: chat.id,
+    profileId: chat.profile_id,
+    now: context.clock.now().toISOString(),
+  });
   return { structured: { component, chatId: chat.id, expiresAt } };
 }
 

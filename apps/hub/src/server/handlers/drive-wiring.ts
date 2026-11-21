@@ -1,10 +1,9 @@
 import { PhotoPipeline } from '../../photos/pipeline/runtime';
-import type { DatabaseSync } from 'node:sqlite';
 import type { DriveDataSpace } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { HubLayout } from '../../data-layout';
 import { DriveBackups, hostBackupStore } from '../../drive/backups';
-import type { ConflictEnv, DriveConflictStore } from '../../drive/conflicts';
+import type { ConflictEnv } from '../../drive/conflicts';
 import { readDataSpace, type DataSpaceProbe } from '../../drive/data-space';
 import { TextCursors, type TextEnvironment } from '../../drive/content/text-job';
 import { DriveGrants } from '../../drive/grants';
@@ -20,6 +19,7 @@ import { DriveWriteService } from '../../drive/service-write';
 import { DriveAlbums } from '../../drive/service-write-albums';
 import { DriveShares, shareOriginOf, type ShareOrigin } from '../../drive/shares';
 import { PurgeTimer } from '../../drive/purge-timer';
+import { hostQuotaSource } from '../../drive/quotas';
 import { TusUploads, type TusEnv } from '../../drive/uploads-tus';
 import { fileEnv } from '../../drive/versions';
 import { DriveWatchers, systemWatch } from '../../drive/watcher';
@@ -27,8 +27,7 @@ import { hostScanPort } from '../../drive/scan-port';
 import { WorkQueue, defaultConcurrency } from '../../drive/work-queue';
 import type { ComputerNodeAccess } from '../../computers/node-access';
 import type { PushCommandChannel } from '../../extensions/push/commands';
-import type { StoreContext } from '../../store/context';
-import type { Store } from '../../store/store';
+import { STORE_BUSY_TIMEOUT_MS, type Store } from '../../store/store';
 import type { MediaLinks } from '../media-links';
 import { availabilityOf } from './drive-availability';
 import { driveJobHandlers, mountedRoot } from './drive-jobs';
@@ -39,11 +38,8 @@ import { actorOf, type DriveListings, type DriveServices } from './drive-service
 import { tusAuthentication } from './drive-tus-auth';
 
 export interface DriveParts {
-  readonly context: StoreContext;
-  readonly database: DatabaseSync;
-  readonly conflicts: DriveConflictStore;
   readonly listings: DriveListings;
-  readonly removeLocationOutside: (sharedBy: string) => boolean;
+  readonly removeLocationOutside: (sharedBy: string) => Promise<boolean>;
   readonly notifyCorruption: (corruption: ScrubCorruption) => void;
 }
 
@@ -112,7 +108,6 @@ function conflictEnvOf(deps: DriveDeps, rearm: () => void): ConflictEnv {
     ...fileEnv(deps.store, deps.log.forArea('hub.drive'), deps.now),
     store: deps.store,
     purge: { rearm },
-    conflicts: deps.parts.conflicts,
   };
 }
 
@@ -220,7 +215,7 @@ function writeOf(
     shares: readers.shares,
     scrub: core.scrubber,
     backups: core.backups,
-    guard: { status: (profileId) => store.driveQuotas.status(profileId), space: probe.space },
+    guard: { status: hostQuotaSource(store), space: probe.space },
     scan: (rootId): void => {
       core.queue.enqueue({ kind: 'scan', rootId });
     },
@@ -261,7 +256,7 @@ function servicesOf(deps: DriveDeps, core: Core): DriveServices {
       links: deps.links,
       nodes: {
         authenticate: (token) => deps.nodes.authenticate(token),
-        actorOf: (node) => actorOf(nodeCaller(store, node)),
+        actorOf: async (node) => actorOf(await nodeCaller(store, node)),
       },
       now: deps.now,
     },
@@ -292,7 +287,8 @@ function uploadsOf(
 
 function backupsOf(deps: DriveDeps): DriveBackups {
   return new DriveBackups({
-    database: deps.parts.database,
+    database: deps.store.path,
+    busyTimeoutMs: STORE_BUSY_TIMEOUT_MS,
     store: hostBackupStore(deps.store),
     log: deps.log.forArea('hub.drive'),
   });

@@ -64,7 +64,7 @@ describe('the in-memory vector index', () => {
       embedding('other-model', [1, 0, 0], 'old'),
     ];
     const index = new PhotoVectorIndex({
-      after: (after): PhotoEmbedding[] => (after === null ? entries : []),
+      after: (after): Promise<PhotoEmbedding[]> => Promise.resolve(after === null ? entries : []),
     });
     const hits = await index.search(Float32Array.from([1, 0, 0]), 'm', 0.5);
     expect(hits.map((hit) => hit.itemId)).toEqual(['near']);
@@ -76,7 +76,7 @@ describe('the in-memory vector index', () => {
     const pages = [[embedding('a', [1, 0])], [embedding('b', [0, 1])], []];
     let call = 0;
     const index = new PhotoVectorIndex({
-      after: (): PhotoEmbedding[] => pages[call++] ?? [],
+      after: (): Promise<PhotoEmbedding[]> => Promise.resolve(pages[call++] ?? []),
     });
     index.upsert(embedding('live', [1, 1]));
     await index.ready();
@@ -93,7 +93,7 @@ describe('the in-memory vector index', () => {
   it('orders equal scores by item id', async () => {
     const entries = [embedding('b', [1, 0]), embedding('a', [1, 0])];
     const index = new PhotoVectorIndex({
-      after: (after): PhotoEmbedding[] => (after === null ? entries : []),
+      after: (after): Promise<PhotoEmbedding[]> => Promise.resolve(after === null ? entries : []),
     });
     expect(
       (await index.search(Float32Array.from([1, 0]), 'm', 0)).map((hit) => hit.itemId),

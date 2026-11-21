@@ -10,7 +10,7 @@ import { clockTextIn } from '../../src/clock/person-clock';
 import { SimulatedClock } from '../../src/clock/simulated';
 import { BedtimeDesk, type BedtimeDelivery } from '../../src/planner/bedtime/desk';
 import { momentsOf, upcomingWindows, windowOn } from '../../src/planner/bedtime/schedule';
-import { loadPlannerPreferences, plannerPreferencesOf } from '../../src/planner/preferences';
+import { DEFAULT_PREFERENCES, loadPlannerPreferences } from '../../src/planner/preferences';
 import { SleepSoundControl } from '../../src/planner/sleep-sound';
 import type { OwnerAlert } from '../../src/extensions/owner-alerts';
 import { advanceSettled } from '../support/host-settle';
@@ -123,7 +123,8 @@ function setClockFormat(hour24: boolean): void {
 }
 
 function setBedtime(change: Partial<PlannerBedtime>): void {
-  const current = plannerPreferencesOf(test.store, person.profileId);
+  const current =
+    test.store.plannerPreferences.find(person.profileId)?.preferences ?? DEFAULT_PREFERENCES;
   test.store.plannerPreferences.put(person.profileId, { ...current, bedtime: bedtime(change) });
 }
 
@@ -312,7 +313,8 @@ describe('bedtime desk', () => {
 
 describe('sleep sound control', () => {
   it('plays the saved sound with the saved timer and fade', async () => {
-    const current = plannerPreferencesOf(test.store, person.profileId);
+    const current =
+      test.store.plannerPreferences.find(person.profileId)?.preferences ?? DEFAULT_PREFERENCES;
     test.store.plannerPreferences.put(person.profileId, {
       ...current,
       sleep_sounds: { sound: NOISE, timer_minutes: 20, fade_seconds: 10 },

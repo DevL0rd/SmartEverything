@@ -28,9 +28,9 @@ const LOGGED_WATER = z.object({ entry: z.object({ data: z.object({ liters: z.num
 
 type WaterAsk = z.infer<typeof WATER_PARAMS>;
 
-function profileOf(ports: HealthEffectPorts, person: string | undefined): string {
+async function profileOf(ports: HealthEffectPorts, person: string | undefined): Promise<string> {
   const authority = currentExecutionAuthority();
-  const own = authority?.profile_id ?? ports.integration.ownerProfileId();
+  const own = authority?.profile_id ?? (await ports.integration.ownerProfileId());
   if (
     person !== undefined &&
     person !== own &&
@@ -53,7 +53,7 @@ function logWater(ports: HealthEffectPorts): EffectHandler {
     const checked = parsed(WATER_PARAMS, params);
     if (!checked.ok) return checked;
     try {
-      const profileId = profileOf(ports, checked.value.person);
+      const profileId = await profileOf(ports, checked.value.person);
       const logged = LOGGED_WATER.parse(
         await awaitRun(
           callTool(
@@ -64,12 +64,12 @@ function logWater(ports: HealthEffectPorts): EffectHandler {
           run,
         ),
       );
-      const day = todayAt({ world: ports.store, clock: ports.clock });
+      const day = todayAt({ world: ports.store.live.home, clock: ports.clock });
       return {
         ok: true,
         value: outputs({
           added: millilitresOf(logged.entry.data.liters),
-          total: hydrationOf(ports.store, profileId, day),
+          total: await hydrationOf(ports.store.host, profileId, day),
         }),
       };
     } catch (cause) {

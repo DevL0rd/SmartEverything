@@ -8,7 +8,8 @@ import {
 } from '../../../src/drive/google/service';
 import { isFileItem } from '../../../src/drive/file-item';
 import type { DriveWriteRoot } from '../../../src/drive/intents';
-import { ensureDrives, personalDrive } from '../../../src/drive/spaces';
+import { ensureDrives } from '../../../src/drive/spaces';
+import { personalDrive } from '../../../src/drive/units/spaces';
 import { nodeFiles } from '../../../src/drive/versions';
 import { testLogger } from '../../support/logs';
 import { testStore, type TestStore } from '../../support/store';
@@ -94,10 +95,11 @@ function destinationOf(
     held: (id, sha256) =>
       id === profileId && holds(opened, root.id, sha256, null) ? sha256 : null,
     guard: {
-      status: (id) => ({
-        quota: options.quota ?? null,
-        usage: { profileId: id, items: 0, folders: 0, live: 0, versions: 0, trash: 0 },
-      }),
+      status: (id) =>
+        Promise.resolve({
+          quota: options.quota ?? null,
+          usage: { profileId: id, items: 0, folders: 0, live: 0, versions: 0, trash: 0 },
+        }),
       space: () =>
         Promise.resolve({
           totalBytes: Number.MAX_SAFE_INTEGER,

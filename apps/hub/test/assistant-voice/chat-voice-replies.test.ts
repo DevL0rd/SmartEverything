@@ -15,7 +15,8 @@ import { AssistantFiles } from '../../src/assistant/files';
 import { withProviderToolAuthority } from '../../src/assistant/engines/computer/tool-authority';
 import { operationRunner } from '../../src/extensions/mcp/tools/operation-tools';
 import { operationShape } from '../../src/extensions/mcp/tools/operation-shape';
-import { eventAuthority } from '../../src/assistant/turn-authority';
+import { authorityScope } from '../../src/assistant/turn-authority';
+import { issueEventAuthority } from '../../src/assistant/event-authority-issue';
 import type { StoredEvent } from '../../src/store/repositories/assistant-events';
 import type { Caller } from '../../src/server/auth';
 import { withSignal } from '../../src/server/request-signal';
@@ -100,7 +101,7 @@ function conversation(shape: ChatShape = {}): Conversation {
     client,
     profileId,
     chatId: chat.id,
-    authority: eventAuthority(store, event),
+    authority: issueEventAuthority(store, event, authorityScope()),
   };
   return { caller, chat, event };
 }
@@ -138,7 +139,7 @@ function fixture(beforeAudio: () => void = () => undefined): Fixture {
     log: testLogger('voice-reply'),
   });
   const files = new AssistantFiles({
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     layout: hubLayout(directory, {}),
     now: (): Date => new Date(),
@@ -365,23 +366,25 @@ it('routes a native tool call through the normal operation adapter with an event
   expect(requests).toHaveLength(1);
 });
 
-function personMessage(chat: AiChatRow, text: string): string {
-  return new ConversationLog(opened.store).person({
-    chat,
-    clientId: null,
-    author: 'Ann',
-    text,
-    files: [],
-    origin: { source: 'app', plugin_id: null, device_id: null, name: null },
-  }).id;
+async function personMessage(chat: AiChatRow, text: string): Promise<string> {
+  return (
+    await new ConversationLog(opened.store).person({
+      chat,
+      clientId: null,
+      author: 'Ann',
+      text,
+      files: [],
+      origin: { source: 'app', plugin_id: null, device_id: null, name: null },
+    })
+  ).id;
 }
 
 it('stores the quoted message with the voice clip and refuses a message from another chat', async () => {
   const { caller, chat } = conversation();
   const { replies, requests } = fixture();
-  const asked = personMessage(chat, 'Is  the greenhouse\nready?');
+  const asked = await personMessage(chat, 'Is  the greenhouse\nready?');
   const other = chatFor(chat.profile_id, {});
-  const elsewhere = personMessage(other, 'Not here');
+  const elsewhere = await personMessage(other, 'Not here');
   await expect(replies.post(caller, { text: TEXT, quoteMessageId: elsewhere })).rejects.toThrow(
     'in this chat',
   );

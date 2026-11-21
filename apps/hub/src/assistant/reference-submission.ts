@@ -1,4 +1,3 @@
-import { assertOrdinaryMessageKey } from './delegation/helper-dialogue';
 import {
   ApiError,
   type AiChatRow,
@@ -6,7 +5,7 @@ import {
   type AssistantMessageRow,
   type AssistantNewMessage,
 } from '@smarteverything/domain';
-import { effectiveClientById } from '../server/person-access';
+import { effectiveClientOf } from '../server/person-access';
 import { chatOwnerOf, directClient, type Caller } from '../server/auth';
 import type { Delegation } from './delegation/delegation';
 import type { Store } from '../store/store';
@@ -43,7 +42,7 @@ export class ReferenceSubmissions {
         'conflict',
         'Structured references require authenticated reference submission.',
       );
-    return this.deps.requests.send(sender, body, this.chat(sender, chatId));
+    return this.deps.requests.send(sender, body, await this.chat(sender, chatId));
   }
   async send(
     caller: Caller,
@@ -53,22 +52,28 @@ export class ReferenceSubmissions {
   ): Promise<AssistantMessageRow> {
     if (body.helper_target !== undefined) return this.sendToHelper(caller, sender, body, chatId);
     if ((body.references?.length ?? 0) === 0) return this.plain(sender, body, chatId);
-    const chat = this.chat(sender, chatId);
-    assertOrdinaryMessageKey(this.deps.store, chat, body.client_message_id);
-    const sent =
-      body.client_message_id === undefined
-        ? undefined
-        : this.deps.store.assistantSearch.byClientMessageId(chat.id, body.client_message_id);
-    if (sent !== undefined) return sent;
+    const chat = await this.chat(sender, chatId);
+    const inputs = await this.deps.store.host.read('assistantSendInputs', {
+      chat,
+      profileId: sender.profileId,
+      clientMessageId: body.client_message_id,
+      quoteMessageId: body.quote_message_id,
+      attachments: body.attachments,
+    });
+    if (inputs.known !== null) return inputs.known;
     const references = await this.deps.references.resolve(
       caller,
       chat.id,
       body.text,
       body.references ?? [],
     );
-    return this.deps.requests.send(sender, { ...body, references }, this.chat(sender, chat.id));
+    return this.deps.requests.send(
+      sender,
+      { ...body, references },
+      await this.chat(sender, chat.id),
+    );
   }
-  private sendToHelper(
+  private async sendToHelper(
     caller: Caller,
     sender: Sender,
     body: AssistantNewMessage,
@@ -81,24 +86,25 @@ export class ReferenceSubmissions {
     const owner = chatOwnerOf(caller);
     if (
       owner.profileId !== sender.profileId ||
-      this.deps.store.profiles.activeOf(sender.clientId).id !== sender.profileId
+      (await this.deps.store.host.call('profiles', 'activeOf', sender.clientId)).id !==
+        sender.profileId
     )
       throw new ApiError('forbidden', 'Use the active conversation profile to address a helper.');
-    const chat = this.deps.chats.own(owner, chatId);
-    return this.deps.delegation.sendToHelper(sender, chat, body, {
+    const chat = await this.deps.chats.own(owner, chatId);
+    return await this.deps.delegation.sendToHelper(sender, chat, body, {
       engines: this.deps.engines,
       files: this.deps.files,
     });
   }
-  private chat(sender: Sender, chatId: string | undefined): AiChatRow {
+  private async chat(sender: Sender, chatId: string | undefined): Promise<AiChatRow> {
     const owner = {
       profileId: sender.profileId,
-      role: effectiveClientById(this.deps.store, sender.clientId).role,
+      role: (await effectiveClientOf(this.deps.store, sender.clientId)).role,
     };
     const chat =
       chatId === undefined
-        ? this.deps.chats.defaultChat(sender.profileId)
-        : this.deps.chats.own(owner, chatId);
+        ? await this.deps.chats.defaultChat(sender.profileId)
+        : await this.deps.chats.own(owner, chatId);
     this.deps.store.live.chatWork.assertWorkAllowed(chat.id);
     this.deps.engines.forMutation(chat, owner.role);
     return chat;

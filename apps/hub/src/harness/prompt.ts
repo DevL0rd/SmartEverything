@@ -1,9 +1,9 @@
 import type { Context } from '@deepseek-ai/cordis';
-import { ApiError } from '@smarteverything/domain';
-import { facts } from '../assistant/prompt-facts';
+import { factsFrom } from '../assistant/prompt-facts';
 import { stablePrompt, turnPrompt, type PromptFacts } from '../assistant/conversation/prompt';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { HarnessService } from './service';
+import type { MirroredSession } from './store-units';
 
 const CONVERSATION = 'smarteverything-conversation';
 
@@ -27,7 +27,7 @@ export function installHubPrompt(
   const current = (assembly: object, agent: { readonly id: string }): HarnessPrompt => {
     const cached = built.get(assembly);
     if (cached !== undefined) return cached;
-    const prompt = harnessPrompt(service, agent.id, {
+    const prompt = harnessPrompt(service, service.sessions.get(agent.id), {
       tools: ports.tools(agent.id),
       now: ports.now(),
       role: ports.role(agent.id),
@@ -54,18 +54,13 @@ export function installHubPrompt(
 
 export function harnessPrompt(
   service: HarnessService,
-  id: string,
+  { grant, chat, facts }: MirroredSession,
   context: { readonly tools: ToolHub; readonly now: Date; readonly role: 'owner' | 'member' },
 ): HarnessPrompt {
-  const grant = service.storage.grant(id);
-  const metadata = service.store.dshSessions.stat(id, grant.profile_id);
-  if (metadata === undefined)
-    throw new ApiError('conflict', 'The initiating native conversation is unavailable.');
-  const chat = service.store.aiChats.chat(metadata.chat_id);
   const scoped = context.tools;
   const host = service.directory.get(grant.target).host;
   const promptFacts: PromptFacts = {
-    ...facts(service.store, chat, scoped, { now: context.now, clientId: grant.client_id }),
+    ...factsFrom(service.store, chat, scoped, { now: context.now, facts }),
     executionHost:
       grant.target.kind === 'server'
         ? "the home's own server"

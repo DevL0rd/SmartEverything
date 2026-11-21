@@ -1,4 +1,3 @@
-import { DriveMediaRepository } from '../../store/repositories/drive-media';
 import { z } from 'zod';
 import {
   API_ENDPOINTS as E,
@@ -57,27 +56,35 @@ function derivedLinks(
   };
 }
 
-function linksOf(
+async function linksOf(
   services: DriveServices,
   actor: DriveActor,
   itemIds: readonly string[],
   store: Store,
-): DriveItemLink[] {
-  return itemIds.map((itemId) => {
-    const { item, access } = readableItem(services.files, actor, itemId);
+): Promise<DriveItemLink[]> {
+  const located = await Promise.all(
+    itemIds.map(async (itemId) => ({
+      itemId,
+      ...(await readableItem(services.files, actor, itemId)),
+      file: await driveFileLink(services.files, actor, itemId),
+    })),
+  );
+  const playable = new Set(
+    await store.host.read('driveMediaPlayable', {
+      itemIds: located.filter(({ item }) => item.kind === 'video').map(({ item }) => item.id),
+    }),
+  );
+  const { links } = services.files;
+  return located.map(({ itemId, item, access, file }) => {
     const exportable = mayExport(access, item.locked);
-    const { links } = services.files;
-    const playable =
-      item.kind === 'video' &&
-      new DriveMediaRepository(store.context).find(item.id)?.playable_state === 'ready';
     return {
       itemId,
       rev: item.rev,
-      file: driveFileLink(services.files, actor, itemId),
+      file,
       download: exportable && item.kind !== 'folder' ? links.driveDownload(itemId, item.rev) : null,
       icon:
         item.kind === 'folder' && item.iconHint ? links.driveFolderIcon(itemId, item.rev) : null,
-      ...derivedLinks(links, item, playable),
+      ...derivedLinks(links, item, playable.has(item.id)),
     };
   });
 }
@@ -185,7 +192,7 @@ export function driveLibraryRoutes(
     ),
     recordDriveOpen: bound(E.recordDriveOpen, ({ params, caller }) =>
       refusing(async () => {
-        await services.read.recordOpen(actorOf(caller), params.itemId, store.context.now());
+        await services.read.recordOpen(actorOf(caller), params.itemId, store.now().toISOString());
         return DONE_REPLY;
       }),
     ),

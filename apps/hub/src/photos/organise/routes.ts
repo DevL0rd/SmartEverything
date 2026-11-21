@@ -7,7 +7,7 @@ import type { MediaLinks } from '../../server/media-links';
 import { bound, DONE_REPLY, type Bound } from '../../server/router';
 import type { Store } from '../../store/store';
 import { photoActor } from '../actor';
-import { LockedService } from './locked';
+import { hostLocked, LockedService } from './locked';
 import { LockedLinks } from './locked-links';
 import { LockedMover } from './locked-move';
 import { MetaEditor } from './meta';
@@ -53,7 +53,7 @@ export function organiseServices(inputs: OrganiseInputs): OrganiseServices {
   const { store, now } = inputs;
   return {
     meta: new MetaEditor(store.host, false),
-    locked: new LockedService({ locked: store.photoLocked, now }),
+    locked: new LockedService({ locked: hostLocked(store.host), now }),
     mover: new LockedMover({ store, write: inputs.write, now }),
     links: new LockedLinks(store.host, inputs.links),
   };
@@ -120,22 +120,22 @@ function pageRoutes(
   };
 }
 
-type Opened = (caller: Caller, headers: IncomingHttpHeaders) => string;
+type Opened = (caller: Caller, headers: IncomingHttpHeaders) => Promise<string>;
 
 function lockedPageRoutes(
   store: Store,
   opened: Opened,
 ): Pick<PhotoOrganiseRoutes, 'readLockedBuckets' | 'readLockedPage'> {
   return {
-    readLockedBuckets: bound(E.readLockedBuckets, ({ query, caller, headers }) => {
-      opened(caller, headers);
+    readLockedBuckets: bound(E.readLockedBuckets, async ({ query, caller, headers }) => {
+      await opened(caller, headers);
       return store.host.read('photoLockedBuckets', {
         actor: photoActor(caller),
         scope: query,
       });
     }),
-    readLockedPage: bound(E.readLockedPage, ({ params, query, caller, headers }) => {
-      opened(caller, headers);
+    readLockedPage: bound(E.readLockedPage, async ({ params, query, caller, headers }) => {
+      await opened(caller, headers);
       return store.host.read('photoLockedPage', {
         actor: photoActor(caller),
         month: params.month,
@@ -163,23 +163,23 @@ function lockedRoutes(
     unlockLockedFolder: bound(E.unlockLockedFolder, ({ body, caller }) =>
       services.locked.unlock(profileIdOf(caller), appClientOf(caller), body.pin),
     ),
-    lockLockedFolder: bound(E.lockLockedFolder, ({ caller }) => {
-      services.locked.lock(profileIdOf(caller), appClientOf(caller));
+    lockLockedFolder: bound(E.lockLockedFolder, async ({ caller }) => {
+      await services.locked.lock(profileIdOf(caller), appClientOf(caller));
       return DONE_REPLY;
     }),
     ...lockedPageRoutes(store, opened),
-    readLockedLinks: bound(E.readLockedLinks, ({ body, caller, headers }) =>
-      services.links.mint(profileIdOf(caller), opened(caller, headers), body),
+    readLockedLinks: bound(E.readLockedLinks, async ({ body, caller, headers }) =>
+      services.links.mint(profileIdOf(caller), await opened(caller, headers), body),
     ),
     moveIntoLockedFolder: bound(E.moveIntoLockedFolder, ({ body, caller }) =>
       services.mover.moveIn(callerOf(caller), body),
     ),
-    moveOutOfLockedFolder: bound(E.moveOutOfLockedFolder, ({ body, caller, headers }) => {
-      opened(caller, headers);
+    moveOutOfLockedFolder: bound(E.moveOutOfLockedFolder, async ({ body, caller, headers }) => {
+      await opened(caller, headers);
       return services.mover.moveOut(callerOf(caller), body);
     }),
-    deleteFromLockedFolder: bound(E.deleteFromLockedFolder, ({ body, caller, headers }) => {
-      opened(caller, headers);
+    deleteFromLockedFolder: bound(E.deleteFromLockedFolder, async ({ body, caller, headers }) => {
+      await opened(caller, headers);
       return services.mover.remove(callerOf(caller), body);
     }),
   };

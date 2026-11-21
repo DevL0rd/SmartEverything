@@ -2,10 +2,8 @@ import { GOOGLE_ACCOUNT_ROW, GOOGLE_SCOPE, type GoogleAccountRow } from '@smarte
 import { Logger } from '@smarteverything/logging';
 import type { FetchLike } from '../plugins/builtin/fetch-like';
 import type { GoogleClientKind, SecretStore } from '../secrets/store';
-import type {
-  GoogleAccountPatch,
-  GoogleAccountsRepository,
-} from '../store/repositories/google-accounts';
+import type { HostedRepository } from '../store/host/hosted';
+import type { GoogleAccountPatch } from '../store/repositories/google-accounts';
 import {
   GoogleTokenError,
   authorizationUrl,
@@ -70,7 +68,7 @@ export interface LinkStarted {
 
 export interface GoogleLinkOptions {
   readonly secrets: SecretStore;
-  readonly accounts: GoogleAccountsRepository;
+  readonly accounts: HostedRepository<'googleAccounts', 'find' | 'insert' | 'update' | 'remove'>;
   readonly tokens: GoogleTokens;
   readonly fetch: FetchLike;
 }
@@ -102,16 +100,16 @@ export class GoogleLink {
 
   constructor(private readonly options: GoogleLinkOptions) {}
 
-  begin(input: BeginInput): LinkStarted {
+  async begin(input: BeginInput): Promise<LinkStarted> {
     const { secrets, accounts } = this.options;
     const client = clientOf(secrets.googleApp(), input.client);
     if (client === null) {
       throw new GoogleLinkError('client_missing');
     }
-    this.discard(input.profileId);
+    await this.discard(input.profileId);
     const pkce = createPkce();
     const scopes = scopesFor(input.request);
-    const before = accounts.find(input.profileId) ?? null;
+    const before = (await accounts.find(input.profileId)) ?? null;
     this.pending.set(pkce.state, {
       profileId: input.profileId,
       client: input.client,
@@ -120,8 +118,8 @@ export class GoogleLink {
       scopes,
       before,
     });
-    if (before === null) accounts.insert(linkingRow(input.profileId));
-    else accounts.update(input.profileId, { status: 'linking', problem: null });
+    if (before === null) await accounts.insert(linkingRow(input.profileId));
+    else await accounts.update(input.profileId, { status: 'linking', problem: null });
     log.info('google.link_started', { profileId: input.profileId });
     return {
       authorizationUrl: authorizationUrl({
@@ -137,13 +135,13 @@ export class GoogleLink {
   async complete(input: CompleteInput): Promise<GoogleAccountRow> {
     const link = this.takePending(input.state, input.profileId);
     if (link.redirectUri !== input.redirectUri) {
-      this.restore(link);
+      await this.restore(link);
       throw new GoogleLinkError('redirect_mismatch');
     }
     try {
       return await this.finish(link, input.code);
     } catch (cause) {
-      this.restore(link);
+      await this.restore(link);
       if (cause instanceof GoogleTokenError) {
         log.warn('google.link_refused', { profileId: link.profileId, reason: cause.code });
         throw new GoogleLinkError('refused');
@@ -152,15 +150,15 @@ export class GoogleLink {
     }
   }
 
-  cancel(profileId: string, state: string): void {
+  async cancel(profileId: string, state: string): Promise<void> {
     const link = this.takePending(state, profileId);
-    this.restore(link);
+    await this.restore(link);
     log.info('google.link_cancelled', { profileId });
   }
 
   async unlink(profileId: string): Promise<void> {
     const { secrets, accounts, tokens, fetch } = this.options;
-    this.discard(profileId);
+    await this.discard(profileId);
     const secret = secrets.googleAccount(profileId);
     if (secret !== null) {
       await revokeToken(fetch, secret.refreshToken).catch((cause: unknown) => {
@@ -172,8 +170,8 @@ export class GoogleLink {
       await secrets.removeGoogleAccount(profileId);
     }
     tokens.invalidate(profileId);
-    if (accounts.find(profileId) !== undefined) {
-      accounts.update(profileId, UNLINKED);
+    if ((await accounts.find(profileId)) !== undefined) {
+      await accounts.update(profileId, UNLINKED);
     }
     log.info('google.unlinked', { profileId });
   }
@@ -214,22 +212,22 @@ export class GoogleLink {
     return link;
   }
 
-  private discard(profileId: string): void {
-    for (const [state, link] of this.pending) {
+  private async discard(profileId: string): Promise<void> {
+    for (const [state, link] of [...this.pending]) {
       if (link.profileId !== profileId) continue;
       this.pending.delete(state);
-      this.restore(link);
+      await this.restore(link);
     }
   }
 
-  private restore(link: PendingLink): void {
+  private async restore(link: PendingLink): Promise<void> {
     const { accounts } = this.options;
-    if (accounts.find(link.profileId) === undefined) return;
+    if ((await accounts.find(link.profileId)) === undefined) return;
     if (link.before === null) {
-      accounts.remove(link.profileId);
+      await accounts.remove(link.profileId);
       return;
     }
     const { profile_id: profileId, ...rest } = link.before;
-    accounts.update(profileId, rest);
+    await accounts.update(profileId, rest);
   }
 }

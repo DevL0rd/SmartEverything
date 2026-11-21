@@ -19,10 +19,12 @@ import { EffectsSim } from './effects-sim';
 import type { WouldSend } from './effects-sim';
 import type { Overrides } from './scenario';
 import { ScenarioWorld } from './world-sim';
+import type { StoreHost } from '../../store/host/host';
 
 type SimKind = Extract<RunKind, 'dry' | 'simulated'>;
 
 export interface SimEnv {
+  readonly host: Pick<StoreHost, 'read'>;
   readonly clock: Clock;
   readonly reads: WorldReads;
   readonly world: ScenarioWorld;
@@ -119,6 +121,7 @@ export class SimRig {
   start(spec: SimStart, call: ChildCall | null = null): string {
     const runId = this.nextId();
     const env: SimEnv = {
+      host: this.options.base.store.host,
       clock: this.options.clock,
       reads: this.world.reads(),
       world: this.world,

@@ -12,7 +12,7 @@ import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { DriveActor } from '../../drive/access';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { photoVisibleSql } from '../membership';
 import { PhotoConsent, type ConsentSwitches } from './consent';
 import { PHOTOS_AI_AREA } from './defaults';
@@ -35,7 +35,7 @@ export interface StatusQuery {
 
 export type StatusDevice = Omit<StatusQuery, 'profileId'>;
 
-function statusReaderOf(store: Store, device: StatusDevice): PhotoAiStatusReader {
+function statusReaderOf(store: HostStore, device: StatusDevice): PhotoAiStatusReader {
   return new PhotoAiStatusReader({
     context: store.context,
     ledger: store.ledger,
@@ -49,12 +49,12 @@ function statusReaderOf(store: Store, device: StatusDevice): PhotoAiStatusReader
   });
 }
 
-function statusOf(store: Store, query: StatusQuery): PhotoAiStatus {
+function statusOf(store: HostStore, query: StatusQuery): PhotoAiStatus {
   return statusReaderOf(store, query).read(query.profileId);
 }
 
 function reanalysed(
-  store: Store,
+  store: HostStore,
   input: { readonly device: StatusDevice; readonly request: PhotoAiReanalyse },
 ): { readonly estimateMicros: number } {
   return new PhotoAiReanalysis({
@@ -67,7 +67,7 @@ function reanalysed(
 }
 
 function retried(
-  store: Store,
+  store: HostStore,
   input: { readonly device: StatusDevice; readonly profileId: string },
 ): void {
   new PhotoAiRetry({
@@ -78,7 +78,7 @@ function retried(
   }).forgetFailed(input.profileId);
 }
 
-function analysisOf(store: Store, actor: DriveActor, itemId: string): PhotoAnalysis {
+function analysisOf(store: HostStore, actor: DriveActor, itemId: string): PhotoAnalysis {
   const { context } = store;
   const visible = context.sql.get(
     PRESENT,

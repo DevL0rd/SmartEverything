@@ -21,7 +21,7 @@ import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 import { sceneOf } from '../vacuum/clean-bench';
 import { fixtureRoom, sceneWith } from '../vacuum/room-link-bench';
-import { VacuumRoomLinks } from '../../src/vacuum/room-links';
+import { VacuumRoomLinks, hostRoomLinks } from '../../src/vacuum/room-links';
 
 const AREAS = 'raw:2.13';
 const WALLS = 'raw:2.14';
@@ -102,11 +102,11 @@ class Rig {
         },
       },
       cleans: {
-        list: (_deviceId, query): VacuumCleanSummary[] => {
+        list: (_deviceId, query): Promise<VacuumCleanSummary[]> => {
           this.listed.push(query);
-          return [...this.cleans.values()];
+          return Promise.resolve([...this.cleans.values()]);
         },
-        get: (_deviceId, id) => this.cleans.get(id),
+        get: (_deviceId, id) => Promise.resolve(this.cleans.get(id)),
       },
       control,
       video: {
@@ -114,7 +114,7 @@ class Rig {
         close: (): Promise<void> => Promise.resolve(),
       },
       roomLinks: new VacuumRoomLinks({
-        links: opened.store.vacuumRoomLinks,
+        links: hostRoomLinks(opened.store.host),
         rooms: opened.store.rooms,
         scene: (deviceId): VacuumScene | undefined => this.scenes.get(`${deviceId}|current`),
         stored: (deviceId): JsonValue | undefined => this.published.get(deviceId),

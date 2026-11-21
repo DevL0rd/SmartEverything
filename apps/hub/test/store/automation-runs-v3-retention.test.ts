@@ -4,7 +4,7 @@ import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
-import { sweepRetention } from '../../src/store/retention';
+import { sweepAutomations, sweepRetention } from '../support/retention-sweep';
 import { Sql } from '../../src/store/sql';
 import { captureLogs, testLogger } from '../support/logs';
 import { removeStarterNodes } from '../support/starter-nodes';
@@ -38,7 +38,6 @@ import {
   NODE_BYTES_PER_AUTOMATION,
   orphanPlans,
   planRunRetention,
-  sweepAutomationRetention,
   type RunRetentionFact,
 } from '../../src/store/retention-automations';
 import {
@@ -186,7 +185,7 @@ describe('the run retention sweep', () => {
       "insert into automation_run_nodes(run_id,seq,path,node_id,status,command_ids) values($id,0,'p','3d000000-0000-4000-8000-000000000001','succeeded','[]')",
       { id: old },
     );
-    const swept = sweepAutomationRetention(sql, NOW_DATE);
+    const swept = sweepAutomations(sql, NOW_DATE);
     expect(swept['automation_runs']).toBe(2);
     const left = sql.all(
       z.strictObject({ id: z.string() }),
@@ -207,7 +206,7 @@ describe('the run retention sweep', () => {
         "insert into automation_run_nodes(run_id,seq,path,node_id,status,output_preview,command_ids) values($id,$seq,'p','3d000000-0000-4000-8000-000000000001','succeeded',json_object('v',$blob),'[]')",
         { id, seq, blob },
       );
-    const swept = sweepAutomationRetention(sql, NOW_DATE);
+    const swept = sweepAutomations(sql, NOW_DATE);
     expect(swept['automation_run_nodes']).toBe(22);
     expect(runs.byId(id).status).toBe('succeeded');
   });
@@ -243,7 +242,7 @@ describe('the run retention sweep', () => {
       mode: 'live',
       planHash: used,
     });
-    const swept = sweepAutomationRetention(sql, NOW_DATE);
+    const swept = sweepAutomations(sql, NOW_DATE);
     expect(swept['automation_decisions']).toBe(1);
     expect(swept['automation_plans']).toBe(1);
     const hashes = sql.all(

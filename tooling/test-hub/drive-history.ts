@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { DRIVE_VERSION } from '@smarteverything/domain';
 import { z } from 'zod';
 import { purgeDeadline, versionRelPath } from '../../apps/hub/src/drive/intents.ts';
-import type { Store } from '../../apps/hub/src/store/store.ts';
+import type { Seeded } from './store.ts';
 import { daysAgo } from './clock.ts';
 import type { Counted, FilesContext } from './context.ts';
 import { layoutOf } from './layout.ts';
@@ -38,7 +38,7 @@ interface Draft {
   readonly draft: number;
 }
 
-async function writeDraft(store: Store, draft: Draft): Promise<void> {
+async function writeDraft(store: Seeded, draft: Draft): Promise<void> {
   const { drive, item, ownerId, at } = draft;
   const body = Buffer.from(
     `Earlier draft ${String(draft.draft + 1)} of ${item.rel_path}\n${randomBytes(24).toString('hex')}\n`,
@@ -65,7 +65,7 @@ async function writeDraft(store: Store, draft: Draft): Promise<void> {
   );
 }
 
-async function seedVersions(store: Store, context: FilesContext): Promise<number> {
+async function seedVersions(store: Seeded, context: FilesContext): Promise<number> {
   const ownerId = ownerOf(context);
   const drive = layoutOf(context.paths).person(ownerId).drive;
   const items = store.database
@@ -96,7 +96,7 @@ async function seedVersions(store: Store, context: FilesContext): Promise<number
   return count;
 }
 
-function seedOffline(store: Store, context: FilesContext): number {
+function seedOffline(store: Seeded, context: FilesContext): number {
   const member = context.people[1];
   if (member === undefined) throw new Error('The household has no second member.');
   const client = store.clients.create({
@@ -127,7 +127,7 @@ function seedOffline(store: Store, context: FilesContext): number {
   return items.length;
 }
 
-function seedCommits(store: Store, context: FilesContext): number {
+function seedCommits(store: Seeded, context: FilesContext): number {
   const placement = store.database
     .prepare(
       `select id, device_id, root_id from drive_placements where mode = 'mounted' order by created_at limit 1`,
@@ -166,7 +166,7 @@ function seedCommits(store: Store, context: FilesContext): number {
   return count;
 }
 
-export async function seedDriveHistory(store: Store, context: FilesContext): Promise<Counted> {
+export async function seedDriveHistory(store: Seeded, context: FilesContext): Promise<Counted> {
   return {
     versions: await seedVersions(store, context),
     offlineFiles: seedOffline(store, context),

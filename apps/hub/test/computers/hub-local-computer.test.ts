@@ -1,3 +1,4 @@
+import { hostDeviceMetrics } from '../../src/store/host/hosted';
 import { inlineMetrics } from '../../src/node/metrics/node-metrics';
 import {
   COMPUTER_ROLE_MODELS,
@@ -76,7 +77,7 @@ describe('the local hub computer', () => {
     };
     const options: ComputerDriverOptions = {
       history: new MetricHistory({
-        store: opened.store.deviceMetrics,
+        store: hostDeviceMetrics(opened.store.host),
         log: testLogger(),
         now: () => NOW,
       }),
@@ -111,6 +112,7 @@ describe('the local hub computer', () => {
               gpu: () => null,
               memory: () => null,
               disks: () => null,
+              disk_usage: () => null,
               network: () => null,
               sensors: () => null,
               power: () => null,

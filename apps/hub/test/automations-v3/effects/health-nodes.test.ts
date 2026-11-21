@@ -94,7 +94,7 @@ async function rig(): Promise<Rig> {
     store,
     clock: { now: () => new Date(NOW) },
     integration: {
-      ownerProfileId: () => owner,
+      ownerProfileId: () => Promise.resolve(owner),
       tools: {
         check: (_name, args): Promise<ToolCheck> =>
           Promise.resolve(
@@ -152,7 +152,7 @@ describe('registration', () => {
       store: home.store,
       clock: { now: () => new Date(NOW) },
       integration: {
-        ownerProfileId: () => home.owner,
+        ownerProfileId: () => Promise.resolve(home.owner),
         tools: {
           check: () => Promise.resolve({ ok: false, reason: 'x' }),
           call: () => Promise.reject(new Error('x')),

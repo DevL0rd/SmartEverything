@@ -13,7 +13,7 @@ import type { HubLayout } from '../data-layout';
 import type { LogFailure, StoredLogRecord } from '../store/repositories/runtime-log-types';
 import type { ServerContext } from './context';
 import { repairComponent } from '../store/repositories/repair-fingerprint';
-import { readAiRepairSettings, repairEnabledAt } from './handlers/ai-repair';
+import { readAiRepairState } from './handlers/ai-repair';
 
 type RepairContext = Pick<ServerContext, 'store' | 'logs' | 'log'> & {
   readonly assistant: { readonly repair: Pick<RepairDispatch, 'admit'> };
@@ -57,7 +57,7 @@ async function observe(
     const profileId = await profileOf(context, record);
     if (profileId === undefined) return;
     const retained = await retainedLogOf(context.store, context.logs, fingerprint, profileId);
-    const result = withExecutionAuthority(undefined, () =>
+    const result = await withExecutionAuthority(undefined, () =>
       context.assistant.repair.admit({
         id: repairEventId(fingerprint, null),
         fingerprint,
@@ -105,8 +105,8 @@ function retainedRecord(record: RuntimeLogRow, clientId: string | null): StoredL
 
 async function catchUp(context: RepairContext, profileId?: string): Promise<void> {
   const { store, logs } = context;
-  if (!readAiRepairSettings(store).enabled) return;
-  const since = repairEnabledAt(store);
+  const { settings, enabledAt: since } = await readAiRepairState(store);
+  if (!settings.enabled) return;
   for (const { fingerprint, logId } of await store.host.call(
     'aiRepairInbox',
     'pendingAutomatic',
@@ -129,10 +129,13 @@ export function startRepair(context: RepairContext, _layout: HubLayout): () => v
   const { store } = context;
   let active = true;
   const unobserve = context.logs.onRepairEvidence((record, fingerprint) => {
-    const enabledAt = repairEnabledAt(store);
-    if (!readAiRepairSettings(store).enabled || (enabledAt !== null && record.at < enabledAt))
-      return;
-    background(observe(context, record, fingerprint), 'repair.observe_failed');
+    background(
+      readAiRepairState(store).then(async ({ settings, enabledAt }) => {
+        if (!settings.enabled || (enabledAt !== null && record.at < enabledAt)) return;
+        await observe(context, record, fingerprint);
+      }),
+      'repair.observe_failed',
+    );
   });
   const unsubscribe = store.feed.subscribe((change) => {
     if (change.table !== 'ai_chats') return;

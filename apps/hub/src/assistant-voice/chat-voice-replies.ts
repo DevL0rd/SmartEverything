@@ -8,17 +8,15 @@ import {
   type MessageQuote,
 } from '@smarteverything/domain';
 import { switchedOffTools } from '../ai-tools/tool-discovery';
-import { ownedChat } from '../assistant/chat-directory';
 import { ConversationLog } from '../assistant/conversation-log';
-import { quoteForChat } from '../assistant/message-quote';
 import { currentProviderToolAuthority } from '../assistant/engines/computer/tool-authority';
 import type { AssistantFiles } from '../assistant/files';
-import { admitExecutionTool, executionRole, outputAuthority } from '../assistant/turn-authority';
+import { executionRole, outputAuthority, executionToolAdmitted } from '../assistant/turn-authority';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import { currentCentralToolAuthority } from '../harness/central-tool-authority';
 import type { Budget } from '../ledger/budget';
 import { chatOwnerOf, type Caller } from '../server/auth';
-import { effectiveClientById } from '../server/person-access';
+import { effectiveClientOf } from '../server/person-access';
 import { assertModelAllowed, assertToolArea } from '../server/person-scope';
 import { currentRequestSignal } from '../server/request-signal';
 import type { StoredEvent } from '../store/repositories/assistant-events';
@@ -41,7 +39,7 @@ interface ReplyScope {
   readonly chat: AiChatRow;
   readonly event: StoredEvent;
   readonly authority: ConversationAuthority;
-  readonly authorize: () => void;
+  readonly authorize: () => Promise<void>;
   readonly recheck: () => Promise<void>;
 }
 
@@ -50,7 +48,10 @@ async function replyScope(store: Store, caller: Caller): Promise<ReplyScope> {
     throw new ApiError('forbidden', 'Sending a voice reply requires an active AI chat.');
   const { authority } = caller;
   const event = await store.host.call('assistantEvents', 'event', authority.event_id);
-  const chat = ownedChat(store, chatOwnerOf(caller), event.chat_id);
+  const chat = await store.host.read('assistantOwnedChat', {
+    owner: chatOwnerOf(caller),
+    chatId: event.chat_id,
+  });
   if (
     chat.id !== caller.chatId ||
     chat.profile_id !== authority.profile_id ||
@@ -60,17 +61,17 @@ async function replyScope(store: Store, caller: Caller): Promise<ReplyScope> {
   const outputAllowed = outputAuthority(store, chat.id);
   const provider = currentProviderToolAuthority();
   const central = currentCentralToolAuthority();
-  const authorize = (): void => {
+  const authorize = async (): Promise<void> => {
     outputAllowed();
     provider?.validate(false);
     central?.authorize(event.id);
     assertToolArea(store, caller, 'assistant');
-    admitExecutionTool(store, VOICE_TOOL, authority);
+    await executionToolAdmitted(store, VOICE_TOOL, authority);
     if (switchedOffTools(store.live.home.settings.read().mcp_disabled_tools).has(VOICE_TOOL))
       throw new ApiError('forbidden', 'The home has turned off the voice reply tool.');
   };
   const recheck = async (): Promise<void> => {
-    authorize();
+    await authorize();
     await validateInitiator(store, authority);
   };
   await recheck();
@@ -79,7 +80,7 @@ async function replyScope(store: Store, caller: Caller): Promise<ReplyScope> {
 
 async function validateInitiator(store: Store, authority: ConversationAuthority): Promise<void> {
   if (authority.client_id === null) return;
-  const client = effectiveClientById(store, authority.client_id);
+  const client = await effectiveClientOf(store, authority.client_id);
   const profile = await store.host.call('profiles', 'activeOf', client.id);
   if (
     profile.id !== authority.profile_id ||
@@ -119,7 +120,10 @@ export class ChatVoiceReplies {
     const id = input.operationId ?? randomUUID();
     const receipt = await storedReceipt(this.options.store, scope, id, input.text);
     if (receipt !== null) return receipt;
-    const quote = quoteForChat(this.options.store, scope.chat, input.quoteMessageId);
+    const quote = await this.options.store.host.read('assistantQuote', {
+      chat: scope.chat,
+      id: input.quoteMessageId,
+    });
     if (this.running.has(id))
       throw new ApiError('conflict', 'This voice reply is already being generated.');
     this.running.add(id);
@@ -140,9 +144,9 @@ export class ChatVoiceReplies {
     const timeout = AbortSignal.timeout(VOICE_REPLY_TIMEOUT_MS);
     const request = currentRequestSignal();
     const signal = request === undefined ? timeout : AbortSignal.any([timeout, request]);
-    const authorize = (): void => {
+    const authorize = async (): Promise<void> => {
       signal.throwIfAborted();
-      scope.authorize();
+      await scope.authorize();
     };
     const recheck = async (): Promise<void> => {
       signal.throwIfAborted();
@@ -183,7 +187,7 @@ export class ChatVoiceReplies {
       readonly quote: MessageQuote | null;
       readonly clip: Awaited<ReturnType<AssistantVoice['recordClip']>>;
       readonly signal: AbortSignal;
-      readonly authorize: () => void;
+      readonly authorize: () => Promise<void>;
       readonly recheck: () => Promise<void>;
     },
   ): Promise<ChatVoiceReceipt> {
@@ -199,7 +203,7 @@ export class ChatVoiceReplies {
     });
     try {
       await recheck();
-      const message = new ConversationLog(store).responderInChat({
+      const message = await new ConversationLog(store).responderInChat({
         chat,
         replyTo: event.message_id,
         messageId: id,

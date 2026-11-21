@@ -1,6 +1,6 @@
 import type { PlannerItemRow } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { instantsOf, type PlannerInstants } from '../instants';
 
 function differs(item: PlannerItemRow, instants: PlannerInstants): boolean {
@@ -11,7 +11,7 @@ function differs(item: PlannerItemRow, instants: PlannerInstants): boolean {
   );
 }
 
-function recomputed(store: Store): number {
+function recomputed(store: HostStore): number {
   let changed = 0;
   for (const profile of store.profiles.list()) {
     for (const item of store.plannerItems.list(profile.id)) {

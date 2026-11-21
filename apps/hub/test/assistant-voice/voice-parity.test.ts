@@ -1,3 +1,4 @@
+import { callPrincipal } from '../../src/assistant-voice/voice-memory';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_RESPONSE_STYLE } from '@smarteverything/domain';
 import { ToolHub } from '../../src/ai-tools/tool-hub';
@@ -130,8 +131,8 @@ function kitOf(): VoiceKit {
     memory: testVoiceMemory(opened.store),
     responder: {
       ready: () => null,
-      chatForCall: () => '',
-      request: () => '',
+      chatForCall: (): Promise<string> => Promise.resolve(''),
+      request: (): Promise<string> => Promise.resolve(''),
       callEnded: () => undefined,
     },
     tools: new ToolHub([]),
@@ -171,6 +172,7 @@ describe('memory in a voice call', () => {
     const kit = kitOf();
     const who = await whoOf();
     const hub = voiceHub(kit, () => who);
+    await kit.memory.prepare(callPrincipal({ ...who.caller, chatId: who.chatId }));
     expect(declarationsOf(kit, hub, who).map((tool) => tool.name)).toContain('memory');
     const added = await hub.call(
       'memory',
@@ -197,6 +199,7 @@ describe('memory in a voice call', () => {
     const kit = kitOf();
     const who = await whoOf();
     const hub = voiceHub(kit, () => who);
+    await kit.memory.prepare(callPrincipal({ ...who.caller, chatId: who.chatId }));
     await hub.call(
       'memory',
       { action: 'add', scope: 'person', text: 'Likes green tea.' },
@@ -209,11 +212,13 @@ describe('memory in a voice call', () => {
       },
     );
     opened.store.aiChats.update(who.chatId, { memory: false });
+    await kit.memory.prepare(callPrincipal({ ...who.caller, chatId: who.chatId }));
     expect(hub.list().map((tool) => tool.name)).not.toContain('memory');
     expect(await voiceNoteOf(kit, hub, who, REQUEST)).not.toContain('green tea');
     opened.store.aiChats.update(who.chatId, { memory: true });
     expect(await voiceNoteOf(kit, hub, who, REQUEST)).toContain('green tea');
     opened.store.aiMemories.changeSettings(who.caller.profileId, { enabled: false });
+    await kit.memory.prepare(callPrincipal({ ...who.caller, chatId: who.chatId }));
     expect(hub.list().map((tool) => tool.name)).not.toContain('memory');
     expect(await voiceNoteOf(kit, hub, who, REQUEST)).not.toContain('green tea');
   });

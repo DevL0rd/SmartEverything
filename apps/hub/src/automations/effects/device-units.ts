@@ -8,7 +8,7 @@ import {
 } from '@smarteverything/domain';
 import { prepareTargetCommands, resolveTarget } from '../../device-groups/commands';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { restrictedTo, snappedValue, steppedValue, type Member } from './device-set';
 
 export interface MembersAsk {
@@ -23,7 +23,11 @@ export interface SteppedAsk {
   readonly snapped: boolean;
 }
 
-function admittedMembers(store: Store, target: DeviceTarget, control: string): readonly Member[] {
+function admittedMembers(
+  store: HostStore,
+  target: DeviceTarget,
+  control: string,
+): readonly Member[] {
   const members = resolveTarget(store, target).flatMap((device) => {
     const presented = targetCapability(device, control);
     return presented?.writable === true ? [{ deviceId: device.id, capability: presented.key }] : [];
@@ -34,7 +38,7 @@ function admittedMembers(store: Store, target: DeviceTarget, control: string): r
 }
 
 function nextValue(
-  store: Store,
+  store: HostStore,
   member: Member,
   presented: PresentedCapability,
   ask: SteppedAsk,
@@ -49,7 +53,7 @@ function nextValue(
       );
 }
 
-function steppedPlan(store: Store, ask: SteppedAsk): GroupCommandPlan {
+function steppedPlan(store: HostStore, ask: SteppedAsk): GroupCommandPlan {
   const steps = ask.members.map((member) => {
     const presented = targetCapability(store.devices.byId(member.deviceId), member.capability);
     const next =

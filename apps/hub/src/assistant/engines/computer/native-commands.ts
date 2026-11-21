@@ -21,7 +21,7 @@ import {
 } from './native-command-admission';
 import { currentExecutionAuthority } from '../../turn-authority';
 import { canonicalRuntimeInput } from '../../../computers/runtime-receipts';
-import { nativeCommandAdapter, NATIVE_COMMAND_ADAPTERS } from './native-command-adapters';
+import { nativeCommandAdapter } from './native-command-adapters';
 import { NativeCommandOutput } from './native-command-output';
 import { assertClaudeCommandBinding } from './native-command-authority';
 import { pendingCommand } from '../../../codex/provider-commands';
@@ -32,10 +32,14 @@ import {
   isManualNativeCommand,
 } from './native-command-configuration';
 import { acceptedCommandState, rejectedCommandState } from './native-command-state';
+import { background } from '@smarteverything/logging';
+import { assertOwnReceipt, availableCommands, CommandReceipts } from './native-command-receipts';
 
 export class NativeCommands {
   private readonly unsubscribe: () => void;
+  private readonly recovered: Promise<void>;
   private readonly controls = new Set<string>();
+  private readonly receipts: CommandReceipts;
   private readonly outputs = new Map<string, NativeCommandOutput>();
   private readonly compactions = new Set<string>();
   private readonly waiters = new Map<string, (receipt: AiNativeCommandReceipt) => void>();
@@ -44,53 +48,78 @@ export class NativeCommands {
     private readonly state: ProviderState,
     private readonly activeTurn: (chatId: string) => boolean,
   ) {
-    deps.store.nativeCommandOperations.recover(deps.runtime);
-    for (const receipt of deps.store.nativeCommandOperations.unknownRuntime(deps.runtime))
-      this.projectUnknown(receipt);
+    this.receipts = new CommandReceipts(deps.store);
+    this.recovered = this.recover();
+    background(this.recovered, 'native_command.recover_failed', { runtime: deps.runtime });
     this.unsubscribe = deps.directory.runtimes.onChange((status): void => {
       if (status.runtime !== deps.runtime) return;
-      for (const receipt of deps.store.nativeCommandOperations.activeRuntime(status.runtime))
-        if (
-          receipt.scope.device_id === status.device_id &&
-          (!status.online ||
-            !status.settings.settings.provider.enabled ||
-            status.capabilities.provider_reason !== null)
-        )
-          this.unknown(
-            receipt,
-            'The native runtime attachment became unavailable before command settlement.',
-          );
+      background(this.unavailable(status), 'native_command.unavailable_failed', {
+        runtime: deps.runtime,
+      });
     });
   }
-  stop(): void {
+  private async recover(): Promise<void> {
+    const { store, runtime } = this.deps;
+    await store.host.call('nativeCommandOperations', 'recover', runtime);
+    for (const receipt of await store.host.call(
+      'nativeCommandOperations',
+      'unknownRuntime',
+      runtime,
+    ))
+      await this.projectUnknown(receipt);
+  }
+  private async unavailable(status: ComputerRuntimeStatus): Promise<void> {
+    await this.recovered;
+    for (const receipt of await this.deps.store.host.call(
+      'nativeCommandOperations',
+      'activeRuntime',
+      status.runtime,
+    ))
+      if (
+        receipt.scope.device_id === status.device_id &&
+        (!status.online ||
+          !status.settings.settings.provider.enabled ||
+          status.capabilities.provider_reason !== null)
+      )
+        await this.unknown(
+          receipt,
+          'The native runtime attachment became unavailable before command settlement.',
+        );
+  }
+  async stop(): Promise<void> {
     this.unsubscribe();
-    for (const receipt of this.deps.store.nativeCommandOperations.activeRuntime(this.deps.runtime))
-      this.unknown(
+    await this.recovered;
+    for (const receipt of await this.deps.store.host.call(
+      'nativeCommandOperations',
+      'activeRuntime',
+      this.deps.runtime,
+    ))
+      await this.unknown(
         receipt,
         'The command observer stopped before native settlement; this work will not be replayed.',
       );
   }
-  private unknown(receipt: AiNativeCommandReceipt, reason: string): void {
-    const saved = this.deps.store.nativeCommandOperations.save({
+  private async unknown(receipt: AiNativeCommandReceipt, reason: string): Promise<void> {
+    const saved = await this.receipts.save({
       ...receipt,
       status: 'unknown',
       outcome: null,
       text: reason,
     });
-    this.projectUnknown(saved);
+    await this.projectUnknown(saved);
     this.settled(saved);
   }
-  private projectUnknown(receipt: AiNativeCommandReceipt): void {
+  private async projectUnknown(receipt: AiNativeCommandReceipt): Promise<void> {
     try {
-      const chat = this.deps.store.aiChats.chat(receipt.scope.chat_id);
+      const chat = await this.deps.store.host.call('aiChats', 'chat', receipt.scope.chat_id);
       if (
         chat.engine.kind !== receipt.scope.runtime ||
         chat.engine.device_id !== receipt.scope.device_id
       )
         return;
-      const current = this.state.read(chat);
+      const current = await this.state.read(chat);
       if (current.session_id === receipt.scope.session_id)
-        this.state.save(
+        await this.state.save(
           chat,
           current.runtime === 'codex'
             ? { ...current, state: 'unknown', reason: receipt.text }
@@ -100,8 +129,8 @@ export class NativeCommands {
       if (!(cause instanceof StoreNotFoundError)) throw cause;
     }
   }
-  scope(chat: AiChatRow, clientId: string | null): AiNativeCommandScope {
-    const state = this.state.bound(chat);
+  async scope(chat: AiChatRow, clientId: string | null): Promise<AiNativeCommandScope> {
+    const state = await this.state.bound(chat);
     const target = { device_id: state.device_id, runtime: this.deps.runtime };
     const context = state.context;
     if (state.session_id === null || context === null)
@@ -126,40 +155,41 @@ export class NativeCommands {
     chat: AiChatRow,
     clientId: string,
   ): Promise<z.infer<typeof AI_NATIVE_COMMAND_CATALOGUE>> {
-    const scope = this.scope(chat, clientId);
-    this.admit(chat, scope);
+    const scope = await this.scope(chat, clientId);
+    await this.admit(chat, scope);
     const catalogue = await nativeCommandCatalogue(this.deps, scope);
-    this.admit(chat, scope);
+    await this.admit(chat, scope);
     if (canonicalRuntimeInput(catalogue.scope) !== canonicalRuntimeInput(scope))
       throw new ApiError('upstream_failed', 'Command discovery returned a different native scope.');
     return catalogue;
   }
   async execute(chat: AiChatRow, raw: AiNativeCommandWrite): Promise<AiNativeCommandReceipt> {
     const input = AI_NATIVE_COMMAND_WRITE.parse(raw);
-    const known = this.deps.store.nativeCommandOperations.known(input);
+    const { store } = this.deps;
+    const known = await store.host.call('nativeCommandOperations', 'known', input);
     if (known !== undefined) {
-      this.assertReceipt(chat, known, input.scope.client_id);
+      assertOwnReceipt(chat, known, input.scope.client_id);
       return known;
     }
-    this.admit(chat, input.scope);
-    this.guard(chat);
-    this.deps.store.nativeCommandOperations.assertJobAvailable(input);
+    await this.admit(chat, input.scope);
+    await this.guard(chat);
+    await store.host.call('nativeCommandOperations', 'assertJobAvailable', input);
     this.deps.directory.assertRuntimeCommandAvailable(input);
     const command = await this.selectedCommand(chat, input);
     if (isManualNativeCommand(input) && command === null)
       return rejectUnknownCommand(this.deps, input);
-    this.admit(chat, input.scope);
-    const before = this.state.bound(chat);
-    const configuration = nativeCommandConfiguration(this.deps, chat, input);
+    await this.admit(chat, input.scope);
+    const before = await this.state.bound(chat);
+    const configuration = await nativeCommandConfiguration(this.deps, chat, input);
     await this.register(chat, input, command);
     const receipt = await submitNativeCommand(this.deps, this.state, input, configuration);
-    this.assertReceipt(chat, receipt, input.scope.client_id);
-    const saved = this.deps.store.nativeCommandOperations.save(receipt);
+    assertOwnReceipt(chat, receipt, input.scope.client_id);
+    const saved = await this.receipts.save(receipt);
     if (saved.status === 'rejected' && input.scope.runtime !== 'claude') {
-      const recovered = rejectedCommandState(this.state.read(chat), before, input);
-      if (recovered !== null) this.state.save(chat, recovered);
+      const recovered = rejectedCommandState(await this.state.read(chat), before, input);
+      if (recovered !== null) await this.state.save(chat, recovered);
     }
-    if (saved.status === 'unknown') this.projectUnknown(saved);
+    if (saved.status === 'unknown') await this.projectUnknown(saved);
     this.settled(saved);
     return saved;
   }
@@ -183,64 +213,88 @@ export class NativeCommands {
     input: AiNativeCommandWrite,
     command: AiNativeCommandDescriptor | null,
   ): Promise<void> {
+    const pending = pendingCommand(input);
     if (command === null)
-      this.deps.store.nativeCommandOperations.reserve(input, pendingCommand(input));
+      await this.deps.store.host.call('nativeCommandOperations', 'reserve', input, pending);
     else await retainManualCommand(this.deps, chat, { input, command });
+    this.receipts.track(pending);
     if (command !== null)
       this.outputs.set(
         input.operation_id,
-        new NativeCommandOutput(this.deps, chat, {
+        await NativeCommandOutput.open(this.deps, chat, {
           input,
           failed: (reason): void => {
-            this.unknown(this.deps.store.nativeCommandOperations.read(input.operation_id), reason);
+            background(
+              this.failedOutput(input.operation_id, reason),
+              'native_command.unknown_failed',
+              {
+                operationId: input.operation_id,
+              },
+            );
           },
         }),
       );
   }
-  read(chat: AiChatRow, id: string, clientId: string): AiNativeCommandReceipt {
-    const receipt = this.deps.store.nativeCommandOperations.read(id);
-    this.assertReceipt(chat, receipt, clientId);
+  private async failedOutput(operationId: string, reason: string): Promise<void> {
+    await this.unknown(
+      await this.deps.store.host.call('nativeCommandOperations', 'read', operationId),
+      reason,
+    );
+  }
+  async read(chat: AiChatRow, id: string, clientId: string): Promise<AiNativeCommandReceipt> {
+    const receipt = await this.deps.store.host.call('nativeCommandOperations', 'read', id);
+    assertOwnReceipt(chat, receipt, clientId);
     return receipt;
   }
-  accepted(chat: AiChatRow, event: ComputerEvent): boolean {
-    const adopted = acceptedCommandState(this.deps, this.state.read(chat), chat, event);
+  async accepted(chat: AiChatRow, event: ComputerEvent): Promise<boolean> {
+    const adopted = await acceptedCommandState(this.deps, await this.state.read(chat), chat, event);
     if (adopted === null) return false;
-    this.state.save(chat, adopted);
+    await this.state.save(chat, adopted);
     return true;
   }
-  received(chat: AiChatRow, event: ComputerEvent): void {
-    for (const receipt of this.deps.store.nativeCommandOperations.active(chat.id)) {
+  async received(chat: AiChatRow, event: ComputerEvent): Promise<void> {
+    await this.recovered;
+    for (const receipt of await this.deps.store.host.call(
+      'nativeCommandOperations',
+      'active',
+      chat.id,
+    )) {
       if (receipt.command_job_id !== event.job_id) continue;
       this.outputs.get(receipt.operation_id)?.event(event);
-      const saved = this.deps.store.nativeCommandOperations.save(
+      const saved = await this.receipts.save(
         nativeCommandAdapter(chat).observe(
           receipt,
           event,
           this.compactions.has(receipt.operation_id),
         ),
       );
-      if (saved.status === 'unknown') this.projectUnknown(saved);
+      if (saved.status === 'unknown') await this.projectUnknown(saved);
       this.settled(saved);
     }
   }
   busy(chat: AiChatRow): boolean {
-    return this.deps.store.nativeCommandOperations.active(chat.id).length !== 0;
+    return this.receipts.busy(chat.id);
   }
-  beginControl(chat: AiChatRow): () => void {
-    this.guard(chat);
+  async beginControl(chat: AiChatRow): Promise<() => void> {
+    await this.guard(chat);
     this.controls.add(chat.id);
     return (): void => {
       this.controls.delete(chat.id);
     };
   }
-  guard(chat: AiChatRow): void {
-    const unknown = this.deps.store.nativeCommandOperations.unknownForChat(chat.id);
+  async guard(chat: AiChatRow): Promise<void> {
+    await this.recovered;
+    const unknown = await this.deps.store.host.call(
+      'nativeCommandOperations',
+      'unknownForChat',
+      chat.id,
+    );
     if (unknown.length !== 0)
       throw new ApiError(
         'conflict',
         'Durable native command effects are unknown; verified reconciliation is required before new work or controls.',
       );
-    const state = this.state.read(chat);
+    const state = await this.state.read(chat);
     if (state.runtime === 'codex' && state.state === 'unknown')
       throw new ApiError(
         'conflict',
@@ -298,21 +352,24 @@ export class NativeCommands {
     chat: AiChatRow,
     clientId: string | null,
   ): Promise<z.infer<typeof AI_NATIVE_COMMAND_CATALOGUE>> {
-    const scope = this.scope(chat, clientId);
+    const scope = await this.scope(chat, clientId);
     const catalogue = await nativeCommandCatalogue(this.deps, scope);
-    this.admit(chat, scope);
+    await this.admit(chat, scope);
     if (canonicalRuntimeInput(catalogue.scope) !== canonicalRuntimeInput(scope))
       throw new ApiError('conflict', 'This chat changed. Refresh and try again.');
     return catalogue;
   }
-  private admit(chat: AiChatRow, scope: AiNativeCommandScope): void {
-    this.guard(chat);
-    assertClaudeCommandBinding(this.deps, this.state, chat, scope);
+  private async admit(chat: AiChatRow, scope: AiNativeCommandScope): Promise<void> {
+    await this.guard(chat);
+    await assertClaudeCommandBinding(this.deps, this.state, chat, scope);
     if (this.activeTurn(chat.id) || this.controls.has(chat.id))
       throw new ApiError('conflict', 'Wait for the reply to finish.');
-    if (canonicalRuntimeInput(this.scope(chat, scope.client_id)) !== canonicalRuntimeInput(scope))
+    if (
+      canonicalRuntimeInput(await this.scope(chat, scope.client_id)) !==
+      canonicalRuntimeInput(scope)
+    )
       throw new ApiError('conflict', 'This chat changed. Refresh and try again.');
-    const state = this.state.bound(chat);
+    const state = await this.state.bound(chat);
     const status = this.deps.directory.runtimeStatus({
       device_id: scope.device_id,
       runtime: scope.runtime,
@@ -332,24 +389,6 @@ export class NativeCommands {
     )
       throw new ApiError('conflict', 'The selected chat execution folder changed.');
   }
-  private assertReceipt(
-    chat: AiChatRow,
-    receipt: AiNativeCommandReceipt,
-    clientId: string | null,
-  ): void {
-    const scope = receipt.scope;
-    if (
-      scope.chat_id !== chat.id ||
-      scope.profile_id !== chat.profile_id ||
-      scope.client_id !== clientId ||
-      chat.engine.kind !== scope.runtime ||
-      chat.engine.device_id !== scope.device_id
-    )
-      throw new ApiError(
-        'forbidden',
-        'The native receipt belongs to another owner, client, chat or runtime.',
-      );
-  }
   private settled(receipt: AiNativeCommandReceipt): void {
     if (['pending', 'running'].includes(receipt.status)) return;
     this.outputs.get(receipt.operation_id)?.settle(receipt);
@@ -357,16 +396,4 @@ export class NativeCommands {
     this.compactions.delete(receipt.operation_id);
     this.waiters.get(receipt.operation_id)?.(receipt);
   }
-}
-
-function availableCommands(status: ComputerRuntimeStatus): boolean {
-  return (
-    status.online &&
-    status.settings.settings.provider.enabled &&
-    status.capabilities.provider_reason === null &&
-    status.capabilities.operations.includes('provider_start') &&
-    NATIVE_COMMAND_ADAPTERS.get(status.runtime)?.capabilities.includes(
-      status.capabilities.capability_revision,
-    ) === true
-  );
 }

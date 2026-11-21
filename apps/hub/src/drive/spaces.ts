@@ -6,29 +6,14 @@ import type { Store } from '../store/store';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import { RootMarkerError, readRootMarker, writeRootMarker } from './root-marker';
 
-type SpacesStore = Pick<Store, 'driveRoots'>;
+type SpacesStore = Pick<Store, 'host'>;
 
 type SpacesLayout = Pick<HubLayout, 'home' | 'person'>;
 
-interface Space {
+export interface Space {
   readonly scope: DriveRootScope;
   readonly ownerProfileId: string | null;
   readonly path: string;
-}
-
-export class DriveSpaceMissingError extends Error {
-  override readonly name = 'DriveSpaceMissingError';
-
-  constructor(
-    readonly scope: DriveRootScope,
-    readonly ownerProfileId: string | null,
-  ) {
-    super(
-      scope === 'home'
-        ? 'The Shared Drive does not exist yet; the Hub creates it at start.'
-        : `The person ${String(ownerProfileId)} has no drive yet; the Hub creates it with the profile.`,
-    );
-  }
 }
 
 const EMPTY_HEALTH = {
@@ -83,9 +68,11 @@ async function ensureMarker(path: string, id: string): Promise<void> {
 
 async function ensureDrive(store: SpacesStore, space: Space): Promise<StoredDrive> {
   await mkdir(space.path, { recursive: true, mode: 0o700 });
-  const drive =
-    store.driveRoots.byIdentity(space.scope, space.ownerProfileId) ??
-    store.driveRoots.insert(newDrive(space));
+  const drive = await store.host.write('driveEnsureSpace', {
+    scope: space.scope,
+    ownerProfileId: space.ownerProfileId,
+    draft: newDrive(space),
+  });
   await ensureMarker(space.path, drive.id);
   return drive;
 }
@@ -100,16 +87,4 @@ export async function ensureDrives(
     ensured.push(await ensureDrive(store, space));
   }
   return ensured;
-}
-
-export function personalDrive(store: SpacesStore, profileId: string): StoredDrive {
-  const drive = store.driveRoots.byIdentity('person', profileId);
-  if (drive === undefined) throw new DriveSpaceMissingError('person', profileId);
-  return drive;
-}
-
-export function sharedDrive(store: SpacesStore): StoredDrive {
-  const drive = store.driveRoots.byIdentity('home', null);
-  if (drive === undefined) throw new DriveSpaceMissingError('home', null);
-  return drive;
 }

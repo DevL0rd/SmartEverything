@@ -164,6 +164,7 @@ export const LOG_REPLY = z.union([
     durationMs: z.number().nonnegative(),
   }),
   z.strictObject({ sweepFailure: z.string() }),
+  z.strictObject({ ready: z.literal(true) }),
 ]);
 
 export type LogReply = z.infer<typeof LOG_REPLY>;

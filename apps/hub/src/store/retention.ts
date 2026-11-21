@@ -1,45 +1,105 @@
 import { DAY_MS } from '../metrics/minute';
-import { sweepBottleRetention } from './bottle-retention';
-import { sweepAutomationRetention } from './retention-automations';
+import { AUTOMATION_DECISION_DAYS } from './retention-automations';
 import type { Sql } from './sql';
 
 const KEPT_DAYS = 90;
 
-const AGED_TABLES = {
-  ai_wakes: { column: 'created_at', days: KEPT_DAYS },
-  ai_outreach: { column: 'created_at', days: KEPT_DAYS },
-  app_sessions: { column: 'ended_at', days: KEPT_DAYS },
-  access_audit: { column: 'at', days: KEPT_DAYS },
-  google_sync_log: { column: 'at', days: KEPT_DAYS },
-} as const;
-
 const TREADMILL_SAMPLE_DAYS = 400;
 
-export function sweepRetention(sql: Sql, now: Date): Record<string, number> {
-  const swept = Object.fromEntries(
-    Object.entries(AGED_TABLES).map(([table, { column, days }]) => [
-      table,
-      sql.run(`forget old ${table}`, `delete from ${table} where ${column} < $before`, {
-        before: new Date(now.getTime() - days * DAY_MS).toISOString(),
-      }),
-    ]),
+const BOTTLE_KEPT_DAYS = 400;
+
+const MS_PER_SECOND = 1000;
+
+export const RETENTION_BATCH_ROWS = 500;
+
+export interface AgedRows {
+  readonly table: string;
+  readonly key: string;
+  readonly where: string;
+  readonly before: (now: Date) => string | number;
+}
+
+function daysBefore(days: number): (now: Date) => string {
+  return (now) => new Date(now.getTime() - days * DAY_MS).toISOString();
+}
+
+const BOTTLE_TABLES = [
+  { table: 'bottle_readings', key: 'device_id, at, trigger_type, distance_mm' },
+  { table: 'bottle_uv_cycles', key: 'device_id, at' },
+  { table: 'bottle_faults', key: 'device_id, at, type' },
+  { table: 'bottle_battery', key: 'device_id, at, source' },
+  { table: 'bottle_state_log', key: 'device_id, at' },
+  { table: 'bottle_adc', key: 'device_id, kind, at' },
+] as const;
+
+export const AGED_ROWS: readonly AgedRows[] = [
+  { table: 'ai_wakes', key: 'rowid', where: 'created_at < $before', before: daysBefore(KEPT_DAYS) },
+  {
+    table: 'ai_outreach',
+    key: 'rowid',
+    where: 'created_at < $before',
+    before: daysBefore(KEPT_DAYS),
+  },
+  {
+    table: 'app_sessions',
+    key: 'rowid',
+    where: 'ended_at < $before',
+    before: daysBefore(KEPT_DAYS),
+  },
+  { table: 'access_audit', key: 'rowid', where: 'at < $before', before: daysBefore(KEPT_DAYS) },
+  { table: 'google_sync_log', key: 'rowid', where: 'at < $before', before: daysBefore(KEPT_DAYS) },
+  ...BOTTLE_TABLES.map(({ table, key }) => ({
+    table,
+    key,
+    where: 'at < $before',
+    before: (now: Date): number =>
+      Math.floor((now.getTime() - BOTTLE_KEPT_DAYS * DAY_MS) / MS_PER_SECOND),
+  })),
+  {
+    table: 'bottle_syncs',
+    key: 'device_id, started_at',
+    where: 'started_at < $before',
+    before: daysBefore(BOTTLE_KEPT_DAYS),
+  },
+  {
+    table: 'photo_unlocks',
+    key: 'rowid',
+    where: 'expires_at <= $before',
+    before: (now: Date): string => now.toISOString(),
+  },
+  {
+    table: 'treadmill_samples',
+    key: 'session_id, t_s',
+    where: 'session_id in (select id from treadmill_sessions where started_at < $before)',
+    before: daysBefore(TREADMILL_SAMPLE_DAYS),
+  },
+  {
+    table: 'automation_decisions',
+    key: 'automation_id, window_start, reason',
+    where: 'window_start < $before',
+    before: daysBefore(AUTOMATION_DECISION_DAYS),
+  },
+  {
+    table: 'automation_questions',
+    key: 'id',
+    where: "state <> 'open' and created_at < $before",
+    before: daysBefore(AUTOMATION_DECISION_DAYS),
+  },
+];
+
+export function sweepAgedBatch(sql: Sql, aged: AgedRows, now: Date): number {
+  return sql.run(
+    `forget a batch of old ${aged.table}`,
+    `delete from ${aged.table} where (${aged.key}) in
+       (select ${aged.key} from ${aged.table} where ${aged.where} limit $batch)`,
+    { before: aged.before(now), batch: RETENTION_BATCH_ROWS },
   );
-  return {
-    ...swept,
-    ...sweepBottleRetention(sql, now),
-    ...sweepAutomationRetention(sql, now),
-    photo_unlocks: sql.run(
-      'drop the expired Locked folder sessions',
-      'delete from photo_unlocks where expires_at <= $now',
-      { now: now.toISOString() },
-    ),
-    treadmill_samples: sql.run(
-      'forget old treadmill samples',
-      `delete from treadmill_samples where session_id in
-         (select id from treadmill_sessions where started_at < $before)`,
-      { before: new Date(now.getTime() - TREADMILL_SAMPLE_DAYS * DAY_MS).toISOString() },
-    ),
-  };
+}
+
+export function agedRowsNamed(table: string): AgedRows {
+  const aged = AGED_ROWS.find((candidate) => candidate.table === table);
+  if (aged === undefined) throw new Error(`No retention rule covers the table ${table}.`);
+  return aged;
 }
 
 export const KEPT_PROVIDER_EVENTS = 200;

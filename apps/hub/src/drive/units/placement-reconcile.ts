@@ -3,7 +3,7 @@ import type {
   DrivePlacementHold,
   DrivePlacementStatus,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { mayExport } from '../access';
 import { placementAccess } from '../placement-access';
@@ -48,7 +48,7 @@ function restarting(status: DrivePlacementStatus, at: string): DrivePlacementSta
   return { ...status, state: 'starting', reason: null, mountPoint: null, reportedAt: at };
 }
 
-function placementsOf(store: Store, scope: PlacementScope): readonly DrivePlacement[] {
+function placementsOf(store: HostStore, scope: PlacementScope): readonly DrivePlacement[] {
   switch (scope.kind) {
     case 'all':
       return store.drivePlacements.list();
@@ -74,7 +74,7 @@ class Reconciler {
   readonly rules: PlacementRules;
 
   constructor(
-    private readonly store: Store,
+    private readonly store: HostStore,
     private readonly known: Readonly<Record<string, readonly string[]>>,
   ) {
     this.rules = new PlacementRules(store);
@@ -160,7 +160,7 @@ class Reconciler {
   }
 }
 
-export function reconcileIn(store: Store, input: ReconcileInput): Reconciled {
+export function reconcileIn(store: HostStore, input: ReconcileInput): Reconciled {
   const reconciler = new Reconciler(store, input.lineages);
   const failures: { placementId: string; error: string }[] = [];
   for (const placement of placementsOf(store, input.scope)) {

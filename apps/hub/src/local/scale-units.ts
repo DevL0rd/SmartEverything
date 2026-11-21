@@ -11,7 +11,7 @@ import {
 } from '@smarteverything/domain';
 import type { ReadingOwner, ScaleMeasurement } from '../store/repositories/body-readings';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { healthRecordsOf, recordIdsOf } from './reading-records';
 
 function measuredChange(before: BodyReadingRow, after: BodyReadingRow): boolean {
@@ -43,7 +43,7 @@ export interface ScaleOutcome<T> {
 class ScaleWork {
   readonly notes: ScaleNote[] = [];
 
-  constructor(private readonly store: Store) {}
+  constructor(private readonly store: HostStore) {}
 
   record(measurement: ScaleMeasurement): BodyReadingRow {
     const { store } = this;
@@ -191,7 +191,7 @@ class ScaleWork {
 
 function worked<I, T>(
   run: (work: ScaleWork, input: I) => T,
-): (store: Store, input: I) => ScaleOutcome<T> {
+): (store: HostStore, input: I) => ScaleOutcome<T> {
   return (store, input) => {
     const work = new ScaleWork(store);
     const value = run(work, input);

@@ -1,5 +1,5 @@
 import { executionRole, withExecutionAuthority } from '../assistant/turn-authority';
-import { hasOwnerDevice } from '../server/person-access';
+import { ownerDeviceOf } from '../server/person-access';
 import { effectAuthority, withEffectTool } from '../harness/effect-authority';
 import type { PluginOrigin, ScheduleRow, ScheduleStep } from '@smarteverything/domain';
 import type { ToolCaller } from '../ai-tools/hub-tool';
@@ -62,7 +62,7 @@ export class StepRunner {
   }
 
   private async callerOf(row: ScheduleRow): Promise<ToolCaller> {
-    const authority = effectAuthority(this.store, 'schedule', row.id);
+    const authority = await effectAuthority(this.store, 'schedule', row.id);
     if (authority !== undefined)
       return {
         authority,
@@ -76,7 +76,7 @@ export class StepRunner {
       };
     return {
       profileId: row.profile_id,
-      role: hasOwnerDevice(this.store, row.profile_id) ? 'owner' : 'member',
+      role: (await ownerDeviceOf(this.store, row.profile_id)) ? 'owner' : 'member',
       chatId: null,
       via: 'schedule',
       clientId: null,
@@ -92,7 +92,7 @@ export class StepRunner {
     const caller = await this.callerOf(row);
     const result = await withEffectTool(
       this.store,
-      effectAuthority(this.store, 'schedule', row.id),
+      await effectAuthority(this.store, 'schedule', row.id),
       step.tool,
       () => this.tools.call(step.tool, step.args, caller),
     );
@@ -112,14 +112,16 @@ export class StepRunner {
       return failed(line, NO_AI_ENGINE);
     }
     const ai = this.ai;
-    const turn = await withExecutionAuthority(effectAuthority(this.store, 'schedule', row.id), () =>
-      ai.run({
-        profileId: row.profile_id,
-        chatId: step.chatId,
-        title: row.label ?? DEFAULT_SCHEDULE_TITLE,
-        text: step.prompt,
-        plugin: row.origin,
-      }),
+    const turn = await withExecutionAuthority(
+      await effectAuthority(this.store, 'schedule', row.id),
+      () =>
+        ai.run({
+          profileId: row.profile_id,
+          chatId: step.chatId,
+          title: row.label ?? DEFAULT_SCHEDULE_TITLE,
+          text: step.prompt,
+          plugin: row.origin,
+        }),
     );
     return { outcome: 'ok', line, detail: `chat ${turn.chatId}` };
   }

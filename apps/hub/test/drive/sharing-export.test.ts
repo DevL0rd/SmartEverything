@@ -14,6 +14,7 @@ import { handleRead } from '../../src/server/dav/read';
 import type { DavDeps } from '../../src/server/dav/dav-auth';
 import { driveDownloadLink, serveDriveFile, type DriveFiles } from '../../src/server/drive-files';
 import { MediaLinks } from '../../src/server/media-links';
+import { hostQuotaSource } from '../../src/drive/quotas';
 import { syncPosixOf } from './sync-posix';
 import { openFsRig, NOW, type FsRig } from './fs-rig';
 
@@ -123,7 +124,8 @@ const EXIT_PATHS: readonly ExitPath[] = [
   },
   {
     name: 'a download link',
-    refused: () => Promise.resolve(driveDownloadLink(files, memberActor(), file.id) === null),
+    refused: async (): Promise<boolean> =>
+      (await driveDownloadLink(files, memberActor(), file.id)) === null,
   },
   {
     name: 'the raw file route read by a computer',
@@ -138,7 +140,7 @@ const EXIT_PATHS: readonly ExitPath[] = [
   {
     name: 'a signed download link opened as an attachment',
     refused: async (): Promise<boolean> => {
-      const link = driveDownloadLink(files, memberActor(), file.id);
+      const link = await driveDownloadLink(files, memberActor(), file.id);
       if (link === null) return true;
       const response = await fetch(`${base}${link.url}`);
       await response.arrayBuffer();
@@ -193,7 +195,7 @@ function davDeps(): DavDeps {
     store,
     env: rig.changeEnv(),
     guard: {
-      status: (profileId) => store.driveQuotas.status(profileId),
+      status: hostQuotaSource(store),
       space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },
     nodes: files.nodes,
@@ -226,7 +228,7 @@ beforeEach(async () => {
         if (token !== NODE_TOKEN) throw new ApiError('unauthorized', 'unknown node token');
         return Promise.resolve(node());
       },
-      actorOf: (): DriveActor => memberActor(),
+      actorOf: (): Promise<DriveActor> => Promise.resolve(memberActor()),
     },
     now: (): Date => NOW,
   };

@@ -1,12 +1,5 @@
 import { z } from 'zod';
-import {
-  AI_SUBSCRIPTION_USAGE,
-  type AiChatRow,
-  type AiSubscriptionUsage,
-  type ProviderMetadata,
-} from '@smarteverything/domain';
-import type { Store } from '../../../store/store';
-import { nativeSubscriptionScope } from '../../../store/repositories/ai-weekly-subscription-history';
+import { AI_SUBSCRIPTION_USAGE, type AiSubscriptionUsage } from '@smarteverything/domain';
 import type { ComputerEvent } from './provider-state';
 import { codexUsage } from '../../../codex/subscription-usage';
 const CLAUDE_LIMIT = z.object({
@@ -15,11 +8,13 @@ const CLAUDE_LIMIT = z.object({
   utilization: z.number().nonnegative().optional(),
   resetsAt: z.number().optional(),
 });
-export function subscriptionUsage(
+export async function subscriptionUsage(
   event: ComputerEvent,
   now: string,
-  previous: () => AiSubscriptionUsage | undefined,
-): { readonly current: AiSubscriptionUsage; readonly observed: AiSubscriptionUsage } | undefined {
+  previous: () => Promise<AiSubscriptionUsage | undefined>,
+): Promise<
+  { readonly current: AiSubscriptionUsage; readonly observed: AiSubscriptionUsage } | undefined
+> {
   if (event.kind === 'usage' && 'usage' in event) {
     if (event.subscription_usage === undefined) return undefined;
     return {
@@ -32,7 +27,7 @@ export function subscriptionUsage(
   if (!parsed.success) return undefined;
   const observed = claudeUsage(parsed.data, now);
   const id = parsed.data.rateLimitType ?? 'unknown';
-  const known = previous();
+  const known = await previous();
   return {
     observed,
     current: {
@@ -59,22 +54,4 @@ function claudeUsage(info: z.infer<typeof CLAUDE_LIMIT>, now: string): AiSubscri
     status: 'reported',
     windows: [window],
   });
-}
-
-export function metadataSubscriptionUsage(
-  metadata: ProviderMetadata,
-): AiSubscriptionUsage | undefined {
-  const raw = metadata.initialization['subscription_usage'];
-  return raw === undefined ? undefined : AI_SUBSCRIPTION_USAGE.parse(raw);
-}
-
-export function observeNativeSubscription(
-  store: Store,
-  chat: AiChatRow,
-  usage: AiSubscriptionUsage,
-): void {
-  const engine = chat.engine;
-  if (engine.kind === 'dsh' || engine.kind !== usage.runtime) return;
-  const scope = nativeSubscriptionScope(chat.profile_id, engine.kind, engine.device_id);
-  store.aiWeeklySubscriptionHistory.observe(scope, usage);
 }

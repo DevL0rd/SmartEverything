@@ -1,10 +1,9 @@
+import { openSeededStore, type TestStore } from '../support/store';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hubLayout } from '../../src/data-layout';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
-import type { TestStore } from '../support/store';
 import { testStoreHost } from '../support/store-host';
 
 export async function driveTestStore(
@@ -12,7 +11,7 @@ export async function driveTestStore(
 ): Promise<TestStore> {
   const directory = await mkdtemp(join(tmpdir(), 'hub-drive-'));
   const layout = hubLayout(directory, {});
-  const store = openStore({
+  const store = await openSeededStore({
     host: testStoreHost(),
     path: join(directory, 'test.db'),
     log: testLogger('store'),
@@ -25,7 +24,7 @@ export async function driveTestStore(
     directory,
     layout,
     close: async (): Promise<void> => {
-      store.close();
+      await store.close();
       await rm(directory, { recursive: true, force: true });
     },
   };

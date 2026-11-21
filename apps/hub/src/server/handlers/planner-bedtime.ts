@@ -1,7 +1,7 @@
 import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
 import type { SleepSoundControl } from '../../planner/sleep-sound';
 import { DONE_REPLY, bound } from '../router';
-import { plannerProfileOf, type PlannerContext } from './planner-profile';
+import { plannerProfileFor, type PlannerContext } from './planner-profile';
 
 export interface PlannerBedtimeDependencies {
   readonly sleepSound: Pick<SleepSoundControl, 'play' | 'stop'>;
@@ -9,16 +9,16 @@ export interface PlannerBedtimeDependencies {
 
 export const plannerBedtimeRoutes = (context: PlannerContext, deps: PlannerBedtimeDependencies) =>
   ({
-    readPlannerSleep: bound(E.readPlannerSleep, ({ query, caller }) =>
+    readPlannerSleep: bound(E.readPlannerSleep, async ({ query, caller }) =>
       context.store.host.read('plannerSleepRead', {
-        profileId: plannerProfileOf(context, caller, query.personId),
+        profileId: await plannerProfileFor(context, caller, query.personId),
         from: query.from,
         to: query.to,
-        timeZone: context.store.settings.read().time_zone,
+        timeZone: context.store.live.home.settings.read().time_zone,
       }),
     ),
     playPlannerSleepSound: bound(E.playPlannerSleepSound, async ({ query, body, caller }) => {
-      const profileId = plannerProfileOf(context, caller, query.personId);
+      const profileId = await plannerProfileFor(context, caller, query.personId);
       const reached =
         body.action === 'play'
           ? await deps.sleepSound.play(profileId, {

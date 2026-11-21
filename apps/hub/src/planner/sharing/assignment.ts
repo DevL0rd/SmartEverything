@@ -7,6 +7,7 @@ import {
   type PlannerItemRow,
   type SignalInput,
 } from '@smarteverything/domain';
+import type { HostStore } from '../../store/host/host-store';
 import type { Store } from '../../store/store';
 
 export interface AssignmentOptions {
@@ -16,7 +17,7 @@ export interface AssignmentOptions {
 }
 
 export function requireAssignee(
-  store: Pick<Store, 'profiles' | 'personAccess'>,
+  store: Pick<HostStore, 'profiles' | 'personAccess'>,
   kind: PlannerItemRow['kind'],
   assigneeId: string | null,
 ): void {

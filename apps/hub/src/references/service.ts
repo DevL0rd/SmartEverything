@@ -44,8 +44,8 @@ export class ReferenceService {
     input: AiReferenceSearch,
   ): Promise<AiReferenceSearchResult> {
     const request = AI_REFERENCE_SEARCH.parse(input);
-    const context = referenceContext(this.store, caller, chatId, request);
-    context.validate();
+    const context = await referenceContext(this.store, caller, chatId, request);
+    await context.validate();
     const kinds = searchedKinds(context.chat, request);
     const nativeKinds = kinds.filter((kind) => !LOCAL_KINDS.includes(kind));
     const [local, native] = await Promise.all([
@@ -91,17 +91,18 @@ export class ReferenceService {
         'Reference tokens were edited; select their exact identities again.',
       );
     if (references.length === 0) return references;
-    const context = referenceContext(this.store, caller, chatId);
+    const context = await referenceContext(this.store, caller, chatId);
     const native: AiReference[] = [];
     const central = context.chat.engine.kind !== 'claude';
     for (const { reference } of references) {
       if (central && reference.kind === 'managed_path')
         await resolveManaged(this.projects, context, reference);
-      else if (central && reference.kind === 'chat') resolveChat(this.store, context, reference);
+      else if (central && reference.kind === 'chat')
+        await resolveChat(this.store, context, reference);
       else native.push(reference);
     }
     if (native.length > 0) await this.nativeSupport(context.chat).admit(context, native);
-    context.validate();
+    await context.validate();
     return references;
   }
   private local(
@@ -110,7 +111,7 @@ export class ReferenceService {
     kind: AiReferenceKind,
   ): Promise<ReferenceMatches> {
     if (kind === 'managed_path') return searchManaged(this.projects, context, request);
-    return Promise.resolve(searchChats(this.store, context, request));
+    return searchChats(this.store, context, request);
   }
   private async nativeSearch(
     context: ReferenceContext,

@@ -19,6 +19,11 @@ const STATUS_MS = 10_000;
 const FULL_MS = 60_000;
 const WIRE_QUIET_MS = 60_000;
 
+function signatureOf(snapshot: AdGuardSnapshot): string {
+  const { at: _at, ...rest } = snapshot;
+  return JSON.stringify(rest);
+}
+
 export interface MonitorOptions {
   readonly client: AdGuardClient;
   readonly url: string;
@@ -68,8 +73,9 @@ export class AdGuardMonitor {
     this.#loop.setCadence(cadence);
     if (cadence === 'paused') {
       this.#connection = { state: 'paused' };
-      this.options.record(this.latest, null);
-      this.options.publish(this.latest, 'everyone');
+      const snapshot = this.latest;
+      this.options.record(snapshot, null);
+      this.options.publish(snapshot, this.#wire.sent(signatureOf(snapshot)));
     }
   }
 
@@ -100,7 +106,11 @@ export class AdGuardMonitor {
     }
     const snapshot = this.latest;
     this.options.record(snapshot, rate);
-    const audience = this.#wire.due(this.#loop.viewed, snapshot.connection.state !== before);
+    const audience = this.#wire.due(
+      this.#loop.viewed,
+      snapshot.connection.state !== before,
+      signatureOf(snapshot),
+    );
     if (audience !== null) {
       this.options.publish(snapshot, audience);
     }

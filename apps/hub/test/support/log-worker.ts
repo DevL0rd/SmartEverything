@@ -1,7 +1,9 @@
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { LogStore, type RepairGroups } from '../../src/logs/log-store';
+import { LogStore } from '../../src/logs/log-store';
+import { hostRepairInbox } from '../../src/store/host/hosted';
+import type { SeededStore } from './store';
 import { testLogger } from './logs';
 
 const SOURCE = fileURLToPath(new URL('../../src/logs/worker.ts', import.meta.url));
@@ -26,12 +28,12 @@ export async function bundledLogWorker(directory: string): Promise<string> {
 
 export async function testLogStore(
   directory: string,
-  store: { readonly aiRepairInbox: RepairGroups; readonly now: () => Date },
+  store: Pick<SeededStore, 'host' | 'now'>,
 ): Promise<LogStore> {
   return LogStore.open({
     path: join(directory, 'runtime-logs.db'),
     workerScript: await bundledLogWorker(directory),
-    repairs: store.aiRepairInbox,
+    repairs: hostRepairInbox(store.host),
     now: store.now,
     log: testLogger('logs'),
     fatal: (cause) => {

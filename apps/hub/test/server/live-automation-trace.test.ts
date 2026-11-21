@@ -54,15 +54,14 @@ const MEMBER = client('member', 'member');
 
 const OWNERS: TraceOwners = {
   authorOf: (automationId) =>
-    automationId === AUTOMATION ? { via: 'person', profile_id: MINE } : null,
+    Promise.resolve(automationId === AUTOMATION ? { via: 'person', profile_id: MINE } : null),
   automationOfRun: (runId) =>
-    runId === RUN ? AUTOMATION : runId === OTHER_RUN ? OTHER_AUTOMATION : null,
+    Promise.resolve(runId === RUN ? AUTOMATION : runId === OTHER_RUN ? OTHER_AUTOMATION : null),
 };
 
-const STORE = {
-  profiles: {
-    activeOf: (clientId: string): { id: string } => ({ id: clientId === 'member' ? MINE : 'x' }),
-  },
+const PROFILES = {
+  activeProfileOf: (clientId: string): Promise<string> =>
+    Promise.resolve(clientId === 'member' ? MINE : 'x'),
 };
 
 function runOf(runId: string, automationId: string): TraceRun {
@@ -97,10 +96,12 @@ function rig(runs: readonly TraceRun[] = []): {
     traceWatchSource({
       viewers,
       owners: OWNERS,
-      store: STORE,
+      profiles: PROFILES,
       runs: (subject) =>
-        runs.filter(
-          (run) => subject === `automation:${run.automationId}` || subject === `run:${run.runId}`,
+        Promise.resolve(
+          runs.filter(
+            (run) => subject === `automation:${run.automationId}` || subject === `run:${run.runId}`,
+          ),
         ),
       now: () => AT,
     }),
@@ -125,13 +126,13 @@ function finished(runId = RUN, automationId = AUTOMATION): AutomationTraceNotice
 }
 
 describe('live automation trace', () => {
-  it('lets the owner watch any automation and a member only the ones they authored', () => {
+  it('lets the owner watch any automation and a member only the ones they authored', async () => {
     const { watch, viewers } = rig();
-    watch.receiveTrace(connection(1, OWNER), {
+    await watch.receiveTrace(connection(1, OWNER), {
       type: 'watch_automations',
       demands: [{ automationId: OTHER_AUTOMATION }],
     });
-    watch.receiveTrace(connection(2, MEMBER), {
+    await watch.receiveTrace(connection(2, MEMBER), {
       type: 'watch_automations',
       demands: [{ automationId: OTHER_AUTOMATION }, { runId: OTHER_RUN }, { runId: RUN }],
     });
@@ -140,31 +141,31 @@ describe('live automation trace', () => {
     expect(viewers.watched(`run:${RUN}`)).toBe(true);
   });
 
-  it('holds trace demands next to device demands and releases both when the socket closes', () => {
+  it('holds trace demands next to device demands and releases both when the socket closes', async () => {
     const { watch, viewers } = rig();
     const phone = connection(1, OWNER);
     watch.receive(phone, { type: 'watch', demands: [{ deviceId: PC, topics: ['cpu'] }] });
-    watch.receiveTrace(phone, {
+    await watch.receiveTrace(phone, {
       type: 'watch_automations',
       demands: [{ automationId: AUTOMATION }],
     });
     expect(viewers.watched(`device:${PC}`)).toBe(true);
     expect(viewers.watched(`automation:${AUTOMATION}`)).toBe(true);
-    watch.receiveTrace(phone, { type: 'watch_automations', demands: [] });
+    await watch.receiveTrace(phone, { type: 'watch_automations', demands: [] });
     expect(viewers.watched(`device:${PC}`)).toBe(true);
     expect(viewers.watched(`automation:${AUTOMATION}`)).toBe(false);
     watch.close(phone);
     expect(viewers.watched(`device:${PC}`)).toBe(false);
   });
 
-  it('sends a keyframe of the runs when a watch starts and not again for a held subject', () => {
+  it('sends a keyframe of the runs when a watch starts and not again for a held subject', async () => {
     const { watch, sent } = rig([runOf(RUN, AUTOMATION)]);
     const phone = connection(1, OWNER);
-    watch.receiveTrace(phone, {
+    await watch.receiveTrace(phone, {
       type: 'watch_automations',
       demands: [{ automationId: AUTOMATION }],
     });
-    watch.receiveTrace(phone, {
+    await watch.receiveTrace(phone, {
       type: 'watch_automations',
       demands: [{ automationId: AUTOMATION }],
     });
@@ -181,13 +182,13 @@ describe('live automation trace', () => {
     ]);
   });
 
-  it('sends a run watcher only its own run and an automation watcher every run', () => {
+  it('sends a run watcher only its own run and an automation watcher every run', async () => {
     const { watch, sent } = rig();
-    watch.receiveTrace(connection(1, OWNER), {
+    await watch.receiveTrace(connection(1, OWNER), {
       type: 'watch_automations',
       demands: [{ runId: RUN }],
     });
-    watch.receiveTrace(connection(2, OWNER), {
+    await watch.receiveTrace(connection(2, OWNER), {
       type: 'watch_automations',
       demands: [{ automationId: AUTOMATION }],
     });
@@ -203,13 +204,13 @@ describe('live automation trace', () => {
     ]);
   });
 
-  it('keeps device notices out of trace watchers and trace notices out of device watchers', () => {
+  it('keeps device notices out of trace watchers and trace notices out of device watchers', async () => {
     const { watch, sent } = rig();
     watch.receive(connection(1, OWNER), {
       type: 'watch',
       demands: [{ deviceId: PC, topics: ['cpu'] }],
     });
-    watch.receiveTrace(connection(2, OWNER), {
+    await watch.receiveTrace(connection(2, OWNER), {
       type: 'watch_automations',
       demands: [{ automationId: AUTOMATION }],
     });
@@ -220,10 +221,10 @@ describe('live automation trace', () => {
     expect(sent.map(([to, notice]) => [to, notice.type])).toEqual([[2, 'trace_node_state']]);
   });
 
-  it('keeps the last write per run and path while the socket is backed up (B9)', () => {
+  it('keeps the last write per run and path while the socket is backed up (B9)', async () => {
     const { watch, sent } = rig();
     const phone = connection(1, OWNER);
-    watch.receiveTrace(phone, {
+    await watch.receiveTrace(phone, {
       type: 'watch_automations',
       demands: [{ automationId: AUTOMATION }],
     });
@@ -243,10 +244,10 @@ describe('live automation trace', () => {
     ]);
   });
 
-  it('flushes the held node states before a parked or finished notice, in order', () => {
+  it('flushes the held node states before a parked or finished notice, in order', async () => {
     const { watch, sent } = rig();
     const phone = connection(1, OWNER);
-    watch.receiveTrace(phone, {
+    await watch.receiveTrace(phone, {
       type: 'watch_automations',
       demands: [{ automationId: AUTOMATION }],
     });

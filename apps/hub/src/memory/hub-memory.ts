@@ -1,6 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { auxCompletionsOf } from '../assistant/aux-completion-binding';
 import type { ServerContext } from '../server/context';
+import { hostMemoryChats, hostMemoryRows } from '../store/host/hosted';
 import type { Store } from '../store/store';
 import { OpenRouterMemoryEmbedder } from './embedder';
 import { MemoryManager } from './manager';
@@ -29,8 +30,8 @@ export function hubMemoryOf(context: Pick<ServerContext, 'store' | 'openRouter'>
     sleep: (ms): Promise<void> => delay(ms),
   });
   const service = new MemoryService(
-    store.aiMemories,
-    store.aiChats,
+    hostMemoryRows(store.host),
+    hostMemoryChats(store.host),
     new OpenRouterMemoryEmbedder(context.openRouter.client),
     {
       judge: model,

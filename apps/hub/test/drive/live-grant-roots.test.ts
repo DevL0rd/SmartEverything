@@ -57,6 +57,7 @@ beforeEach(async () => {
     },
     identity: { dev: '1', ino: 'taxes' },
   });
+  test.store.feed.settleTotals();
   changes = [];
   stop = test.store.feed.subscribe((change) => {
     changes.push(change);

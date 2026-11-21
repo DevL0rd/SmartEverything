@@ -48,6 +48,7 @@ import {
 import { registerRouterPickers } from '../../../src/plugins/builtin/router/pickers';
 import { routerTools } from '../../../src/plugins/builtin/router/tools';
 import { testRun } from '../../automations-v3/effects/support';
+import { directFetch } from '../../support/direct-fetch';
 import { testStore, type TestStore } from '../../support/store';
 import { memoryRecords } from '../memory-records';
 
@@ -517,7 +518,15 @@ describe('the router client values', () => {
     if (handler === undefined) throw new Error('no handler');
     return handler(
       { device },
-      { automationId: 'a', nodeId: 'n', nodeKey: 'n', seed: 1, activation: '0' },
+      {
+        automationId: 'a',
+        nodeId: 'n',
+        nodeKey: 'n',
+        seed: 1,
+        activation: '0',
+        fetch: directFetch(opened.store),
+        now: () => new Date(),
+      },
     ).outputs;
   }
 

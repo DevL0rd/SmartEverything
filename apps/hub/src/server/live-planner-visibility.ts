@@ -1,10 +1,10 @@
 import type { LiveChange, LiveTable } from '@smarteverything/domain';
 import { collectionRoleOf, itemRoleOf, itemVisibleTo } from '../planner/sharing/visibility';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { Hearing } from './live-visibility';
 
 type LiveStore = Pick<
-  Store,
+  HostStore,
   'profiles' | 'plannerItems' | 'plannerCollections' | 'plannerShares' | 'plannerGuests'
 >;
 

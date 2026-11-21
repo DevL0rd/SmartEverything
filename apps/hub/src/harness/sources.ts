@@ -7,7 +7,7 @@ import {
   type HarnessSourceEntry,
   type HarnessSources,
 } from '@smarteverything/domain';
-import type { SettingsKvRepository } from '../store/repositories/settings-kv';
+import type { HomeMirror } from '../store/home-mirror';
 import { gitSourceOf } from './extension-source';
 
 const KEY = 'harness_sources';
@@ -17,16 +17,16 @@ const SEEDED: readonly { readonly label: string; readonly url: string }[] = [
 ];
 
 export class HarnessSourceRegistry {
-  constructor(private readonly settings: Pick<SettingsKvRepository, 'read' | 'save'>) {}
+  constructor(private readonly saved: Pick<HomeMirror['saved'], 'read' | 'save'>) {}
 
   list(): HarnessSources {
-    const saved = this.settings.read(KEY);
+    const saved = this.saved.read(KEY);
     if (saved === null)
       return { sources: SEEDED.map((seed) => entryOf(seed.label, { url: seed.url })) };
     return HARNESS_SOURCES.parse(saved);
   }
 
-  add(input: unknown): HarnessSources {
+  async add(input: unknown): Promise<HarnessSources> {
     const request = HARNESS_SOURCE_ADD.parse(input);
     const added = entryOf(request.label ?? gitSourceOf(request.source).url, request.source);
     const current = this.list().sources;
@@ -36,16 +36,16 @@ export class HarnessSourceRegistry {
     );
   }
 
-  remove(id: string): HarnessSources {
+  async remove(id: string): Promise<HarnessSources> {
     const current = this.list().sources;
     if (!current.some((entry) => entry.id === id))
       throw new ApiError('not_found', `There is no known source ${id}.`);
     return this.save(current.filter((entry) => entry.id !== id));
   }
 
-  private save(sources: readonly HarnessSourceEntry[]): HarnessSources {
+  private async save(sources: readonly HarnessSourceEntry[]): Promise<HarnessSources> {
     const next = { sources: [...sources] };
-    this.settings.save(KEY, next);
+    await this.saved.save(KEY, next);
     return next;
   }
 }

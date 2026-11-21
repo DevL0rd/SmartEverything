@@ -3,7 +3,7 @@ import type { StateRecord } from '../database/port';
 import { storeUnit } from '../store/host/unit';
 import type { BleObservationCursor } from '../store/repositories/ble-observations';
 import type { LocalDeviceEntry } from '../store/repositories/local-devices';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { LOCAL_DRIVER_REGISTRY } from './drivers';
 
 const FUTURE_TOLERANCE_MS = 5000;
@@ -14,7 +14,7 @@ export interface LocalSight {
   readonly devices: Record<string, DeviceRow>;
 }
 
-function deviceOfEntry(store: Store, entry: LocalDeviceEntry): DeviceRow | undefined {
+function deviceOfEntry(store: HostStore, entry: LocalDeviceEntry): DeviceRow | undefined {
   return store.devices.byExternal(LOCAL_DRIVER_REGISTRY[entry.driver].provider, entry.externalId);
 }
 
@@ -32,7 +32,7 @@ export const LOCAL_ENTRY_DEVICE_UNIT = storeUnit(
   (store, entry: LocalDeviceEntry): DeviceRow | undefined => deviceOfEntry(store, entry),
 );
 
-export function linkedDevice(store: Store, entry: LocalDeviceEntry): DeviceRow | undefined {
+export function linkedDevice(store: HostStore, entry: LocalDeviceEntry): DeviceRow | undefined {
   const deviceId = entry.config['deviceId'];
   const device = typeof deviceId === 'string' ? store.devices.find(deviceId) : undefined;
   return device?.provider === LOCAL_DRIVER_REGISTRY[entry.driver].provider &&
@@ -89,7 +89,7 @@ export interface PassiveCommit {
   readonly now: string;
 }
 
-function admissible(store: Store, { entry, cursor, now }: PassiveCommit): boolean {
+function admissible(store: HostStore, { entry, cursor, now }: PassiveCommit): boolean {
   const previous = store.bleObservations.cursor(cursor.device_id, cursor.key_epoch);
   return (
     store.localDevices

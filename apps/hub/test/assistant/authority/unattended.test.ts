@@ -1,3 +1,4 @@
+import { openSeededStore, type SeededStore, closedStore } from '../../support/store';
 import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
@@ -5,7 +6,6 @@ import { API_ENDPOINTS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ConversationAuthority } from '../../../src/harness/authority-contract';
 import { DATABASE_FILE } from '../../../src/service/configuration';
-import { openStore, type Store } from '../../../src/store/store';
 import { clientOf } from '../../automations/support/client';
 import { bootServer, linkFakeProvider, pairPhone, verifiedPublicUrl } from '../../support/booted';
 import { node, programOf, trigger } from '../../support/automation-fixture';
@@ -27,8 +27,8 @@ afterEach(async () => {
   await directory.remove();
 });
 
-function whileStopped<T>(work: (store: Store) => T): T {
-  const store = openStore({
+async function whileStopped<T>(work: (store: SeededStore) => T): Promise<T> {
+  const store = await openSeededStore({
     host: testStoreHost(),
     path: join(directory.path, DATABASE_FILE),
     log: testLogger('store'),
@@ -39,7 +39,7 @@ function whileStopped<T>(work: (store: Store) => T): T {
   try {
     return work(store);
   } finally {
-    store.close();
+    await closedStore(store);
   }
 }
 
@@ -116,7 +116,7 @@ describe('AI-created automations run with the profile that saved them', () => {
     'runs after the phone that created it was unpaired',
     async () => {
       const saved = await saveFromPhone({ removePhone: true });
-      whileStopped((store) => {
+      await whileStopped((store) => {
         const authority = authorityOf(saved);
         store.harnessRecovery.authorize(authority);
         store.harnessRecovery.effects.keep('automation', saved.automation, authority);
@@ -130,7 +130,7 @@ describe('AI-created automations run with the profile that saved them', () => {
     'runs when the saving profile has no permission record any more',
     async () => {
       const saved = await saveFromPhone({ removePhone: false });
-      whileStopped((store) => {
+      await whileStopped((store) => {
         store.harnessRecovery.effects.keep('automation', saved.automation, authorityOf(saved));
       });
       expect(await runSaved(saved)).toStrictEqual(['lamp-1:power:true']);
@@ -142,7 +142,7 @@ describe('AI-created automations run with the profile that saved them', () => {
     'runs after the phone moved to another profile',
     async () => {
       const saved = await saveFromPhone({ removePhone: false });
-      whileStopped((store) => {
+      await whileStopped((store) => {
         const authority = authorityOf(saved);
         store.harnessRecovery.authorize(authority);
         store.harnessRecovery.effects.keep('automation', saved.automation, authority);

@@ -1,3 +1,4 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,7 +8,6 @@ import { z } from 'zod';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import { testStoreHost } from '../support/store-host';
 
@@ -46,7 +46,7 @@ function seedBefore(): void {
   database
     .prepare(
       `insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at)
-       values (?, 'Owner', 'amber', '{}', 0, ?, ?)`,
+       values (?, 'Owner', 'amber', json_object('steps', null, 'move_kcal', null, 'active_minutes', null, 'sleep_minutes', null, 'hydration_ml', null), 0, ?, ?)`,
     )
     .run(PROFILE, NOW, NOW);
   const client = database.prepare(
@@ -85,17 +85,19 @@ function seedBefore(): void {
 }
 
 describe('migrating to drop the hub built-in client from stored ring targets', () => {
-  it('keeps every other target in order and leaves untouched rows alone', () => {
+  it('keeps every other target in order and leaves untouched rows alone', async () => {
     seedBefore();
 
-    openStore({
-      host: testStoreHost(),
-      path,
-      log: testLogger(),
-      now: () => new Date(NOW),
-      systemTimeZone: 'UTC',
-      driveFolders: null,
-    }).close();
+    await closedStore(
+      await openSeededStore({
+        host: testStoreHost(),
+        path,
+        log: testLogger(),
+        now: () => new Date(NOW),
+        systemTimeZone: 'UTC',
+        driveFolders: null,
+      }),
+    );
 
     const migrated = new DatabaseSync(path);
     const alarmTargets = (id: string): unknown =>

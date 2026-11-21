@@ -12,7 +12,7 @@ import {
 } from '@smarteverything/domain';
 import { storeUnit } from '../store/host/unit';
 import { flatAutomation, flatFunction } from '../store/repositories/automation-trees';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { requireFreeName } from './free-name';
 import { usedKindsOf } from './plugin-kinds/ledger';
 import type { ProgramData } from './program-data';
@@ -68,7 +68,7 @@ function usedBy(env: AnalysisEnv, target: StoredAutomationRow): StoredAutomation
 }
 
 function userOf(
-  store: Store,
+  store: HostStore,
   input: { readonly data: ProgramData; readonly id: string },
 ): string | null {
   const env = analysisEnv(store, input.data, null);
@@ -76,14 +76,14 @@ function userOf(
   return user === undefined ? null : user.name;
 }
 
-function remove(store: Store, id: string): void {
+function remove(store: HostStore, id: string): void {
   store.automationRunRecords.forget(id);
   store.automations.remove(id);
   store.pluginKinds.prune(usedKindsOf(store));
 }
 
 function rename(
-  store: Store,
+  store: HostStore,
   input: { readonly id: string; readonly name: string },
 ): AutomationProgramReply {
   requireFreeName(store.automations, input.name, input.id);
@@ -91,7 +91,7 @@ function rename(
   return reply(true, `Renamed to ${row.name}.`, { id: row.id, revision: row.revision }, []);
 }
 
-function saveDraft(store: Store, input: SaveDraftInput): AutomationProgramReply {
+function saveDraft(store: HostStore, input: SaveDraftInput): AutomationProgramReply {
   const env = analysisEnv(store, input.data, null);
   const { id, draft } = input;
   const row = store.automations.saveDraft(
@@ -104,7 +104,7 @@ function saveDraft(store: Store, input: SaveDraftInput): AutomationProgramReply 
   return reply(true, `Draft saved. ${tally(problems)}.`, { id, revision: row.revision }, problems);
 }
 
-function revisions(store: Store, id: string): AutomationProgramRevisionSummary[] {
+function revisions(store: HostStore, id: string): AutomationProgramRevisionSummary[] {
   store.automations.byId(id);
   return store.automationRevisions.list(id).map(({ revision, saved_at, author, plan_hash }) => ({
     revision,
@@ -119,7 +119,7 @@ function draftOf(row: StoredAutomationRow): AutomationV4 {
   return row.draft.program;
 }
 
-function compare(store: Store, input: CompareInput): AutomationProgramComparison {
+function compare(store: HostStore, input: CompareInput): AutomationProgramComparison {
   const { id, from, to } = input;
   const earlier = store.automationRevisions.byRevision(id, from).definition;
   const later =

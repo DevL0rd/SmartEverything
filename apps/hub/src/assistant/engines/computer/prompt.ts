@@ -6,13 +6,13 @@ import type { ComputerRunnerDeps, Turn } from './ports';
 import { managedProviderInstructions } from './project-access';
 import { PRODUCT_SKILL_GUIDE } from './product-skills';
 
-export function providerPrompt(
+export async function providerPrompt(
   deps: ComputerRunnerDeps,
   turn: Pick<Turn, 'chat' | 'grant'> & { readonly event: Pick<Turn['event'], 'client_id'> },
   project: NativeManagedProject | undefined,
-): { readonly system: string; readonly context: string } {
+): Promise<{ readonly system: string; readonly context: string }> {
   const { chat, event, grant } = turn;
-  const context = facts(deps.store, chat, grant.hub, {
+  const context = await facts(deps.store, chat, grant.hub, {
     now: deps.now(),
     clientId: event.client_id,
   });

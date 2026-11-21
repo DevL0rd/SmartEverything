@@ -67,6 +67,7 @@ let scannerScript = '';
 let hasherScript = '';
 let tree = '';
 let database: DatabaseSync;
+let source = '';
 let context: StoreContext;
 let feed: ChangeFeed;
 let roots: DriveRootsRepository;
@@ -98,7 +99,9 @@ afterAll(() => {
 beforeEach(() => {
   tick = 0;
   tree = mkdtempSync(join(tmpdir(), 'scrub-tree-'));
-  database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
+  source = mkdtempSync(join(tmpdir(), 'scrub-source-'));
+  database = new DatabaseSync(join(source, 'source.sqlite'), { enableForeignKeyConstraints: true });
+  database.exec('pragma journal_mode = wal');
   const log = testLogger();
   feed = new ChangeFeed(log);
   const sql = new Sql(database);
@@ -120,6 +123,7 @@ beforeEach(() => {
 afterEach(() => {
   database.close();
   rmSync(tree, { recursive: true, force: true });
+  rmSync(source, { recursive: true, force: true });
 });
 
 function put(path: string, content: string | Buffer): void {
@@ -403,7 +407,8 @@ describe('scrubbing hashed files', () => {
 describe('backups', () => {
   function service(): DriveBackups {
     return new DriveBackups({
-      database,
+      database: join(source, 'source.sqlite'),
+      busyTimeoutMs: 5000,
       store: {
         roots: () => Promise.resolve(roots.list()),
         children: (request) => Promise.resolve(items.children(request)),

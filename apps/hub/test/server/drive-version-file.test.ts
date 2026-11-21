@@ -110,10 +110,10 @@ beforeEach(async () => {
   const files: DriveFiles = {
     store,
     links,
-    nodes: { authenticate: refuse, actorOf: () => ({ profileId: member }) },
+    nodes: { authenticate: refuse, actorOf: () => Promise.resolve({ profileId: member }) },
     now: (): Date => NOW,
   };
-  deps = { files, versions: store.driveVersions };
+  deps = { files };
   server = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://hub');
     const [, , , itemId = '', , versionId = ''] = url.pathname.split('/');
@@ -142,7 +142,7 @@ afterEach(async () => {
 
 describe('earlier version bytes', () => {
   it('signs a link for a version of a file the caller can read and serves its bytes', async () => {
-    const link = driveVersionLink(
+    const link = await driveVersionLink(
       deps,
       { profileId: member },
       { itemId: FILE, versionId: VERSION },
@@ -155,7 +155,7 @@ describe('earlier version bytes', () => {
   });
 
   it('answers a byte range', async () => {
-    const link = driveVersionLink(
+    const link = await driveVersionLink(
       deps,
       { profileId: member },
       { itemId: FILE, versionId: VERSION },
@@ -165,17 +165,17 @@ describe('earlier version bytes', () => {
     expect(await response.text()).toBe('slow');
   });
 
-  it('refuses a version of another person’s file and a version paired with the wrong file', () => {
-    expect(() =>
+  it('refuses a version of another person’s file and a version paired with the wrong file', async () => {
+    await expect(
       driveVersionLink(
         deps,
         { profileId: member },
         { itemId: OTHER_FILE, versionId: OTHER_VERSION },
       ),
-    ).toThrow(ApiError);
-    expect(() =>
+    ).rejects.toThrow(ApiError);
+    await expect(
       driveVersionLink(deps, { profileId: other }, { itemId: OTHER_FILE, versionId: VERSION }),
-    ).toThrow(ApiError);
+    ).rejects.toThrow(ApiError);
   });
 
   it('serves nothing without a signature or for a version of another file', async () => {

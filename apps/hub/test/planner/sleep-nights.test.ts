@@ -8,7 +8,7 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FeedRegistry } from '../../src/planner/feeds/registry';
-import { plannerPreferencesOf } from '../../src/planner/preferences';
+import { loadPlannerPreferences } from '../../src/planner/preferences';
 import { clustersOf, nightsOf, readSleep } from '../../src/planner/sleep-nights';
 import type { Caller } from '../../src/server/auth';
 import { plannerCoreRoutes } from '../../src/server/handlers/planner';
@@ -211,7 +211,7 @@ describe('sleep in the routes', () => {
       { store: test.store },
       {
         now: () => NOW,
-        preferencesOf: (profileId) => plannerPreferencesOf(test.store, profileId),
+        preferencesOf: (profileId) => loadPlannerPreferences(test.store, profileId),
         catalogueOf: () =>
           triggerCatalogue([], { devices: [], rooms: [], people: [], chats: [] }, []),
         feeds: { registry: new FeedRegistry() },

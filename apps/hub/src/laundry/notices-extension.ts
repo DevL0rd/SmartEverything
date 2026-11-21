@@ -12,13 +12,13 @@ interface LaundryNoticesOptions {
 function notifierOf(context: ExtensionContext, options: LaundryNoticesOptions): LaundryNotifier {
   const { store } = context;
   return new LaundryNotifier({
-    notices: (): LaundryNotices => store.settings.read().laundry_notices,
+    notices: (): LaundryNotices => store.live.home.settings.read().laundry_notices,
     machineName: (deviceId): string | null => {
-      const device = store.devices.find(deviceId);
+      const device = store.live.home.devices.find(deviceId);
       return device === undefined ? null : (device.display_name ?? device.name);
     },
     pendingUnloads: (): readonly StateRow[] =>
-      store.state.list().filter((row) => row.capability === UNLOAD_PENDING_KEY),
+      store.live.home.state.withCapability(UNLOAD_PENDING_KEY),
     clock: options.clock,
     raise: (notice): void => {
       options.notices.raise(notice);

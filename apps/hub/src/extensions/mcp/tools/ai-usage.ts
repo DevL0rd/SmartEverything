@@ -13,7 +13,7 @@ import {
   type UsageQuery,
   type UsageSum,
 } from '@smarteverything/domain';
-import { effectiveClientById } from '../../../server/person-access';
+import { effectiveClientOf } from '../../../server/person-access';
 import { z } from 'zod';
 import { usageFilterFor, type UsageViewer } from '../../../ledger/usage-scope';
 import { READS, defineTool, type Tool, type ToolContext } from './registry';
@@ -74,20 +74,20 @@ function queryOf(context: ToolContext, input: WindowInput): UsageQuery {
   };
 }
 
-function viewerOf(context: ToolContext): UsageViewer {
+async function viewerOf(context: ToolContext): Promise<UsageViewer> {
   const { actor } = context;
   if (actor === null) {
     return { role: 'owner' };
   }
   const client =
-    actor.clientId === null ? null : effectiveClientById(context.store, actor.clientId);
+    actor.clientId === null ? null : await effectiveClientOf(context.store, actor.clientId);
   return client?.role === 'owner'
     ? { role: 'owner' }
     : { role: 'member', profileId: actor.profileId };
 }
 
-function filterOf(context: ToolContext, input: WindowInput): UsageFilter {
-  return usageFilterFor(queryOf(context, input), viewerOf(context));
+async function filterOf(context: ToolContext, input: WindowInput): Promise<UsageFilter> {
+  return usageFilterFor(queryOf(context, input), await viewerOf(context));
 }
 
 function ledgerEntryOf(row: UsageLedgerRow): Record<string, unknown> {
@@ -128,7 +128,10 @@ export const AI_USAGE_TOOLS: readonly Tool[] = [
     input: TOTALS_INPUT,
     annotations: READS,
     run: async (context, input) => {
-      const totals = await context.store.host.read('mcpUsageTotals', filterOf(context, input));
+      const totals = await context.store.host.read(
+        'mcpUsageTotals',
+        await filterOf(context, input),
+      );
       return {
         structured: {
           from: totals.from,
@@ -147,7 +150,7 @@ export const AI_USAGE_TOOLS: readonly Tool[] = [
     annotations: READS,
     run: async (context, input) => {
       const series = await context.store.host.read('mcpUsageReport', {
-        filter: filterOf(context, input),
+        filter: await filterOf(context, input),
         bucket: input.bucket,
         split: input.split ?? null,
       });
@@ -160,7 +163,7 @@ export const AI_USAGE_TOOLS: readonly Tool[] = [
     annotations: READS,
     run: async (context, input) => {
       const page = await context.store.host.read('mcpUsageLedger', {
-        filter: filterOf(context, input),
+        filter: await filterOf(context, input),
         cursor: input.cursor,
         limit: input.limit,
       });

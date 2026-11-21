@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { workspaceManifestPaths } from './contract-helpers';
 import { installedVersion, repositoryFile } from './versions';
 
 interface Patch {
@@ -17,6 +18,27 @@ interface Change {
 }
 
 const PATCHED = z.looseObject({ patchedDependencies: z.record(z.string(), z.string()) });
+
+const DEPENDENCIES = z.looseObject({
+  dependencies: z.record(z.string(), z.string()).default({}),
+  devDependencies: z.record(z.string(), z.string()).default({}),
+});
+
+function installedFolderOf(patch: Patch): string {
+  const aliased = `npm:${patch.packageName}@${patch.version}`;
+  const aliases = workspaceManifestPaths().flatMap((manifest) => {
+    const { dependencies, devDependencies } = DEPENDENCIES.parse(
+      JSON.parse(readFileSync(repositoryFile(manifest), 'utf8')),
+    );
+    return Object.entries({ ...dependencies, ...devDependencies })
+      .filter(([, range]) => range === aliased)
+      .map(([name]) => name);
+  });
+  const [alias, ...more] = aliases;
+  if (more.length > 0)
+    throw new Error(`${patch.packageName} is installed under ${aliases.join(', ')}`);
+  return alias ?? patch.packageName;
+}
 
 const PATCH_NAME = /^(.+)@(\d[^@]*)\.patch$/u;
 
@@ -56,7 +78,7 @@ function changesIn(patch: Patch): readonly Change[] {
 }
 
 function installedPath(patch: Patch, change: Change): string {
-  return repositoryFile(`node_modules/${patch.packageName}/${change.path}`);
+  return repositoryFile(`node_modules/${installedFolderOf(patch)}/${change.path}`);
 }
 
 describe('pnpm patches', () => {
@@ -70,7 +92,7 @@ describe('pnpm patches', () => {
 
   describe.each(patches())('$file', (patch) => {
     it('targets the release that is installed', () => {
-      expect(installedVersion(patch.packageName)).toBe(patch.version);
+      expect(installedVersion(installedFolderOf(patch))).toBe(patch.version);
     });
 
     it('is applied: every added line is installed and every deleted file is gone', () => {

@@ -1,3 +1,4 @@
+import { hostFoods } from '../../src/store/host/hosted';
 import { ApiError } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FoodLookup } from '../../src/foods/food-lookup';
@@ -40,7 +41,7 @@ beforeEach(async () => {
   answer = (): Promise<Response> =>
     Promise.resolve(Response.json({ status: 'success', product: product() }));
   lookup = new FoodLookup({
-    foods: held.store.foods,
+    foods: hostFoods(held.store.host),
     fetch: (input, init): Promise<Response> => {
       requests.push(new Request(input, init));
       return answer();

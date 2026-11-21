@@ -15,7 +15,7 @@ import type { RunningHub } from '../hub';
 import { eventSignal } from '../signals/sources/device';
 import type { Store } from '../store/store';
 
-type PressStore = Pick<Store, 'automations'>;
+type PressStore = Pick<Store, 'host'>;
 
 function originOf(caller: Caller): Readonly<Record<string, JsonValue>> {
   return caller.kind === 'client' && caller.via !== 'assistant'
@@ -23,11 +23,11 @@ function originOf(caller: Caller): Readonly<Record<string, JsonValue>> {
     : { source: 'assistant' };
 }
 
-function pressedAutomations(
+async function pressedAutomations(
   store: PressStore,
   device: DeviceRow,
   details: Readonly<Record<string, JsonValue>>,
-): { id: string; name: string }[] {
+): Promise<{ id: string; name: string }[]> {
   const signal = eventSignal(
     {
       id: device.id,
@@ -38,8 +38,7 @@ function pressedAutomations(
     },
     device.room_id,
   );
-  return store.automations
-    .list()
+  return (await store.host.call('automations', 'list'))
     .filter((automation) => automation.enabled && respondsToSignal(automation.definition, signal))
     .map(({ id, name }) => ({ id, name }));
 }
@@ -55,12 +54,12 @@ export async function pressDeviceButton(
   }
   const details = { action, ...originOf(caller) };
   await context.hub.recordEvent({ deviceId: device.id, kind: 'button', details });
-  return { automations: pressedAutomations(context.store, device, details) };
+  return { automations: await pressedAutomations(context.store, device, details) };
 }
 
 export async function recordRefill(
   context: {
-    readonly store: Pick<Store, 'settings'>;
+    readonly store: Pick<Store, 'host'>;
     readonly hub: Pick<RunningHub, 'recordEvent'>;
   },
   device: DeviceRow,
@@ -69,7 +68,7 @@ export async function recordRefill(
   if (deviceFamily(device) !== 'diffuser') {
     throw new ApiError('invalid_request', `${device.name} does not hold a fragrance.`);
   }
-  context.store.settings.recordRefill(device.id);
+  await context.store.host.write('settingsRecordRefill', { deviceId: device.id });
   await context.hub.recordEvent({
     deviceId: device.id,
     kind: 'maintenance',
@@ -78,12 +77,12 @@ export async function recordRefill(
 }
 
 export function changeLaundryNotices(
-  store: Pick<Store, 'settings'>,
+  store: Pick<Store, 'host'>,
   device: DeviceRow,
   change: LaundryNoticeChange,
-): LaundryNoticeSetting {
+): Promise<LaundryNoticeSetting> {
   if (deviceFamily(device) !== 'laundry') {
     throw new ApiError('invalid_request', `${device.name} is not a washing machine or dryer.`);
   }
-  return store.settings.changeLaundryNotice(device.id, change);
+  return store.host.write('settingsLaundryNotice', { deviceId: device.id, change });
 }

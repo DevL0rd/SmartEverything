@@ -23,9 +23,9 @@ const EVENTS: readonly DshSessionEvent[] = [
 
 function source(sessionId: string | null): ChatSessionSource {
   return {
-    own: () => ({ id: CHAT, profile_id: PROFILE }),
+    own: () => Promise.resolve({ id: CHAT, profile_id: PROFILE }),
     binding: () => ({ session_id: sessionId, execution_target: { kind: 'server' } }),
-    store: { dshSessions: { stat: () => METADATA, readAll: () => EVENTS } },
+    sessionLog: () => Promise.resolve({ metadata: METADATA, events: EVENTS }),
   };
 }
 

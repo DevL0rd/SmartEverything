@@ -1,3 +1,4 @@
+import { testStore, type TestStore, type SeededStore } from '../../support/store';
 import {
   AUTOMATION_V4,
   PLUGIN_NODE,
@@ -22,11 +23,9 @@ import { pluginContribution } from '../../../src/automations/plugin-kinds/contri
 import { HostKindLedger } from '../../../src/automations/plugin-kinds/host-ledger';
 import { persistPluginKinds } from '../../../src/automations/plugin-kinds/store';
 import { lintContextOf } from '../../../src/automations/service-programs-analysis';
-import type { Store } from '../../../src/store/store';
 import { graphFunction } from '../../automations-v3/support/graph-of';
 import { EMPTY_LAYOUT, PLACEHOLDER_HASH } from '../../support/automation-fixture';
 import { captureLogs, type CapturedLogs } from '../../support/logs';
-import { testStore, type TestStore } from '../../support/store';
 import { settleWithHost } from '../../support/host-settle';
 import { POSTED_TRIGGER, POST_NODE, manifestWith } from './fixtures';
 
@@ -178,7 +177,7 @@ function inputNames(kind: NodeKind | undefined): string[] {
   return (kind?.inputs ?? []).map((port) => port.name);
 }
 
-function lintOf(catalog: PluginKindCatalog, store: Store, id: string): readonly Finding[] {
+function lintOf(catalog: PluginKindCatalog, store: SeededStore, id: string): readonly Finding[] {
   const structured = structuredOf(store.automations.byId(id).definition, catalog);
   if (structured.kind === 'unstructured') throw new Error('The program is not a graph.');
   const env = { store, secrets: new Set<string>(), kinds: catalog, pending: null };

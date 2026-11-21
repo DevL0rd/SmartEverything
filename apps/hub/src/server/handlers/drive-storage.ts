@@ -1,5 +1,4 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
-import { readDriveUsage } from '../../drive/usage';
 import type { Store } from '../../store/store';
 import { DONE_REPLY, bound, type Routes } from '../router';
 import { refusing } from './drive-errors';
@@ -79,7 +78,7 @@ function driveUpkeepRoutes(store: Store, services: DriveServices): Routes<DriveU
   const { write } = services;
   return {
     readUsage: bound(E.readUsage, ({ caller }) =>
-      readDriveUsage(store.driveQuotas, usageViewerOf(caller)),
+      store.host.read('driveUsage', usageViewerOf(caller)),
     ),
     listQuotas: bound(E.listQuotas, () => store.host.call('driveQuotas', 'all')),
     setQuota: bound(E.setQuota, ({ body, caller }) =>
@@ -99,7 +98,7 @@ function driveUpkeepRoutes(store: Store, services: DriveServices): Routes<DriveU
   };
 }
 
-function driveSyncRoutes(store: Store, services: DriveServices): Routes<DriveSyncRoute> {
+function driveSyncRoutes(services: DriveServices): Routes<DriveSyncRoute> {
   const { write } = services;
   return {
     listConflicts: bound(E.listConflicts, ({ query, caller }) =>
@@ -109,13 +108,7 @@ function driveSyncRoutes(store: Store, services: DriveServices): Routes<DriveSyn
       refusing(() => write.resolveConflict(callerOf(caller), body)),
     ),
     versionLink: bound(E.versionLink, ({ params, caller }) =>
-      refusing(() =>
-        driveVersionLink(
-          { files: services.files, versions: store.driveVersions },
-          actorOf(caller),
-          params,
-        ),
-      ),
+      refusing(() => driveVersionLink({ files: services.files }, actorOf(caller), params)),
     ),
   };
 }
@@ -127,6 +120,6 @@ export function driveStorageRoutes(
   return {
     ...driveShareRoutes(services),
     ...driveUpkeepRoutes(store, services),
-    ...driveSyncRoutes(store, services),
+    ...driveSyncRoutes(services),
   };
 }

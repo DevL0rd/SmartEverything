@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import type { DriveItem } from '@smarteverything/domain';
-import { commitContent, parentOf } from '../../drive/changes';
+import { commitContent, parentIn } from '../../drive/changes';
 import { locate, type DriveWriteRoot } from '../../drive/intents';
 import { checkDriveWrite, DriveQuotaMeter } from '../../drive/quotas';
 import { commitTrash } from '../../drive/trash-purge';
@@ -79,7 +79,7 @@ async function stageUpload(deps: DavDeps, upload: Upload): Promise<StagedBytes> 
       path: root.path,
     });
   }
-  const meter = new DriveQuotaMeter(deps.guard.status, caller.actor.profileId, released);
+  const meter = await DriveQuotaMeter.start(deps.guard.status, caller.actor.profileId, released);
   return stageBytes(deps.env, root, metered(request, meter));
 }
 
@@ -90,7 +90,7 @@ export function handlePut(deps: DavDeps, exchange: DavExchange): Promise<void> {
     const target = await targetOf(deps, caller, request);
     assertWritableFile(request, target);
     const root = writableOf(target);
-    parentOf(deps.env, root.id, target.relPath);
+    await parentIn(deps.env, root.id, target.relPath);
     const staged = await stageUpload(deps, { caller, request, target, root });
     try {
       const written = await commitContent(deps.env, {

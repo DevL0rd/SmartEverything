@@ -14,6 +14,7 @@ import { withCentralToolAuthority } from './central-tool-authority';
 import { centralHomeTools } from './tool-declarations';
 import type { HarnessService } from './service';
 import type { HarnessHubTools } from './tools';
+import { hubSession } from './hub-session';
 import { harnessPrompt } from './prompt';
 
 const IMAGE_MIME = z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
@@ -42,7 +43,7 @@ export class HubHomeTools implements HomeToolTransport {
   session(sessionId: string): Promise<HomeToolSession> {
     return Promise.resolve({
       tools: this.tools(),
-      declared: this.access.declarationNames(sessionId),
+      declared: this.access.declarationNames(this.access.session(sessionId)),
     });
   }
 
@@ -89,7 +90,7 @@ export async function centralTransport(
 ): Promise<unknown> {
   const request = input.request;
   if (request.operation === 'context') {
-    service.storage.verify(request.claim, input);
+    await service.storage.verify(request.claim, input);
     return centralContext(service, request.claim.session_id);
   }
   if (request.operation === 'tool') {
@@ -97,14 +98,14 @@ export async function centralTransport(
   }
   throw new ApiError('invalid_request', 'Expected scoped central native access.');
 }
-function centralTool(
+async function centralTool(
   service: HarnessService,
   input: HarnessTransportRequest,
   request: Extract<HarnessTransportRequest['request'], { operation: 'tool' }>,
 ): ReturnType<HarnessHubTools['transportCall']> {
   const { claim, event_id: eventId, call_id: callId, name, arguments: args } = request;
-  const verify = (): void => {
-    service.storage.verify(claim, input);
+  const verify = async (): Promise<void> => {
+    await service.storage.verify(claim, input);
   };
   return withCentralToolAuthority(
     service,
@@ -114,7 +115,7 @@ function centralTool(
       authority.authorize(eventId);
       const { access } = centralPorts(service);
       return await access.transportCall(
-        await access.authorizeCall(claim.session_id, name, args),
+        await access.authorizeCall(await access.read(claim.session_id), name, args),
         name,
         args,
       );
@@ -122,21 +123,23 @@ function centralTool(
   );
 }
 
-function centralContext(
+async function centralContext(
   service: HarnessService,
   id: string,
-): z.infer<typeof HARNESS_CENTRAL_CONTEXT> {
+): Promise<z.infer<typeof HARNESS_CENTRAL_CONTEXT>> {
   const { access, now } = centralPorts(service);
-  const prompt = harnessPrompt(service, id, {
-    tools: access.scoped(id),
+  const mirrored = await service.sessions.read(id);
+  const session = hubSession(mirrored);
+  const prompt = harnessPrompt(service, mirrored, {
+    tools: access.restricted(session),
     now: now(),
-    role: access.caller(id).role,
+    role: session.caller.role,
   });
   return HARNESS_CENTRAL_CONTEXT.parse({
     ...prompt,
-    event_id: service.storage.grant(id).event_id,
-    tools: access.catalogue(id),
-    declared_tool_names: access.declarationNames(id),
-    compact_at_percent: service.store.assistantChat.settings().compact_at_percent,
+    event_id: mirrored.grant.event_id,
+    tools: access.catalogue(session),
+    declared_tool_names: access.declarationNames(session),
+    compact_at_percent: service.store.live.home.assistant.read().compact_at_percent,
   });
 }

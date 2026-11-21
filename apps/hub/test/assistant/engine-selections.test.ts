@@ -123,8 +123,10 @@ describe('selecting an engine from a request', () => {
 });
 
 describe('the default engine in the catalogue', () => {
-  it('is the owner’s metered route on the default model until the owner picks another', () => {
-    const catalogue = AI_RUNTIME_ENGINE_CATALOGUE.parse(selections.catalogue(ownerId, 'owner'));
+  it('is the owner’s metered route on the default model until the owner picks another', async () => {
+    const catalogue = AI_RUNTIME_ENGINE_CATALOGUE.parse(
+      await selections.catalogue(ownerId, 'owner'),
+    );
 
     expect(catalogue.default).toMatchObject({
       kind: 'dsh',
@@ -144,8 +146,10 @@ describe('the default engine in the catalogue', () => {
       permission: DEFAULT_AI_HARNESS_PERMISSION,
     });
 
-    expect(selections.catalogue(ownerId, 'owner').default).toMatchObject({ model: 'other/model' });
-    expect(selections.catalogue(memberId, 'member').default).toMatchObject({
+    expect((await selections.catalogue(ownerId, 'owner')).default).toMatchObject({
+      model: 'other/model',
+    });
+    expect((await selections.catalogue(memberId, 'member')).default).toMatchObject({
       model: AI_DEFAULT_MODEL,
       model_route_id: meteredRouteId(memberId),
     });

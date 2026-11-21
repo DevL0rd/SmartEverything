@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { ApiError, type DriveItem } from '@smarteverything/domain';
 import { z } from 'zod';
-import { inLockedFolder, lockedTrash } from '../drive/access';
+import { inLockedFolder } from '../drive/access';
 import { fsCode } from '../fs-code';
 import { isLockedLink, verifyLockedLink } from '../photos/organise/locked-links';
 import { derivedPath, DERIVED_MIME, type DerivedKey } from '../photos/pipeline/derived-paths';
@@ -12,7 +12,6 @@ import {
   type PhotoPipeline,
   type PhotoPipelineDeps,
 } from '../photos/pipeline/runtime';
-import { DriveMediaRepository } from '../store/repositories/drive-media';
 import type { DriveDeps } from './handlers/drive-wiring';
 import { serveBytes } from './file-serve';
 import type { DriveExchange } from './drive-files';
@@ -20,8 +19,7 @@ import type { VerifiedDriveLink } from './media-links';
 
 const SIZE = z.enum(['thumb', 'preview', 'playable']);
 
-type DerivedDeps = PhotoPipelineDeps &
-  Pick<DriveDeps, 'links' | 'now'> & { readonly parts: Pick<DriveDeps['parts'], 'context'> };
+type DerivedDeps = PhotoPipelineDeps & Pick<DriveDeps, 'links' | 'now'>;
 
 async function verified(
   deps: DerivedDeps,
@@ -30,7 +28,7 @@ async function verified(
 ): Promise<{ readonly item: DriveItem; readonly link: VerifiedDriveLink }> {
   if (isLockedLink(url)) return await verifyLockedLink(deps.store.host, deps.links, url, itemId);
   const link = deps.links.verifyDrive(url);
-  const item = deps.store.driveItems.byId(itemId, null);
+  const item = await deps.store.host.call('driveItems', 'byId', itemId, null);
   if (inLockedFolder(item))
     throw new ApiError('not_found', 'There is no such file for this caller.');
   return { item, link };
@@ -44,7 +42,10 @@ export async function serveDriveDerived(
 ): Promise<void> {
   const { itemId } = target;
   const size = SIZE.parse(target.size);
-  if (!isLockedLink(exchange.url) && deps.store.driveItems.find(itemId, null) === undefined) {
+  if (
+    !isLockedLink(exchange.url) &&
+    (await deps.store.host.call('driveItems', 'find', itemId, null)) === undefined
+  ) {
     await serveTrashed(deps, exchange, itemId, size);
     return;
   }
@@ -53,7 +54,7 @@ export async function serveDriveDerived(
     throw new ApiError('link_expired', 'This file changed; request a new link.');
   await mediaPipeline.runner.prioritise(itemId);
   if (size === 'playable') {
-    const media = new DriveMediaRepository(deps.parts.context).byId(itemId);
+    const media = await deps.store.host.read('driveMediaRow', { itemId });
     const location = await locatePlayable(deps.layout, item, media, () => locateMedia(deps, item));
     if (location === undefined) throw new ApiError('not_found', 'The playable video is not ready.');
     await serveBytes(playableSource(location), exchange.request, exchange.response);
@@ -69,9 +70,7 @@ async function serveTrashed(
   size: z.infer<typeof SIZE>,
 ): Promise<void> {
   const link = deps.links.verifyDrive(exchange.url);
-  const entry = deps.store.driveTrash.find(itemId);
-  const rev =
-    entry === undefined || lockedTrash(entry) ? null : deps.store.driveTrash.thumbRev(itemId);
+  const rev = await deps.store.host.read('driveTrashThumbRev', { itemId });
   if (size !== 'thumb' || rev === null) {
     throw new ApiError('not_found', 'There is no such file for this caller.');
   }

@@ -20,11 +20,9 @@ export const televisionRoutes = (
         );
       }
       const links = new Map(
-        store.televisionSettings
-          .list()
-          .flatMap((row) =>
-            row.direct_mac === null ? [] : [[row.direct_mac, row.device_id] as const],
-          ),
+        (await store.host.call('televisionSettings', 'list')).flatMap((row) =>
+          row.direct_mac === null ? [] : [[row.direct_mac, row.device_id] as const],
+        ),
       );
       const candidates = await findCandidates(io, search, device.model, log);
       return candidates.map((candidate) => ({

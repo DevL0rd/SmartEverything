@@ -1,9 +1,8 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { Logger, background, shippedRecord } from '@smarteverything/logging';
 import { z } from 'zod';
-import type { Store } from '../store';
 import { hostErrorOf } from './errors';
-import { openHostStore } from './host-store';
+import { openHostStore, type HostStore } from './host-store';
 import {
   HOST_DATA,
   TO_HOST,
@@ -61,6 +60,9 @@ store.feed.subscribeNotices((notice) => {
 store.feed.subscribeSpeech((speech) => {
   events.push({ kind: 'speech', speech });
 });
+store.feed.subscribeAccess(() => {
+  events.push({ kind: 'access' });
+});
 store.feed.subscribeCommitted(() => {
   committed = true;
 });
@@ -95,7 +97,7 @@ function repositoryCall(path: readonly string[], input: unknown): unknown {
   return value;
 }
 
-function unitCall(host: Store, name: string, input: unknown): unknown {
+function unitCall(host: HostStore, name: string, input: unknown): unknown {
   if (Object.hasOwn(READ_UNITS, name)) {
     const unit = member(READ_UNITS, name);
     return runUnit(unit, host, input, false);
@@ -105,14 +107,18 @@ function unitCall(host: Store, name: string, input: unknown): unknown {
   return runUnit(member(WRITE_UNITS, name), host, input, true);
 }
 
-function runUnit(unit: unknown, host: Store, input: unknown, write: boolean): unknown {
+function bare(unit: unknown): boolean {
+  return typeof unit === 'object' && unit !== null && 'bare' in unit && unit.bare === true;
+}
+
+function runUnit(unit: unknown, host: HostStore, input: unknown, write: boolean): unknown {
   const run = member(unit, 'run');
   if (typeof run !== 'function') throw new StoreHostTargetError('unit runner');
   const call = (): unknown => {
     const value: unknown = Reflect.apply(run, unit, [host, input]);
     return value;
   };
-  if (!write) return call();
+  if (!write || bare(unit)) return call();
   return member(unit, 'durable') === true ? host.durableWrite(call) : host.write(call);
 }
 

@@ -2,11 +2,10 @@ import { type WatchActionRequest, type WatchActionResult } from '@smarteverythin
 import type { Logger } from '@smarteverything/logging';
 import type { PushCommandChannel, PushCommandOutcome } from '../extensions/push/commands';
 import { clientsOf, type PresenceStore } from '../reach/presence';
-import type { Store } from '../store/store';
 import { ANSWER_TIMEOUT_MS } from './pending-answers';
 import { PushAsks } from './push-asks';
 
-export type WatchActionStore = PresenceStore & Pick<Store, 'personal'>;
+export type WatchActionStore = PresenceStore;
 
 export interface WatchActionTarget {
   readonly deviceId: string;

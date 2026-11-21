@@ -90,7 +90,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  service.stop();
+  await service.stop();
   directory.stop();
   await opened.close();
 });
@@ -285,14 +285,14 @@ async function boundaryImageUploads(): Promise<readonly string[]> {
 describe('standalone native chats', () => {
   it('requires explicit admission, an owner, and valid configured options', async () => {
     const engine = nativeEngine();
-    expect(() => service.createChat(owner, { engine })).toThrow(/when creating a new chat/);
+    await expect(service.createChat(owner, { engine })).rejects.toThrow(/when creating a new chat/);
     const ready = attach();
-    expect(() => service.createChat({ ...owner, role: 'member' }, { engine }, true)).toThrow(
-      /Only the home owner/,
-    );
-    expect(() => service.createChat(owner, { engine: nativeEngine('relative') }, true)).toThrow(
-      /absolute project folder/,
-    );
+    await expect(
+      service.createChat({ ...owner, role: 'member' }, { engine }, true),
+    ).rejects.toThrow(/Only the home owner/);
+    await expect(
+      service.createChat(owner, { engine: nativeEngine('relative') }, true),
+    ).rejects.toThrow(/absolute project folder/);
     await opened.store.live.computers.saveRuntimeSettings(target, {
       runtime: 'codex',
       settings: {
@@ -303,7 +303,7 @@ describe('standalone native chats', () => {
         },
       },
     });
-    expect(() => service.createChat(owner, { engine }, true)).toThrow(
+    await expect(service.createChat(owner, { engine }, true)).rejects.toThrow(
       /has not reported the requested service tier/,
     );
     expect(ready).not.toHaveBeenCalled();
@@ -326,7 +326,7 @@ describe('standalone native chats', () => {
         device_id: target.device_id,
         model: NATIVE_DEFAULT_MODEL,
       });
-      expect(service.createChat(owner, { engine }, true)).toMatchObject({
+      expect(await service.createChat(owner, { engine }, true)).toMatchObject({
         engine,
         native_admission: 'standalone',
       });
@@ -340,7 +340,7 @@ describe('standalone native chats', () => {
       provider_reason: 'Cached usage is exhausted.',
     });
     execute.mockRejectedValueOnce(new Error(reason));
-    const chat = service.createChat(owner, { engine: nativeEngine() }, true);
+    const chat = await service.createChat(owner, { engine: nativeEngine() }, true);
     const sender = { clientId, profileId: owner.profileId };
     const message = await service.send(
       sender,
@@ -363,9 +363,12 @@ describe('standalone native chats', () => {
       { ...model(), available: false, reason },
     ]);
     const execute = attach(cached);
-    const coordinator = service.createChat(owner, { engine: TEST_ENGINE, title: 'Coordinator' });
+    const coordinator = await service.createChat(owner, {
+      engine: TEST_ENGINE,
+      title: 'Coordinator',
+    });
     const engine = nativeEngine();
-    const native = service.createChat(owner, { engine, title: 'Native work' }, true);
+    const native = await service.createChat(owner, { engine, title: 'Native work' }, true);
     const sender = { clientId, profileId: owner.profileId };
     const message = await service.send(
       sender,
@@ -386,15 +389,15 @@ describe('standalone native chats', () => {
       session_id: null,
       options: { cwd: '/home/test/work' },
     });
-    expect(service.messages(native.id, undefined, 10)).toEqual(
+    expect(await service.messages(native.id, undefined, 10)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ role: 'responder', text: 'Reply from Codex' }),
       ]),
     );
     expect(native).toMatchObject({ kind: 'chat', native_admission: 'standalone', memory: false });
-    expect(service.chats.defaultChat(owner.profileId).id).toBe(coordinator.id);
+    expect((await service.chats.defaultChat(owner.profileId)).id).toBe(coordinator.id);
     expect(
-      service.searchChats(owner, { q: 'Reply from Codex', archived: false, limit: 10 }),
+      await service.searchChats(owner, { q: 'Reply from Codex', archived: false, limit: 10 }),
     ).toEqual([expect.objectContaining({ chatId: native.id })]);
     await expect(service.updateChat(owner, native.id, { engine: TEST_ENGINE })).rejects.toThrow(
       /keep its engine family/,
@@ -416,7 +419,7 @@ describe('standalone native chats', () => {
     const oldGeneration = randomUUID();
     const newGeneration = randomUUID();
     attach(READY, oldGeneration);
-    const chat = service.createChat(owner, { engine: nativeEngine() }, true);
+    const chat = await service.createChat(owner, { engine: nativeEngine() }, true);
     const sender = { clientId, profileId: owner.profileId };
     const first = await service.send(sender, { text: 'Start work', attachments: [] }, chat.id);
     await vi.waitFor(() => {
@@ -456,8 +459,12 @@ describe('standalone native chats', () => {
     async (runtime) => {
       const { engine, starts } = await attachImageHelper(runtime);
       const { store } = opened;
-      const parent = service.createChat(owner, { title: 'Coordinator', engine: TEST_ENGINE });
-      const child = service.createChat(owner, { title: 'Helper', engine, parent_id: parent.id });
+      const parent = await service.createChat(owner, { title: 'Coordinator', engine: TEST_ENGINE });
+      const child = await service.createChat(owner, {
+        title: 'Helper',
+        engine,
+        parent_id: parent.id,
+      });
       const attachments = await boundaryImageUploads();
       const sender = { clientId, profileId: owner.profileId };
       const copy = vi.spyOn(service.files, 'prepareCopy');
@@ -509,8 +516,8 @@ describe('standalone native chats', () => {
           },
         },
       });
-      const parent = service.createChat(owner, { title: 'Coordinator', engine: TEST_ENGINE });
-      const child = service.createChat(owner, {
+      const parent = await service.createChat(owner, { title: 'Coordinator', engine: TEST_ENGINE });
+      const child = await service.createChat(owner, {
         title: 'Helper',
         engine: nativeEngine(),
         parent_id: parent.id,
@@ -531,7 +538,7 @@ describe('standalone native chats', () => {
       await mkdir(dirname(service.files.pathOf(file)), { recursive: true });
       await writeFile(service.files.pathOf(file), contents);
       const conversation = new ConversationLog(store);
-      const prior = conversation.person({
+      const prior = await conversation.person({
         chat: child,
         clientId,
         author: 'Owner',
@@ -595,8 +602,8 @@ describe('standalone native chats', () => {
   it('refuses generic retry for a failed parent message and editing its settled child copy', async () => {
     const execute = attach();
     const { store } = opened;
-    const parent = service.createChat(owner, { title: 'Coordinator', engine: TEST_ENGINE });
-    const child = service.createChat(owner, {
+    const parent = await service.createChat(owner, { title: 'Coordinator', engine: TEST_ENGINE });
+    const child = await service.createChat(owner, {
       title: 'Helper',
       engine: nativeEngine(),
       parent_id: parent.id,
@@ -655,7 +662,7 @@ describe('standalone native chats', () => {
     const runner = service.computerProviders.get('claude');
     if (runner === undefined) throw new Error('Expected a Claude runner.');
 
-    const native = service.createChat(owner, { engine, title: 'Claude work' }, true);
+    const native = await service.createChat(owner, { engine, title: 'Claude work' }, true);
     expect(native).toMatchObject({ kind: 'chat', native_admission: 'standalone', engine });
     const sender = { clientId, profileId: owner.profileId };
     const first = await service.send(
@@ -663,8 +670,8 @@ describe('standalone native chats', () => {
       { text: 'Check the project folder', attachments: [] },
       native.id,
     );
-    await vi.waitFor(() => {
-      expect(runner.state.read(native).prompts).toMatchObject([
+    await vi.waitFor(async () => {
+      expect((await runner.state.read(native)).prompts).toMatchObject([
         { id: CLAUDE_NATIVE_PROMPT, kind: 'permission', status: 'pending' },
       ]);
     });
@@ -685,7 +692,7 @@ describe('standalone native chats', () => {
       prompt_id: CLAUDE_NATIVE_PROMPT,
       answer: { decision: 'allow' },
     });
-    expect(runner.state.read(native).prompts).toMatchObject([{ status: 'answered' }]);
+    expect((await runner.state.read(native)).prompts).toMatchObject([{ status: 'answered' }]);
     await expect(
       runner.state.answer(native, CLAUDE_NATIVE_PROMPT, { decision: 'allow' }),
     ).rejects.toThrow(/no longer pending/);
@@ -738,7 +745,9 @@ describe('standalone native chats', () => {
     });
 
     for (const chat of [retired, child]) {
-      expect(service.chats.own(owner, chat.id)).toMatchObject({ native_admission: 'retired' });
+      expect(await service.chats.own(owner, chat.id)).toMatchObject({
+        native_admission: 'retired',
+      });
       expect(() => {
         aiChats.assertWorkAllowed(chat.id);
       }).toThrow(/read-only/);
@@ -758,8 +767,8 @@ describe('standalone native chats', () => {
       ).rejects.toThrow(/read-only/);
     }
     expect(aiChats.chats({ profileId: owner.profileId, archived: false })).toEqual([]);
-    expect(service.searchChats(owner, { q: 'Native history', archived: false, limit: 10 })).toEqual(
-      [],
-    );
+    expect(
+      await service.searchChats(owner, { q: 'Native history', archived: false, limit: 10 }),
+    ).toEqual([]);
   });
 });

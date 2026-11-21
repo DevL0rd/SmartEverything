@@ -36,7 +36,7 @@ function rosterOf(context: ExtensionContext): FleetRoster {
 
 export function buildWiring(context: ExtensionContext, now: () => Date): Wiring {
   const { store, hub, log } = context;
-  const clock = homeClock(store);
+  const clock = homeClock(store.live.home.settings);
   const roster = rosterOf(context);
   const slot = new SinkSlot();
   const bridges = new WatchBridges({

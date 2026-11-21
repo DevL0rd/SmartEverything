@@ -1,4 +1,10 @@
-import { perSecond, type DiskSnapshot, type DisksPart } from '@smarteverything/domain';
+import {
+  perSecond,
+  type DiskSnapshot,
+  type DiskUsage,
+  type DiskUsagePart,
+  type DisksPart,
+} from '@smarteverything/domain';
 import { existsSync, readdirSync, readFileSync, realpathSync, statfsSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { bytesOf, celsius, orNull, percent, rate } from '../rounding';
@@ -151,28 +157,19 @@ export class DiskCollector {
 
   part(tick: Tick): DisksPart {
     const rates = this.ratesOf(tick);
-    const space = this.spaceOf(tick.at);
-    const disks = this.mounts.current(tick.at).flatMap((mount): DiskSnapshot[] => {
-      const used = space.get(mount.mount);
-      if (used === undefined) {
-        return [];
-      }
-      const temperature =
-        mount.temperaturePath === null ? null : this.temperatureAt(tick, mount.temperaturePath);
-      return [
-        {
-          mount: mount.mount,
-          device: mount.device,
-          label: mount.label,
-          filesystem: mount.filesystem,
-          usedBytes: bytesOf(used.usedBytes, used.totalBytes),
-          totalBytes: used.totalBytes,
-          ...(rates.get(mount.block) ?? { readRate: 0, writeRate: 0 }),
-          temperature: orNull(temperature, celsius),
-        },
-      ];
-    });
+    const disks = this.measured(tick).map(({ mount, usage }): DiskSnapshot => ({
+      ...usage,
+      ...(rates.get(mount.block) ?? { readRate: 0, writeRate: 0 }),
+      temperature: orNull(
+        mount.temperaturePath === null ? null : this.temperatureAt(tick, mount.temperaturePath),
+        celsius,
+      ),
+    }));
     return { disks };
+  }
+
+  usage(tick: Tick): DiskUsagePart {
+    return { disks: this.measured(tick).map(({ usage }) => usage) };
   }
 
   fullest(tick: Tick): FullestDisk | null {
@@ -185,6 +182,29 @@ export class DiskCollector {
       }
     }
     return fullest;
+  }
+
+  private measured(tick: Tick): { readonly mount: Mount; readonly usage: DiskUsage }[] {
+    const space = this.spaceOf(tick.at);
+    return this.mounts.current(tick.at).flatMap((mount) => {
+      const used = space.get(mount.mount);
+      if (used === undefined) {
+        return [];
+      }
+      return [
+        {
+          mount,
+          usage: {
+            mount: mount.mount,
+            device: mount.device,
+            label: mount.label,
+            filesystem: mount.filesystem,
+            usedBytes: bytesOf(used.usedBytes, used.totalBytes),
+            totalBytes: used.totalBytes,
+          },
+        },
+      ];
+    });
   }
 
   private ratesOf(tick: Tick): Map<string, Rates> {

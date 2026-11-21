@@ -6,7 +6,7 @@ import {
   type PlannerItemRow,
 } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { applyEntries, type ApplyRequest, type ApplyTally } from '../ical/apply';
 import type { IcalEntry } from '../ical/model';
 
@@ -45,7 +45,7 @@ export interface AppliedFeed {
 }
 
 function currentFeed(
-  store: Store,
+  store: HostStore,
   collectionId: string,
   url: string,
 ): { readonly row: PlannerCollectionRow; readonly feed: IcsFeed } | undefined {
@@ -54,7 +54,7 @@ function currentFeed(
   return row !== undefined && feed?.kind === 'ics' && feed.url === url ? { row, feed } : undefined;
 }
 
-function appliedFeed(store: Store, input: FeedAnswerApply): AppliedFeed | null {
+function appliedFeed(store: HostStore, input: FeedAnswerApply): AppliedFeed | null {
   const latest = currentFeed(store, input.collectionId, input.url);
   if (latest === undefined) return null;
   const counts = applyEntries(
@@ -80,7 +80,7 @@ function appliedFeed(store: Store, input: FeedAnswerApply): AppliedFeed | null {
   return { row, counts };
 }
 
-function touchedFeed(store: Store, input: FeedTouch): PlannerCollectionRow | null {
+function touchedFeed(store: HostStore, input: FeedTouch): PlannerCollectionRow | null {
   const latest = currentFeed(store, input.collectionId, input.url);
   if (latest === undefined) return null;
   const at = new Date(input.nowMs).toISOString();
@@ -99,7 +99,7 @@ export interface ExportRows {
 }
 
 function exportRows(
-  store: Store,
+  store: HostStore,
   rows: readonly PlannerItemRow[],
   withGuests: boolean,
 ): ExportRows {
@@ -120,7 +120,7 @@ function exportRows(
   };
 }
 
-function itemFamily(store: Store, item: PlannerItemRow): PlannerItemRow[] {
+function itemFamily(store: HostStore, item: PlannerItemRow): PlannerItemRow[] {
   const root = item.series_id === null ? item : store.plannerItems.anyById(item.series_id);
   return [
     root,

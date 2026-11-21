@@ -7,10 +7,10 @@ import {
   CameraPrivacyError,
   UnknownStreamError,
 } from '../../cameras/camera-service';
-import { imageAttachmentOf } from '../../assistant/image-attachment';
+import { imageOnly } from '../../assistant/image-attachment';
 import { StoreNotFoundError } from '../../store/context';
 import type { StoredAttachment } from '../../store/repositories/assistant-chat';
-import type { Store } from '../../store/store';
+import type { CamerasRepository } from '../../store/repositories/cameras';
 import { IntegrationError } from './integration-error';
 import type { OneShotPicture } from './one-shot-model';
 
@@ -30,9 +30,14 @@ export interface CameraPictures {
 
 export interface StoredPicturesPorts {
   readonly snapshot: (deviceId: string, size: MediaSize) => Promise<Uint8Array>;
-  readonly recordings: Pick<Store['cameras'], 'addRecording' | 'recording'>;
+  readonly recordings: {
+    readonly addRecording: (
+      input: Parameters<CamerasRepository['addRecording']>[0],
+    ) => Promise<ReturnType<CamerasRepository['addRecording']>>;
+    readonly recording: (id: string) => Promise<ReturnType<CamerasRepository['recording']>>;
+  };
   readonly recordingPath: (storagePath: string) => string;
-  readonly attachments: Pick<Store['assistantChat'], 'attachment'>;
+  readonly attachments: { readonly attachment: (id: string) => Promise<StoredAttachment> };
   readonly attachmentPath: (file: Pick<StoredAttachment, 'id' | 'profile_id' | 'name'>) => string;
   readonly now: () => Date;
 }
@@ -51,7 +56,7 @@ export class StoredPictures implements CameraPictures {
     const path = this.ports.recordingPath(storagePath);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     await writeFile(path, bytes, { mode: 0o600, flag: 'wx' });
-    const row = this.ports.recordings.addRecording({
+    const row = await this.ports.recordings.addRecording({
       deviceId,
       eventId: null,
       kind: 'snapshot',
@@ -78,10 +83,10 @@ export class StoredPictures implements CameraPictures {
   }
 
   async load(pictureId: string): Promise<OneShotPicture> {
-    const row = this.recordOf(pictureId);
+    const row = await this.recordOf(pictureId);
     if (row !== undefined)
       return this.read(this.ports.recordingPath(row.storage_path), PICTURE_TYPE);
-    const file = imageAttachmentOf(this.ports.attachments, pictureId);
+    const file = await this.attachmentOf(pictureId);
     if (file === undefined)
       throw new IntegrationError('NotFound', `There is no picture ${pictureId}.`);
     return this.read(this.ports.attachmentPath(file), file.mime);
@@ -98,10 +103,21 @@ export class StoredPictures implements CameraPictures {
     return { mimeType, base64: (await readFile(path)).toString('base64') };
   }
 
-  private recordOf(pictureId: string): ReturnType<Store['cameras']['recording']> | undefined {
-    let row: ReturnType<Store['cameras']['recording']>;
+  private async attachmentOf(pictureId: string): Promise<StoredAttachment | undefined> {
     try {
-      row = this.ports.recordings.recording(pictureId);
+      return imageOnly(await this.ports.attachments.attachment(pictureId));
+    } catch (cause) {
+      if (cause instanceof StoreNotFoundError) return undefined;
+      throw cause;
+    }
+  }
+
+  private async recordOf(
+    pictureId: string,
+  ): Promise<ReturnType<CamerasRepository['recording']> | undefined> {
+    let row: ReturnType<CamerasRepository['recording']>;
+    try {
+      row = await this.ports.recordings.recording(pictureId);
     } catch (cause) {
       if (cause instanceof StoreNotFoundError) return undefined;
       throw cause;

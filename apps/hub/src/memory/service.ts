@@ -12,8 +12,7 @@ import type {
   AiMemorySettingsChange,
 } from '@smarteverything/domain';
 import { memorySaved } from '@smarteverything/domain';
-import type { AiMemoriesRepository, StoredMemory } from '../store/repositories/ai-memories';
-import type { AiChatsRepository } from '../store/repositories/ai-chats';
+import type { StoredMemory } from '../store/repositories/ai-memories';
 import { Logger } from '@smarteverything/logging';
 import type { MemoryEmbedder } from './embedder';
 import type { MemoryPrincipal } from './principal';
@@ -32,7 +31,14 @@ import {
   rankRelevant,
   strength,
 } from './search';
-import { MemoryWriter, requireScope, type MemoryJudge } from './writer';
+import {
+  MemoryWriter,
+  requireScope,
+  type MemoryChats,
+  type MemoryJudge,
+  type MemoryRows,
+  type Permitted,
+} from './writer';
 
 const log = new Logger('hub.memory');
 
@@ -89,8 +95,8 @@ export class MemoryService {
   private readonly relevance = new Map<string, Relevance>();
 
   constructor(
-    private readonly memories: AiMemoriesRepository,
-    private readonly chats: Pick<AiChatsRepository, 'find' | 'latest'>,
+    private readonly memories: MemoryRows,
+    private readonly chats: MemoryChats,
     private readonly embedder: MemoryEmbedder,
     ports: MemoryServicePorts = {
       judge: null,
@@ -103,10 +109,12 @@ export class MemoryService {
     this.writer = new MemoryWriter(memories, chats, embedder, ports.judge);
   }
 
-  list(who: MemoryPrincipal): AiMemoryList {
+  async list(who: MemoryPrincipal): Promise<AiMemoryList> {
     return {
-      settings: this.memories.settings(who.profileId),
-      memories: this.memories.visible(who.profileId).map((memory) => this.shown(who, memory)),
+      settings: await this.memories.settings(who.profileId),
+      memories: (await this.memories.visible(who.profileId)).map((memory) =>
+        this.shown(who, memory),
+      ),
     };
   }
 
@@ -126,17 +134,17 @@ export class MemoryService {
     scope: AiMemoryScope | undefined,
   ): Promise<AiMemoryLine[]> {
     const found = await this.embedWithQuery(who, query, 'memory.query_embedding_failed');
-    const visible = this.memories
-      .visible(who.profileId)
-      .filter((memory) => scope === undefined || memory.scope === scope);
+    const visible = (await this.memories.visible(who.profileId)).filter(
+      (memory) => scope === undefined || memory.scope === scope,
+    );
     const ranked = rank(
       visible,
       query,
       found,
-      this.memories.embeddings(who.profileId, this.embedder.model),
+      await this.memories.embeddings(who.profileId, this.embedder.model),
     );
     if (query.trim() !== '') {
-      this.memories.recalled(
+      await this.memories.recalled(
         ranked.map((memory) => memory.id),
         new Date().toISOString(),
       );
@@ -144,68 +152,71 @@ export class MemoryService {
     return ranked.map(lineOf);
   }
 
-  change(
+  async change(
     who: MemoryPrincipal,
     id: string,
     patch: AiMemoryChange,
-  ): { readonly memory: AiMemory; readonly outcome: AiMemoryOutcome } {
-    const written = this.writer.change(who, id, patch);
+  ): Promise<{ readonly memory: AiMemory; readonly outcome: AiMemoryOutcome }> {
+    const written = await this.writer.change(who, id, patch);
     return { memory: this.shown(who, written.memory), outcome: written.outcome };
   }
 
-  remove(who: MemoryPrincipal, id: string): void {
-    this.writer.remove(who, id);
+  remove(who: MemoryPrincipal, id: string): Promise<void> {
+    return this.writer.remove(who, id);
   }
 
-  forget(who: MemoryPrincipal, scope: AiMemoryScope): number {
+  async forget(who: MemoryPrincipal, scope: AiMemoryScope): Promise<number> {
     requireScope(who, scope);
     return scope === 'home'
       ? this.memories.forgetHome()
       : this.memories.forgetPerson(who.profileId);
   }
 
-  settings(who: MemoryPrincipal): AiMemorySettings {
+  settings(who: MemoryPrincipal): Promise<AiMemorySettings> {
     return this.memories.settings(who.profileId);
   }
 
-  changeSettings(who: MemoryPrincipal, change: AiMemorySettingsChange): AiMemorySettings {
+  changeSettings(who: MemoryPrincipal, change: AiMemorySettingsChange): Promise<AiMemorySettings> {
     return this.memories.changeSettings(who.profileId, change);
   }
 
-  offered(who: MemoryPrincipal): boolean {
-    return this.memories.settings(who.profileId).enabled && this.chatAllows(who);
+  async offered(who: MemoryPrincipal): Promise<boolean> {
+    return (await this.memories.settings(who.profileId)).enabled && (await this.chatAllows(who));
   }
 
   async prepare(who: MemoryPrincipal, latest: LatestMessage | null): Promise<void> {
-    const permitted = (): boolean => this.offered(who);
-    if (latest === null || who.chatId === null || !permitted()) return;
+    if (latest === null || who.chatId === null || !(await this.offered(who))) return;
     if (this.relevance.get(who.chatId)?.messageId === latest.id) return;
     const query = latest.text.trim();
     if (query === '') {
       this.relevance.set(who.chatId, { messageId: latest.id, ids: [] });
       return;
     }
+    const permitted = (): Promise<boolean> => this.offered(who);
     const vector = await this.embedWithQuery(who, query, 'memory.relevance_failed', permitted);
-    if (!permitted() || this.relevance.get(who.chatId)?.messageId === latest.id) return;
+    if (!(await permitted()) || this.relevance.get(who.chatId)?.messageId === latest.id) return;
     const now = new Date();
     const day = localDay(now, this.zone());
-    const visible = this.memories.visible(who.profileId).filter((memory) => !expired(memory, day));
+    const visible = (await this.memories.visible(who.profileId)).filter(
+      (memory) => !expired(memory, day),
+    );
     const ranked = rankRelevant(
       visible,
       query,
       vector,
-      this.memories.embeddings(who.profileId, this.embedder.model),
+      await this.memories.embeddings(who.profileId, this.embedder.model),
     ).slice(0, RELEVANT_COUNT);
     const ids = ranked.map((memory) => memory.id);
-    this.memories.recalled(ids, now.toISOString());
+    await this.memories.recalled(ids, now.toISOString());
     this.relevance.set(who.chatId, { messageId: latest.id, ids });
   }
 
-  recall(who: MemoryPrincipal): AiMemoryRecall {
-    const prompt_chars = this.memories.settings(who.profileId).prompt_chars ?? DEFAULT_PROMPT_CHARS;
+  async recall(who: MemoryPrincipal): Promise<AiMemoryRecall> {
+    const prompt_chars =
+      (await this.memories.settings(who.profileId)).prompt_chars ?? DEFAULT_PROMPT_CHARS;
     const time_zone = this.zone();
-    if (!this.offered(who)) return { ...EMPTY_RECALL, prompt_chars, time_zone };
-    const visible = this.memories.visible(who.profileId);
+    if (!(await this.offered(who))) return { ...EMPTY_RECALL, prompt_chars, time_zone };
+    const visible = await this.memories.visible(who.profileId);
     const chosen = new Set(this.relevance.get(who.chatId ?? '')?.ids ?? []);
     return { prompt_chars, time_zone, ...this.sections(visible, chosen, this.now()) };
   }
@@ -253,15 +264,15 @@ export class MemoryService {
     };
   }
 
-  private chatAllows(who: MemoryPrincipal): boolean {
-    return who.chatId === null || this.chats.find(who.chatId)?.memory === true;
+  private async chatAllows(who: MemoryPrincipal): Promise<boolean> {
+    return who.chatId === null || (await this.chats.find(who.chatId))?.memory === true;
   }
 
   private async embedWithQuery(
     who: MemoryPrincipal,
     query: string,
     event: string,
-    permitted?: () => boolean,
+    permitted?: Permitted,
   ): Promise<Float32Array | null> {
     try {
       return await this.writer.embedOne(who, query, permitted);

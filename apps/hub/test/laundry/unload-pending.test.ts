@@ -11,68 +11,78 @@ describe('washer unload pending', () => {
     captureLogs();
   });
 
-  it('is not set before any cycle has finished', () => {
+  it('is not set before any cycle has finished', async () => {
     const bench = resting();
     bench.set(DOOR, 'Open');
+    await bench.settled();
     expect(bench.pushed).toEqual([]);
   });
 
-  it('is set when a cycle finishes and cleared by the first door opening', () => {
+  it('is set when a cycle finishes and cleared by the first door opening', async () => {
     const bench = resting();
     runCycle(bench);
+    await bench.settled();
     expect(pendingOf(bench)).toBeUndefined();
     bench.set(STATUS, 'Completed');
+    await bench.settled();
     expect(pendingOf(bench)).toBe(true);
     bench.advance(30);
     bench.set(DOOR, 'Closed And Can Be Opened');
+    await bench.settled();
     expect(pendingOf(bench)).toBe(true);
     bench.set(DOOR, 'Open');
+    await bench.settled();
     expect(pendingOf(bench)).toBe(false);
   });
 
-  it('stays clear when the door is opened and closed again after unloading', () => {
+  it('stays clear when the door is opened and closed again after unloading', async () => {
     const bench = resting();
     runCycle(bench);
     bench.set(STATUS, 'Completed');
     bench.set(DOOR, 'Open');
     bench.set(DOOR, 'Closed And Can Be Opened');
     bench.set(DOOR, 'Open');
+    await bench.settled();
     expect(bench.pushed.map((update) => update.value)).toEqual([true, false]);
   });
 
-  it('is set for a stopped cycle too, because the wet clothes are still inside', () => {
+  it('is set for a stopped cycle too, because the wet clothes are still inside', async () => {
     const bench = resting();
     runCycle(bench);
     bench.set(STATUS, 'Paused');
     bench.set(STATUS, 'Idle');
+    await bench.settled();
     expect(pendingOf(bench)).toBe(true);
   });
 
-  it('is cleared when a new cycle starts without the door being seen opening', () => {
+  it('is cleared when a new cycle starts without the door being seen opening', async () => {
     const bench = resting();
     runCycle(bench);
     bench.set(STATUS, 'Completed');
     bench.advance(5);
     bench.set(STATUS, 'Idle');
     runCycle(bench);
+    await bench.settled();
     expect(pendingOf(bench)).toBe(false);
   });
 
-  it('is not repeated when the machine reports the end twice', () => {
+  it('is not repeated when the machine reports the end twice', async () => {
     const bench = resting();
     runCycle(bench);
     bench.set(RUN_PHASE, 'Washing Completed');
     bench.set(STATUS, 'Completed');
     bench.set(STATUS, 'Idle');
     bench.set(STATUS, 'Completed');
+    await bench.settled();
     expect(bench.pushed.filter((update) => update.value === true)).toHaveLength(1);
   });
 
-  it('is stamped with the time the cycle finished', () => {
+  it('is stamped with the time the cycle finished', async () => {
     const bench = resting();
     runCycle(bench);
     bench.advance(10);
     bench.set(STATUS, 'Completed');
+    await bench.settled();
     expect(bench.pushed[0]).toMatchObject({
       capability: UNLOAD,
       value: true,

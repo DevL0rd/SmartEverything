@@ -25,12 +25,12 @@ import { sendHelperDialogue } from '../../../src/assistant/delegation/helper-dia
 import { EngineRegistry } from '../../../src/assistant/engines/registry';
 import { AssistantFiles } from '../../../src/assistant/files';
 import { adoptNativeChild } from '../../../src/assistant/engines/dsh/children-adoption';
+import { watchNativeSessions } from '../../../src/assistant/engines/dsh/children';
 import {
   lastAssistantText,
   nativeChildOutcome,
   settleNativeChild,
-  watchNativeSessions,
-} from '../../../src/assistant/engines/dsh/children';
+} from '../../../src/assistant/engines/dsh/children-units';
 import { ToolHub } from '../../../src/ai-tools/tool-hub';
 import type { HubTool, HubToolResult, ToolCaller } from '../../../src/ai-tools/hub-tool';
 import { HarnessHubTools } from '../../../src/harness/tools';
@@ -168,7 +168,7 @@ describe('a native child of a native conversation', () => {
     );
     const claim = store.dshSessions.attached(sessionId, world.rig.owner.profileId);
     if (claim === null) throw new Error('The child lost its writer.');
-    watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
+    const watch = watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
     await store.live.dshSessions.append(
       {
         claim,
@@ -180,6 +180,7 @@ describe('a native child of a native conversation', () => {
       },
       principal,
     );
+    await watch.settled();
 
     expect(store.aiAgentRuns.read(run.id)).toMatchObject({
       state: 'completed',
@@ -338,7 +339,7 @@ describe('a native child created through the hub session persistence', () => {
     const header = subagentHeader(parentSession);
     const writer = await persistence.create(header, 0);
     const { store } = rig.opened;
-    watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
+    const watch = watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
     const principal = rig.service.hostPrincipal(
       rig.owner.profileId,
       rig.service.directory.get(rig.hub.target).host,
@@ -370,6 +371,7 @@ describe('a native child created through the hub session persistence', () => {
       },
       principal,
     );
+    await watch.settled();
 
     const run = store.aiAgentRuns.currentOfSession(header.id);
     expect(run).toMatchObject({
@@ -388,7 +390,7 @@ describe('a native child running inside its parent session', () => {
     const header = subagentHeader(parentSession);
     const writer = await persistence.create(header, 0);
     const { store } = rig.opened;
-    watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
+    const watch = watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
     const principal = rig.service.hostPrincipal(
       rig.owner.profileId,
       rig.service.directory.get(rig.hub.target).host,
@@ -402,6 +404,7 @@ describe('a native child running inside its parent session', () => {
         },
         principal,
       );
+      await watch.settled();
     };
     await append([
       {
@@ -444,13 +447,13 @@ describe('the model inference grant of a native child through the hub session pe
       text: 'delegate',
     });
     store.harnessSessions.issue({
-      ...rig.service.storage.grant(parentSession),
+      ...(await rig.service.storage.grant(parentSession)),
       event_id: parentEvent.id,
     });
     const header = subagentHeader(parentSession);
     await persistence.create(header, 0);
     const run = store.aiAgentRuns.currentOfSession(header.id);
-    const grant = rig.service.storage.grant(header.id);
+    const grant = await rig.service.storage.grant(header.id);
 
     expect(run?.child_chat_id).not.toBe(parentChatId);
     expect(grant.event_id).toBe(run?.source_id);
@@ -458,10 +461,19 @@ describe('the model inference grant of a native child through the hub session pe
       chat_id: run?.child_chat_id,
       report_to: parentChatId,
     });
-    expect(workOf(rig.service, grant, run?.child_chat_id ?? '')).toBe('subagent');
-    expect(workOf(rig.service, rig.service.storage.grant(parentSession), parentChatId)).toBe(
-      'chat',
-    );
+    expect(
+      workOf(grant, run?.child_chat_id ?? '', store.assistantEvents.event(grant.event_id ?? '')),
+    ).toBe('subagent');
+    const parentGrant = await rig.service.storage.grant(parentSession);
+    expect(
+      workOf(
+        parentGrant,
+        parentChatId,
+        parentGrant.event_id === null
+          ? undefined
+          : store.assistantEvents.event(parentGrant.event_id),
+      ),
+    ).toBe('chat');
   });
 });
 
@@ -567,7 +579,7 @@ it('keeps a settled helper in its original continuation when its transcript is o
     host: { ...connection.host, manifest: { ...manifest, features: ['subagent-send'] } },
   });
   const grant = store.harnessSessions.grant(claim.session_id);
-  expect(helperContinuationReady(rig.service, chat, rig.owner.role)).toBeNull();
+  expect(await helperContinuationReady(rig.service, chat, rig.owner.role)).toBeNull();
 
   const session = await readSession(rig.service, {
     owner: rig.owner,
@@ -578,7 +590,7 @@ it('keeps a settled helper in its original continuation when its transcript is o
   expect(session.epoch).toBe(claim.epoch);
   expect(rig.hub.requests).toEqual([]);
   expect(store.harnessSessions.grant(claim.session_id)).toEqual(grant);
-  expect(helperContinuationReady(rig.service, chat, rig.owner.role)).toBeNull();
+  expect(await helperContinuationReady(rig.service, chat, rig.owner.role)).toBeNull();
 });
 
 it('can answer a helper approval after its runtime reopens under the same epoch', async () => {
@@ -590,9 +602,9 @@ it('can answer a helper approval after its runtime reopens under the same epoch'
   if (state === undefined) throw new Error('The helper session was not projected.');
   store.harnessSessions.project(state, 600);
   const frame = { session_id: claim.session_id, epoch: claim.epoch };
-  rig.service.native({ ...frame, kind: 'open' });
-  rig.service.native({ ...frame, kind: 'close' });
-  rig.service.native({ ...frame, kind: 'open' });
+  await rig.service.native({ ...frame, kind: 'open' });
+  await rig.service.native({ ...frame, kind: 'close' });
+  await rig.service.native({ ...frame, kind: 'open' });
   const interaction = {
     id: 'helper-approval',
     epoch: claim.epoch,
@@ -600,7 +612,7 @@ it('can answer a helper approval after its runtime reopens under the same epoch'
     request: {},
   } as const;
 
-  rig.service.native({
+  await rig.service.native({
     ...frame,
     kind: 'interactions',
     interactions: [interaction],
@@ -734,7 +746,7 @@ it.each([
   const pending = (): readonly string[] => [];
   if (settlement === 'without') {
     expect(
-      helperContinuationReady(rig.service, child, rig.owner.role, { pendingInput: pending }),
+      await helperContinuationReady(rig.service, child, rig.owner.role, { pendingInput: pending }),
     ).toMatch(/activation has no confirmed settlement/);
     await expect(
       prepareHelperContinuation(rig.service, child, rig.owner.role, { pendingInput: pending }),
@@ -744,7 +756,7 @@ it.each([
     return;
   }
   expect(
-    helperContinuationReady(rig.service, child, rig.owner.role, { pendingInput: pending }),
+    await helperContinuationReady(rig.service, child, rig.owner.role, { pendingInput: pending }),
   ).toBeNull();
   if (settlement === 'retry') {
     await expect(
@@ -755,7 +767,7 @@ it.each([
     );
     parent = await reconnect();
     expect(
-      helperContinuationReady(rig.service, child, rig.owner.role, { pendingInput: pending }),
+      await helperContinuationReady(rig.service, child, rig.owner.role, { pendingInput: pending }),
     ).toBeNull();
   }
 
@@ -814,7 +826,7 @@ async function directedFilesFixture(fixture: Rig): Promise<DirectedFilesFixture>
   fixture.hub.held.set(parentSession, persistence.claim(parentSession).epoch);
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: (): Date => new Date(),
   });
@@ -837,7 +849,8 @@ async function directedFilesFixture(fixture: Rig): Promise<DirectedFilesFixture>
     engines,
     files,
     added: (): void => undefined,
-    queueRun: (): void => undefined,
+    queueRun: (): Promise<void> => Promise.resolve(),
+    now: (): Date => new Date(),
   };
   const sender = { clientId, profileId: owner.profileId };
   const clientMessageId = randomUUID();
@@ -905,7 +918,7 @@ it('delivers a quoted reply with ordered child file and image copies to a capabl
   const { store } = rig.opened;
   const conversation = new ConversationLog(store);
   if (child.helper_name === null) throw new Error('The fixture helper has no name.');
-  const quoted = conversation.responderInChat({
+  const quoted = await conversation.responderInChat({
     chat: parent,
     replyTo: null,
     text: 'The earlier layout is ready.',

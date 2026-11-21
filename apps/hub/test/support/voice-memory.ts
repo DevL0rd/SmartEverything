@@ -4,12 +4,17 @@ import {
   type VoiceMemory,
 } from '../../src/assistant-voice/voice-memory';
 import { MemoryService } from '../../src/memory/service';
-import type { Store } from '../../src/store/store';
+import { hostMemoryChats, hostMemoryRows } from '../../src/store/host/hosted';
+import type { SeededStore } from './store';
 import { FakeMemoryEmbedder } from './memory-embedder';
 
-export function testVoiceMemory(store: Store): VoiceMemory {
+export function testVoiceMemory(store: SeededStore): VoiceMemory {
   return voiceMemory(
-    new MemoryService(store.aiMemories, store.aiChats, new FakeMemoryEmbedder()),
+    new MemoryService(
+      hostMemoryRows(store.host),
+      hostMemoryChats(store.host),
+      new FakeMemoryEmbedder(),
+    ),
     (chatId) => latestPersonMessage(store, chatId),
   );
 }

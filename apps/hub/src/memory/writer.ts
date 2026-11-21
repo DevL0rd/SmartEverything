@@ -6,8 +6,8 @@ import type {
   AiMemoryScope,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import type { AiChatsRepository } from '../store/repositories/ai-chats';
-import type { AiMemoriesRepository, StoredMemory } from '../store/repositories/ai-memories';
+import type { HostedRepository } from '../store/host/hosted';
+import type { StoredMemory } from '../store/repositories/ai-memories';
 import type { MemoryEmbedder } from './embedder';
 import type { ManagerRequest } from './manager-model';
 import type { MemoryOperation, MemorySplit } from './manager-schema';
@@ -49,15 +49,37 @@ function normalised(text: string): string {
   return text.trim().replace(/\s+/gu, ' ').toLowerCase();
 }
 
-function requirePermission(permitted: (() => boolean) | undefined): void {
-  if (permitted?.() === false)
+export type Permitted = () => boolean | Promise<boolean>;
+
+async function requirePermission(permitted: Permitted | undefined): Promise<void> {
+  if (permitted !== undefined && !(await permitted()))
     throw new ApiError('forbidden', 'Automatic memory writing is no longer allowed.');
 }
 
+export type MemoryRows = HostedRepository<
+  'aiMemories',
+  | 'visible'
+  | 'change'
+  | 'split'
+  | 'remove'
+  | 'find'
+  | 'unembedded'
+  | 'setEmbedding'
+  | 'embeddings'
+  | 'add'
+  | 'settings'
+  | 'changeSettings'
+  | 'recalled'
+  | 'forgetHome'
+  | 'forgetPerson'
+>;
+
+export type MemoryChats = HostedRepository<'aiChats', 'find' | 'latest'>;
+
 export class MemoryWriter {
   constructor(
-    private readonly memories: AiMemoriesRepository,
-    private readonly chats: Pick<AiChatsRepository, 'latest'>,
+    private readonly memories: MemoryRows,
+    private readonly chats: Pick<MemoryChats, 'latest'>,
     private readonly embedder: MemoryEmbedder,
     private readonly judge: MemoryJudge | null,
   ) {}
@@ -65,11 +87,13 @@ export class MemoryWriter {
   async add(
     who: MemoryPrincipal,
     input: AiMemoryAdd,
-    options: { readonly judge: boolean; readonly permitted?: (() => boolean) | undefined },
+    options: { readonly judge: boolean; readonly permitted?: Permitted | undefined },
   ): Promise<Written> {
-    requirePermission(options.permitted);
+    await requirePermission(options.permitted);
     requireScope(who, input.scope);
-    const inScope = this.memories.visible(who.profileId).filter((m) => m.scope === input.scope);
+    const inScope = (await this.memories.visible(who.profileId)).filter(
+      (m) => m.scope === input.scope,
+    );
     const key = normalised(input.text);
     const same = inScope.find((memory) => normalised(memory.text) === key);
     if (same !== undefined) return this.unchanged(who, same, input);
@@ -78,11 +102,14 @@ export class MemoryWriter {
     try {
       vector = await this.embedOne(who, input.text, options.permitted);
       if (vector !== null)
-        near = this.near(who, inScope, vector, NEIGHBOUR_SIMILARITY).slice(0, DEDUPE_NEIGHBOURS);
+        near = (await this.near(who, inScope, vector, NEIGHBOUR_SIMILARITY)).slice(
+          0,
+          DEDUPE_NEIGHBOURS,
+        );
     } catch (cause) {
       log.exception('memory.dedupe_unavailable', cause);
     }
-    requirePermission(options.permitted);
+    await requirePermission(options.permitted);
     const top = near[0];
     if (top !== undefined && top.similarity >= DUPLICATE_SIMILARITY)
       return this.unchanged(who, top.memory, input);
@@ -93,19 +120,23 @@ export class MemoryWriter {
     return this.insert(who, input, vector);
   }
 
-  change(who: MemoryPrincipal, id: string, patch: AiMemoryChange): Written {
-    const current = this.reachable(who, id);
+  async change(who: MemoryPrincipal, id: string, patch: AiMemoryChange): Promise<Written> {
+    const current = await this.reachable(who, id);
     requireScope(who, current.scope);
     if (this.same(current, patch)) return { memory: current, outcome: 'unchanged' };
-    const changed = this.memories.change(id, who.profileId, patch);
+    const changed = await this.memories.change(id, who.profileId, patch);
     if (changed === undefined) throw absent(id);
     this.embedInBackground(who.profileId);
     return { memory: changed, outcome: 'merged' };
   }
 
-  split(who: MemoryPrincipal, id: string, parts: MemorySplit['parts']): readonly StoredMemory[] {
-    requireScope(who, this.reachable(who, id).scope);
-    const stored = this.memories.split(
+  async split(
+    who: MemoryPrincipal,
+    id: string,
+    parts: MemorySplit['parts'],
+  ): Promise<readonly StoredMemory[]> {
+    requireScope(who, (await this.reachable(who, id)).scope);
+    const stored = await this.memories.split(
       id,
       who.profileId,
       parts.map((part) => ({
@@ -121,36 +152,37 @@ export class MemoryWriter {
     return stored;
   }
 
-  remove(who: MemoryPrincipal, id: string): void {
-    requireScope(who, this.reachable(who, id).scope);
-    if (!this.memories.remove(id, who.profileId)) throw absent(id);
+  async remove(who: MemoryPrincipal, id: string): Promise<void> {
+    requireScope(who, (await this.reachable(who, id)).scope);
+    if (!(await this.memories.remove(id, who.profileId))) throw absent(id);
   }
 
-  reachable(who: MemoryPrincipal, id: string): StoredMemory {
-    const memory = this.memories.find(id, who.profileId);
+  async reachable(who: MemoryPrincipal, id: string): Promise<StoredMemory> {
+    const memory = await this.memories.find(id, who.profileId);
     if (memory === undefined) throw absent(id);
     return memory;
   }
 
-  async fill(profileId: string, permitted?: () => boolean): Promise<void> {
-    const pending = this.memories.unembedded(profileId, this.embedder.model);
+  async fill(profileId: string, permitted?: Permitted): Promise<void> {
+    const pending = await this.memories.unembedded(profileId, this.embedder.model);
     if (pending.length === 0) return;
     const vectors = await this.embedder.embed(pending.map((memory) => memory.text));
-    if (permitted?.() === false) return;
-    pending.forEach((memory, index) => {
+    if (permitted !== undefined && !(await permitted())) return;
+    for (const [index, memory] of pending.entries()) {
       const vector = vectors[index];
-      if (vector !== undefined) this.memories.setEmbedding(memory, this.embedder.model, vector);
-    });
+      if (vector !== undefined)
+        await this.memories.setEmbedding(memory, this.embedder.model, vector);
+    }
   }
 
   async embedOne(
     who: MemoryPrincipal,
     text: string,
-    permitted?: () => boolean,
+    permitted?: Permitted,
   ): Promise<Float32Array | null> {
-    if (permitted?.() === false) return null;
+    if (permitted !== undefined && !(await permitted())) return null;
     await this.fill(who.profileId, permitted);
-    if (permitted?.() === false) return null;
+    if (permitted !== undefined && !(await permitted())) return null;
     const [vector] = await this.embedder.embed([text]);
     if (vector === undefined) throw new Error('The embedder returned no vector.');
     return vector;
@@ -160,22 +192,25 @@ export class MemoryWriter {
     who: MemoryPrincipal,
     text: string,
     limit: number,
-    permitted: () => boolean,
+    permitted: Permitted,
   ): Promise<readonly Neighbour[]> {
     const vector = await this.embedOne(who, text, permitted);
     if (vector === null) return [];
-    return this.near(who, this.memories.visible(who.profileId), vector, 0).slice(0, limit);
+    return (await this.near(who, await this.memories.visible(who.profileId), vector, 0)).slice(
+      0,
+      limit,
+    );
   }
 
   async apply(
     who: MemoryPrincipal,
     operations: readonly MemoryOperation[],
     allowed: ReadonlySet<string>,
-    permitted?: () => boolean,
+    permitted?: Permitted,
   ): Promise<readonly AppliedOperation[]> {
     const applied: AppliedOperation[] = [];
     for (const operation of operations) {
-      if (permitted?.() === false) break;
+      if (permitted !== undefined && !(await permitted())) break;
       try {
         const result = await this.applyOne(who, operation, allowed, permitted);
         if (result !== null) applied.push(result);
@@ -197,7 +232,7 @@ export class MemoryWriter {
     who: MemoryPrincipal,
     operation: MemoryOperation,
     allowed: ReadonlySet<string>,
-    permitted: (() => boolean) | undefined,
+    permitted: Permitted | undefined,
   ): Promise<AppliedOperation | null> {
     if (operation.op === 'add') {
       const scope = operation.scope === 'home' && who.role !== 'owner' ? 'person' : operation.scope;
@@ -220,10 +255,10 @@ export class MemoryWriter {
       return null;
     }
     if (operation.op === 'delete') {
-      this.remove(who, operation.id);
+      await this.remove(who, operation.id);
       return { op: 'delete', memory: null, outcome: 'deleted' };
     }
-    const written = this.change(who, operation.id, {
+    const written = await this.change(who, operation.id, {
       text: operation.text,
       kind: operation.kind,
       importance: operation.significance,
@@ -252,7 +287,7 @@ export class MemoryWriter {
     input: AiMemoryAdd,
     near: readonly Neighbour[],
   ): Promise<readonly MemoryOperation[] | null> {
-    const chatId = who.chatId ?? this.chats.latest(who.profileId)?.id;
+    const chatId = who.chatId ?? (await this.chats.latest(who.profileId))?.id;
     if (this.judge === null || chatId === undefined) return null;
     try {
       return await this.judge.judge({
@@ -267,22 +302,27 @@ export class MemoryWriter {
     }
   }
 
-  private unchanged(
+  private async unchanged(
     who: MemoryPrincipal,
     existing: StoredMemory | undefined,
     input: AiMemoryAdd,
-  ): Written {
+  ): Promise<Written> {
     if (existing === undefined) throw new Error('A duplicate was reported without a note.');
     const raised = input.importance !== undefined && input.importance > existing.importance;
     const memory = raised
-      ? (this.memories.change(existing.id, who.profileId, { importance: input.importance }) ??
-        existing)
+      ? ((await this.memories.change(existing.id, who.profileId, {
+          importance: input.importance,
+        })) ?? existing)
       : existing;
     return { memory, outcome: 'unchanged' };
   }
 
-  private insert(who: MemoryPrincipal, input: AiMemoryAdd, vector: Float32Array | null): Written {
-    const memory = this.memories.add(who.profileId, {
+  private async insert(
+    who: MemoryPrincipal,
+    input: AiMemoryAdd,
+    vector: Float32Array | null,
+  ): Promise<Written> {
+    const memory = await this.memories.add(who.profileId, {
       scope: input.scope,
       text: input.text,
       kind: input.kind ?? 'fact',
@@ -293,17 +333,17 @@ export class MemoryWriter {
       sourceMessageId: who.messageId,
     });
     if (vector === null) this.embedInBackground(who.profileId);
-    else this.memories.setEmbedding(memory, this.embedder.model, vector);
+    else await this.memories.setEmbedding(memory, this.embedder.model, vector);
     return { memory, outcome: 'added' };
   }
 
-  private near(
+  private async near(
     who: MemoryPrincipal,
     rows: readonly StoredMemory[],
     vector: Float32Array,
     minimum: number,
-  ): Neighbour[] {
-    const vectors = this.memories.embeddings(who.profileId, this.embedder.model);
+  ): Promise<Neighbour[]> {
+    const vectors = await this.memories.embeddings(who.profileId, this.embedder.model);
     const found: Neighbour[] = [];
     for (const memory of rows) {
       const stored = vectors.get(memory.id);

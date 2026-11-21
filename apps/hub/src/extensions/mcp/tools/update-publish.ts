@@ -67,7 +67,7 @@ async function publishStagedApp(
   upload: string,
 ): Promise<ToolOutput> {
   const layout = await layoutOf(context);
-  const builds = new AndroidBuilds(context.store.androidBuildObservations);
+  const builds = new AndroidBuilds(context.store);
   const staging = releaseStaging(layout, () => context.clock.now());
   const commit = (await staging.read(upload)).release?.commit ?? null;
   const result = await publishProvidedApk({
@@ -100,14 +100,14 @@ async function publishStagedUiUpdate(
     target: input.platform,
   });
   const layout = await layoutOf(context);
-  const builds = new AndroidBuilds(context.store.androidBuildObservations);
-  const clients = await context.store.host.call('clients', 'list');
+  const builds = new AndroidBuilds(context.store);
+  const paired = await builds.paired(await context.store.host.call('clients', 'list'));
   const result = await publishStagedUi(
     {
       layout,
       staging: releaseStaging(layout, () => context.clock.now()),
       now: () => context.clock.now(),
-      paired: () => builds.paired(clients),
+      paired: () => paired,
     },
     {
       runId: input.runId,

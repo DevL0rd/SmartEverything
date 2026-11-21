@@ -6,7 +6,7 @@ import {
   type WatchSampleBatch,
 } from '@smarteverything/domain';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 export interface WatchUpload {
   readonly records: readonly HealthRecord[];
@@ -55,7 +55,7 @@ function withRoute(session: HealthRecord, route: WatchRoute): HealthRecord | nul
 
 const ROUTE_MATCH_MS = 120_000;
 
-function sessionAt(store: Store, owner: UploadOwner, start: string): HealthRecord | undefined {
+function sessionAt(store: HostStore, owner: UploadOwner, start: string): HealthRecord | undefined {
   const at = Date.parse(start);
   const distance = (record: HealthRecord): number => Math.abs(Date.parse(record.startTime) - at);
   return store.health
@@ -76,7 +76,7 @@ function sessionAt(store: Store, owner: UploadOwner, start: string): HealthRecor
 }
 
 function routedSessions(
-  store: Store,
+  store: HostStore,
   owner: UploadOwner,
   routes: readonly WatchRoute[],
 ): { readonly sessions: HealthRecord[]; readonly unmatched: string[] } {
@@ -95,7 +95,7 @@ function routedSessions(
 }
 
 export function saveWatchUpload(
-  store: Store,
+  store: HostStore,
   owner: UploadOwner,
   upload: WatchUpload,
 ): UploadResult {

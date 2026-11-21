@@ -6,13 +6,12 @@ import type {
   Provider,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { Store } from '../store/store';
 import type { CleanMap, CleanStore } from './clean-tracked';
 import { VacuumCleanTracker } from './clean-tracker';
 import type { MapCache } from './map-cache';
 
 export interface CleanTrackerParts {
-  readonly store: { readonly devices: Pick<Store['devices'], 'find'> };
+  readonly devices: { readonly find: (id: string) => DeviceRow | undefined };
   readonly cleans: CleanStore;
   readonly map: (deviceId: string) => CleanMap;
   readonly now: () => Date;
@@ -46,7 +45,7 @@ export function cleanTrackerOf(
   writers: () => CleanTrackerWriters,
 ): VacuumCleanTracker {
   return new VacuumCleanTracker({
-    device: (id): DeviceRow | undefined => parts.store.devices.find(id),
+    device: (id): DeviceRow | undefined => parts.devices.find(id),
     value: (deviceId, key) => writers().state.valueOf(deviceId, key),
     record: (provider, event): void => {
       writers().events.fromProvider(provider, event);

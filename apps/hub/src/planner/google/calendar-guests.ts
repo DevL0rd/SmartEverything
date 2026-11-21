@@ -2,7 +2,7 @@ import type { JsonValue, PlannerGuestRow, PlannerItemRow } from '@smarteverythin
 import type { Attendee, GoogleEvent } from '@smarteverything/google';
 import { z } from 'zod';
 import { newGuestToken } from '../guests/guest-list';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export const ATTENDEE_FIELD = 'attendees';
 
@@ -13,7 +13,7 @@ const FROM_GOOGLE = {
   tentative: 'maybe',
 } as const;
 
-export type GuestStore = Pick<Store, 'plannerGuests'>;
+export type GuestStore = Pick<HostStore, 'plannerGuests'>;
 
 function listed(emails: readonly string[]): JsonValue | undefined {
   if (emails.length === 0) return undefined;

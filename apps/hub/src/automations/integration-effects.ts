@@ -43,7 +43,7 @@ export interface IntegrationPorts {
   readonly signals: Pick<SignalBus, 'emit'>;
   readonly replies: Pick<WebhookReplies, 'respond'>;
   readonly clock: Pick<Clock, 'now'>;
-  readonly ownerProfileId: () => string;
+  readonly ownerProfileId: () => Promise<string>;
 }
 
 interface Identity {
@@ -51,10 +51,10 @@ interface Identity {
   readonly role: 'owner' | 'member';
 }
 
-function identityOf(ports: IntegrationPorts, person: string | undefined): Identity {
+async function identityOf(ports: IntegrationPorts, person: string | undefined): Promise<Identity> {
   const authority = currentExecutionAuthority();
   const role = authority === undefined ? 'owner' : executionRole(authority);
-  const own = authority?.profile_id ?? ports.ownerProfileId();
+  const own = authority?.profile_id ?? (await ports.ownerProfileId());
   if (person !== undefined && person !== own && role !== 'owner') {
     throw new IntegrationError('Forbidden', 'Members can only run AI calls as themselves.');
   }
@@ -81,7 +81,7 @@ function aiAsk(ports: IntegrationPorts): EffectHandler {
     if (!checked.ok) return checked;
     const call = checked.value;
     try {
-      const identity = identityOf(ports, call.person);
+      const identity = await identityOf(ports, call.person);
       const answer = await ports.model.ask({
         ...identity,
         automationId: run.automationId,
@@ -110,7 +110,7 @@ function aiVision(ports: IntegrationPorts): EffectHandler {
     if (!checked.ok) return checked;
     const call = checked.value;
     try {
-      const identity = identityOf(ports, call.person);
+      const identity = await identityOf(ports, call.person);
       const answer = await ports.model.ask({
         ...identity,
         automationId: run.automationId,
@@ -140,7 +140,7 @@ function aiDecide(ports: IntegrationPorts): EffectHandler {
     const call = checked.value;
     try {
       const decision = await ports.model.decide({
-        ...identityOf(ports, call.person),
+        ...(await identityOf(ports, call.person)),
         automationId: run.automationId,
         system: 'Decide the question. Be strict: answer true only when the facts support it.',
         prompt: call.context === undefined ? call.question : `${call.context}\n\n${call.question}`,
@@ -168,7 +168,7 @@ function phoneAction(ports: IntegrationPorts): EffectHandler {
     const checked = parsed(PHONE_PARAMS, params);
     if (!checked.ok) return checked;
     try {
-      const identity = identityOf(ports, undefined);
+      const identity = await identityOf(ports, undefined);
       const body = JSON_VALUE.parse(checked.value.action);
       await deliver({
         kind: request.kind,
@@ -206,7 +206,7 @@ function healthRead(ports: IntegrationPorts): EffectHandler {
     if (!checked.ok) return checked;
     const call = checked.value;
     try {
-      const identity = identityOf(ports, undefined);
+      const identity = await identityOf(ports, undefined);
       const answer = HEALTH_ANSWER.parse(
         await awaitRun(
           callTool(
@@ -282,7 +282,7 @@ function irSend(ports: IntegrationPorts): EffectHandler {
     const checked = parsed(IR_PARAMS, params);
     if (!checked.ok) return checked;
     try {
-      const identity = identityOf(ports, undefined);
+      const identity = await identityOf(ports, undefined);
       await deliver({
         kind: request.kind,
         mode: modeOf(request),

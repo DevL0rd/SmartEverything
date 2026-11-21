@@ -9,19 +9,12 @@ import type { DriveInodePatch } from '../../store/repositories/drive-item-inodes
 import type { DrivePlaced } from '../../store/repositories/drive-item-lookups';
 import type { DriveItemDraft } from '../../store/repositories/drive-items';
 import type { DriveInodeAttributes, DriveInodeTimes } from '../../store/repositories/drive-inodes';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { settleBackupIn } from '../../photos/backup-records';
 import type { ChangeActor, ContentResult, ItemRecord } from '../changes';
-import {
-  announce,
-  appendFeed,
-  fileDraftOf,
-  identityOf,
-  isoOf,
-  newVersion,
-  replacedDraft,
-} from '../change-rows';
+import { fileDraftOf, identityOf, isoOf, newVersion, replacedDraft } from '../change-rows';
+import { announce, appendFeed } from './change-feed';
 import { onlyFilePlaced, type FileItem } from '../file-item';
 import type { DriveWriteRoot, FileStamp } from '../intents';
 import type { CommittedBytes } from '../patch-commit';
@@ -73,7 +66,7 @@ export interface SettledContent extends ContentResult {
 }
 
 export type SettleStore = Pick<
-  Store,
+  HostStore,
   | 'context'
   | 'now'
   | 'feed'
@@ -191,7 +184,7 @@ function adoptInode(
 }
 
 function runAlongside(
-  store: Store,
+  store: HostStore,
   item: DriveItem,
   alongside: readonly ContentAlongside[],
 ): DriveConflict[] {
@@ -233,7 +226,7 @@ function runAlongside(
   return conflicts;
 }
 
-export function settleContentIn(store: Store, input: SettleInput): SettledContent {
+export function settleContentIn(store: HostStore, input: SettleInput): SettledContent {
   const call: SettleCall = { ...input, store };
   const { root, actor, existing, committed, mode } = input;
   const version = captureRow(call);
@@ -256,7 +249,7 @@ export function settleContentIn(store: Store, input: SettleInput): SettledConten
   return { item: written.item, created: existing === undefined, version, conflicts };
 }
 
-export function recordItemIn(store: Store, record: ItemRecord): DriveItem {
+export function recordItemIn(store: HostStore, record: ItemRecord): DriveItem {
   const written = store.driveItems.write({ item: record.draft, identity: record.identity });
   if (written.changed) {
     appendFeed({ store }, written.item, record.op, record.actor);
@@ -287,7 +280,7 @@ export interface ContentPlace {
   readonly parent: DrivePlaced | undefined;
 }
 
-export function contentPlace(store: Store, input: ContentPlaceInput): ContentPlace {
+export function contentPlace(store: HostStore, input: ContentPlaceInput): ContentPlace {
   const { rootId, relPath } = input;
   const lookups = store.driveItems.lookups;
   const target =

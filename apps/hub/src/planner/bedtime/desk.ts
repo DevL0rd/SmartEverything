@@ -32,7 +32,7 @@ export interface BedtimeChannel {
   readonly push: (alert: OwnerAlert) => void;
 }
 
-export type BedtimeStore = Pick<Store, 'host' | 'settings'>;
+export type BedtimeStore = Pick<Store, 'host' | 'live'>;
 
 export interface BedtimeDeskOptions {
   readonly store: BedtimeStore;
@@ -111,7 +111,7 @@ export class BedtimeDesk {
     const now = clock.now();
     const moments = momentsOf(
       bedtime,
-      upcomingWindows(bedtime, now, store.settings.read().time_zone, WINDOWS_AHEAD),
+      upcomingWindows(bedtime, now, store.live.home.settings.read().time_zone, WINDOWS_AHEAD),
       now,
     );
     const wanted = new Map(moments.map((moment) => [keyOf(moment), moment]));

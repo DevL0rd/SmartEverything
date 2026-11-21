@@ -7,7 +7,7 @@ import type { CalendarReader } from '../ical/calendar-reader';
 import { feedUrlOf } from './address';
 import { FEED_DEADLINE_MS, type FeedAnswer, type FeedRequest } from './transport';
 
-export type SubscriptionStore = Pick<Store, 'host' | 'feed' | 'settings'>;
+export type SubscriptionStore = Pick<Store, 'host' | 'feed' | 'live'>;
 
 export type FeedFetcher = (request: FeedRequest) => Promise<FeedAnswer>;
 
@@ -122,7 +122,7 @@ export class FeedSubscription {
       return this.touch(collection, null);
     }
     const calendar = await this.deps.calendars.read(answer.text, {
-      defaultZone: store.settings.read().time_zone,
+      defaultZone: store.live.home.settings.read().time_zone,
     });
     const applied = await store.host.write('plannerFeedApply', {
       collectionId: collection.id,

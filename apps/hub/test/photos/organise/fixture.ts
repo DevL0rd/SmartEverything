@@ -1,11 +1,10 @@
+import { testStore, type TestStore, type SeededStore } from '../../support/store';
 import { randomUUID } from 'node:crypto';
 import type { DriveActor } from '../../../src/drive/access';
 import { fileDraft } from '../../../src/drive/changes';
 import type { NoticeListener } from '../../../src/store/feed';
 import type { SqlFilter } from '../../../src/store/sql';
-import type { Store } from '../../../src/store/store';
 import { driveRoot } from '../../drive/drive-fixture';
-import { testStore, type TestStore } from '../../support/store';
 
 export const NOW = '2026-10-08T10:00:00.000Z';
 
@@ -22,7 +21,7 @@ export interface Seed {
 
 export interface Kit {
   readonly test: TestStore;
-  readonly store: Store;
+  readonly store: SeededStore;
   readonly alice: DriveActor;
   readonly bob: DriveActor;
   readonly homeRoot: string;
@@ -37,7 +36,7 @@ export interface Kit {
   readonly row: (id: string) => Record<string, unknown>;
 }
 
-function seedPlaces(store: Store): void {
+function seedPlaces(store: SeededStore): void {
   for (const [id, name] of [
     ['1001', 'Lisbon'],
     ['1002', 'Porto'],
@@ -51,7 +50,7 @@ function seedPlaces(store: Store): void {
   }
 }
 
-function seeder(store: Store, homeRoot: string): (input: Seed) => string {
+function seeder(store: SeededStore, homeRoot: string): (input: Seed) => string {
   return (input) => {
     const id = `0f000000-0000-4000-8000-${String(input.n).padStart(12, '0')}`;
     const rootId = input.root ?? homeRoot;
@@ -89,7 +88,7 @@ function seeder(store: Store, homeRoot: string): (input: Seed) => string {
   };
 }
 
-function readers(store: Store): Pick<Kit, 'shown' | 'row'> {
+function readers(store: SeededStore): Pick<Kit, 'shown' | 'row'> {
   return {
     shown: (filter) =>
       store.database

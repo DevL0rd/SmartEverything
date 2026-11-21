@@ -18,7 +18,7 @@ export async function controlAgent(
   if (!run.supported_actions.includes(control.action))
     throw new ApiError('conflict', 'This agent has not advertised that control action.');
   if (run.source === 'smarteverything') return controlOwnAgent(ports, run, control);
-  const parent = ports.store.aiChats.chat(run.parent_chat_id);
+  const parent = await ports.store.host.call('aiChats', 'chat', run.parent_chat_id);
   const bound = computerEngine(parent.engine);
   if (bound === null)
     throw new ApiError('conflict', 'This run has no native computer provider binding.');
@@ -26,7 +26,7 @@ export async function controlAgent(
     throw new ApiError('conflict', 'The parent runtime binding changed.');
   const runner = ports.computer(bound.kind);
   if (runner === undefined) throw new ApiError('conflict', 'This runtime is unavailable.');
-  const state = runner.state.bound(parent);
+  const state = await runner.state.bound(parent);
   assertCurrentChild(state, run);
   if (run.source !== 'claude' || control.action !== 'interrupt')
     throw new ApiError('conflict', 'The native adapter does not advertise this child control.');
@@ -42,10 +42,10 @@ async function controlOwnAgent(
   control: z.infer<typeof AI_AGENT_RUN_CONTROL>,
 ): Promise<void> {
   if (run.child_chat_id === null) throw new ApiError('conflict', 'This child has no chat binding.');
-  const event = ports.store.assistantEvents.event(run.source_id);
+  const event = await ports.store.host.call('assistantEvents', 'event', run.source_id);
   if (event.answered_at !== null || event.delivered_at === null)
     throw new ApiError('conflict', 'This exact child task is no longer running.');
-  const child = ports.store.aiChats.chat(run.child_chat_id);
+  const child = await ports.store.host.call('aiChats', 'chat', run.child_chat_id);
   if (control.action === 'interrupt') return ports.interrupt(child);
   if (control.action !== 'send')
     throw new ApiError('conflict', 'This child supports messages and interruption only.');
@@ -53,7 +53,7 @@ async function controlOwnAgent(
 }
 
 function assertCurrentChild(
-  state: ReturnType<ComputerRunner['state']['bound']>,
+  state: Awaited<ReturnType<ComputerRunner['state']['bound']>>,
   run: AiAgentRun,
 ): void {
   if (

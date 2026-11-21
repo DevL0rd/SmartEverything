@@ -33,6 +33,7 @@ let answered: { clientId: string; requestId: string; result: TreadmillActionResu
 beforeEach(async () => {
   captureLogs();
   rig = await treadmillRig();
+  await rig.test.store.live.access.settled();
   answered = [];
   const bridges = new WatchBridges({
     observe: (): Promise<void> => Promise.resolve(),
@@ -137,6 +138,7 @@ describe('the phone’s endpoints', () => {
       template: 'adult',
       scopes: { ...TEMPLATE_SCOPES.adult, devices: { mode: 'only', rooms: [], devices: [] } },
     });
+    await rig.test.store.live.access.settled();
     const params = { deviceId: rig.row().id };
     const hidden = 'That device is not part of your access';
     await expect(

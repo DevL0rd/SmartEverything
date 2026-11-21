@@ -46,32 +46,40 @@ function loggedSignals(change: RowChange, context: FeedContext): readonly Signal
   ];
 }
 
-function sleepEndedSignals(change: RowChange, context: FeedContext): readonly SignalInput[] {
+export interface SleepEndAsk {
+  readonly profileId: string;
+  readonly day: string;
+  readonly minutes: number;
+}
+
+export function sleepEndAsk(change: RowChange, context: FeedContext): SleepEndAsk | null {
   if (change.table !== 'health_daily' || change.record === null) {
-    return [];
+    return null;
   }
   const { record, oldRecord } = change;
   if (record.profile_id === null || record.metric !== 'sleep' || record.day !== context.today()) {
-    return [];
+    return null;
   }
   if (record.value <= (oldRecord?.value ?? 0)) {
-    return [];
+    return null;
   }
-  const endedAt = context.recentSleepEnd(record.profile_id);
-  if (endedAt === null) {
-    return [];
-  }
-  return [
-    signalAt(context, {
-      source: 'health',
-      kind: 'sleep_ended',
-      subject: record.profile_id,
-      field: null,
-      value: endedAt,
-      profileId: record.profile_id,
-      data: { endedAt, day: record.day, minutes: record.value },
-    }),
-  ];
+  return { profileId: record.profile_id, day: record.day, minutes: record.value };
+}
+
+export function sleepEndedSignal(
+  context: FeedContext,
+  ask: SleepEndAsk,
+  endedAt: string,
+): SignalInput {
+  return signalAt(context, {
+    source: 'health',
+    kind: 'sleep_ended',
+    subject: ask.profileId,
+    field: null,
+    value: endedAt,
+    profileId: ask.profileId,
+    data: { endedAt, day: ask.day, minutes: ask.minutes },
+  });
 }
 
 function readingValues(record: BodyReadingRow): readonly (readonly [string, number])[] {
@@ -113,6 +121,5 @@ export function healthSignals(change: RowChange, context: FeedContext): readonly
     ...todaySignals(change, context),
     ...loggedSignals(change, context),
     ...readingSignals(change, context),
-    ...sleepEndedSignals(change, context),
   ];
 }

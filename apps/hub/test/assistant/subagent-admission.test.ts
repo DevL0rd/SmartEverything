@@ -80,31 +80,29 @@ describe('queued subagent work', () => {
     const second = queue(childA);
     const other = queue(childB);
 
-    expect(admission.enter(first)).toBe(true);
+    expect(await admission.enter(first)).toBe(true);
     opened.store.assistantEvents.mark(first.id, 'delivered_at');
     admission.release(first.id);
 
-    expect(admission.enter(second)).toBe(false);
-    expect(admission.enter(other)).toBe(true);
+    expect(await admission.enter(second)).toBe(false);
+    expect(await admission.enter(other)).toBe(true);
   });
 
-  it('never refuses new work because of how much is queued', () => {
+  it('never refuses new work because of how much is queued', async () => {
     const admission = new SubagentAdmission(opened.store);
     const root = chat(null);
     const child = chat(root);
     for (let count = 0; count < 300; count += 1) queue(child);
 
-    expect(() => {
-      admission.preflight(root, false);
-    }).not.toThrow();
+    await expect(admission.preflight(root, false)).resolves.toBeUndefined();
   });
 
-  it('admits every queued helper while no capacity is set', () => {
+  it('admits every queued helper while no capacity is set', async () => {
     const admission = new SubagentAdmission(opened.store);
     const root = chat(null);
     const events = Array.from({ length: 12 }, () => queue(chat(root)));
 
-    expect(events.map((event) => admission.enter(event))).not.toContain(false);
+    expect(await Promise.all(events.map((event) => admission.enter(event)))).not.toContain(false);
   });
 
   it('refuses nesting beyond the depth from the settings', async () => {
@@ -114,22 +112,16 @@ describe('queued subagent work', () => {
     const first = chat(root);
     const second = chat(first);
 
-    expect(() => {
-      admission.preflight(first, false);
-    }).not.toThrow();
-    expect(() => {
-      admission.preflight(second, false);
-    }).toThrow('nesting depth limit');
+    await expect(admission.preflight(first, false)).resolves.toBeUndefined();
+    await expect(admission.preflight(second, false)).rejects.toThrow('nesting depth limit');
   });
 
-  it('allows any nesting while no depth is set', () => {
+  it('allows any nesting while no depth is set', async () => {
     const admission = new SubagentAdmission(opened.store);
     let parent = chat(null);
     for (let level = 0; level < 12; level += 1) parent = chat(parent);
 
-    expect(() => {
-      admission.preflight(parent, true);
-    }).not.toThrow();
+    await expect(admission.preflight(parent, true)).resolves.toBeUndefined();
   });
 
   it('asks a waiting helper to queue instead once the capacity from the settings is used', async () => {
@@ -137,13 +129,9 @@ describe('queued subagent work', () => {
     const admission = new SubagentAdmission(opened.store);
     const root = chat(null);
     const child = chat(root);
-    expect(admission.enter(queue(child))).toBe(true);
+    expect(await admission.enter(queue(child))).toBe(true);
 
-    expect(() => {
-      admission.preflight(child, true);
-    }).toThrow('Child capacity is full');
-    expect(() => {
-      admission.preflight(child, false);
-    }).not.toThrow();
+    await expect(admission.preflight(child, true)).rejects.toThrow('Child capacity is full');
+    await expect(admission.preflight(child, false)).resolves.toBeUndefined();
   });
 });

@@ -110,7 +110,7 @@ async function mediaNote(
   const request = input.request;
   if (request.operation !== 'native_media_note')
     throw new ApiError('invalid_request', 'Expected a native media note.');
-  service.storage.verify(request.claim, input);
+  await service.storage.verify(request.claim, input);
   const text = await nativeMediaNote(
     service,
     context.assistant.files,
@@ -120,17 +120,17 @@ async function mediaNote(
   return { text };
 }
 
-function attachment(
+async function attachment(
   context: HarnessTransportPorts,
   service: HarnessService,
   input: HarnessTransportRequest,
-): unknown {
+): Promise<unknown> {
   const request = input.request;
   if (request.operation !== 'attachment')
     throw new ApiError('invalid_request', 'Expected an attachment description.');
-  service.storage.verify(request.claim, input);
+  await service.storage.verify(request.claim, input);
   const files = new HarnessAttachments(service, context.assistant.files);
-  return files.describe(files.find(request.claim.session_id, request.attachment_id));
+  return await files.describe(await files.find(request.claim.session_id, request.attachment_id));
 }
 export interface AttachmentPorts {
   readonly context: Pick<ServerContext, 'computerNodes'> & {
@@ -148,12 +148,14 @@ export async function attachmentBytes(
   const node = await authenticate(context, request);
   const sessionId = z.uuid().parse(params['sessionId']);
   if (
-    harnessTargetKey(service.storage.grant(sessionId).target) !==
+    harnessTargetKey((await service.storage.grant(sessionId)).target) !==
     harnessTargetKey({ kind: 'device', device_id: node.deviceId })
   )
     throw new ApiError('forbidden', 'This computer is not the granted conversation host.');
   const files = new HarnessAttachments(service, context.assistant.files);
-  const file = await files.read(files.find(sessionId, z.uuid().parse(params['attachmentId'])));
+  const file = await files.read(
+    await files.find(sessionId, z.uuid().parse(params['attachmentId'])),
+  );
   response.writeHead(200, {
     'content-type': 'application/octet-stream',
     'content-length': file.data.byteLength,
@@ -182,8 +184,7 @@ async function inference(
   const ordinaryRequest =
     z.literal('true').optional().parse(request.headers['x-smarteverything-ordinary-request']) ===
     'true';
-  service.storage.verify(body.claim, body);
-  const grant = service.storage.grant(body.claim.session_id);
+  const { grant } = await service.storage.checked(body.claim.session_id, body, body.claim);
   const route = service.routes.selected(
     grant.profile_id,
     grant.route,
@@ -305,8 +306,8 @@ function inferenceAccounting(
   },
 ): Parameters<typeof meteredAccountingFetch>[3] {
   return {
-    verify: (): void => {
-      service.storage.verify(body.claim, body.identity);
+    verify: async (): Promise<void> => {
+      await service.storage.verify(body.claim, body.identity);
     },
     ordinary_request: body.ordinaryRequest,
   };

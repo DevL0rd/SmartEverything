@@ -91,9 +91,10 @@ export class DriveStorageWriter {
     await this.deps.store.host.call('driveQuotas', 'set', set.profileId, set.bytes);
   }
 
-  updateSettings(caller: DriveCaller, update: DriveSettingsUpdate): DriveSettings {
+  async updateSettings(caller: DriveCaller, update: DriveSettingsUpdate): Promise<DriveSettings> {
     requireOwner(caller);
-    return updateDriveSettings(this.deps.store, update);
+    const saved = await updateDriveSettings(this.deps.store, update);
+    return saved;
   }
 
   async startScrub(caller: DriveCaller): Promise<DriveScrubState> {

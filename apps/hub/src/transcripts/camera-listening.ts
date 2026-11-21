@@ -28,15 +28,12 @@ const SAMPLES_PER_MS = 16;
 const REPEAT_WINDOW_MS = 30_000;
 
 export interface CameraListeningOptions {
-  readonly store: Pick<
-    Store,
-    'cameras' | 'devices' | 'transcripts' | 'clients' | 'profiles' | 'personAccess' | 'settings'
-  >;
+  readonly store: Pick<Store, 'host' | 'live'>;
   readonly transcripts: Transcripts;
   readonly transcriber: Pick<Transcriber, 'transcribe'>;
   readonly ready: (cameraId: string) => Promise<void>;
   readonly keyPresent: () => boolean;
-  readonly inConversation: (cameraId: string) => boolean;
+  readonly inConversation: (cameraId: string) => Promise<boolean>;
   readonly names: () => readonly string[];
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
@@ -99,16 +96,16 @@ export class CameraListening {
 
   async status(cameraIds?: readonly string[]): Promise<TranscriptStatus> {
     const cameras = await Promise.all(
-      this.options.store.cameras
+      this.options.store.live.home.cameras
         .list()
         .filter((camera) => cameraIds === undefined || cameraIds.includes(camera.device_id))
         .map((camera) => this.listeningOf(camera)),
     );
-    return {
-      cameras,
-      spent_usd: this.budget.spentToday() / MICROS_PER_USD,
-      cap_usd: this.options.transcripts.settings().daily_cap_usd,
-    };
+    const [spent, settings] = await Promise.all([
+      this.budget.spentToday(),
+      this.options.transcripts.settings(),
+    ]);
+    return { cameras, spent_usd: spent / MICROS_PER_USD, cap_usd: settings.daily_cap_usd };
   }
 
   private async listeningOf(camera: {
@@ -129,10 +126,10 @@ export class CameraListening {
     if (!this.options.keyPresent()) {
       return 'no_openrouter_key';
     }
-    if (this.budget.capReached()) {
+    if (await this.budget.capReached()) {
       return 'cap_reached';
     }
-    if (this.options.inConversation(cameraId)) {
+    if (await this.options.inConversation(cameraId)) {
       return 'in_call';
     }
     return this.options.ready(cameraId).then(
@@ -155,21 +152,20 @@ export class CameraListening {
     if (reason !== null) {
       return;
     }
-    const { store } = this.options;
-    const profileId = ownerProfileOf(store);
+    const profileId = ownerProfileOf(this.options.store);
     const text = await this.options.transcriber.transcribe({
       pcm16k: segment.pcm,
       profileId,
       pluginId: null,
       names: this.options.names(),
-      recent: this.recentLines(cameraId),
+      recent: await this.recentLines(cameraId),
       meta: { listening: 'camera', camera_id: cameraId },
     });
     if (text === null || this.unheard(cameraId, text, segment.startedAt)) {
       return;
     }
-    const session = this.sessionOf(cameraId);
-    this.options.transcripts.add(
+    const session = await this.sessionOf(cameraId);
+    await this.options.transcripts.add(
       session.id,
       {
         at: new Date(segment.startedAt).toISOString(),
@@ -215,27 +211,31 @@ export class CameraListening {
     }
   }
 
-  private recentLines(cameraId: string): string[] {
+  private async recentLines(cameraId: string): Promise<string[]> {
     const open = this.open.get(cameraId);
-    if (open === undefined || this.options.transcripts.find(open.sessionId) === undefined) {
+    if (open === undefined || (await this.options.transcripts.find(open.sessionId)) === undefined) {
       return [];
     }
-    return this.options.transcripts
-      .recent(open.sessionId, CONTEXT_WINDOW_MS, CONTEXT_LINES)
-      .map((line) => line.text);
+    const lines = await this.options.transcripts.recent(
+      open.sessionId,
+      CONTEXT_WINDOW_MS,
+      CONTEXT_LINES,
+    );
+    return lines.map((line) => line.text);
   }
 
-  private sessionOf(cameraId: string): TranscriptSession {
+  private async sessionOf(cameraId: string): Promise<TranscriptSession> {
     const day = this.dayOf();
     const held = this.open.get(cameraId);
-    const session = held === undefined ? undefined : this.options.transcripts.find(held.sessionId);
+    const session =
+      held === undefined ? undefined : await this.options.transcripts.find(held.sessionId);
     if (held?.day === day && session?.ended_at === null) {
       return session;
     }
     if (session !== undefined) {
-      this.options.transcripts.close(session.id);
+      await this.options.transcripts.close(session.id);
     }
-    const opened = this.options.transcripts.open({
+    const opened = await this.options.transcripts.open({
       source: 'camera',
       sourceId: cameraId,
       pluginId: null,
@@ -247,13 +247,13 @@ export class CameraListening {
   }
 
   private nameOf(cameraId: string): string {
-    const device = this.options.store.devices.find(cameraId);
+    const device = this.options.store.live.home.devices.find(cameraId);
     return device === undefined ? 'Camera' : (device.display_name ?? device.name);
   }
 
   private dayOf(): string {
     return new Intl.DateTimeFormat('en-US', {
-      timeZone: this.options.store.settings.read().time_zone,
+      timeZone: this.options.store.live.home.settings.read().time_zone,
       weekday: 'short',
       day: 'numeric',
       month: 'short',

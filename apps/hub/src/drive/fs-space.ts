@@ -23,9 +23,9 @@ interface Measured {
   readonly quotaOf: string | null;
 }
 
-function quotaFree(env: FsSpaceEnv, profileId: string | null): number | null {
+async function quotaFree(env: FsSpaceEnv, profileId: string | null): Promise<number | null> {
   if (profileId === null) return null;
-  const { quota, usage } = env.quota(profileId);
+  const { quota, usage } = await env.quota(profileId);
   if (quota === null) return null;
   return Math.max(0, quota - (usage.live + usage.versions + usage.trash));
 }
@@ -54,7 +54,7 @@ async function measured(
 
 async function spaceOf(env: FsSpaceEnv, target: Measured): Promise<FsSpace> {
   const disk = await env.probe.space(target.path);
-  const allowed = quotaFree(env, target.quotaOf);
+  const allowed = await quotaFree(env, target.quotaOf);
   const freeBytes = allowed === null ? disk.freeBytes : Math.min(allowed, disk.freeBytes);
   return { totalBytes: target.used + freeBytes, usedBytes: target.used, freeBytes };
 }

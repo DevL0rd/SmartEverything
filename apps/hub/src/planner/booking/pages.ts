@@ -3,9 +3,9 @@ import {
   type PlannerBookingPageRow,
   type PlannerCollectionRow,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
-export type BookingPageStore = Pick<Store, 'plannerBookingPages' | 'plannerCollections'>;
+export type BookingPageStore = Pick<HostStore, 'plannerBookingPages' | 'plannerCollections'>;
 
 export function requireBookable(
   store: BookingPageStore,

@@ -6,7 +6,7 @@ import {
   type AssistantMessageRow,
   type ChatWidget,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 const RECENT_MESSAGES = 6;
 
@@ -15,7 +15,7 @@ export interface AttachedWidgets {
   readonly dropped: readonly string[];
 }
 
-export function workingReply(store: Store, chatId: string): AssistantMessageRow | null {
+export function workingReply(store: HostStore, chatId: string): AssistantMessageRow | null {
   return (
     store.assistantChat
       .messages({ chatId, limit: RECENT_MESSAGES })
@@ -24,7 +24,7 @@ export function workingReply(store: Store, chatId: string): AssistantMessageRow 
 }
 
 export function attachWidgets(
-  store: Store,
+  store: HostStore,
   reply: AssistantMessageRow,
   widgets: readonly ChatWidget[],
 ): AttachedWidgets {

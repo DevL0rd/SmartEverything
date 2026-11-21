@@ -121,10 +121,13 @@ interface RoomPlan {
   readonly unlinked: readonly string[];
 }
 
-function planRooms(store: Store, deviceId: string, wanted: readonly string[]): RoomPlan {
+async function planRooms(
+  store: Store,
+  deviceId: string,
+  wanted: readonly string[],
+): Promise<RoomPlan> {
   const present = new Map(
-    store.vacuumRoomLinks
-      .list(deviceId)
+    (await store.host.call('vacuumRoomLinks', 'list', deviceId))
       .filter((link) => link.missingSince === null)
       .map((link) => [link.roomId, link.mapRoomId] as const),
   );
@@ -166,7 +169,7 @@ function cleanRooms(ports: VacuumEffectPorts): EffectHandlers[string] {
     const ask = checked.value;
     try {
       const name = await ensureVacuum(ports.store, ask.vacuum, CLEAN_ROOMS_CONTROL);
-      const plan = planRooms(ports.store, ask.vacuum, ask.rooms);
+      const plan = await planRooms(ports.store, ask.vacuum, ask.rooms);
       if (plan.mapRoomIds.length === 0)
         throw new ApiError(
           'command_refused',

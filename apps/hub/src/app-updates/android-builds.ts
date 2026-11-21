@@ -18,16 +18,22 @@ function androidClientOf(caller: Caller, action: string): ClientRow {
 }
 
 export class AndroidBuilds {
-  constructor(private readonly observations: Store['androidBuildObservations']) {}
+  constructor(private readonly store: Pick<Store, 'host'>) {}
 
-  report(caller: Caller, report: AndroidAppBuildReport, at: Date): void {
+  async report(caller: Caller, report: AndroidAppBuildReport, at: Date): Promise<void> {
     const client = androidClientOf(caller, 'report its own build');
-    this.observations.save(client.id, report, at.toISOString());
+    await this.store.host.call(
+      'androidBuildObservations',
+      'save',
+      client.id,
+      report,
+      at.toISOString(),
+    );
   }
 
-  recordOutcome(client: ClientRow, outcome: AppUpdateOutcome, at: Date): void {
+  async recordOutcome(client: ClientRow, outcome: AppUpdateOutcome, at: Date): Promise<void> {
     if (client.platform !== 'android') return;
-    const saved = this.observations.saveOutcome(client.id, {
+    const saved = await this.store.host.call('androidBuildObservations', 'saveOutcome', client.id, {
       ...outcome,
       recordedAt: at.toISOString(),
     });
@@ -39,18 +45,21 @@ export class AndroidBuilds {
     }
   }
 
-  read(client: ClientRow): AndroidAppObservation | null {
+  async read(client: ClientRow): Promise<AndroidAppObservation | null> {
     if (client.platform !== 'android') {
       throw new ApiError('invalid_request', 'This paired device does not run Android.');
     }
-    return this.observations.read(client.id);
+    return await this.store.host.call('androidBuildObservations', 'read', client.id);
   }
 
-  paired(clients: readonly ClientRow[]): readonly PairedAndroidBuild[] {
-    return clients.flatMap((client) => {
-      if (client.platform !== 'android') return [];
-      const observation = this.read(client);
-      return observation === null ? [] : [{ clientId: client.id, observation }];
+  async paired(clients: readonly ClientRow[]): Promise<readonly PairedAndroidBuild[]> {
+    const android = clients.filter((client) => client.platform === 'android');
+    const observed = await Promise.all(android.map((client) => this.read(client)));
+    return android.flatMap((client, at) => {
+      const observation = observed[at];
+      return observation === null || observation === undefined
+        ? []
+        : [{ clientId: client.id, observation }];
     });
   }
 }

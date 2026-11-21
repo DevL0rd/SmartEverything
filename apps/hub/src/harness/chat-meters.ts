@@ -4,7 +4,7 @@ import {
   type AiHarnessSession,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 const log = new Logger('hub.chat-meters');
 
@@ -21,7 +21,7 @@ function warnUnmeasurable(chatId: string, context: Measured): void {
   });
 }
 
-export function noteChatMeters(store: Store, event: AiHarnessEvent): void {
+export function noteChatMeters(store: HostStore, event: AiHarnessEvent): void {
   if (event.kind === 'usage') {
     if (event.usage.input_tokens !== null)
       store.aiChats.noteCacheReads(

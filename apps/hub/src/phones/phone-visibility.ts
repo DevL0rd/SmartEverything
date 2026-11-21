@@ -5,7 +5,7 @@ import {
   type EventRow,
   type PhoneTier,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { tierOfViewer, type PhoneViewer } from './phone-detail';
 
 interface StateKey {
@@ -41,7 +41,7 @@ export function visiblePhoneValues<Row extends StateKey>(
   return rows.filter((row) => !valueHiddenByTier(tiers, row));
 }
 
-function phoneDevicesOf(store: Pick<Store, 'devices'>, ids: Iterable<string>): DeviceRow[] {
+function phoneDevicesOf(store: Pick<HostStore, 'devices'>, ids: Iterable<string>): DeviceRow[] {
   return [...new Set(ids)].flatMap((id) => {
     const device = store.devices.find(id);
     return device === undefined ? [] : [device];
@@ -49,7 +49,7 @@ function phoneDevicesOf(store: Pick<Store, 'devices'>, ids: Iterable<string>): D
 }
 
 export function visibleRows<Row extends StateKey>(
-  store: Pick<Store, 'devices'>,
+  store: Pick<HostStore, 'devices'>,
   viewer: PhoneViewer,
   rows: readonly Row[],
 ): Row[] {
@@ -76,7 +76,7 @@ export function eventVisibleTo(viewer: PhoneViewer, event: EventRow): boolean {
 }
 
 export function visibleEvents(
-  store: Pick<Store, 'devices'>,
+  store: Pick<HostStore, 'devices'>,
   viewer: PhoneViewer,
   allEvents: readonly EventRow[],
 ): EventRow[] {

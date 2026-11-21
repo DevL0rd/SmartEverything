@@ -7,13 +7,13 @@ import {
 import { z } from 'zod';
 import type { DriveActor } from '../../drive/access';
 import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { activityOf } from './activity';
 import type { AlbumSeen } from './seen';
 import { partnerOf } from './partners';
 
 export type ReadStore = Pick<
-  Store,
+  HostStore,
   'context' | 'photoAlbumMembers' | 'photoAlbumActivity' | 'photoPartnerShares'
 >;
 

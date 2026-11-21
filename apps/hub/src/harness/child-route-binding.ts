@@ -1,4 +1,4 @@
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { DshRouteBinding } from '../store/repositories/dsh-session-writes';
 import type { HarnessGrant } from './grant';
 
@@ -11,7 +11,7 @@ export function unchangedRoute(grant: HarnessGrant, choice: DshRouteBinding['cho
   );
 }
 
-function boundRoute(store: Store, sessionId: string, { choice, route }: DshRouteBinding): void {
+function boundRoute(store: HostStore, sessionId: string, { choice, route }: DshRouteBinding): void {
   const grant = store.harnessSessions.grant(sessionId);
   if (grant === undefined || unchangedRoute(grant, choice)) return;
   store.harnessSessions.issue({ ...grant, route });
@@ -40,7 +40,7 @@ function boundRoute(store: Store, sessionId: string, { choice, route }: DshRoute
 }
 
 export function bindChildRoutes(
-  store: Store,
+  store: HostStore,
   sessionId: string,
   routes: readonly DshRouteBinding[],
 ): void {

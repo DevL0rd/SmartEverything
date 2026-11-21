@@ -8,17 +8,25 @@ import type { ServerContext } from '../context';
 import { bound } from '../router';
 import { wireMessages } from '../../assistant/wire-message';
 
-function assistantTablesOf(
+type AssistantTables = Pick<
+  SnapshotTables,
+  'assistant_messages' | 'assistant_status' | 'ai_chats' | 'chat_activity'
+>;
+
+async function assistantTablesOf(
   context: ServerContext,
   profileId: string,
-): Pick<SnapshotTables, 'assistant_messages' | 'assistant_status' | 'ai_chats' | 'chat_activity'> {
+): Promise<AssistantTables> {
+  const { host } = context.store;
+  const [messages, chats] = await Promise.all([
+    host.call('assistantChat', 'recent', profileId, ASSISTANT_MESSAGES_SNAPSHOT),
+    host.call('aiChats', 'chats', { profileId, archived: false }),
+  ]);
   return {
-    assistant_messages: wireMessages(
-      context.store.assistantChat.recent(profileId, ASSISTANT_MESSAGES_SNAPSHOT),
-    ),
+    assistant_messages: wireMessages(messages),
     assistant_status: context.assistant.status(),
-    ai_chats: context.store.aiChats.chats({ profileId, archived: false }),
-    chat_activity: context.assistant.activity(profileId),
+    ai_chats: chats,
+    chat_activity: await context.assistant.activity(profileId),
   };
 }
 
@@ -28,8 +36,9 @@ export const snapshotRoutes = (context: ServerContext, now: () => Date) =>
       const client = clientOf(caller);
       const profileId = profileIdOf(caller);
       const seq = context.store.feed.seq;
-      const [firewall, snapshot] = await Promise.all([
+      const [firewall, assistant, snapshot] = await Promise.all([
         context.firewall.current(),
+        query.assistant ? assistantTablesOf(context, profileId) : null,
         context.store.host.read('snapshotTables', {
           client,
           profileId,
@@ -49,7 +58,7 @@ export const snapshotRoutes = (context: ServerContext, now: () => Date) =>
         firewall,
         tables: {
           ...snapshot.tables,
-          ...(query.assistant ? assistantTablesOf(context, profileId) : {}),
+          ...assistant,
         },
         owner: snapshot.owner,
       };

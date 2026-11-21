@@ -54,7 +54,10 @@ const ROWS = ['battery', 'now_playing', 'screen_time_today', 'phone_context', 'r
 
 function visibleTo(person: TestPerson): string[] {
   const devices = test.store.devices.list();
-  const tiers = otherPhoneTiers(devices, phoneViewerOfClient(test.store, person.client));
+  const tiers = otherPhoneTiers(
+    devices,
+    phoneViewerOfClient(test.store.profiles.activeOf(person.client.id).id, person.client),
+  );
   return visiblePhoneValues(
     tiers,
     ROWS.map((capability) => row(capability)),
@@ -98,7 +101,7 @@ describe('phone values by tier', () => {
     ]);
     const tiers = otherPhoneTiers(
       test.store.devices.list(),
-      phoneViewerOfClient(test.store, sam.client),
+      phoneViewerOfClient(test.store.profiles.activeOf(sam.client.id).id, sam.client),
     );
     expect(valueHiddenByTier(tiers, row('now_playing', lamp?.id))).toBe(false);
   });
@@ -123,9 +126,11 @@ describe('where the cut applies', () => {
   it('cuts history rows the same way', () => {
     const history = ROWS.map((capability) => row(capability));
     expect(
-      visibleRows(test.store, phoneViewerOfClient(test.store, sam.client), history).map(
-        (item) => item.capability,
-      ),
+      visibleRows(
+        test.store,
+        phoneViewerOfClient(test.store.profiles.activeOf(sam.client.id).id, sam.client),
+        history,
+      ).map((item) => item.capability),
     ).toEqual(['battery', 'ringer_mode']);
   });
 
@@ -177,7 +182,7 @@ describe('place names in events and the AI tools', () => {
   function kindsFor(person: TestPerson): string[] {
     return visibleEvents(
       test.store,
-      phoneViewerOfClient(test.store, person.client),
+      phoneViewerOfClient(test.store.profiles.activeOf(person.client.id).id, person.client),
       test.store.events.list({ limit: 50 }),
     ).map((event) => event.kind);
   }
@@ -196,7 +201,7 @@ describe('place names in events and the AI tools', () => {
     expect(kindsFor(owner).sort()).toEqual(['phone_context_changed', 'phone_unlocked']);
     const changed = visibleEvents(
       test.store,
-      phoneViewerOfClient(test.store, owner.client),
+      phoneViewerOfClient(test.store.profiles.activeOf(owner.client.id).id, owner.client),
       test.store.events.list({ kinds: ['phone_context_changed'], limit: 50 }),
     );
     expect(changed[0]?.details['place']).toBeNull();
@@ -309,7 +314,7 @@ describe('activity feed rows from signals', () => {
   function kindsFor(person: TestPerson): unknown[] {
     return visibleEvents(
       test.store,
-      phoneViewerOfClient(test.store, person.client),
+      phoneViewerOfClient(test.store.profiles.activeOf(person.client.id).id, person.client),
       test.store.events.list({ kinds: ['signal'], limit: 50 }),
     )
       .map((event) => event.details['kind'])

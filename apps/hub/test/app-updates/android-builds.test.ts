@@ -1,3 +1,4 @@
+import { openSeededStore, testStore, type TestStore } from '../support/store';
 import {
   API_ENDPOINTS,
   ApiError,
@@ -8,9 +9,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AndroidBuilds } from '../../src/app-updates/android-builds';
 import { bound } from '../../src/server/router';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 import { testStoreHost } from '../support/store-host';
 
 const NOW = new Date('2026-11-05T10:00:00Z');
@@ -52,16 +51,16 @@ const OUTCOME: AppUpdateOutcome = {
 };
 
 describe('reported Android builds', () => {
-  it('stores the last report time on every report and answers the same after a reopen', () => {
-    const builds = new AndroidBuilds(opened.store.androidBuildObservations);
-    expect(builds.read(client)).toBeNull();
-    builds.report({ kind: 'client', client }, BUILD, NOW);
-    builds.report({ kind: 'client', client }, BUILD, LATER);
+  it('stores the last report time on every report and answers the same after a reopen', async () => {
+    const builds = new AndroidBuilds(opened.store);
+    expect(await builds.read(client)).toBeNull();
+    await builds.report({ kind: 'client', client }, BUILD, NOW);
+    await builds.report({ kind: 'client', client }, BUILD, LATER);
     const expected = { ...BUILD, observedAt: LATER.toISOString(), lastOutcome: null };
-    expect(builds.read(client)).toEqual(expected);
-    expect(builds.read({ ...client, id: OUTCOME.updateId ?? '' })).toBeNull();
+    expect(await builds.read(client)).toEqual(expected);
+    expect(await builds.read({ ...client, id: OUTCOME.updateId ?? '' })).toBeNull();
 
-    const reopened = openStore({
+    const reopened = await openSeededStore({
       host: testStoreHost(),
       path: join(opened.directory, 'test.db'),
       log: testLogger('app-updates'),
@@ -70,95 +69,95 @@ describe('reported Android builds', () => {
       driveFolders: null,
     });
     try {
-      expect(new AndroidBuilds(reopened.androidBuildObservations).read(client)).toEqual(expected);
+      expect(await new AndroidBuilds(reopened).read(client)).toEqual(expected);
     } finally {
-      reopened.close();
+      await reopened.close();
     }
   });
 
-  it('keeps a Test channel observation like any other', () => {
-    const builds = new AndroidBuilds(opened.store.androidBuildObservations);
-    builds.report({ kind: 'client', client }, { ...BUILD, channel: 'dev' }, NOW);
-    expect(new AndroidBuilds(opened.store.androidBuildObservations).read(client)?.channel).toBe(
-      'dev',
-    );
+  it('keeps a Test channel observation like any other', async () => {
+    const builds = new AndroidBuilds(opened.store);
+    await builds.report({ kind: 'client', client }, { ...BUILD, channel: 'dev' }, NOW);
+    expect((await new AndroidBuilds(opened.store).read(client))?.channel).toBe('dev');
   });
 
-  it('keeps the latest outcome across later build reports and replaces it by the next outcome', () => {
-    const builds = new AndroidBuilds(opened.store.androidBuildObservations);
-    builds.report({ kind: 'client', client }, BUILD, NOW);
-    builds.recordOutcome(client, OUTCOME, NOW);
-    builds.report({ kind: 'client', client }, BUILD, LATER);
-    expect(builds.read(client)?.lastOutcome).toEqual({
+  it('keeps the latest outcome across later build reports and replaces it by the next outcome', async () => {
+    const builds = new AndroidBuilds(opened.store);
+    await builds.report({ kind: 'client', client }, BUILD, NOW);
+    await builds.recordOutcome(client, OUTCOME, NOW);
+    await builds.report({ kind: 'client', client }, BUILD, LATER);
+    expect((await builds.read(client))?.lastOutcome).toEqual({
       ...OUTCOME,
       recordedAt: NOW.toISOString(),
     });
-    builds.recordOutcome(client, { ...OUTCOME, outcome: 'rolled_back', reason: 'crashed' }, LATER);
-    expect(builds.read(client)?.lastOutcome).toMatchObject({
+    await builds.recordOutcome(
+      client,
+      { ...OUTCOME, outcome: 'rolled_back', reason: 'crashed' },
+      LATER,
+    );
+    expect((await builds.read(client))?.lastOutcome).toMatchObject({
       outcome: 'rolled_back',
       reason: 'crashed',
       recordedAt: LATER.toISOString(),
     });
   });
 
-  it('refuses an outcome before the app has reported its build', () => {
-    const builds = new AndroidBuilds(opened.store.androidBuildObservations);
-    expect(() => {
-      builds.recordOutcome(client, OUTCOME, NOW);
-    }).toThrow(ApiError);
-    expect(builds.read(client)).toBeNull();
+  it('refuses an outcome before the app has reported its build', async () => {
+    const builds = new AndroidBuilds(opened.store);
+    await expect(builds.recordOutcome(client, OUTCOME, NOW)).rejects.toThrow(ApiError);
+    expect(await builds.read(client)).toBeNull();
   });
 
-  it('forgets observations when a profile or pairing credential changes or a client is revoked', () => {
-    const builds = new AndroidBuilds(opened.store.androidBuildObservations);
+  it('forgets observations when a profile or pairing credential changes or a client is revoked', async () => {
+    const builds = new AndroidBuilds(opened.store);
     const { clients } = opened.store;
-    builds.report({ kind: 'client', client }, BUILD, NOW);
+    await builds.report({ kind: 'client', client }, BUILD, NOW);
     const otherProfileId = opened.store.profiles.create({ name: 'Other person' }).id;
     const reassigned = clients.useProfile(client.id, otherProfileId);
-    expect(builds.read(reassigned)).toBeNull();
+    expect(await builds.read(reassigned)).toBeNull();
 
-    builds.report({ kind: 'client', client: reassigned }, BUILD, NOW);
+    await builds.report({ kind: 'client', client: reassigned }, BUILD, NOW);
     clients.replaceToken(client.id, 'c'.repeat(64));
-    expect(builds.read(reassigned)).toBeNull();
+    expect(await builds.read(reassigned)).toBeNull();
 
-    builds.report({ kind: 'client', client: reassigned }, BUILD, NOW);
+    await builds.report({ kind: 'client', client: reassigned }, BUILD, NOW);
     clients.remove(client.id);
     expect(opened.store.androidBuildObservations.read(client.id)).toBeNull();
   });
 
-  it('does not accept a proxy or a non-Android client as a build reporter', () => {
-    const builds = new AndroidBuilds(opened.store.androidBuildObservations);
-    expect(() => {
-      builds.report({ kind: 'client', client, via: 'assistant' }, BUILD, NOW);
-    }).toThrow(ApiError);
-    expect(() => {
+  it('does not accept a proxy or a non-Android client as a build reporter', async () => {
+    const builds = new AndroidBuilds(opened.store);
+    await expect(
+      builds.report({ kind: 'client', client, via: 'assistant' }, BUILD, NOW),
+    ).rejects.toThrow(ApiError);
+    await expect(
       builds.report(
         { kind: 'client', client: { ...client, platform: 'web', kind: 'browser' } },
         BUILD,
         NOW,
-      );
-    }).toThrow(ApiError);
-    expect(builds.read(client)).toBeNull();
+      ),
+    ).rejects.toThrow(ApiError);
+    expect(await builds.read(client)).toBeNull();
   });
 
   it('answers the single and the list owner reads identically and refuses members', async () => {
-    const builds = new AndroidBuilds(opened.store.androidBuildObservations);
+    const builds = new AndroidBuilds(opened.store);
     const other = createClient('b'.repeat(64));
-    builds.report({ kind: 'client', client }, BUILD, NOW);
-    builds.report({ kind: 'client', client: other }, BUILD, LATER);
+    await builds.report({ kind: 'client', client }, BUILD, NOW);
+    await builds.report({ kind: 'client', client: other }, BUILD, LATER);
     const log = testLogger('app-updates');
     const owner = { kind: 'client', client: { ...client, role: 'owner' } } as const;
     const single = bound(API_ENDPOINTS.readAndroidAppBuild, ({ params }) =>
       builds.read({ ...client, id: params.clientId }),
     );
-    const list = bound(API_ENDPOINTS.readAndroidAppBuilds, () => [
-      ...builds.paired([client, other]),
+    const list = bound(API_ENDPOINTS.readAndroidAppBuilds, async () => [
+      ...(await builds.paired([client, other])),
     ]);
     const input = { params: {}, query: {}, body: undefined, remote: '', headers: {} };
     await expect(list.run({ kind: 'client', client }, input, log)).rejects.toMatchObject({
       code: 'forbidden',
     });
-    const listed = builds.paired([client, other]);
+    const listed = await builds.paired([client, other]);
     await expect(list.run(owner, input, log)).resolves.toEqual(listed);
     for (const entry of listed) {
       await expect(

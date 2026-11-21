@@ -1,9 +1,9 @@
 import { ApiError, type DriveItem } from '@smarteverything/domain';
 import type { SyncXattr } from '@smarteverything/domain/drive-sync';
 import type { DriveInode } from '../../store/repositories/drive-inodes';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
-export type SyncMetaStore = Pick<Store, 'driveInodes' | 'driveXattrs'>;
+export type SyncMetaStore = Pick<HostStore, 'driveInodes' | 'driveXattrs'>;
 
 export interface ItemMeta {
   readonly inode: number;
@@ -12,7 +12,7 @@ export interface ItemMeta {
   readonly xattrs: readonly SyncXattr[];
 }
 
-export function inodeOfItem(store: SyncMetaStore, item: DriveItem): DriveInode {
+export function inodeOfItem(store: SyncMetaStore, item: Pick<DriveItem, 'id'>): DriveInode {
   const inode = store.driveInodes.ofItem(item.id);
   if (inode === undefined) throw new ApiError('internal', `The item ${item.id} has no inode.`);
   return inode;

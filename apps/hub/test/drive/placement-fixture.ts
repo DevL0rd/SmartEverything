@@ -1,3 +1,4 @@
+import { type SeededStore, type TestStore } from '../support/store';
 import { randomBytes } from 'node:crypto';
 import {
   DRIVE_PLACEMENT_SET,
@@ -9,9 +10,7 @@ import type { DriveActor } from '../../src/drive/access';
 import { targetAccess } from '../../src/drive/placement-access';
 import { DrivePlacements } from '../../src/drive/placements';
 import { placementChangeIn } from '../../src/drive/units/placements';
-import type { Store } from '../../src/store/store';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
-import type { TestStore } from '../support/store';
 import { driveTestStore, putItem } from './spaces-fixture';
 
 export const HOME_DRIVE = '0d000000-0000-4000-8000-000000000001';
@@ -33,7 +32,7 @@ export const LATER = '2026-11-08T00:00:00.000Z';
 
 export interface PlacementWorld {
   readonly test: TestStore;
-  readonly store: Store;
+  readonly store: SeededStore;
   readonly placements: DrivePlacements;
   readonly owner: DriveActor;
   readonly robin: DriveActor;
@@ -53,7 +52,7 @@ export function newId(): string {
   return `0a000000-0000-4000-8000-${idCounter.toString(16).padStart(12, '0')}`;
 }
 
-export function pairComputer(store: Store, profileId: string | null): string {
+export function pairComputer(store: SeededStore, profileId: string | null): string {
   nodeCount += 1;
   const [device] = store.devices.upsert([
     {
@@ -175,7 +174,11 @@ export interface MountSpot {
   readonly enabled?: boolean;
 }
 
-export function insertMount(store: Store, actor: DriveActor, spot: MountSpot): DrivePlacement {
+export function insertMount(
+  store: SeededStore,
+  actor: DriveActor,
+  spot: MountSpot,
+): DrivePlacement {
   const target = { rootId: spot.rootId, folderItemId: spot.folderItemId };
   const readOnly = targetAccess(store, actor, target) === 'view';
   return store.context.write(() =>

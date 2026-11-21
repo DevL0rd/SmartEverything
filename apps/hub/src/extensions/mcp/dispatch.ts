@@ -66,7 +66,7 @@ function unavailability(context: ToolContext, name: string, log: Logger): Refusa
   if (!reachable(context, name)) {
     return { code: 'forbidden', message: `${name} is only for a plugin handing over a message.` };
   }
-  if (switchedOffTools(context.store.settings.read().mcp_disabled_tools).has(name)) {
+  if (switchedOffTools(context.store.live.home.settings.read().mcp_disabled_tools).has(name)) {
     log.warn('tool.switched_off', { tool: name });
     return {
       code: 'tool_switched_off',

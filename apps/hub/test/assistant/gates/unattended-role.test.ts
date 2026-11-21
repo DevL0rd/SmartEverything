@@ -6,7 +6,8 @@ import {
   type MessageOrigin,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { executionRole, eventAuthority } from '../../../src/assistant/turn-authority';
+import { executionRole, authorityScope } from '../../../src/assistant/turn-authority';
+import { issueEventAuthority } from '../../../src/assistant/event-authority-issue';
 import { isEndpointName } from '../../../src/extensions/mcp/tools/operation-shape';
 import {
   callerFor,
@@ -77,7 +78,7 @@ function unattended(profileId: string, origin: MessageOrigin | null = null): Con
     client_id: null,
     text: 'run the step',
   });
-  return eventAuthority(store, event);
+  return issueEventAuthority(store, event, authorityScope());
 }
 
 function context(authority: ConversationAuthority, calls: Caller[]): OperatingContext {

@@ -8,7 +8,7 @@ import {
 import { DAY_MS } from '../../../metrics/minute';
 import { profileIdOf, roleOfCaller, type Caller } from '../../../server/auth';
 import { storeUnit } from '../../../store/host/unit';
-import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 import type { HealthRange } from './health-summary';
 
 const RECORDS_PER_PERSON = 300;
@@ -46,7 +46,11 @@ function inRange(record: HealthRecord, range: HealthRange): boolean {
   return day >= range.from && day <= range.to;
 }
 
-function recordsOf(store: Store, profileId: string, range: HealthRange): Record<string, unknown>[] {
+function recordsOf(
+  store: HostStore,
+  profileId: string,
+  range: HealthRange,
+): Record<string, unknown>[] {
   const window = {
     types: RECORD_TYPES,
     from: new Date(Date.parse(range.from) - DAY_MS).toISOString(),
@@ -66,14 +70,14 @@ function recordsOf(store: Store, profileId: string, range: HealthRange): Record<
     }));
 }
 
-function readableProfiles(store: Store, caller: Caller): readonly ProfileRow[] {
+function readableProfiles(store: HostStore, caller: Caller): readonly ProfileRow[] {
   return roleOfCaller(caller) === 'owner'
     ? store.profiles.list()
     : [store.profiles.byId(profileIdOf(caller))];
 }
 
 function healthSummary(
-  store: Store,
+  store: HostStore,
   { caller, input, onlyProfileId }: HealthSummaryAsk,
 ): Record<string, unknown> {
   return {

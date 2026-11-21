@@ -1,6 +1,6 @@
 import type { ClientRow, DeviceCapability, DeviceRow, ProfileRow } from '@smarteverything/domain';
 import type { DeviceUpsert } from '../../src/database/port';
-import type { Store } from '../../src/store/store';
+import type { SeededStore } from '../support/store';
 
 export const POWER: DeviceCapability = {
   key: 'power',
@@ -19,7 +19,7 @@ export function clockAt(iso: string): { now: () => Date; set: (iso: string) => v
   };
 }
 
-export function addDevice(store: Store, overrides: Partial<DeviceUpsert> = {}): DeviceRow {
+export function addDevice(store: SeededStore, overrides: Partial<DeviceUpsert> = {}): DeviceRow {
   const [device] = store.devices.upsert([
     {
       provider: 'tuya',
@@ -41,7 +41,10 @@ export function addDevice(store: Store, overrides: Partial<DeviceUpsert> = {}): 
   return device;
 }
 
-export function addPerson(store: Store, name: string): { client: ClientRow; person: ProfileRow } {
+export function addPerson(
+  store: SeededStore,
+  name: string,
+): { client: ClientRow; person: ProfileRow } {
   const person = store.profiles.update(store.profiles.first().id, { name });
   const client = store.clients.create({
     name: `${name}'s phone`,

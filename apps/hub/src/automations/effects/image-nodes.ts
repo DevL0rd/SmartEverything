@@ -39,7 +39,7 @@ export interface AutomationImageActorRequest {
 export interface AutomationImageSource {
   readonly service: Pick<ImageOperationService, 'start' | 'settled' | 'cancel'>;
   readonly files: Pick<AssistantFiles, 'keepBytes' | 'copy'>;
-  readonly actor: (who: AutomationImageActorRequest) => ImageActor;
+  readonly actor: (who: AutomationImageActorRequest) => Promise<ImageActor>;
   readonly selectedModel: () => ImageModelChoice | null;
   readonly engine: (profileId: string) => Engine;
 }
@@ -196,7 +196,7 @@ async function referencesOf(
   for (const id of ids) resolved.push(await imported(importing, id, inChat));
   const fresh = resolved.filter((entry) => typeof entry !== 'string');
   if (fresh.length > 0)
-    new ConversationLog(store).responderInChat({
+    await new ConversationLog(store).responderInChat({
       chat,
       replyTo: null,
       text: 'Pictures this automation made or took, kept here as references.',
@@ -240,7 +240,7 @@ async function start(
     options: optionsOf(call.ask),
     references,
   });
-  const actor = source.actor({
+  const actor = await source.actor({
     profileId: who.profileId,
     automationId: who.automationId,
     ...(call.wait ? { signal: run.signal } : {}),

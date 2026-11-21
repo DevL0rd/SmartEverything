@@ -5,10 +5,10 @@ import type {
   EventRow,
   PhoneTier,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export type LogStore = Pick<
-  Store,
+  HostStore,
   | 'state'
   | 'events'
   | 'commands'

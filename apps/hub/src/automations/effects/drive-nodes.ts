@@ -16,7 +16,7 @@ export interface DriveEffectPorts {
   readonly drive: {
     readonly change: (caller: DriveCaller, change: DriveChange) => Promise<DriveChangeResult>;
   };
-  readonly ownerProfileId: () => string;
+  readonly ownerProfileId: () => Promise<string>;
 }
 
 export class DriveNotReadyError extends Error {
@@ -48,10 +48,10 @@ const ADD_TO_ALBUM = z.object({ item: z.uuid(), album: z.uuid() });
 
 const KEEP = z.object({ item: z.uuid(), folder: z.uuid() });
 
-function callerOf(ports: DriveEffectPorts): DriveCaller {
+async function callerOf(ports: DriveEffectPorts): Promise<DriveCaller> {
   const authority = currentExecutionAuthority();
   if (authority === undefined) {
-    return { profileId: ports.ownerProfileId(), owner: true, via: VIA, deviceId: null };
+    return { profileId: await ports.ownerProfileId(), owner: true, via: VIA, deviceId: null };
   }
   return {
     profileId: authority.profile_id,
@@ -78,7 +78,7 @@ async function applied(
   run: Parameters<EffectHandler>[2],
   change: DriveChange,
 ): Promise<DriveChangeResult> {
-  const result = await awaitRun(ports.drive.change(callerOf(ports), change), run);
+  const result = await awaitRun(ports.drive.change(await callerOf(ports), change), run);
   const refused = refusal(result);
   if (refused !== undefined) {
     throw refused;

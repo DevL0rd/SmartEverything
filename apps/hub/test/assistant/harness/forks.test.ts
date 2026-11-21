@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DSH_SESSION_EVENTS_WRITE, type AiChatRow } from '@smarteverything/domain';
-import { nativeForkIntent, nativeForkSeed } from '../../../src/harness/forks';
+import { nativeForkSeed, planNativeFork } from '../../../src/harness/forks';
+import { recordNativeFork } from '../../../src/harness/fork-record';
 import { rewriteNativeHistory } from '../../../src/harness/history-mutation';
 import { appendOffloadedImage } from './support/offloaded-image';
 import { useRig, type Rig } from './support/rig';
@@ -47,8 +48,21 @@ function rowOf(
   return row;
 }
 
-function seedOf(seeded: SeededConversation, child: AiChatRow): readonly string[] {
-  const seed = nativeForkSeed(rig.opened.store, child);
+async function nativeForkIntent(
+  parent: AiChatRow,
+  child: AiChatRow,
+  message: string,
+): Promise<void> {
+  const { store } = rig.opened;
+  const plan = await planNativeFork(store, parent, message);
+  if (plan !== undefined)
+    store.durableWrite(() => {
+      recordNativeFork(store, plan, child);
+    });
+}
+
+async function seedOf(seeded: SeededConversation, child: AiChatRow): Promise<readonly string[]> {
+  const seed = await nativeForkSeed(rig.opened.store, child);
   return seed === undefined ? [] : visibleTexts(reread(rig, seeded.sessionId, seed.events));
 }
 
@@ -58,9 +72,9 @@ describe('branching a native conversation', () => {
     const child = branchOf(seeded.chat);
     const answer = rowOf(seeded, 1);
 
-    nativeForkIntent(rig.opened.store, seeded.chat, child, answer.id);
+    await nativeForkIntent(seeded.chat, child, answer.id);
 
-    expect(seedOf(seeded, child)).toStrictEqual(['first question', 'first answer']);
+    expect(await seedOf(seeded, child)).toStrictEqual(['first question', 'first answer']);
   });
 
   it('starts the branch at the chosen question when branching from a person message', async () => {
@@ -68,22 +82,22 @@ describe('branching a native conversation', () => {
     const child = branchOf(seeded.chat);
     const question = rowOf(seeded, 2);
 
-    nativeForkIntent(rig.opened.store, seeded.chat, child, question.id);
+    await nativeForkIntent(seeded.chat, child, question.id);
 
-    expect(seedOf(seeded, child)).toStrictEqual([
+    expect(await seedOf(seeded, child)).toStrictEqual([
       'first question',
       'first answer',
       'second question',
     ]);
   });
 
-  it('does nothing for a parent that has not been opened natively yet', () => {
+  it('does nothing for a parent that has not been opened natively yet', async () => {
     const parent = rig.newChat({ kind: 'server' });
     const child = branchOf(parent);
 
-    nativeForkIntent(rig.opened.store, parent, child, randomUUID());
+    await nativeForkIntent(parent, child, randomUUID());
 
-    expect(nativeForkSeed(rig.opened.store, child)).toBeUndefined();
+    expect(await nativeForkSeed(rig.opened.store, child)).toBeUndefined();
   });
 
   it('branches from the latest native message when the chosen one came after the import', async () => {
@@ -91,9 +105,9 @@ describe('branching a native conversation', () => {
     const child = branchOf(seeded.chat);
     const later = addMessage(rig, seeded.chat.id, LATE_LINE);
 
-    nativeForkIntent(rig.opened.store, seeded.chat, child, later.id);
+    await nativeForkIntent(seeded.chat, child, later.id);
 
-    expect(seedOf(seeded, child)).toHaveLength(4);
+    expect(await seedOf(seeded, child)).toHaveLength(4);
   });
 
   it('refuses a branch point with no native message before it', async () => {
@@ -101,9 +115,9 @@ describe('branching a native conversation', () => {
     const child = branchOf(seeded.chat);
     const earlier = addMessage(rig, seeded.chat.id, LATE_LINE, '2000-01-01T00:00:00.000Z');
 
-    expect(() => {
-      nativeForkIntent(rig.opened.store, seeded.chat, child, earlier.id);
-    }).toThrow(/no admitted native event identity/u);
+    await expect(nativeForkIntent(seeded.chat, child, earlier.id)).rejects.toThrow(
+      /no admitted native event identity/u,
+    );
   });
 });
 
@@ -133,11 +147,11 @@ describe('the history a branch inherits', () => {
     );
     const child = branchOf(seeded.chat);
 
-    nativeForkIntent(rig.opened.store, seeded.chat, child, rowOf(seeded, 3).id);
+    await nativeForkIntent(seeded.chat, child, rowOf(seeded, 3).id);
     const events = reread(
       rig,
       seeded.sessionId,
-      nativeForkSeed(rig.opened.store, child)?.events ?? [],
+      (await nativeForkSeed(rig.opened.store, child))?.events ?? [],
     );
 
     const marker = events.findIndex((event) => event.type === 'session/end-seed');
@@ -157,9 +171,9 @@ describe('the history a branch inherits', () => {
     await appendOffloadedImage(rig, seeded);
     const child = branchOf(seeded.chat);
 
-    nativeForkIntent(rig.opened.store, seeded.chat, child, rowOf(seeded, 3).id);
+    await nativeForkIntent(seeded.chat, child, rowOf(seeded, 3).id);
 
-    const seed = nativeForkSeed(rig.opened.store, child);
+    const seed = await nativeForkSeed(rig.opened.store, child);
     expect(seed?.events.some((event) => event.type === 'image/offload')).toBe(true);
   });
 
@@ -168,9 +182,9 @@ describe('the history a branch inherits', () => {
     await rewriteNativeHistory(rig.service, seeded.chat, [rowOf(seeded, 0)]);
     const child = branchOf(seeded.chat);
 
-    nativeForkIntent(rig.opened.store, seeded.chat, child, rowOf(seeded, 3).id);
+    await nativeForkIntent(seeded.chat, child, rowOf(seeded, 3).id);
 
-    expect(seedOf(seeded, child)).toStrictEqual([
+    expect(await seedOf(seeded, child)).toStrictEqual([
       'first answer',
       'second question',
       'second answer',
@@ -188,18 +202,18 @@ describe('branching a conversation held on a machine', () => {
     const held = await nativeConversation(rig, EXCHANGES);
     const child = branchOf(held.chat);
 
-    nativeForkIntent(rig.opened.store, held.chat, child, rowOf(held, 1).id);
+    await nativeForkIntent(held.chat, child, rowOf(held, 1).id);
 
-    expect(seedOf(held, child)).toStrictEqual(['first question', 'first answer']);
+    expect(await seedOf(held, child)).toStrictEqual(['first question', 'first answer']);
   });
 
   it('ends the branch at the question it was started from', async () => {
     const held = await nativeConversation(rig, EXCHANGES);
     const child = branchOf(held.chat);
 
-    nativeForkIntent(rig.opened.store, held.chat, child, rowOf(held, 2).id);
+    await nativeForkIntent(held.chat, child, rowOf(held, 2).id);
 
-    expect(seedOf(held, child)).toStrictEqual([
+    expect(await seedOf(held, child)).toStrictEqual([
       'first question',
       'first answer',
       'second question',

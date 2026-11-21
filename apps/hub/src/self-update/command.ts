@@ -72,27 +72,33 @@ const PUBLICATION_ACTION = z.object({
   input: z.object({ action: z.enum(['app', 'ui', 'desktop']) }),
 });
 
-export function hubBuildRefusal(layout: HubLayout, artifact: PipelineComponent): string | null {
-  const source = buildSourceOf(layout, artifact);
+export async function hubBuildRefusal(
+  layout: HubLayout,
+  artifact: PipelineComponent,
+): Promise<string | null> {
+  const source = await buildSourceOf(layout, artifact);
   if (source === 'hub') return null;
   return `The Hub does not build ${ARTIFACT_NAMES[artifact]}: its build source is ${source}, not hub. ${SOURCE_GUIDANCE[source]}`;
 }
 
-export function requireHubBuild(layout: HubLayout, artifact: PipelineComponent): void {
-  const refusal = hubBuildRefusal(layout, artifact);
+export async function requireHubBuild(
+  layout: HubLayout,
+  artifact: PipelineComponent,
+): Promise<void> {
+  const refusal = await hubBuildRefusal(layout, artifact);
   if (refusal !== null) throw new HubBuildRefusedError(refusal);
 }
 
-function builtArtifact(
+async function builtArtifact(
   script: ConfiguredUpdateScript,
   layout: HubLayout,
   input: unknown,
-): PipelineComponent | null {
+): Promise<PipelineComponent | null> {
   if (script === 'self-update-hub-command.ts') {
     if (HUB_NON_BUILD.safeParse(input).success) return null;
     const release = HUB_RELEASE.safeParse(input);
     if (!release.success) return 'hub';
-    return (release.data.source ?? buildSourceOf(layout, 'hub')) === 'hub' ? 'hub' : null;
+    return (release.data.source ?? (await buildSourceOf(layout, 'hub'))) === 'hub' ? 'hub' : null;
   }
   if (!BUILD_SCRIPTS.has(script) || PUBLICATION_STATUS.safeParse(input).success) return null;
   const publication = PUBLICATION_ACTION.safeParse(input);
@@ -252,8 +258,8 @@ export async function runConfiguredUpdateCommand(
   input: unknown,
   origin?: HubUpdateOrigin,
 ): Promise<Readonly<Record<string, unknown>>> {
-  const artifact = builtArtifact(script, layout, input);
-  if (artifact !== null) requireHubBuild(layout, artifact);
+  const artifact = await builtArtifact(script, layout, input);
+  if (artifact !== null) await requireHubBuild(layout, artifact);
   if (process.platform !== HUB_UPDATE_HOST_PLATFORM)
     throw new UpdateUnavailableError(
       'Hub updates require a Linux hub with a systemd user service.',

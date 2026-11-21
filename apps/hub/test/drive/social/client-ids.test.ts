@@ -4,7 +4,7 @@ import { DRIVE_ACCESS_REQUEST_UNIT } from '../../../src/drive/units/access-reque
 import { DRIVE_COMMENT_ADD_UNIT } from '../../../src/drive/units/comments';
 import { DRIVE_GRANT_SET_UNIT } from '../../../src/drive/units/grants';
 import { DRIVE_TRANSFER_OFFER_UNIT } from '../../../src/drive/units/transfers';
-import type { Store } from '../../../src/store/store';
+import type { SeededStore } from '../../support/store';
 import {
   ROBIN_FILE,
   SECRET,
@@ -16,7 +16,7 @@ import {
 } from './social-fixture';
 
 let social: Social;
-let store: Store;
+let store: SeededStore;
 
 beforeEach(async () => {
   social = await openSocial();

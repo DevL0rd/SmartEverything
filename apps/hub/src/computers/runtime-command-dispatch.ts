@@ -15,13 +15,13 @@ interface Dispatch {
   readonly input: AiNativeCommandWrite;
   readonly target: ComputerRuntimeTarget;
   readonly source: AttachedRuntime;
-  readonly authorize: () => void;
+  readonly authorize: () => Promise<void>;
 }
 export async function dispatchPreparedCommand(dispatch: Dispatch): Promise<AiNativeCommandReceipt> {
   const { ports, input, target, source, authorize } = dispatch;
   let reason: string | null = null;
   try {
-    authorize();
+    await authorize();
   } catch (cause) {
     reason = messageOf(cause);
   }

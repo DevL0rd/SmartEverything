@@ -84,6 +84,7 @@ describe('trigger.becomes_true on the engine', () => {
     await rig.settle();
     expect(rig.runs(row.id)).toHaveLength(1);
     reading(rig, 22);
+    await rig.settle();
     reading(rig, 30);
     await rig.until(() => rig.finished.length === 2);
     expect(dims(rig)).toStrictEqual([31, 31]);
@@ -106,11 +107,14 @@ describe('trigger.becomes_true on the engine', () => {
     const row = watchingTemperature(rig, { hold: lit(300_000) });
     await rig.engine.sync();
     reading(rig, 27);
+    await rig.settle();
     await rig.advance(200_000);
     reading(rig, 20);
+    await rig.settle();
     await rig.advance(200_000);
     expect(rig.runs(row.id)).toHaveLength(0);
     reading(rig, 28);
+    await rig.settle();
     await rig.advance(299_000);
     expect(rig.runs(row.id)).toHaveLength(0);
     await rig.advance(1000);
@@ -131,6 +135,7 @@ describe('trigger.becomes_true on the engine', () => {
     rig.setEnabled(row.id, true);
     reading(rig, 20);
     await rig.engine.sync();
+    await rig.settle();
     reading(rig, 27);
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id)).toHaveLength(1);

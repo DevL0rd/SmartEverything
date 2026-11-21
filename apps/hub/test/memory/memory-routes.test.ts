@@ -1,3 +1,4 @@
+import { hostMemoryChats, hostMemoryRows } from '../../src/store/host/hosted';
 import { FakeMemoryEmbedder } from '../support/memory-embedder';
 import { API_ENDPOINTS, ApiError } from '@smarteverything/domain';
 import type { ClientRow } from '@smarteverything/domain';
@@ -30,7 +31,11 @@ beforeEach(async () => {
   captureLogs();
   opened = await testStore();
   routes = memoryRoutes(
-    new MemoryService(opened.store.aiMemories, opened.store.aiChats, new FakeMemoryEmbedder()),
+    new MemoryService(
+      hostMemoryRows(opened.store.host),
+      hostMemoryChats(opened.store.host),
+      new FakeMemoryEmbedder(),
+    ),
   );
   owner = paired('owner', 'owner');
   ida = paired('ida', 'member', opened.store.profiles.create({ name: 'Ida' }).id);

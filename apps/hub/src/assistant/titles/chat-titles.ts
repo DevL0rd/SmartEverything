@@ -25,6 +25,7 @@ const BACKFILL_MAX = 50;
 
 export class ChatTitles {
   private readonly busy = new Set<string>();
+  private readonly running = new Set<Promise<void>>();
   private readonly side: SideCompletion;
 
   constructor(private readonly deps: ChatTitlesDeps) {
@@ -33,8 +34,8 @@ export class ChatTitles {
 
   readonly afterReply = (event: StoredEvent, text: string, ok: boolean): void => {
     if (ok && TITLED_EVENTS.has(event.kind)) {
-      background(
-        this.name(event.chat_id, () => exchangeSource(this.personText(event), text)),
+      this.track(
+        this.name(event.chat_id, async () => exchangeSource(await this.personText(event), text)),
         'chat_titles.name_failed',
       );
     }
@@ -42,15 +43,33 @@ export class ChatTitles {
 
   afterCall(chatId: string, transcript: string): void {
     if (transcript.trim() !== '') {
-      background(
-        this.name(chatId, () => callSource(transcript)),
+      this.track(
+        this.name(chatId, () => Promise.resolve(callSource(transcript))),
         'chat_titles.name_failed',
       );
     }
   }
 
+  async settled(): Promise<void> {
+    while (this.running.size > 0) await Promise.allSettled([...this.running]);
+  }
+
+  private track(work: Promise<void>, failure: string): void {
+    this.running.add(work);
+    background(
+      work.finally(() => {
+        this.running.delete(work);
+      }),
+      failure,
+    );
+  }
+
   backfill(): void {
-    if (this.deps.store.settingsKv.read(BACKFILL_KEY) !== null) {
+    this.track(this.backfillOnce(), 'chat_titles.backfill_failed');
+  }
+
+  private async backfillOnce(): Promise<void> {
+    if ((await this.deps.store.host.call('settingsKv', 'read', BACKFILL_KEY)) !== null) {
       return;
     }
     if (this.side.model() !== null) {
@@ -66,49 +85,53 @@ export class ChatTitles {
   }
 
   private startBackfill(): void {
-    this.backfillChats().catch((cause: unknown) => {
-      this.deps.log.error('assistant.titles_backfill_failed', cause);
-    });
+    this.track(
+      this.backfillChats().catch((cause: unknown) => {
+        this.deps.log.error('assistant.titles_backfill_failed', cause);
+      }),
+      'chat_titles.backfill_failed',
+    );
   }
 
   private async backfillChats(): Promise<void> {
-    const { aiChats, settingsKv } = this.deps.store;
-    settingsKv.save(BACKFILL_KEY, {
+    const { host } = this.deps.store;
+    await host.call('settingsKv', 'save', BACKFILL_KEY, {
       started_at: this.deps.now().toISOString(),
     });
-    const ids = aiChats.untitled(BACKFILL_MAX);
+    const ids = await host.call('aiChats', 'untitled', BACKFILL_MAX);
     this.deps.log.info('assistant.titles_backfill', { chats: ids.length });
     for (const id of ids) {
       await this.name(id, () => this.storedSource(id));
     }
   }
 
-  private personText(event: StoredEvent): string {
+  private async personText(event: StoredEvent): Promise<string> {
     return event.message_id === null
       ? event.text
-      : this.deps.store.assistantChat.message(event.message_id).text;
+      : (await this.deps.store.host.call('assistantChat', 'message', event.message_id)).text;
   }
 
-  private storedSource(chatId: string): string | null {
-    const { assistantSearch } = this.deps.store;
-    const person = assistantSearch.firstText(chatId, 'person', 'text');
-    const reply = assistantSearch.firstText(chatId, 'responder', 'text');
+  private async storedSource(chatId: string): Promise<string | null> {
+    const { host } = this.deps.store;
+    const person = await host.call('assistantSearch', 'firstText', chatId, 'person', 'text');
+    const reply = await host.call('assistantSearch', 'firstText', chatId, 'responder', 'text');
     if (person !== null && reply !== null) {
       return exchangeSource(person, reply);
     }
-    const call = assistantSearch.firstText(chatId, 'system', 'call');
+    const call = await host.call('assistantSearch', 'firstText', chatId, 'system', 'call');
     return call === null ? null : callSource(call);
   }
 
-  private async name(chatId: string, sourceOf: () => string | null): Promise<void> {
+  private async name(chatId: string, sourceOf: () => Promise<string | null>): Promise<void> {
     if (this.busy.has(chatId)) {
       return;
     }
     this.busy.add(chatId);
     try {
-      const chat = this.deps.store.aiChats.chat(chatId);
+      const { host } = this.deps.store;
+      const chat = await host.call('aiChats', 'chat', chatId);
       if (!admitsChatExecution(chat) || chat.native_admission === 'standalone') return;
-      const source = this.deps.store.aiChats.titleAuto(chatId) ? sourceOf() : null;
+      const source = (await host.call('aiChats', 'titleAuto', chatId)) ? await sourceOf() : null;
       if (source !== null) {
         await this.generate(chatId, source);
       }
@@ -136,6 +159,6 @@ export class ChatTitles {
     if (title === null) {
       throw new TitleError('The model sent no usable title.');
     }
-    this.deps.store.aiChats.autoTitle(chatId, title);
+    await this.deps.store.host.call('aiChats', 'autoTitle', chatId, title);
   }
 }

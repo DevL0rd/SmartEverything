@@ -1,57 +1,23 @@
-import { ApiError, type AiChatRow } from '@smarteverything/domain';
-import { switchedOffTools } from '../../ai-tools/tool-discovery';
+import { ApiError } from '@smarteverything/domain';
 import { profileIdOf, type Caller } from '../../server/auth';
-import { effectiveClientById } from '../../server/person-access';
-import { assertToolArea } from '../../server/person-scope';
+import { subjectOf } from '../../server/person-scope';
+import { refusal } from '../../server/person-access';
 import { currentRequestSignal } from '../../server/request-signal';
 import type { ConversationAuthority } from '../../harness/authority-contract';
-import { writerIdentity } from '../../store/repositories/dsh-session-claims';
 import type { Store } from '../../store/store';
 import { currentProviderToolAuthority } from '../engines/computer/tool-authority';
-import { admitChatExecution } from '../native-helpers';
-import { admitExecutionTool, currentExecutionAuthority, executionRole } from '../turn-authority';
+import { currentExecutionAuthority } from '../turn-authority';
+import type { HelperPair, PairCheck } from './helper-artifact-units';
 
-const POST_TOOL = 'chat_post';
-
-interface Pair {
-  readonly helper: AiChatRow;
-  readonly parent: AiChatRow;
-  readonly helperName: string;
-}
-
-function directPair(store: Store, chatId: string, profile: string): Pair {
-  const helper = store.aiChats.chat(chatId);
-  if (
-    helper.profile_id !== profile ||
-    helper.kind !== 'subagent' ||
-    helper.parent_id === null ||
-    helper.helper_name === null
-  )
-    throw new ApiError('forbidden', 'Only a named helper can share with its direct parent.');
-  const parent = store.aiChats.chat(helper.parent_id);
-  if (parent.profile_id !== profile)
-    throw new ApiError('forbidden', 'The helper’s parent belongs to another profile.');
-  for (const chat of [helper, parent]) {
-    store.live.chatWork.assertWorkAllowed(chat.id);
-    admitChatExecution(chat);
-  }
-  return { helper, parent, helperName: helper.helper_name };
-}
-
-function dshWriterOf(store: Store, helper: AiChatRow, eventId: string): string {
-  const engine = helper.engine;
-  if (engine.kind !== 'dsh' || engine.session_id === null)
-    throw new ApiError('forbidden', 'The helper has no admitted SmartEverything session.');
-  const grant = store.harnessSessions.grant(engine.session_id);
-  const claim = store.dshSessions.attached(engine.session_id, helper.profile_id);
-  if (claim === null || grant?.event_id !== eventId)
-    throw new ApiError('forbidden', 'The helper’s SmartEverything tool grant is no longer active.');
-  return writerIdentity(claim);
+export interface ValidatedPair {
+  readonly pair: HelperPair;
+  readonly writer: string | null;
 }
 
 export interface HelperArtifactScope {
-  readonly pair: Pair;
-  readonly validate: () => Pair;
+  readonly pair: HelperPair;
+  readonly check: PairCheck;
+  readonly validate: () => Promise<ValidatedPair>;
 }
 
 function initiatingHelper(caller: Caller): {
@@ -76,58 +42,49 @@ function initiatingHelper(caller: Caller): {
   return { authority, chatId };
 }
 
-export function helperArtifactScope(store: Store, caller: Caller): HelperArtifactScope {
-  const { authority, chatId } = initiatingHelper(caller);
-  const profile = profileIdOf(caller);
-  const event = store.assistantEvents.event(authority.event_id);
-  if (authority.profile_id !== profile || event.profile_id !== profile || event.chat_id !== chatId)
-    throw new ApiError('forbidden', 'The initiating grant belongs to another conversation.');
-  const pair = directPair(store, chatId, profile);
-  const checkRuntime = runtimeScope(store, pair.helper, authority.event_id);
-  const signal = currentRequestSignal();
-  const validate = (): Pair => {
-    signal?.throwIfAborted();
-    validateInitiator(store, authority);
-    assertToolArea(store, caller, 'assistant');
-    admitExecutionTool(store, POST_TOOL, authority);
-    if (switchedOffTools(store.settings.read().mcp_disabled_tools).has(POST_TOOL))
-      throw new ApiError('forbidden', 'The home has turned off chat_post.');
-    const current = directPair(store, chatId, profile);
-    if (current.parent.id !== pair.parent.id)
-      throw new ApiError('conflict', 'The helper’s parent changed while preparing the post.');
-    checkRuntime(current.helper);
-    return current;
-  };
-  validate();
-  return { pair, validate };
-}
-
-function validateInitiator(store: Store, authority: ConversationAuthority): void {
-  if (authority.client_id === null) return;
-  const client = effectiveClientById(store, authority.client_id);
-  if (
-    store.profiles.activeOf(client.id).id !== authority.profile_id ||
-    (executionRole(authority) === 'owner' && client.role !== 'owner')
-  )
-    throw new ApiError('forbidden', 'The initiating app no longer has its original chat access.');
-}
-
-function runtimeScope(
+async function checkedPair(
   store: Store,
-  helper: AiChatRow,
-  eventId: string,
-): (current: AiChatRow) => void {
-  if (helper.engine.kind === 'dsh') {
-    const writer = dshWriterOf(store, helper, eventId);
+  check: PairCheck,
+  initial: boolean,
+): Promise<ValidatedPair> {
+  const checked = await store.host.read('helperArtifactPair', { ...check, initial });
+  if (checked.refusal !== null) throw refusal(store, subjectOf(check.caller), checked.refusal);
+  for (const chat of [checked.pair.helper, checked.pair.parent])
+    store.live.chatWork.assertWorkAllowed(chat.id);
+  return { pair: checked.pair, writer: checked.writer };
+}
+
+function runtimeScope(initial: ValidatedPair, eventId: string): (current: ValidatedPair) => void {
+  if (initial.pair.helper.engine.kind === 'dsh')
     return (current): void => {
-      if (dshWriterOf(store, current, eventId) !== writer)
+      if (current.writer !== initial.writer)
         throw new ApiError('forbidden', 'The helper’s SmartEverything session moved.');
     };
-  }
   const native = currentProviderToolAuthority();
   if (native === undefined || currentExecutionAuthority()?.event_id !== eventId)
     throw new ApiError('forbidden', 'The helper has no current native provider tool grant.');
   return (): void => {
     native.validate(false);
   };
+}
+
+export async function helperArtifactScope(
+  store: Store,
+  caller: Caller,
+): Promise<HelperArtifactScope> {
+  const { authority, chatId } = initiatingHelper(caller);
+  const check: PairCheck = { caller, chatId, profile: profileIdOf(caller), authority };
+  const first = await checkedPair(store, check, true);
+  const checkRuntime = runtimeScope(first, authority.event_id);
+  const signal = currentRequestSignal();
+  const validate = async (): Promise<ValidatedPair> => {
+    signal?.throwIfAborted();
+    const current = await checkedPair(store, check, false);
+    if (current.pair.parent.id !== first.pair.parent.id)
+      throw new ApiError('conflict', 'The helper’s parent changed while preparing the post.');
+    checkRuntime(current);
+    return current;
+  };
+  await validate();
+  return { pair: first.pair, check, validate };
 }

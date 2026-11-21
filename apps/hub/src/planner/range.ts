@@ -1,11 +1,11 @@
 import type { PlannerItemRow, PlannerOccurrenceRow, PlannerRange } from '@smarteverything/domain';
 import type { PlannerItemScope } from '../store/repositories/planner-items';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { isoOf } from './instants';
 import { expandOccurrences, type ExpandWindow } from './occurrences';
 import { itemRoleOf, type PlannerAccessStore } from './sharing/visibility';
 
-export type PlannerReader = Pick<Store, 'plannerItems' | 'plannerOccurrences'>;
+export type PlannerReader = Pick<HostStore, 'plannerItems' | 'plannerOccurrences'>;
 
 export type RangeReader = PlannerReader & PlannerAccessStore;
 

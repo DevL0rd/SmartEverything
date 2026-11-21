@@ -1,3 +1,4 @@
+import { hostMemoryChats, hostMemoryRows } from '../../src/store/host/hosted';
 import { remember, everyone } from '../support/memory-service';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { MemoryPrincipal } from '../../src/memory/principal';
@@ -15,8 +16,8 @@ beforeEach(async () => {
   captureLogs();
   opened = await testStore();
   service = new MemoryService(
-    opened.store.aiMemories,
-    opened.store.aiChats,
+    hostMemoryRows(opened.store.host),
+    hostMemoryChats(opened.store.host),
     new FakeMemoryEmbedder(),
   );
   profileId = opened.store.profiles.create({ name: 'Ida' }).id;
@@ -46,9 +47,12 @@ function chat(memory: boolean): string {
   return id;
 }
 
-function state(chatId: string | null): { offered: boolean; recalled: number } {
+async function state(chatId: string | null): Promise<{ offered: boolean; recalled: number }> {
   const who = principal(chatId);
-  return { offered: service.offered(who), recalled: everyone(service.recall(who)).length };
+  return {
+    offered: await service.offered(who),
+    recalled: everyone(await service.recall(who)).length,
+  };
 }
 
 describe('memory switched per chat', () => {
@@ -56,32 +60,32 @@ describe('memory switched per chat', () => {
     expect(opened.store.aiChats.chat(chat(true)).memory).toBe(true);
   });
 
-  it('works when the person and the chat both have it on', () => {
-    expect(state(chat(true))).toStrictEqual({ offered: true, recalled: 1 });
+  it('works when the person and the chat both have it on', async () => {
+    expect(await state(chat(true))).toStrictEqual({ offered: true, recalled: 1 });
   });
 
-  it('is off in a chat switched off while the person has it on, and other chats keep it', () => {
+  it('is off in a chat switched off while the person has it on, and other chats keep it', async () => {
     const quiet = chat(false);
     const other = chat(true);
-    expect(state(quiet)).toStrictEqual({ offered: false, recalled: 0 });
-    expect(state(other)).toStrictEqual({ offered: true, recalled: 1 });
+    expect(await state(quiet)).toStrictEqual({ offered: false, recalled: 0 });
+    expect(await state(other)).toStrictEqual({ offered: true, recalled: 1 });
   });
 
-  it('is off in a chat switched on while the person has it off', () => {
+  it('is off in a chat switched on while the person has it off', async () => {
     const on = chat(true);
-    service.changeSettings(principal(null), { enabled: false });
-    expect(state(on)).toStrictEqual({ offered: false, recalled: 0 });
+    await service.changeSettings(principal(null), { enabled: false });
+    expect(await state(on)).toStrictEqual({ offered: false, recalled: 0 });
   });
 
-  it('follows the person switch alone when the session has no chat', () => {
-    expect(state(null)).toStrictEqual({ offered: true, recalled: 1 });
-    service.changeSettings(principal(null), { enabled: false });
-    expect(state(null)).toStrictEqual({ offered: false, recalled: 0 });
+  it('follows the person switch alone when the session has no chat', async () => {
+    expect(await state(null)).toStrictEqual({ offered: true, recalled: 1 });
+    await service.changeSettings(principal(null), { enabled: false });
+    expect(await state(null)).toStrictEqual({ offered: false, recalled: 0 });
   });
 
-  it('turns back on for the chat when switched on again', () => {
+  it('turns back on for the chat when switched on again', async () => {
     const id = chat(false);
     opened.store.aiChats.update(id, { memory: true });
-    expect(state(id)).toStrictEqual({ offered: true, recalled: 1 });
+    expect(await state(id)).toStrictEqual({ offered: true, recalled: 1 });
   });
 });

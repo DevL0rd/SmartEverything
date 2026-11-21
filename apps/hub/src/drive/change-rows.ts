@@ -1,16 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
-import {
-  DRIVE_VERSION,
-  type DriveFeedOp,
-  type DriveItem,
-  type DriveVersion,
-  type DriveVia,
-} from '@smarteverything/domain';
+import { DRIVE_VERSION, type DriveVersion, type DriveVia } from '@smarteverything/domain';
 import type { DriveItemDraft, DriveItemIdentity } from '../store/repositories/drive-items';
-import type { Store } from '../store/store';
-import type { ChangeActor } from './changes';
-import { takenMonths } from './changes-months';
 import type { FileItem } from './file-item';
 import { purgeDeadline, type FileEnv, type FileStamp } from './intents';
 import type { FileType } from './scanner-drafts';
@@ -21,39 +12,6 @@ export function isoOf(mtimeNs: bigint): string {
 
 export function identityOf(stamp: FileStamp): DriveItemIdentity {
   return { dev: stamp.dev.toString(), ino: stamp.ino.toString() };
-}
-
-export function announce(
-  env: { readonly store: Pick<Store, 'feed' | 'driveItems' | 'driveFeed'> },
-  rootId: string,
-  parentId: string | null,
-  touched: readonly DriveItem[],
-): void {
-  env.store.feed.notice({
-    type: 'drive_changed',
-    rootIds: [rootId],
-    folderIds: parentId === null ? [] : env.store.driveItems.folderChainOf(parentId),
-    albumIds: [],
-    months: takenMonths(touched),
-    cursor: env.store.driveFeed.latestSeq(),
-  });
-}
-
-export function appendFeed(
-  env: { readonly store: Pick<Store, 'driveFeed'> },
-  item: DriveItem,
-  op: DriveFeedOp,
-  actor: ChangeActor,
-): void {
-  env.store.driveFeed.append({
-    rootId: item.rootId,
-    itemId: item.id,
-    op,
-    rev: item.rev,
-    actorProfileId: actor.actorProfileId,
-    via: actor.via,
-    deviceId: actor.deviceId,
-  });
 }
 
 interface Common {

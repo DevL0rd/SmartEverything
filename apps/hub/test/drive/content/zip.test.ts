@@ -171,10 +171,8 @@ describe('serving an entry over http', () => {
       };
       serveZipEntry(
         {
-          store: {
-            driveItems: { find: () => item() },
-            driveRoots: { find: () => ({ path: folder }) },
-          },
+          item: () => Promise.resolve(item()),
+          root: () => Promise.resolve({ path: folder }),
           links,
           now: () => new Date(),
         },

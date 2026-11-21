@@ -67,7 +67,7 @@ function viewDeps(
     fleet: wiring.fleet,
     holder: (device) => wiring.bridges.holderOf(device),
     walkerOf: (device) => wiring.ingest.walkerFacts(device),
-    series: (deviceId, capability) => hub.drivers.metrics.read(deviceId, capability, '10m'),
+    series: (deviceId, capability) => hub.drivers.metrics.recent(deviceId, capability),
     now,
   };
 }

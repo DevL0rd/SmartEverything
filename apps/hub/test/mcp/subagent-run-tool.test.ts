@@ -37,7 +37,7 @@ beforeEach(async () => {
     store,
     new AssistantFiles({
       layout: hubLayout(opened.directory, {}),
-      chat: store.assistantChat,
+      store: store,
       attachments: store.live.attachments,
       now,
     }),
@@ -49,7 +49,7 @@ beforeEach(async () => {
     added: (): void => undefined,
     now,
   });
-  parentId = chats.create(owner, { title: 'Planner', engine: TEST_ENGINE }).id;
+  parentId = (await chats.create(owner, { title: 'Planner', engine: TEST_ENGINE })).id;
   context = {
     store,
     caller: null,

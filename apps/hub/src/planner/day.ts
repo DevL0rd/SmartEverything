@@ -9,7 +9,7 @@ import type {
   PlannerStripSegment,
   PlannerSummary,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { nextRing } from './alarms';
 import { isoOf } from './instants';
 import { expandOccurrences } from './occurrences';
@@ -68,7 +68,7 @@ export interface DayQuery {
 export type FrameQuery = Pick<DayQuery, 'date' | 'timeZone' | 'now' | 'lastOpen' | 'preferences'>;
 
 export type DayReader = Pick<
-  Store,
+  HostStore,
   'plannerItems' | 'plannerOccurrences' | 'plannerRings' | 'plannerAlarms'
 >;
 

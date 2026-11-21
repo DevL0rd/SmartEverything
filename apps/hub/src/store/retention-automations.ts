@@ -13,7 +13,7 @@ import type { Sql } from './sql';
 const SUMMARY_DAYS = 30;
 const TROUBLED_RUN_DAYS = 90;
 const DRY_RUN_DAYS = 7;
-const DECISION_DAYS = 30;
+export const AUTOMATION_DECISION_DAYS = 30;
 const PLAN_GRACE_DAYS = 1;
 export const NODE_BYTES_PER_AUTOMATION = 20 * 1024 * 1024;
 
@@ -111,54 +111,52 @@ function runRetentionFacts(sql: Sql): RunRetentionFact[] {
     }));
 }
 
-function deleteIds(sql: Sql, operation: string, statement: string, ids: readonly string[]): number {
-  if (ids.length === 0) return 0;
-  return sql.run(operation, statement, { ids: JSON.stringify(ids) });
+export interface AutomationRetentionPlan extends RunRetentionPlan {
+  readonly orphanPlans: readonly string[];
 }
 
-export function sweepAutomationRetention(sql: Sql, now: Date): Record<string, number> {
-  const plan = planRunRetention(runRetentionFacts(sql), now);
-  const selected = 'in (select value from json_each($ids))';
-  const commands = deleteIds(
-    sql,
-    'forget the commands of old runs',
-    `delete from automation_run_commands where run_id ${selected}`,
-    plan.forgetRuns,
-  );
-  const runs = deleteIds(
-    sql,
-    'forget old automation runs',
-    `delete from automation_runs where id ${selected}`,
-    plan.forgetRuns,
-  );
-  const nodes = deleteIds(
-    sql,
-    'drop node records over the automation ceiling',
-    `delete from automation_run_nodes where run_id ${selected}`,
-    plan.dropNodes,
-  );
-  const decisions = sql.run(
-    'forget old automation decisions',
-    'delete from automation_decisions where window_start < $before',
-    { before: new Date(now.getTime() - DECISION_DAYS * DAY_MS).toISOString() },
-  );
-  const questions = sql.run(
-    'forget old automation questions',
-    "delete from automation_questions where state <> 'open' and created_at < $before",
-    { before: new Date(now.getTime() - DECISION_DAYS * DAY_MS).toISOString() },
-  );
-  const plans = sweepOrphanPlans(sql, now);
+export function automationRetentionPlan(sql: Sql, now: Date): AutomationRetentionPlan {
   return {
-    automation_runs: runs,
-    automation_run_commands: commands,
-    automation_run_nodes: nodes,
-    automation_decisions: decisions,
-    automation_questions: questions,
-    automation_plans: plans,
+    ...planRunRetention(runRetentionFacts(sql), now),
+    orphanPlans: orphanPlanHashes(sql, now),
   };
 }
 
-function sweepOrphanPlans(sql: Sql, now: Date): number {
+const SELECTED = 'in (select value from json_each($ids))';
+
+export function forgetRuns(sql: Sql, ids: readonly string[]): { commands: number; runs: number } {
+  const selected = { ids: JSON.stringify(ids) };
+  return {
+    commands: sql.run(
+      'forget the commands of old runs',
+      `delete from automation_run_commands where run_id ${SELECTED}`,
+      selected,
+    ),
+    runs: sql.run(
+      'forget old automation runs',
+      `delete from automation_runs where id ${SELECTED}`,
+      selected,
+    ),
+  };
+}
+
+export function dropRunNodes(sql: Sql, ids: readonly string[]): number {
+  return sql.run(
+    'drop node records over the automation ceiling',
+    `delete from automation_run_nodes where run_id ${SELECTED}`,
+    { ids: JSON.stringify(ids) },
+  );
+}
+
+export function forgetPlans(sql: Sql, hashes: readonly string[]): number {
+  return sql.run(
+    'forget orphan automation plans',
+    `delete from automation_plans where hash ${SELECTED}`,
+    { ids: JSON.stringify(hashes) },
+  );
+}
+
+function orphanPlanHashes(sql: Sql, now: Date): readonly string[] {
   const candidates = sql
     .all(HASH_ROW, 'select hash from automation_plans where created_at < $before', {
       before: new Date(now.getTime() - PLAN_GRACE_DAYS * DAY_MS).toISOString(),
@@ -174,10 +172,5 @@ function sweepOrphanPlans(sql: Sql, now: Date): number {
       )
       .map((row) => row.hash),
   );
-  return deleteIds(
-    sql,
-    'forget orphan automation plans',
-    'delete from automation_plans where hash in (select value from json_each($ids))',
-    orphanPlans(candidates, referenced),
-  );
+  return orphanPlans(candidates, referenced);
 }

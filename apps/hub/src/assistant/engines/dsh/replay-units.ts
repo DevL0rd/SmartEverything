@@ -1,6 +1,6 @@
 import { durableStoreUnit } from '../../../store/host/unit';
 import type { HarnessDelivery } from '../../../store/repositories/harness-deliveries';
-import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 import { applyReplyOp, type ReplyOp } from '../../reply-records';
 
 export interface ReplaySettle {
@@ -15,13 +15,13 @@ export interface ReplayRows {
   readonly messageId: string | null;
 }
 
-function settle(store: Store, input: ReplaySettle): void {
+function settle(store: HostStore, input: ReplaySettle): void {
   store.harnessDeliveries.update(input.deliveryId, input.state, () => {
     applyReplyOp(store, input.op);
   });
 }
 
-function requeue(store: Store, input: ReplayRows): void {
+function requeue(store: HostStore, input: ReplayRows): void {
   store.harnessDeliveries.requeue(input.deliveryId, () => {
     if (input.replyId !== null) store.assistantChat.removeMessages([input.replyId]);
     if (input.messageId !== null && store.assistantChat.message(input.messageId).role === 'person')
@@ -33,7 +33,7 @@ function requeue(store: Store, input: ReplayRows): void {
   });
 }
 
-function restorePending(store: Store, input: ReplayRows): void {
+function restorePending(store: HostStore, input: ReplayRows): void {
   store.harnessDeliveries.restorePending(input.deliveryId, () => {
     if (input.messageId !== null)
       store.assistantChat.updateMessage(input.messageId, {

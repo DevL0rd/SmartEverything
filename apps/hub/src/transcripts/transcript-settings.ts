@@ -3,20 +3,20 @@ import {
   type TranscriptSettings,
   type TranscriptSettingsChange,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { StoreHost } from '../store/host/host';
 
 const KEY = 'transcripts.settings';
 
 export class TranscriptSettingsStore {
-  constructor(private readonly store: Pick<Store, 'settingsKv'>) {}
+  constructor(private readonly host: Pick<StoreHost, 'call'>) {}
 
-  read(): TranscriptSettings {
-    return TRANSCRIPT_SETTINGS.parse(this.store.settingsKv.read(KEY) ?? {});
+  async read(): Promise<TranscriptSettings> {
+    return TRANSCRIPT_SETTINGS.parse((await this.host.call('settingsKv', 'read', KEY)) ?? {});
   }
 
-  save(change: TranscriptSettingsChange): TranscriptSettings {
-    const next = TRANSCRIPT_SETTINGS.parse({ ...this.read(), ...change });
-    this.store.settingsKv.save(KEY, next);
+  async save(change: TranscriptSettingsChange): Promise<TranscriptSettings> {
+    const next = TRANSCRIPT_SETTINGS.parse({ ...(await this.read()), ...change });
+    await this.host.call('settingsKv', 'save', KEY, next);
     return next;
   }
 }

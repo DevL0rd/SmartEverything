@@ -115,7 +115,7 @@ describe('a hub tool called by a chat on another computer', () => {
 const VOICE_TEXT = 'The greenhouse is ready.';
 const VOICE_OPERATION = API_ENDPOINTS.postChatVoiceReply;
 
-function voiceTurn({ chat, claim }: Awaited<ReturnType<typeof session>>): string {
+async function voiceTurn({ chat, claim }: Awaited<ReturnType<typeof session>>): Promise<string> {
   const { store } = rig.opened;
   const event = store.assistantEvents.add({
     id: randomUUID(),
@@ -128,14 +128,16 @@ function voiceTurn({ chat, claim }: Awaited<ReturnType<typeof session>>): string
   });
   store.assistantEvents.mark(event.id, 'delivered_at');
   store.harnessSessions.issue({
-    ...rig.service.storage.grant(claim.session_id),
+    ...(await rig.service.storage.grant(claim.session_id)),
     event_id: event.id,
   });
   return event.id;
 }
 
 async function voiceSession(
-  beforeAudio: (current: Awaited<ReturnType<typeof session>>) => void = () => undefined,
+  beforeAudio: (
+    current: Awaited<ReturnType<typeof session>>,
+  ) => Promise<unknown> | undefined = () => undefined,
 ): Promise<{
   readonly request: (eventId?: string) => Promise<unknown>;
   readonly record: ReturnType<typeof vi.fn<AssistantVoice['recordClip']>>;
@@ -145,14 +147,14 @@ async function voiceSession(
   const { store, directory } = rig.opened;
   await store.live.home.load();
   const current = await session();
-  const firstEvent = voiceTurn(current);
+  const firstEvent = await voiceTurn(current);
   const record = vi.fn<AssistantVoice['recordClip']>(async () => {
-    beforeAudio(current);
+    await beforeAudio(current);
     await Promise.resolve();
     return { wav: Buffer.from('fake audio'), model: 'gemini-3.8-flash-tts' };
   });
   const files = new AssistantFiles({
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     layout: hubLayout(directory, {}),
     now: (): Date => new Date(),
@@ -216,7 +218,7 @@ describe('a voice reply from a chat on another computer', () => {
       { id: receipt.attachmentId, transcript: VOICE_TEXT, mime: 'audio/wav' },
     ]);
 
-    const nextEvent = voiceTurn(current);
+    const nextEvent = await voiceTurn(current);
     await expect(request()).rejects.toThrow('no longer belongs to the current turn');
     expect(record).toHaveBeenCalledOnce();
     expect(budget.check).toHaveBeenCalledOnce();
@@ -258,15 +260,19 @@ describe('a tool call from a runtime that is not the granted host', () => {
     const { claim } = await session();
     const host = rig.service.directory.get(rig.desk.target).host;
     if (rig.desk.target.kind !== 'device') throw new Error('The desk is a device.');
-    const verify = (): unknown =>
+    const verify = (): Promise<unknown> =>
       rig.service.storage.verify(claim, {
         device_id: rig.desk.target.kind === 'device' ? rig.desk.target.device_id : '',
         generation: host.connection_generation,
         runtime_instance: 'another-runtime',
       });
 
-    expect(verify).toThrow(ApiError);
-    expect(verify).not.toThrow(expect.objectContaining({ code: 'ownership_lost' }));
+    const failure: unknown = await verify().then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    expect(failure).toBeInstanceOf(ApiError);
+    expect(failure).not.toMatchObject({ code: 'ownership_lost' });
   });
 });
 

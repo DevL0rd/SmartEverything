@@ -4,12 +4,13 @@ import {
   type PhoneActionResult,
   type PhoneApproval,
 } from '@smarteverything/domain';
-import { effectiveRow } from '../server/person-access';
+import { effectiveRow } from '../server/person-access-units';
 import type { Logger } from '@smarteverything/logging';
 import type { PushCommandChannel } from '../extensions/push/commands';
 import { PushAsks } from '../local/push-asks';
 import { storeUnit } from '../store/host/unit';
 import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 const MILLISECONDS = 1000;
 
@@ -29,7 +30,7 @@ export interface ApprovalRequest extends PhoneApproval {
 }
 
 export function approverClients(
-  store: Pick<Store, 'clients' | 'profiles' | 'personAccess'>,
+  store: Pick<HostStore, 'clients' | 'profiles' | 'personAccess'>,
   profileId: string | null,
 ): readonly string[] {
   const phones = store.clients.list().filter((client) => client.platform === 'android');

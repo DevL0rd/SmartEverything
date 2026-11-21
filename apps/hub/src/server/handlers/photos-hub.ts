@@ -33,7 +33,6 @@ import { AiImageSource } from '../../photos/sources/ai-images';
 import { CameraSource } from '../../photos/sources/cameras';
 import { photoSourceRoutes, type PhotoSourceRoutes } from '../../photos/sources/routes';
 import type { SourceService } from '../../photos/sources/shapes';
-import { DriveBackupRepository } from '../../store/repositories/drive-backup';
 import type { Store } from '../../store/store';
 import type { MediaLinks } from '../media-links';
 import { photosRoutes, type PhotoRoutes } from './photos';
@@ -67,13 +66,8 @@ function sourcesOf(inputs: PhotoHubInputs): Readonly<Record<PhotoSource, SourceS
   };
 }
 
-export function photoBackupService(inputs: Pick<PhotoHubInputs, 'store' | 'env'>): BackupService {
-  const { store } = inputs;
-  return new BackupService({
-    ...inputs.env,
-    store: { ...store, driveBackup: new DriveBackupRepository(store.context) },
-    sql: store.context.sql,
-  });
+export function photoBackupService(inputs: Pick<PhotoHubInputs, 'env'>): BackupService {
+  return new BackupService(inputs.env);
 }
 
 export type PhotoHubRoutes = PhotoRoutes &
@@ -106,7 +100,11 @@ export function photoHubRoutes(inputs: PhotoHubInputs): PhotoHubRoutes {
       inputs.ai,
       new PhotoModelCatalogue(store.live, () => inputs.openRouter.client.zdrModelIds()),
     ),
-    ...photoPeople({ store, ai: inputs.ai, timeZone: () => store.settings.read().time_zone }),
+    ...photoPeople({
+      store,
+      ai: inputs.ai,
+      timeZone: () => store.live.home.settings.read().time_zone,
+    }),
     ...sharing.routes,
     ...photoEditRoutes(
       photoEditDeps({ ...inputs, eraserModel: async () => (await inputs.ai.models()).eraser }),

@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { PhotoAlbumActivityRow } from '../../store/repositories/photo-album-activity';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
-export type TailStore = Pick<Store, 'context' | 'photoAlbumActivity'>;
+export type TailStore = Pick<HostStore, 'context' | 'photoAlbumActivity'>;
 
 const ID = z.strictObject({ id: z.string(), created_at: z.string() });
 

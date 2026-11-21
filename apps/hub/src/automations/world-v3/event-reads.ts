@@ -2,7 +2,13 @@ import { EVENT_KINDS, type EventRow, type JsonValue } from '@smarteverything/dom
 import { z } from 'zod';
 import type { WorldReadDeps } from './deps';
 import { parseInputs } from './inputs';
-import { outputsOf, type ReadHandlers, type ReadInputs, type ReadResult } from './read-port';
+import {
+  outputsOf,
+  type ReadHandlers,
+  type ReadInputs,
+  type ReadResult,
+  type ReadScope,
+} from './read-port';
 import { TARGET_VALUE } from './refs';
 import { devicesOf } from './targets';
 
@@ -22,7 +28,7 @@ function recordOf(row: EventRow): Readonly<Record<string, JsonValue>> {
   };
 }
 
-function eventCount(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
+function eventCount(deps: WorldReadDeps, inputs: ReadInputs, scope: ReadScope): ReadResult {
   const request = parseInputs('event.count', EVENT_COUNT, inputs);
   const deviceIds =
     request.target === undefined
@@ -31,9 +37,9 @@ function eventCount(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
   const rows =
     deviceIds?.length === 0
       ? []
-      : deps.store.events.list({
-          from: new Date(deps.clock.now().getTime() - request.last).toISOString(),
-          deviceIds,
+      : scope.fetch('worldEvents', {
+          from: new Date(scope.now().getTime() - request.last).toISOString(),
+          ...(deviceIds === undefined ? {} : { deviceIds }),
           kinds: request.kinds,
           limit: Number.MAX_SAFE_INTEGER,
         });
@@ -46,6 +52,6 @@ function eventCount(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
 
 export function eventReadHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
-    'event.count': (inputs): ReadResult => eventCount(deps, inputs),
+    'event.count': (inputs, scope): ReadResult => eventCount(deps, inputs, scope),
   };
 }

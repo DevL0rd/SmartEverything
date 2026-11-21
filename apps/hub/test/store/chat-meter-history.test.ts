@@ -1,3 +1,4 @@
+import { openSeededStore, testStore, type TestStore, closedStore } from '../support/store';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -9,10 +10,8 @@ import {
 } from '@smarteverything/domain';
 import { AssistantService } from '../../src/assistant/service';
 import { aiChatRoutes } from '../../src/server/handlers/ai-chats';
-import { openStore } from '../../src/store/store';
 import { TEST_ENGINE } from '../support/engine';
 import { captureLogs, testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 import { hubLayout } from '../../src/data-layout';
 import { testStoreHost } from '../support/store-host';
 
@@ -69,7 +68,7 @@ afterEach(async () => {
 });
 
 describe('chat meter history', () => {
-  it('persists only changes in measured context and cache across database connections', () => {
+  it('persists only changes in measured context and cache across database connections', async () => {
     const { aiChats, ledger } = opened.store;
     aiChats.noteContext(chat.id, 27);
     usage(100, 0);
@@ -82,7 +81,7 @@ describe('chat meter history', () => {
     aiChats.noteContext(chat.id, 12);
     aiChats.noteContext(chat.id, null);
 
-    const reader = openStore({
+    const reader = await openSeededStore({
       host: testStoreHost(),
       path: join(opened.directory, 'test.db'),
       log: testLogger('store'),
@@ -100,7 +99,7 @@ describe('chat meter history', () => {
       ]);
       expect(reader.aiChats.chat(chat.id).cache_percent).toBe(25);
     } finally {
-      reader.close();
+      await closedStore(reader);
     }
   });
 
@@ -173,7 +172,7 @@ describe('chat meter history', () => {
       await expect(read(own.id)).resolves.toStrictEqual([]);
       await expect(read(stranger.id)).rejects.toMatchObject({ code: 'forbidden' });
     } finally {
-      assistant.stop();
+      await assistant.stop();
     }
   });
 });

@@ -56,7 +56,7 @@ beforeEach(async () => {
     store,
     new AssistantFiles({
       layout: hubLayout(opened.directory, {}),
-      chat: store.assistantChat,
+      store: store,
       attachments: store.live.attachments,
       now,
     }),
@@ -74,11 +74,11 @@ afterEach(async () => {
 });
 
 describe('creating a chat before any model route is known', () => {
-  it('stores the default as an unopened native chat on the hub with the default model', () => {
+  it('stores the default as an unopened native chat on the hub with the default model', async () => {
     const expected = onTheHub(owner.profileId);
-    expect(chats.defaultChat(owner.profileId).engine).toEqual(expected);
-    expect(chats.forTurn(owner.profileId, undefined, undefined).engine).toEqual(expected);
-    expect(chats.conversationChat(owner.profileId).engine).toEqual(expected);
+    expect((await chats.defaultChat(owner.profileId)).engine).toEqual(expected);
+    expect((await chats.forTurn(owner.profileId, undefined, undefined)).engine).toEqual(expected);
+    expect((await chats.conversationChat(owner.profileId)).engine).toEqual(expected);
   });
 
   it('runs a chat made from a default picked on a device on the hub, with no inherited session', async () => {
@@ -93,10 +93,10 @@ describe('creating a chat before any model route is known', () => {
     };
     await opened.store.live.engineDefaults.update(picked);
     const expected = { ...picked, execution_target: { kind: 'server' }, session_id: null };
-    expect(chats.forTurn(owner.profileId, undefined, 'Lights').engine).toEqual(expected);
-    expect(chats.conversationChat(owner.profileId).engine).toEqual(expected);
-    expect(chats.create(owner, {}).engine).toEqual(expected);
-    expect(chats.create(owner, { engine: picked }).engine).toEqual(picked);
+    expect((await chats.forTurn(owner.profileId, undefined, 'Lights')).engine).toEqual(expected);
+    expect((await chats.conversationChat(owner.profileId)).engine).toEqual(expected);
+    expect((await chats.create(owner, {})).engine).toEqual(expected);
+    expect((await chats.create(owner, { engine: picked })).engine).toEqual(picked);
   });
 
   it('uses the engine the owner made the default', async () => {
@@ -104,24 +104,27 @@ describe('creating a chat before any model route is known', () => {
       ...onTheHub(owner.profileId),
       model: 'openai/gpt-5',
     });
-    expect(chats.create(owner, {}).engine).toMatchObject({ kind: 'dsh', model: 'openai/gpt-5' });
-    expect(chats.forTurn(owner.profileId, undefined, 'Lights').engine).toMatchObject({
+    expect((await chats.create(owner, {})).engine).toMatchObject({
+      kind: 'dsh',
+      model: 'openai/gpt-5',
+    });
+    expect((await chats.forTurn(owner.profileId, undefined, 'Lights')).engine).toMatchObject({
       kind: 'dsh',
       model: 'openai/gpt-5',
     });
   });
 
-  it('completes a request that names no route onto the person’s own metered route', () => {
+  it('completes a request that names no route onto the person’s own metered route', async () => {
     const bare = DSH_ENGINE_REQUEST.parse({ kind: 'dsh' });
-    expect(chats.create(owner, { engine: bare }).engine).toMatchObject({
+    expect((await chats.create(owner, { engine: bare })).engine).toMatchObject({
       kind: 'dsh',
       execution_target: { kind: 'server' },
       model_route_id: meteredRouteId(owner.profileId),
     });
   });
 
-  it('refuses a request that names a route without the model that runs on it', () => {
-    expect(() =>
+  it('refuses a request that names a route without the model that runs on it', async () => {
+    await expect(
       chats.create(owner, {
         engine: DSH_ENGINE_REQUEST.parse({
           kind: 'dsh',
@@ -129,30 +132,34 @@ describe('creating a chat before any model route is known', () => {
           model: 'x/y',
         }),
       }),
-    ).not.toThrow();
+    ).resolves.toMatchObject({ kind: 'chat' });
     const nameless = { ...GPT, model_route_id: meteredRouteId(owner.profileId), model: null };
-    expect(() => chats.create(owner, { engine: nameless })).toThrow('Name the model');
+    await expect(chats.create(owner, { engine: nameless })).rejects.toThrow('Name the model');
   });
 
-  it('stores the engine the person asked for after checking it, and refuses one that is not available', () => {
-    expect(chats.create(owner, { engine: GPT }).engine).toEqual(gptOnTheHub(owner.profileId));
+  it('stores the engine the person asked for after checking it, and refuses one that is not available', async () => {
+    expect((await chats.create(owner, { engine: GPT })).engine).toEqual(
+      gptOnTheHub(owner.profileId),
+    );
     expect(checked).toEqual([gptOnTheHub(owner.profileId)]);
     refuse = true;
-    expect(() => chats.create(owner, { engine: GPT })).toThrow('That engine is not available.');
+    await expect(chats.create(owner, { engine: GPT })).rejects.toThrow(
+      'That engine is not available.',
+    );
     expect(
       opened.store.aiChats.chats({ profileId: owner.profileId, archived: false }),
     ).toHaveLength(1);
   });
 
-  it('checks an engine change on an existing chat before storing it', () => {
-    const chat = chats.create(owner, { engine: TEST_ENGINE });
+  it('checks an engine change on an existing chat before storing it', async () => {
+    const chat = await chats.create(owner, { engine: TEST_ENGINE });
     const changed = DSH_ENGINE_REQUEST.parse({ kind: 'dsh', model: 'openai/gpt-5' });
-    expect(chats.update(owner, chat.id, { engine: changed }).engine).toMatchObject({
+    expect((await chats.update(owner, chat.id, { engine: changed })).engine).toMatchObject({
       kind: 'dsh',
       model: 'openai/gpt-5',
     });
     refuse = true;
-    expect(() => chats.update(owner, chat.id, { engine: TEST_ENGINE })).toThrow(
+    await expect(chats.update(owner, chat.id, { engine: TEST_ENGINE })).rejects.toThrow(
       'That engine is not available.',
     );
     expect(opened.store.aiChats.chat(chat.id).engine).toMatchObject({ model: 'openai/gpt-5' });
@@ -162,7 +169,7 @@ describe('creating a chat before any model route is known', () => {
 describe('dedicated repair chat identity', () => {
   it.each([false, true])(
     'reuses its source identity and preserves the configured engine and tools (native=%s)',
-    (native) => {
+    async (native) => {
       const { store } = opened;
       const repair = store.aiChats.create({
         profileId: owner.profileId,
@@ -175,8 +182,8 @@ describe('dedicated repair chat identity', () => {
         ...(native ? { nativeAdmission: 'standalone' as const } : {}),
         tools: ['log_read'],
       });
-      chats.create(owner, { title: 'Latest unrelated work' });
-      expect(chats.repairChat(owner.profileId)).toMatchObject({
+      await chats.create(owner, { title: 'Latest unrelated work' });
+      expect(await chats.repairChat(owner.profileId)).toMatchObject({
         id: repair.id,
         engine: repair.engine,
         tools: repair.tools,
@@ -184,13 +191,13 @@ describe('dedicated repair chat identity', () => {
     },
   );
 
-  it('creates a dedicated replacement after archive and never uses an unrelated latest chat', () => {
-    const first = chats.repairChat(owner.profileId);
+  it('creates a dedicated replacement after archive and never uses an unrelated latest chat', async () => {
+    const first = await chats.repairChat(owner.profileId);
     opened.store.aiChats.update(first.id, { archived: true });
-    const unrelated = chats.create(owner, { title: 'AI repair' });
-    const replacement = chats.repairChat(owner.profileId);
+    const unrelated = await chats.create(owner, { title: 'AI repair' });
+    const replacement = await chats.repairChat(owner.profileId);
     expect(replacement.id).not.toBe(first.id);
     expect(replacement.id).not.toBe(unrelated.id);
-    expect(chats.repairChat(owner.profileId).id).toBe(replacement.id);
+    expect((await chats.repairChat(owner.profileId)).id).toBe(replacement.id);
   });
 });

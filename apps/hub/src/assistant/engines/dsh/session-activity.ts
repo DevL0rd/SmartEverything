@@ -9,6 +9,7 @@ import {
 import { TurnStream, type StreamEmit } from '../../conversation/stream';
 import type { HarnessService } from '../../../harness/service';
 import { feedTool, followSession } from './turn-feed';
+import { background } from '@smarteverything/logging';
 
 const BUSY: ReadonlySet<AiHarnessSession['state']> = new Set(['working', 'waiting', 'switching']);
 
@@ -21,29 +22,29 @@ export class NativeSessionActivity {
     private readonly owned: (chatId: string) => boolean,
   ) {
     service.directory.onOffline(() => {
-      for (const chatId of [...this.streams.keys()]) this.sync(chatId);
+      for (const chatId of [...this.streams.keys()]) this.resync(chatId);
     });
   }
 
-  received(event: AiHarnessEvent): void {
+  async received(event: AiHarnessEvent): Promise<void> {
     if (this.owned(event.chat_id)) return;
-    if (event.kind === 'state') this.follow(event, event.session);
+    if (event.kind === 'state') await this.follow(event, event.session);
     else if (event.kind === 'completed' || event.kind === 'failed') this.close(event.chat_id);
-    else this.streamed(event);
+    else await this.streamed(event);
   }
 
-  private streamed(
+  private async streamed(
     event: Exclude<AiHarnessEvent, { kind: 'state' | 'completed' | 'failed' }>,
-  ): void {
+  ): Promise<void> {
     switch (event.kind) {
       case 'text':
-        this.open(event).text(event.delta);
+        (await this.open(event)).text(event.delta);
         return;
       case 'reasoning':
-        this.open(event).reasoning(event.delta);
+        (await this.open(event)).reasoning(event.delta);
         return;
       case 'tool':
-        feedTool(this.open(event), {
+        feedTool(await this.open(event), {
           callId: event.call_id,
           name: event.name,
           state: event.state,
@@ -53,7 +54,7 @@ export class NativeSessionActivity {
         });
         return;
       case 'interaction':
-        this.open(event);
+        await this.open(event);
         return;
       case 'usage':
       case 'agent':
@@ -65,16 +66,21 @@ export class NativeSessionActivity {
     this.close(chatId);
   }
 
-  sync(chatId: string): void {
+  resync(chatId: string): void {
+    background(this.sync(chatId), 'dsh.session_activity_failed', { chatId });
+  }
+
+  private async sync(chatId: string): Promise<void> {
     if (this.owned(chatId)) return;
-    const chat = this.service.store.aiChats.find(chatId);
+    const { host } = this.service.store;
+    const chat = await host.call('aiChats', 'find', chatId);
     if (chat?.engine.kind !== 'dsh') {
       this.close(chatId);
       return;
     }
     const sessionId = chat.engine.session_id;
     const session =
-      sessionId === null ? undefined : this.service.store.harnessSessions.state(sessionId);
+      sessionId === null ? undefined : await host.call('harnessSessions', 'state', sessionId);
     if (
       sessionId === null ||
       session?.epoch === null ||
@@ -84,15 +90,18 @@ export class NativeSessionActivity {
       this.close(chat.id);
       return;
     }
-    this.follow({ chat_id: chat.id }, session);
+    await this.follow({ chat_id: chat.id }, session);
   }
 
-  activity(profileId: string): readonly ChatActivityNotice[] {
-    for (const chat of this.service.store.aiChats.usingEngine('dsh'))
-      if (chat.profile_id === profileId) this.sync(chat.id);
+  async activity(profileId: string): Promise<readonly ChatActivityNotice[]> {
+    const chats = await this.service.store.host.call('aiChats', 'usingEngine', 'dsh');
+    const owned = new Set(
+      chats.filter((chat) => chat.profile_id === profileId).map((chat) => chat.id),
+    );
+    for (const chatId of owned) await this.sync(chatId);
     return [...this.streams.values()]
       .map((stream) => stream.current())
-      .filter((notice) => this.service.store.aiChats.find(notice.chatId)?.profile_id === profileId);
+      .filter((notice) => owned.has(notice.chatId));
   }
 
   private online(target: AiHarnessTarget): boolean {
@@ -102,18 +111,23 @@ export class NativeSessionActivity {
       .some((host) => host.online && harnessTargetKey(host.target) === key);
   }
 
-  private follow(event: Pick<AiHarnessEvent, 'chat_id'>, session: AiHarnessSession): void {
+  private async follow(
+    event: Pick<AiHarnessEvent, 'chat_id'>,
+    session: AiHarnessSession,
+  ): Promise<void> {
     if (!BUSY.has(session.state)) {
       this.close(event.chat_id);
       return;
     }
-    followSession(this.open(event), session);
+    followSession(await this.open(event), session);
   }
 
-  private open(event: Pick<AiHarnessEvent, 'chat_id'>): TurnStream {
+  private async open(event: Pick<AiHarnessEvent, 'chat_id'>): Promise<TurnStream> {
     const known = this.streams.get(event.chat_id);
     if (known !== undefined) return known;
-    const chat = this.service.store.aiChats.chat(event.chat_id);
+    const chat = await this.service.store.host.call('aiChats', 'chat', event.chat_id);
+    const raced = this.streams.get(chat.id);
+    if (raced !== undefined) return raced;
     const stream = new TurnStream(
       { chatId: chat.id, turnId: randomUUID(), messageId: null, profileId: chat.profile_id },
       this.emit,

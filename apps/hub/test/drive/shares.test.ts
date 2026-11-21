@@ -252,7 +252,7 @@ beforeEach(async () => {
     shareRoutes({
       shares,
       layout: opened.layout,
-      removeLocationOutside: (): boolean => removeLocation,
+      removeLocationOutside: (): Promise<boolean> => Promise.resolve(removeLocation),
     }),
   );
   await new Promise<void>((resolveListening) => {
@@ -306,7 +306,7 @@ describe('creating links', () => {
 
   it('lets a member create only when the owner allows it, and only for items they can see', async () => {
     await expect(create(INSIDE, { actor: member })).rejects.toThrow(/not allowed/u);
-    updateDriveSettings(opened.store, { membersMayShare: true });
+    await updateDriveSettings(opened.store, { membersMayShare: true });
     const made = await create(INSIDE, { actor: member });
     expect(made.id).toBeTruthy();
     expect(await shares.list(member, INSIDE)).toHaveLength(1);
@@ -364,7 +364,7 @@ describe('opening links', () => {
   });
 
   it('revokes immediately and lets anyone revoke a link on the Shared Drive', async () => {
-    updateDriveSettings(opened.store, { membersMayShare: true });
+    await updateDriveSettings(opened.store, { membersMayShare: true });
     const made = await create(INSIDE, { actor: member });
     const stranger: ShareActor = {
       profileId: opened.store.profiles.create({ name: 'Ida' }).id,
@@ -377,7 +377,7 @@ describe('opening links', () => {
   });
 
   it('keeps links on a personal drive to the person, the Hub owner included', async () => {
-    updateDriveSettings(opened.store, { membersMayShare: true });
+    await updateDriveSettings(opened.store, { membersMayShare: true });
     const personal = opened.layout.person(member.profileId).drive;
     await mkdir(personal, { recursive: true });
     await writeFile(join(personal, 'mine.txt'), BODY);
@@ -392,7 +392,7 @@ describe('opening links', () => {
   });
 
   it('lets a grantee read but not link, and ends with the grant', async () => {
-    updateDriveSettings(opened.store, { membersMayShare: true });
+    await updateDriveSettings(opened.store, { membersMayShare: true });
     const made = await create(PERSONAL_FILE, { actor: member });
     opened.store.driveGrants.set(
       { itemId: PERSONAL_FILE, profileId: owner.profileId, role: 'edit', expiresAt: null },

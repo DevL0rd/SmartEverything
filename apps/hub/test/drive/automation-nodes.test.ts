@@ -238,7 +238,7 @@ function authority(profileId: string, role: 'owner' | 'member'): ConversationAut
 function rigOf(result: (change: DriveChange) => DriveChangeResult): Rig {
   const calls: Rig['calls'] = [];
   const ports: DriveEffectPorts = {
-    ownerProfileId: () => OWNER,
+    ownerProfileId: () => Promise.resolve(OWNER),
     drive: {
       change: (caller, change) => {
         calls.push({ caller, change });

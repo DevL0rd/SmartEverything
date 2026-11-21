@@ -14,22 +14,10 @@ export class HarnessAttachments {
     private readonly files: AssistantFiles,
   ) {}
   async *load(sessionId: string, ids: readonly string[]): AsyncIterable<HarnessAttachment> {
-    for (const id of ids) yield await this.read(this.find(sessionId, id));
+    for (const id of ids) yield await this.read(await this.find(sessionId, id));
   }
-  find(sessionId: string, id: string): StoredAttachment {
-    const grant = this.service.storage.grant(sessionId);
-    const metadata = this.service.store.dshSessions.stat(sessionId, grant.profile_id);
-    if (metadata === undefined)
-      throw new ApiError('not_found', 'Native attachment conversation is absent.');
-    const file = this.service.store.assistantChat
-      .attachmentsOfChat(metadata.chat_id)
-      .find((entry) => entry.id === id && entry.profile_id === grant.profile_id);
-    if (file === undefined)
-      throw new ApiError(
-        'forbidden',
-        'Attachment is not attached to this initiating conversation.',
-      );
-    return file;
+  find(sessionId: string, id: string): Promise<StoredAttachment> {
+    return this.service.store.host.read('harnessAttachment', { session_id: sessionId, id });
   }
   async read(file: StoredAttachment): Promise<HarnessAttachment> {
     const data = await readFile(this.files.pathOf(file));
@@ -43,16 +31,16 @@ export class HarnessAttachments {
       name: file.name,
       mime: file.mime,
       data,
-      transcript: this.files.noteOf(file),
+      transcript: await this.files.noteOf(file),
     };
   }
-  describe(file: StoredAttachment): z.infer<typeof HARNESS_ATTACHMENT_TRANSFER> {
+  async describe(file: StoredAttachment): Promise<z.infer<typeof HARNESS_ATTACHMENT_TRANSFER>> {
     return {
       name: file.name,
       mime: file.mime,
       bytes: file.bytes,
       sha256: file.sha256,
-      transcript: this.files.noteOf(file),
+      transcript: await this.files.noteOf(file),
     };
   }
 }

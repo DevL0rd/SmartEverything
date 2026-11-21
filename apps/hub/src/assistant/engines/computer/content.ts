@@ -38,11 +38,15 @@ export async function providerMessages(
 ): Promise<ProviderTurn['messages']> {
   const { store, files } = resources;
   const runtime = resources.runtime ?? 'claude';
-  const rows = providerHistory(store, chat, event.message_id, resumed);
+  const rows = await store.host.read('computerProviderHistory', {
+    chatId: chat.id,
+    messageId: event.message_id,
+    resumed,
+  });
   const messages: ProviderTurn['messages'] = [];
-  for (const row of rows.filter(inProviderHistory))
+  for (const { row, attachments } of rows.filter(({ row }) => inProviderHistory(row)))
     messages.push(
-      await messageContent({ store, files }, row, {
+      await messageContent(files, row, attachments, {
         runtime,
         current: row.id === event.message_id,
         quote: row.id === event.message_id ? (event.helper_quote_text ?? null) : null,
@@ -51,39 +55,6 @@ export async function providerMessages(
   if (!IN_HISTORY.has(event.kind) || messages.length === 0)
     messages.push({ role: 'user', content: [{ type: 'text', text: event.text }] });
   return messages;
-}
-
-function providerHistory(
-  store: Store,
-  chat: AiChatRow,
-  messageId: string | null,
-  resumed: boolean,
-): AssistantMessageRow[] {
-  if (resumed) return messageId === null ? [] : [store.assistantChat.message(messageId)];
-  return messageId === null
-    ? store.assistantChat.since(chat.id, null)
-    : causalProviderHistory(store.assistantChat.since(chat.id, null), messageId);
-}
-
-function causalProviderHistory(
-  rows: readonly AssistantMessageRow[],
-  id: string,
-): AssistantMessageRow[] {
-  const position = rows.findIndex((row) => row.id === id);
-  const current = rows[position];
-  if (current === undefined) return [];
-  const earlier = new Set(rows.slice(0, position).map((row) => row.id));
-  return [...rows.filter((row) => providerPredecessor(row, id, earlier)), current];
-}
-
-function providerPredecessor(
-  row: AssistantMessageRow,
-  current: string,
-  earlier: ReadonlySet<string>,
-): boolean {
-  if (row.id === current) return false;
-  if (row.role === 'person') return earlier.has(row.id);
-  return row.reply_to === null || earlier.has(row.reply_to);
 }
 
 async function attachmentContent(
@@ -97,7 +68,7 @@ async function attachmentContent(
 ): Promise<ProviderContent> {
   const { current, runtime, verify } = options;
   const checked = verify ? await files.bytesOf(file) : null;
-  if (cachedMedia(file.mime, current)) return { type: 'text', text: files.noteLine(file) };
+  if (cachedMedia(file.mime, current)) return { type: 'text', text: await files.noteLine(file) };
   const bytes = checked ?? (await readFile(files.pathOf(file)));
   return bytesContent(runtime, file, bytes);
 }
@@ -176,12 +147,12 @@ export async function helperProviderMessage(
 }
 
 function assertCodexModalities(
-  store: Store,
+  store: Pick<Store, 'live'>,
   engine: Extract<ComputerEngine, { readonly kind: 'codex' }>,
   parts: readonly ProviderContent[],
 ): void {
-  const model = store.computerRuntimes
-    .models({ device_id: engine.device_id, runtime: engine.kind })
+  const model = store.live.computers
+    .runtimeModels({ device_id: engine.device_id, runtime: engine.kind })
     .find((entry) => entry.id === engine.model || entry.resolved_model === engine.model);
   if (model?.available !== true)
     throw new ApiError('conflict', 'The selected Codex model is unavailable on this computer.');
@@ -214,7 +185,7 @@ export async function steerContent(
   const content: ProviderContent[] = [{ type: 'text', text }];
   if (event.message_id === null) return content;
   const { store, files } = resources;
-  for (const file of store.assistantChat.attachmentsOf(event.message_id))
+  for (const file of await store.host.call('assistantChat', 'attachmentsOf', event.message_id))
     content.push(
       await attachmentContent(files, file, { runtime: 'claude', current: true, verify: false }),
     );
@@ -222,16 +193,16 @@ export async function steerContent(
 }
 
 async function messageContent(
-  resources: { readonly store: Store; readonly files: AssistantFiles },
+  files: AssistantFiles,
   row: AssistantMessageRow,
+  attachments: readonly StoredAttachment[],
   options: {
     readonly runtime: 'claude' | 'codex';
     readonly current: boolean;
     readonly quote: string | null;
   },
 ): Promise<ProviderTurn['messages'][number]> {
-  const { store, files } = resources;
-  const content = await messageParts(files, store.assistantChat.attachmentsOf(row.id), {
+  const content = await messageParts(files, attachments, {
     ...options,
     verify: isHelperDialogueMessage(row),
     text: row.text,

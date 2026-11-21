@@ -26,7 +26,7 @@ beforeEach(async () => {
   const now = (): Date => new Date('2026-10-09T10:00:00.000Z');
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now,
   });

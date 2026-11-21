@@ -79,7 +79,7 @@ beforeEach(async () => {
   calendarId = calendarOf(test.store, ann.profileId).id;
   smtp = await startFakeSmtp();
   const secrets = await SecretStore.open(join(test.directory, 'secrets'), Buffer.alloc(32, 3));
-  const settings = new MailSettingsStore({ settingsKv: test.store.settingsKv, secrets });
+  const settings = new MailSettingsStore({ saved: test.store.live.home.saved, secrets });
   await settings.write({
     host: '127.0.0.1',
     port: smtp.port,

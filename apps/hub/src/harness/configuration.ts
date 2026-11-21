@@ -10,25 +10,35 @@ import {
   type HarnessDesiredConfiguration,
 } from '@smarteverything/domain';
 import { desiredHarnessConfiguration } from '@smarteverything/harness';
-import {
-  HarnessConfigurationStorageError,
-  type HarnessConfigurationRepository,
-} from '../store/repositories/harness-configuration';
-import type { HarnessExtensionsRepository } from '../store/repositories/harness-extensions';
+import type { HostedRepository } from '../store/host/hosted';
+import { HarnessConfigurationStorageError } from '../store/repositories/harness-configuration';
 import type { HarnessConnection, HarnessDirectory } from './directory';
+import type { HarnessExtensionRows } from './extension-rows';
 import { Logger } from '@smarteverything/logging';
+
+export class HarnessConfigurationNotLoadedError extends Error {
+  override readonly name = 'HarnessConfigurationNotLoadedError';
+
+  constructor() {
+    super('The desired harness configuration is read before the harness started.');
+  }
+}
+
+export type HarnessConfigurationStore = HostedRepository<
+  'harnessConfiguration',
+  'record' | 'reports' | 'report'
+>;
 
 export class HarnessConfigurationService {
   private readonly listeners = new Set<(notice: AiHarnessConfigurationNotice) => void>();
   private readonly log = new Logger('hub.harness-configuration');
-  private current: HarnessDesiredConfiguration;
+  private recorded: HarnessDesiredConfiguration | null = null;
 
   constructor(
-    private readonly repository: HarnessConfigurationRepository,
-    private readonly extensions: HarnessExtensionsRepository,
+    private readonly repository: HarnessConfigurationStore,
+    private readonly extensions: Pick<HarnessExtensionRows, 'list' | 'builtins'>,
     private readonly directory: HarnessDirectory,
   ) {
-    this.current = repository.record(this.derive());
     directory.onRegister((connection) => {
       this.push(connection);
       this.changed('host');
@@ -43,6 +53,15 @@ export class HarnessConfigurationService {
     return (): void => {
       this.listeners.delete(listener);
     };
+  }
+
+  async load(): Promise<void> {
+    this.recorded = await this.repository.record(this.derive());
+  }
+
+  private get current(): HarnessDesiredConfiguration {
+    if (this.recorded === null) throw new HarnessConfigurationNotLoadedError();
+    return this.recorded;
   }
 
   private changed(reason: AiHarnessConfigurationNotice['reason']): void {
@@ -68,10 +87,10 @@ export class HarnessConfigurationService {
     return this.current;
   }
 
-  refresh(): void {
+  async refresh(): Promise<void> {
     const next = this.derive();
     if (next.revision === this.current.revision) return;
-    this.current = this.repository.record(next);
+    this.recorded = await this.repository.record(next);
     for (const host of this.directory.list()) this.push(this.directory.registered(host.target));
     this.changed('desired');
   }
@@ -95,8 +114,11 @@ export class HarnessConfigurationService {
     });
   }
 
-  catalogue(role: 'owner' | 'member', clientId: string): AiHarnessConfigurationCatalogue {
-    const reports = this.repository.reports();
+  async catalogue(
+    role: 'owner' | 'member',
+    clientId: string,
+  ): Promise<AiHarnessConfigurationCatalogue> {
+    const reports = await this.repository.reports();
     return {
       desired: this.current,
       hosts: this.directory
@@ -113,17 +135,17 @@ export class HarnessConfigurationService {
     };
   }
 
-  report(
+  async report(
     report: AiHarnessConfigurationReport,
     manifest: AiHarnessManifest,
     connection: HarnessConnection,
-  ): AiHarnessConfigurationStoredReport {
+  ): Promise<AiHarnessConfigurationStoredReport> {
     if (connection.host.configuration_sync !== true)
       throw new ApiError('forbidden', 'This host did not negotiate configuration synchronization.');
     const current = this.directory.get(connection.host.target);
     if (current !== connection)
       throw new ApiError('conflict', 'This report belongs to a replaced configuration connection.');
-    const stored = storageResult(() => this.repository.report(report, connection.host));
+    const stored = await storageResult(() => this.repository.report(report, connection.host));
     if (
       report.pending_revision === undefined &&
       !report.readiness.some((entry) => entry.state === 'pending')
@@ -139,9 +161,9 @@ export class HarnessConfigurationService {
   }
 }
 
-function storageResult<T>(work: () => T): T {
+async function storageResult<T>(work: () => Promise<T>): Promise<T> {
   try {
-    return work();
+    return await work();
   } catch (cause) {
     if (cause instanceof HarnessConfigurationStorageError)
       throw new ApiError('conflict', cause.reason);

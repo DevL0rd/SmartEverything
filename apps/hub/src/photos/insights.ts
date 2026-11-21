@@ -10,7 +10,7 @@ import { DRIVE_PAGE_SIZE } from '../drive/page-size';
 import { homeLocation, homeZone } from '../automations/world-v3/zone';
 import type { StoreContext } from '../store/context';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import {
   CAMERA_ROW,
   CLOCK_ROW,
@@ -355,7 +355,7 @@ export class InsightsReader {
   }
 }
 
-function insightsContext(store: Store): InsightsContext {
+function insightsContext(store: HostStore): InsightsContext {
   return { today: localDay(store.now(), homeZone(store)), home: homeLocation(store) };
 }
 

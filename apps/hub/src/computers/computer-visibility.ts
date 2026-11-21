@@ -8,19 +8,23 @@ import type {
 import { phoneViewerOfCaller } from '../phones/phone-detail';
 import { otherPhoneTiers, visiblePhoneValues } from '../phones/phone-visibility';
 import type { Caller } from '../server/auth';
-import { effectiveClientById } from '../server/person-access';
-import { deviceHidden, scopesOfCaller } from '../server/person-scope';
+import { effectiveClientById } from '../server/person-access-units';
+import { deviceHidden } from '../server/person-scope';
+import { scopesOfCaller } from '../server/person-scope-units';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { OWNER_VIEWER, viewerOf, type ComputerViewer } from './computer-access';
 
-export function viewerOfClient(store: Pick<Store, 'profiles'>, client: ClientRow): ComputerViewer {
+export function viewerOfClient(
+  store: Pick<HostStore, 'profiles'>,
+  client: ClientRow,
+): ComputerViewer {
   if (client.role === 'owner') return OWNER_VIEWER;
   return { owner: false, profileId: store.profiles.activeOf(client.id).id };
 }
 
 export function hiddenComputer(
-  store: Pick<Store, 'computerNodes'>,
+  store: Pick<HostStore, 'computerNodes'>,
   viewer: ComputerViewer,
   device: Pick<DeviceRow, 'id' | 'kind'>,
 ): boolean {
@@ -32,7 +36,7 @@ export function visibleHome<
   D extends Pick<DeviceRow, 'id' | 'kind' | 'room_id'>,
   S extends { readonly device_id: string },
 >(
-  store: Pick<Store, 'computerNodes'>,
+  store: Pick<HostStore, 'computerNodes'>,
   viewer: ComputerViewer,
   scope: DeviceScope | null,
   home: { readonly devices: readonly D[]; readonly state: readonly S[] },
@@ -55,7 +59,7 @@ export interface ComputerAccessView {
 }
 
 function computerVisible(
-  store: Pick<Store, 'computerNodes'>,
+  store: Pick<HostStore, 'computerNodes'>,
   deviceId: string,
   viewer: ComputerViewer,
 ): boolean {
@@ -87,7 +91,7 @@ export const COMPUTER_VISIBLE_TO_UNIT = storeUnit(
     ),
 );
 
-export function visibleDevices(store: Store, caller: Caller): DeviceRow[] {
+export function visibleDevices(store: HostStore, caller: Caller): DeviceRow[] {
   const viewer = viewerOf(caller);
   const scope = scopesOfCaller(store, caller)?.devices ?? null;
   return store.devices
@@ -95,7 +99,7 @@ export function visibleDevices(store: Store, caller: Caller): DeviceRow[] {
     .filter((device) => !hiddenComputer(store, viewer, device) && !deviceHidden(scope, device));
 }
 
-export function visibleState(store: Store, caller: Caller): StateRow[] {
+export function visibleState(store: HostStore, caller: Caller): StateRow[] {
   const { devices, state } = visibleHome(
     store,
     viewerOf(caller),

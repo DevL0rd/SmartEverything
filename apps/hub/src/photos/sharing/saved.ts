@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { PhotoPartnerShareRow } from '../../store/repositories/photo-partner-shares';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
-export type SavedStore = Pick<Store, 'driveAlbums' | 'photoPartnerShares' | 'profiles'>;
+export type SavedStore = Pick<HostStore, 'driveAlbums' | 'photoPartnerShares' | 'profiles'>;
 
 export class SavedAlbums {
   constructor(private readonly store: SavedStore) {}

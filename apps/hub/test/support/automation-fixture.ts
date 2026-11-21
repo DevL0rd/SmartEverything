@@ -11,7 +11,7 @@ import type {
   PortValue,
   TriggerNode,
 } from '@smarteverything/domain';
-import type { Store } from '../../src/store/store';
+import type { SeededStore } from './store';
 import { TEST_AUTHOR } from './automation-author';
 import { graphAutomation } from '../automations-v3/support/graph-of';
 
@@ -71,7 +71,7 @@ export interface AutomationFixture {
 }
 
 export function saveAutomation(
-  store: Pick<Store, 'automations'>,
+  store: Pick<SeededStore, 'automations'>,
   fixture: AutomationFixture = {},
 ): StoredAutomationRow {
   return store.automations.create(
@@ -89,7 +89,7 @@ export function saveAutomation(
 }
 
 export function startRun(
-  store: Pick<Store, 'automationRunRecords'>,
+  store: Pick<SeededStore, 'automationRunRecords'>,
   automationId: string,
   status: AutomationRunRecord['status'] = 'queued',
 ): AutomationRunRecord {

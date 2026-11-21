@@ -13,6 +13,8 @@
     "../claude-hook/*.ts",
     "../drive-mount/*.ts",
     "../../apps/app/app.config.ts",
+    "../../apps/app/src/components/house-map/live-visibility/rules.ts",
+    "../../apps/app/src/queries/keys.ts",
     "../../apps/desktop/packaging/web-runtime.ts",
     "../../apps/desktop/src/package-layout.ts",
     "../../apps/desktop/src/variant.ts",

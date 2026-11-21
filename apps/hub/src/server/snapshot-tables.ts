@@ -1,29 +1,45 @@
 import {
+  BODY_READINGS_SNAPSHOT,
   HEALTH_METRICS,
   NUTRITION_METRICS,
   WATCH_METRICS,
   SNAPSHOT_WINDOWS,
   TALK_MESSAGES_SNAPSHOT,
+  type BodyReadingRow,
   type ClientRow,
   type EventRow,
   type OwnerSnapshotTables,
   type DriveGrant,
   type DrivePlacement,
   type DriveRoot,
+  type ProfileRow,
   type SnapshotTables,
   type TalkPresence,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { visibleHome, viewerOfClient } from '../computers/computer-visibility';
 import { phoneViewerOfClient } from '../phones/phone-detail';
 import { otherPhoneTiers, visibleEvents, visiblePhoneValues } from '../phones/phone-visibility';
-import { channelHidden, presenceInScope, scopesOfClient } from './person-scope';
-import { bodyTables } from './person-privacy';
+import { channelHidden, presenceInScope } from './person-scope';
+import { scopesOfClient } from './person-scope-units';
+import { profileSeenBy, readingVisibleTo, type Viewer as PrivacyViewer } from './person-privacy';
 import { reachableSnapshot } from './snapshot-reach';
 import { rootVisible } from '../drive/access';
 import { DAY_MS } from '../metrics/minute';
 import { visibleCollections } from '../planner/sharing/visibility';
 import { storeUnit } from '../store/host/unit';
+
+export function bodyTables(
+  store: Pick<HostStore, 'profiles' | 'bodyReadings'>,
+  viewer: PrivacyViewer,
+): { readonly profiles: ProfileRow[]; readonly body_readings: BodyReadingRow[] } {
+  return {
+    profiles: store.profiles.list().map((profile) => profileSeenBy(viewer, profile)),
+    body_readings: store.bodyReadings
+      .recent(BODY_READINGS_SNAPSHOT)
+      .filter((reading) => readingVisibleTo(viewer, reading)),
+  };
+}
 
 function dayOf(moment: Date): string {
   return moment.toISOString().slice(0, 10);
@@ -34,7 +50,7 @@ function lastLocalDayOf(now: Date): string {
 }
 
 function homeTables(
-  store: Store,
+  store: HostStore,
   client: ClientRow,
 ): Pick<SnapshotTables, 'devices' | 'device_state' | 'television_settings'> {
   const { devices, state } = visibleHome(
@@ -43,7 +59,10 @@ function homeTables(
     scopesOfClient(store, client)?.devices ?? null,
     { devices: store.devices.list(), state: store.state.list() },
   );
-  const tiers = otherPhoneTiers(devices, phoneViewerOfClient(store, client));
+  const tiers = otherPhoneTiers(
+    devices,
+    phoneViewerOfClient(store.profiles.activeOf(client.id).id, client),
+  );
   const visible = new Set(devices.map((device) => device.id));
   return {
     devices,
@@ -54,12 +73,15 @@ function homeTables(
   };
 }
 
-function visibleDriveRoots(store: Store, { profileId }: Pick<Viewer, 'profileId'>): DriveRoot[] {
+function visibleDriveRoots(
+  store: HostStore,
+  { profileId }: Pick<Viewer, 'profileId'>,
+): DriveRoot[] {
   return store.driveRoots.records().filter((root) => rootVisible(store, { profileId }, root));
 }
 
 export function ownDrivePlacements(
-  store: Pick<Store, 'drivePlacements' | 'computerNodes'>,
+  store: Pick<HostStore, 'drivePlacements' | 'computerNodes'>,
   { profileId }: Pick<Viewer, 'profileId'>,
 ): DrivePlacement[] {
   return store.drivePlacements
@@ -67,7 +89,7 @@ export function ownDrivePlacements(
     .filter((placement) => store.computerNodes.personOf(placement.deviceId) === profileId);
 }
 
-function visibleDriveGrants(store: Store, { profileId }: Viewer): DriveGrant[] {
+function visibleDriveGrants(store: HostStore, { profileId }: Viewer): DriveGrant[] {
   const received = store.driveGrants.receivedBy(profileId);
   const known = new Set(received.map((grant) => grant.id));
   return [
@@ -81,7 +103,7 @@ interface Viewer {
   readonly profileId: string;
 }
 
-function snapshotEvents(store: Store, { client, profileId }: Viewer): EventRow[] {
+function snapshotEvents(store: HostStore, { client, profileId }: Viewer): EventRow[] {
   return visibleEvents(
     store,
     { role: client.role, profileId },
@@ -108,7 +130,7 @@ function present<Row>(row: Row | undefined): Row[] {
 }
 
 function sharesOf(
-  store: Store,
+  store: HostStore,
   people: readonly string[],
 ): PlannerSnapshot['planner_collection_shares'] {
   const shares = people.flatMap((person) => [
@@ -124,7 +146,7 @@ function sharesOf(
   ];
 }
 
-export function plannerTablesOf(store: Store, { client, profileId }: Viewer): PlannerSnapshot {
+export function plannerTablesOf(store: HostStore, { client, profileId }: Viewer): PlannerSnapshot {
   const people =
     client.role === 'owner' ? store.profiles.list().map((profile) => profile.id) : [profileId];
   const everything = client.role === 'owner';
@@ -156,7 +178,7 @@ export interface SnapshotExtras {
 }
 
 function unfilteredTablesOf(
-  store: Store,
+  store: HostStore,
   { client, profileId }: Viewer,
   now: Date,
   extras: SnapshotExtras,
@@ -211,7 +233,7 @@ type TalkTables = Pick<
   'talk_channels' | 'talk_members' | 'talk_messages' | 'talk_presence'
 >;
 
-function talkTablesOf(store: Store, client: ClientRow, presence: TalkPresence): TalkTables {
+function talkTablesOf(store: HostStore, client: ClientRow, presence: TalkPresence): TalkTables {
   const { talk } = store;
   const scope = scopesOfClient(store, client)?.channels ?? null;
   return {
@@ -225,7 +247,7 @@ function talkTablesOf(store: Store, client: ClientRow, presence: TalkPresence): 
 }
 
 function tablesOf(
-  store: Store,
+  store: HostStore,
   viewer: Viewer,
   now: Date,
   extras: Parameters<typeof unfilteredTablesOf>[3],
@@ -238,7 +260,7 @@ function tablesOf(
   };
 }
 
-function ownerTablesOf(store: Store, client: ClientRow): OwnerSnapshotTables | null {
+function ownerTablesOf(store: HostStore, client: ClientRow): OwnerSnapshotTables | null {
   if (client.role !== 'owner') {
     return null;
   }

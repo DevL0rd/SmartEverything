@@ -2,7 +2,7 @@ import type { BodyReadingRow, LiveChange, ProfileRow } from '@smarteverything/do
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ScaleReadings } from '../../src/local/scale-readings';
 import { projected, visible, type Hearing } from '../../src/server/live-visibility';
-import { bodyTables } from '../../src/server/person-privacy';
+import { bodyTables } from '../../src/server/snapshot-tables';
 import { captureLogs, testLogger } from '../support/logs';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
 import { testStore, type TestStore } from '../support/store';

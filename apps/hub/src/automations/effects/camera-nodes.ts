@@ -221,7 +221,7 @@ async function camerasOf(store: Store, ask: SetAsk): Promise<readonly DeviceRow[
       (device) => !device.hidden && isCamera(device),
     );
   if (ask.target === undefined) return [];
-  return resolveTarget(store, ask.target);
+  return resolveTarget(store.live.home, ask.target);
 }
 
 async function sendCamera(

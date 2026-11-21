@@ -6,11 +6,8 @@ import {
 import { applyTasksPage, type GoogleTask, type TasksSyncState } from '@smarteverything/google';
 import { Logger } from '@smarteverything/logging';
 import type { FetchLike } from '../../plugins/builtin/fetch-like';
-import type { GoogleSyncLogRepository } from '../../store/repositories/google-sync-log';
-import type { GoogleSyncStateRepository } from '../../store/repositories/google-sync-state';
-import type { PlannerCollectionsRepository } from '../../store/repositories/planner-collections';
-import type { PlannerItemsRepository } from '../../store/repositories/planner-items';
-import { Run, TasksLocal, type Scope } from './tasks-local';
+import type { HostedRepository } from '../../store/host/hosted';
+import { Run, TasksLocal, type Scope, type TaskItems } from './tasks-local';
 import { baseSentAt, untitled } from './tasks-map';
 import { TasksPush } from './tasks-push';
 import { TasksWire } from './tasks-wire';
@@ -20,10 +17,13 @@ const log = new Logger('hub.googletasks');
 export interface TasksSyncDeps {
   readonly fetch: FetchLike;
   readonly accessToken: (profileId: string) => Promise<string>;
-  readonly items: PlannerItemsRepository;
-  readonly collections: PlannerCollectionsRepository;
-  readonly states: GoogleSyncStateRepository;
-  readonly log: GoogleSyncLogRepository;
+  readonly items: TaskItems;
+  readonly collections: HostedRepository<
+    'plannerCollections',
+    'list' | 'byGoogle' | 'update' | 'insert'
+  >;
+  readonly states: HostedRepository<'googleSyncState', 'find' | 'put'>;
+  readonly log: HostedRepository<'googleSyncLog', 'byId' | 'replaceChoice' | 'insert' | 'list'>;
   readonly now: () => string;
 }
 
@@ -42,46 +42,46 @@ export class TasksSync {
     const run = new Run(profileId);
     try {
       await this.discoverLists(profileId);
-      for (const scope of this.scopes(run)) {
+      for (const scope of await this.scopes(run)) {
         await this.pull(scope);
         await this.pusher.push(scope);
       }
     } catch (cause) {
-      this.record(run, trigger, cause instanceof Error ? cause.message : 'unknown');
+      await this.record(run, trigger, cause instanceof Error ? cause.message : 'unknown');
       throw cause;
     }
-    this.record(run, trigger, null);
+    await this.record(run, trigger, null);
     return run.counts;
   }
 
   async resolveChoice(profileId: string, logId: string, googleId: string): Promise<void> {
-    const { choice } = this.deps.log.byId(logId, profileId);
+    const { choice } = await this.deps.log.byId(logId, profileId);
     if (choice === null) return;
     if (choice.resolved_google_id !== null) return;
     const run = new Run(profileId);
-    const scope = this.scopes(run).find((candidate) => candidate.listId === choice.list_id);
+    const scope = (await this.scopes(run)).find((candidate) => candidate.listId === choice.list_id);
     if (scope === undefined) return;
-    const item = this.deps.items.byId(choice.item_id, profileId);
+    const item = await this.deps.items.byId(choice.item_id, profileId);
     for (const candidate of choice.candidates) {
       const task = await this.wire.task(scope, candidate.google_id);
       if (candidate.google_id !== googleId) {
-        this.local.importTask(scope, task);
+        await this.local.importTask(scope, task);
         continue;
       }
-      this.local.adopt(scope, item, task);
-      this.local.mergeIn(scope, this.deps.items.byId(item.id, profileId), task);
+      await this.local.adopt(scope, item, task);
+      await this.local.mergeIn(scope, await this.deps.items.byId(item.id, profileId), task);
     }
-    this.local.applyParents(scope);
-    this.deps.log.replaceChoice(logId, profileId, {
+    await this.local.applyParents(scope);
+    await this.deps.log.replaceChoice(logId, profileId, {
       ...choice,
       resolved_google_id: googleId,
       resolved_at: this.deps.now(),
     });
   }
 
-  private record(run: Run, trigger: GoogleSyncTrigger, error: string | null): void {
+  private async record(run: Run, trigger: GoogleSyncTrigger, error: string | null): Promise<void> {
     run.finish();
-    this.deps.log.insert({
+    await this.deps.log.insert({
       profile_id: run.profileId,
       trigger,
       product: 'tasks',
@@ -93,20 +93,18 @@ export class TasksSync {
     log.info('google.tasks.synced', { profileId: run.profileId, ...run.counts, error });
   }
 
-  private scopes(run: Run): Scope[] {
-    return this.deps.collections
-      .list(run.profileId)
-      .flatMap((collection) =>
-        collection.kind === 'list' && collection.google !== null
-          ? [{ run, profileId: run.profileId, collection, listId: collection.google.id }]
-          : [],
-      );
+  private async scopes(run: Run): Promise<Scope[]> {
+    return (await this.deps.collections.list(run.profileId)).flatMap((collection) =>
+      collection.kind === 'list' && collection.google !== null
+        ? [{ run, profileId: run.profileId, collection, listId: collection.google.id }]
+        : [],
+    );
   }
 
   private async discoverLists(profileId: string): Promise<void> {
     const { collections } = this.deps;
     for (const remote of await this.wire.lists(profileId)) {
-      const existing = collections.byGoogle(profileId, remote.id);
+      const existing = await collections.byGoogle(profileId, remote.id);
       const name = untitled(remote.title);
       const google = {
         id: remote.id,
@@ -114,16 +112,16 @@ export class TasksSync {
         syncToken: existing?.google?.syncToken ?? null,
       };
       if (existing !== undefined) {
-        collections.update(existing.id, profileId, { google, name });
+        await collections.update(existing.id, profileId, { google, name });
         continue;
       }
-      collections.insert({
+      await collections.insert({
         profile_id: profileId,
         kind: 'list',
         name,
         colour: 'personal',
         icon: 'list',
-        position: collections.list(profileId).length,
+        position: (await collections.list(profileId)).length,
         visible: true,
         default_reminders: [],
         audience: 'personal',
@@ -140,13 +138,13 @@ export class TasksSync {
       product: 'tasks',
       resourceId: scope.listId,
     } as const;
-    const stored = this.deps.states.find(resource);
+    const stored = await this.deps.states.find(resource);
     const { upserts, tombstones, state } = await this.pages(scope, stored?.sync_token ?? null);
     scope.run.count('pulled', upserts.length + tombstones.length);
-    for (const task of this.adoptSending(scope, upserts)) this.apply(scope, task);
-    for (const id of tombstones) this.local.removeLocal(scope, id);
-    this.local.applyParents(scope);
-    this.deps.states.put({
+    for (const task of await this.adoptSending(scope, upserts)) await this.apply(scope, task);
+    for (const id of tombstones) await this.local.removeLocal(scope, id);
+    await this.local.applyParents(scope);
+    await this.deps.states.put({
       profile_id: scope.profileId,
       product: 'tasks',
       resource_id: scope.listId,
@@ -164,7 +162,7 @@ export class TasksSync {
     readonly tombstones: string[];
     readonly state: TasksSyncState;
   }> {
-    const known = this.local.known(scope);
+    const known = await this.local.known(scope);
     const upserts: GoogleTask[] = [];
     const tombstones: string[] = [];
     let state: TasksSyncState = { updatedMin, pageToken: null, highWater: null };
@@ -181,40 +179,49 @@ export class TasksSync {
     }
   }
 
-  private adoptSending(scope: Scope, upserts: readonly GoogleTask[]): GoogleTask[] {
+  private async adoptSending(scope: Scope, upserts: readonly GoogleTask[]): Promise<GoogleTask[]> {
     const { items } = this.deps;
-    const held = this.heldByChoices(scope);
-    const unmapped = (task: GoogleTask): boolean =>
-      items.byGoogle(scope.profileId, scope.listId, task.id).length === 0;
-    const sending = this.local
-      .tasks(scope)
-      .filter((row) => row.google?.state === 'sending' && row.google.id === null);
+    const held = await this.heldByChoices(scope);
+    const mapped = await this.mappedOf(scope, upserts);
+    const sending = (await this.local.tasks(scope)).filter(
+      (row) => row.google?.state === 'sending' && row.google.id === null,
+    );
     for (const item of sending) {
-      if (this.hasOpenChoice(scope, item)) continue;
+      if (await this.hasOpenChoice(scope, item)) continue;
       const sentAt = Date.parse(baseSentAt(item.google?.base ?? {}) ?? '');
       const matches = upserts.filter(
         (task) =>
           !held.has(task.id) &&
           task.title === item.title &&
           Date.parse(task.updated) >= sentAt &&
-          unmapped(task),
+          !mapped.has(task.id),
       );
       const [only] = matches;
       if (only !== undefined && matches.length === 1) {
-        this.local.adopt(scope, item, only);
+        await this.local.adopt(scope, item, only);
+        mapped.add(only.id);
       } else if (matches.length === 0) {
-        items.update(item.id, scope.profileId, { google: null });
+        await items.update(item.id, scope.profileId, { google: null });
       } else {
         for (const task of matches) held.add(task.id);
-        this.askChoice(scope, item, matches);
+        await this.askChoice(scope, item, matches);
       }
     }
     return upserts.filter((task) => !held.has(task.id));
   }
 
-  private heldByChoices(scope: Scope): Set<string> {
+  private async mappedOf(scope: Scope, upserts: readonly GoogleTask[]): Promise<Set<string>> {
+    const mapped = new Set<string>();
+    for (const task of upserts) {
+      if ((await this.deps.items.byGoogle(scope.profileId, scope.listId, task.id)).length > 0)
+        mapped.add(task.id);
+    }
+    return mapped;
+  }
+
+  private async heldByChoices(scope: Scope): Promise<Set<string>> {
     const held = new Set<string>();
-    for (const entry of this.deps.log.list(scope.profileId)) {
+    for (const entry of await this.deps.log.list(scope.profileId)) {
       const choice = entry.choice;
       if (choice?.list_id !== scope.listId || choice.resolved_google_id !== null) continue;
       for (const candidate of choice.candidates) held.add(candidate.google_id);
@@ -222,14 +229,18 @@ export class TasksSync {
     return held;
   }
 
-  private hasOpenChoice(scope: Scope, item: PlannerItemRow): boolean {
-    return this.deps.log
-      .list(scope.profileId)
-      .some((e) => e.choice?.item_id === item.id && e.choice.resolved_google_id === null);
+  private async hasOpenChoice(scope: Scope, item: PlannerItemRow): Promise<boolean> {
+    return (await this.deps.log.list(scope.profileId)).some(
+      (e) => e.choice?.item_id === item.id && e.choice.resolved_google_id === null,
+    );
   }
 
-  private askChoice(scope: Scope, item: PlannerItemRow, tasks: readonly GoogleTask[]): void {
-    if (this.hasOpenChoice(scope, item)) return;
+  private async askChoice(
+    scope: Scope,
+    item: PlannerItemRow,
+    tasks: readonly GoogleTask[],
+  ): Promise<void> {
+    if (await this.hasOpenChoice(scope, item)) return;
     const counts = {
       pulled: tasks.length,
       created: 0,
@@ -238,7 +249,7 @@ export class TasksSync {
       pushed: 0,
       conflicts: 0,
     };
-    this.deps.log.insert({
+    await this.deps.log.insert({
       profile_id: scope.profileId,
       trigger: 'reconcile',
       product: 'tasks',
@@ -259,13 +270,13 @@ export class TasksSync {
     });
   }
 
-  private apply(scope: Scope, task: GoogleTask): void {
-    const [row] = this.deps.items.byGoogle(scope.profileId, scope.listId, task.id);
+  private async apply(scope: Scope, task: GoogleTask): Promise<void> {
+    const [row] = await this.deps.items.byGoogle(scope.profileId, scope.listId, task.id);
     if (row === undefined) {
-      this.local.importTask(scope, task);
+      await this.local.importTask(scope, task);
       scope.run.count('created');
     } else if (row.deleted_at === null) {
-      this.local.mergeIn(scope, row, task);
+      await this.local.mergeIn(scope, row, task);
     }
   }
 }

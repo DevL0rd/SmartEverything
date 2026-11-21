@@ -24,7 +24,7 @@ import { ComputerNodeAccess } from '../../src/computers/node-access';
 import { commitContent } from '../../src/drive/changes';
 import { TMP_DIRECTORY } from '../../src/drive/intents';
 import { specialDraft } from '../../src/drive/posix/drafts';
-import { resolveScope } from '../../src/drive/sync/placement-scope';
+import { resolveScope } from '../../src/drive/units/sync-scope';
 import {
   entriesForRows,
   firstIndexCursor,
@@ -197,7 +197,6 @@ beforeEach(async () => {
     now: (): Date => NOW,
     purge: { rearm: (): void => undefined },
     posix: syncPosixOf(opened.store, () => NOW),
-    conflicts: opened.store.driveConflicts,
     space: (): ReturnType<SyncEnv['space']> =>
       Promise.resolve({ totalBytes: Number.MAX_SAFE_INTEGER, freeBytes: free }),
     hasher,

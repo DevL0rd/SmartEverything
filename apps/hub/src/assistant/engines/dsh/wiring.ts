@@ -6,6 +6,7 @@ import type { ChatActivityNotice, ChatStreamNotice } from '@smarteverything/doma
 import type { Engine } from '../engine';
 import { watchNativeSessions } from './children';
 import { DshRunner } from './runner';
+import { background } from '@smarteverything/logging';
 
 export function harnessEngine(
   deps: {
@@ -16,16 +17,27 @@ export function harnessEngine(
   options: Pick<AssistantServiceOptions, 'emit'>,
   hooks: {
     readonly activity: (notice: ChatActivityNotice | ChatStreamNotice) => void;
-    readonly finished: TurnEnded;
+    readonly finished: (...ended: Parameters<TurnEnded>) => Promise<void>;
   },
 ): Engine {
   watchNativeSessions(deps.service.store, deps.conversation, () => new Date());
+  deps.service.onMachineChanged((chat, text) => {
+    background(
+      deps.conversation.note(chat, 'SmartEverything', text, null),
+      'service.machine_note_failed',
+      { chatId: chat.id },
+    );
+  });
   return new DshRunner({
     ...deps,
     emit: (notice, profileId): void => {
       options.emit(notice, profileId);
       hooks.activity(notice);
     },
-    finished: hooks.finished,
+    finished: (event, text, ok): void => {
+      background(hooks.finished(event, text, ok), 'request.finish_record_failed', {
+        eventId: event.id,
+      });
+    },
   }).engine();
 }

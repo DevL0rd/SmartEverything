@@ -1,3 +1,4 @@
+import { hostDeviceMetrics } from '../../src/store/host/hosted';
 import type { DeviceCapability } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MetricHistory } from '../../src/metrics/history';
@@ -112,10 +113,10 @@ describe('viewers', () => {
 });
 
 describe('metric history', () => {
-  it('serves seconds from memory and minutes and hours from the store', () => {
+  it('serves seconds from memory and minutes and hours from the store', async () => {
     const deviceId = computerId();
     const history = new MetricHistory({
-      store: opened.store.deviceMetrics,
+      store: hostDeviceMetrics(opened.store.host),
       log: testLogger(),
       now: (): Date => new Date(clock),
     });
@@ -123,12 +124,13 @@ describe('metric history', () => {
       clock = START + second * 1000;
       history.push(deviceId, 'cpu_load', second < 1800 ? 10 : 50, new Date(clock));
     }
-    expect(history.read(deviceId, 'cpu_load', '10m').points).toHaveLength(21);
-    const minutes = history.read(deviceId, 'cpu_load', '24h');
+    await history.settled();
+    expect((await history.read(deviceId, 'cpu_load', '10m')).points).toHaveLength(21);
+    const minutes = await history.read(deviceId, 'cpu_load', '24h');
     expect(minutes.resolution).toBe('minute');
     expect(minutes.points).toHaveLength(60);
     expect(minutes.points[0]).toMatchObject({ value: 10, minimum: 10, maximum: 10 });
-    const hours = history.read(deviceId, 'cpu_load', '30d');
+    const hours = await history.read(deviceId, 'cpu_load', '30d');
     expect(hours.points).toEqual([
       { at: '2026-10-08T10:00:00.000Z', value: 30, minimum: 10, maximum: 50 },
     ]);

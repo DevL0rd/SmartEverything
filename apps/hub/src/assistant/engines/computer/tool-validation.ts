@@ -1,42 +1,71 @@
 import { isDeepStrictEqual } from 'node:util';
 import { ApiError, isCodexPermissionOnlyChange, type AiChatRow } from '@smarteverything/domain';
 import type { ComputerRunnerDeps, Turn } from './ports';
-import { eventAuthority, executionRole } from '../../turn-authority';
+import { authorityScope, executionRole, type AuthorityScope } from '../../turn-authority';
 import { computerEngine, type ComputerEngine } from '../../engine-kind';
-import { effectiveClientById } from '../../../server/person-access';
 import { effectiveProviderEngine } from './options';
 import type { ProviderState } from './provider-state';
+import type { StoredEvent } from '../../../store/repositories/assistant-events';
+import { LiveCheck } from '../../../harness/live-check';
 
 type ToolValidationDeps = Pick<ComputerRunnerDeps, 'store' | 'directory' | 'runtime'>;
 type BoundToolTurn = Pick<Turn, 'event' | 'chat' | 'jobId' | 'executionEngine'>;
-type ToolSession = ReturnType<ProviderState['bound']>;
+type ToolSession = Awaited<ReturnType<ProviderState['bound']>>;
 
-export function providerToolValidation(
+interface ToolBinding {
+  readonly binding: ToolSession;
+  readonly chat: AiChatRow;
+}
+
+export interface ProviderToolValidation {
+  readonly validate: (write: boolean) => void;
+  readonly settled: () => Promise<void>;
+  readonly stop: () => void;
+}
+
+export async function providerToolValidation(
   deps: ToolValidationDeps,
   state: Pick<ProviderState, 'bound'>,
   turn: BoundToolTurn,
   current: () => boolean,
-): (write: boolean) => void {
-  const issued = state.bound(turn.chat);
-  return (write): void => {
-    validateOwner(deps.store, turn.event);
-    validateSession(turn, issued, state.bound(turn.chat), current());
-    const [admitted, effective] = validateEngine(deps, turn);
-    if (write && (projectReadOnly(admitted) || projectReadOnly(effective)))
-      throw new ApiError(
-        'forbidden',
-        'The current native permission allows reading project files only.',
-      );
+): Promise<ProviderToolValidation> {
+  const issued = await state.bound(turn.chat);
+  const scope = authorityScope();
+  const live = await LiveCheck.start(deps.store, async (): Promise<ToolBinding> => {
+    await validateOwner(deps.store, turn.event, scope);
+    return {
+      binding: await state.bound(turn.chat),
+      chat: await deps.store.host.call('aiChats', 'chat', turn.chat.id),
+    };
+  });
+  return {
+    validate: (write): void => {
+      const { binding, chat } = live.value();
+      validateSession(turn, issued, binding, current());
+      const [admitted, effective] = validateEngine(deps, turn, chat);
+      if (write && (projectReadOnly(admitted) || projectReadOnly(effective)))
+        throw new ApiError(
+          'forbidden',
+          'The current native permission allows reading project files only.',
+        );
+    },
+    settled: (): Promise<void> => live.idle(),
+    stop: (): void => {
+      live.stop();
+    },
   };
 }
 
-function validateOwner(store: ToolValidationDeps['store'], event: BoundToolTurn['event']): void {
-  const authority = eventAuthority(store, event);
-  if (
-    executionRole(authority) !== 'owner' ||
-    (authority.client_id !== null &&
-      effectiveClientById(store, authority.client_id).role !== 'owner')
-  )
+async function validateOwner(
+  store: ToolValidationDeps['store'],
+  event: StoredEvent,
+  scope: AuthorityScope,
+): Promise<void> {
+  const { authority, clientRole } = await store.host.read('assistantEventAuthorityView', {
+    event,
+    scope,
+  });
+  if (executionRole(authority) !== 'owner' || (clientRole !== null && clientRole !== 'owner'))
     throw new ApiError(
       'forbidden',
       'Native project work requires its current initiating owner authority.',
@@ -62,8 +91,8 @@ function validateSession(
 function validateEngine(
   deps: ToolValidationDeps,
   turn: BoundToolTurn,
+  chat: AiChatRow,
 ): readonly [ComputerEngine, ComputerEngine] {
-  const chat = deps.store.aiChats.chat(turn.chat.id);
   const engine = computerEngine(chat.engine);
   const admitted = turn.executionEngine;
   if (engine === null || admitted === null || chat.profile_id !== turn.chat.profile_id)
@@ -74,14 +103,20 @@ function validateEngine(
   return [admitted, effective];
 }
 
-export function nativeProjectReadOnly(deps: ToolValidationDeps, chat: AiChatRow): boolean {
+export function nativeProjectReadOnly(
+  deps: Pick<ToolValidationDeps, 'directory' | 'runtime'>,
+  chat: AiChatRow,
+): boolean {
   const engine = computerEngine(chat.engine);
   if (engine === null)
     throw new ApiError('forbidden', 'Project permissions require the current native engine.');
   return projectReadOnly(toolEngine(deps, engine));
 }
 
-function toolEngine(deps: ToolValidationDeps, engine: ComputerEngine): ComputerEngine {
+function toolEngine(
+  deps: Pick<ToolValidationDeps, 'directory' | 'runtime'>,
+  engine: ComputerEngine,
+): ComputerEngine {
   const settings = deps.directory.runtimeStatus({
     device_id: engine.device_id,
     runtime: deps.runtime,

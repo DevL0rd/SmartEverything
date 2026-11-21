@@ -17,7 +17,7 @@ export function attachAutomationAi(
   const wakes = new WakeRunner({
     store: context.store,
     turns: {
-      run: (input): { readonly chatId: string } =>
+      run: (input): Promise<{ readonly chatId: string }> =>
         context.assistant.runTurn({
           profileId: input.profileId,
           ...(input.chatId === null ? {} : { chatId: input.chatId }),

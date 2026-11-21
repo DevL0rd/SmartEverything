@@ -120,6 +120,12 @@ export class UsageStore {
     );
   }
 
+  spendRows(from: string): AiUsageRow[] {
+    return this.context.sql.all(STORED, `select ${LIST} from ai_usage where at >= $from`, {
+      from: new Date(from).toISOString(),
+    });
+  }
+
   pendingGenerations(): AiUsageRow[] {
     return this.context.sql.all(
       STORED,

@@ -1,11 +1,8 @@
-import { DatabaseSync } from 'node:sqlite';
 import {
   PLUGIN_MODEL_CONTRIBUTION,
   createClientToken,
-  createModelMetadataIndex,
   hashClientToken,
   type DeviceRow,
-  type ModelDefaults,
 } from '@smarteverything/domain';
 import { ModelCatalogService } from '../../src/models/catalog-service';
 import {
@@ -16,29 +13,16 @@ import {
 import type { Caller } from '../../src/server/auth';
 import { modelAssetRoutes, modelAuthorizer } from '../../src/server/handlers/model-assets';
 import { modelRoutes, type ModelRouteServices } from '../../src/server/handlers/models';
-import { StoreContext } from '../../src/store/context';
-import { ChangeFeed } from '../../src/store/feed';
-import { migrate } from '../../src/store/migrate';
-import { MIGRATIONS } from '../../src/store/migrations';
-import { ModelAssetsRepository } from '../../src/store/repositories/model-assets';
-import { ModelCatalogRepository } from '../../src/store/repositories/model-catalog';
-import { ModelOverridesRepository } from '../../src/store/repositories/model-overrides';
-import { profileIdOf } from '../../src/server/auth';
+import type { ModelAssetsRepository } from '../../src/store/repositories/model-assets';
+import type { ModelCatalogRepository } from '../../src/store/repositories/model-catalog';
+import type { ModelOverridesRepository } from '../../src/store/repositories/model-overrides';
 import { ResponseEncoder } from '../../src/server/responses/encoder';
 import { GlbWorker } from '../../src/models/glb-worker';
-import { Sql } from '../../src/store/sql';
 import { testStore, type TestStore } from '../support/store';
 import { testLogger } from '../support/logs';
 import { bundledCodecWorker } from '../support/codec-worker';
 import { temporaryDirectory } from '../support/server';
 import { jsonBytes, specOf } from './model-fixtures';
-
-const NOW = '2026-10-25T10:00:00.000Z';
-
-export const NO_DEFAULTS: ModelDefaults = {
-  kindDefaults: new Map(),
-  irCategoryDefaults: new Map(),
-};
 
 export interface Harness {
   readonly test: TestStore;
@@ -69,30 +53,20 @@ function clientOf(
   return { caller: { kind: 'client', client: row }, token };
 }
 
-export async function harness(defaults: ModelDefaults = NO_DEFAULTS): Promise<Harness> {
+export async function harness(): Promise<Harness> {
   const test = await testStore();
   const directory = await temporaryDirectory();
   const codecWorker = await bundledCodecWorker(directory.path);
   const encoder = new ResponseEncoder(codecWorker, testLogger('responses'));
   const glb = new GlbWorker(codecWorker, testLogger('models'));
-  const database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
-  const sql = new Sql(database);
-  migrate(sql, MIGRATIONS, NOW, testLogger());
-  const context = new StoreContext(sql, new ChangeFeed(testLogger('store')), () => new Date(NOW));
-  const assets = new ModelAssetsRepository(context);
-  const catalog = new ModelCatalogRepository(context);
-  const overrides = new ModelOverridesRepository(context);
+  const assets = test.store.modelAssets;
+  const catalog = test.store.modelCatalog;
+  const overrides = test.store.modelOverrides;
   const service = new ModelCatalogService({ assets, catalog });
   const owner = clientOf(test, 'owner');
   const member = clientOf(test, 'member');
   const services: ModelRouteServices = {
-    devices: test.store.devices,
-    catalog: service,
-    overrides,
-    assets,
-    metadata: createModelMetadataIndex([]),
-    defaults: () => defaults,
-    profileOf: (caller) => profileIdOf(caller),
+    store: test.store,
     authorize: modelAuthorizer(test.store),
   };
   return {
@@ -105,10 +79,9 @@ export async function harness(defaults: ModelDefaults = NO_DEFAULTS): Promise<Ha
     owner: owner.caller,
     member: member.caller,
     tokens: { owner: owner.token, member: member.token },
-    routes: modelRoutes(services),
+    routes: modelRoutes(test.store),
     rawRoutes: modelAssetRoutes(services, { encoder, glb }),
     close: async (): Promise<void> => {
-      database.close();
       await encoder.close();
       await glb.close();
       await directory.remove();

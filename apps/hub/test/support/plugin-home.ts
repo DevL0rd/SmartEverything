@@ -1,7 +1,7 @@
 import type { PluginHomeFacts } from '../../src/plugins/builtin-context';
-import type { Store } from '../../src/store/store';
+import type { SeededStore } from './store';
 
-export function storePluginHome(store: Store): PluginHomeFacts {
+export function storePluginHome(store: SeededStore): PluginHomeFacts {
   return {
     load: (): Promise<void> => Promise.resolve(),
     settings: { read: () => store.settings.read() },

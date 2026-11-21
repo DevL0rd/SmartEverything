@@ -131,7 +131,6 @@ type FrameSchema<T extends LiveTable, S extends z.ZodType> = z.ZodDiscriminatedU
       operation: z.ZodLiteral<'UPDATE'>;
       key: typeof COLUMNS;
       set: typeof COLUMNS;
-      previous: typeof COLUMNS;
       cleared: typeof CLEARED;
     }>,
     z.ZodObject<{
@@ -159,7 +158,6 @@ export function liveFrameSchemaOf<T extends LiveTable, S extends z.ZodType>(
       operation: z.literal('UPDATE'),
       key,
       set: columns,
-      previous: columns,
       cleared: CLEARED,
     }),
     z.object({ ...base, operation: z.literal('DELETE'), key, oldRecord: row }),

@@ -16,7 +16,7 @@ import type {
   HomeMapPatch,
   HomeMapRevisionFilter,
 } from '../store/repositories/home-maps';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 export interface HomeMapEntry {
   readonly id: HomeMapId;
@@ -68,7 +68,7 @@ export interface HomeMapDeviceModel {
   readonly modelId: string | null;
 }
 
-export type HomeMapRepositories = Pick<Store, 'homeMaps'>;
+export type HomeMapRepositories = Pick<HostStore, 'homeMaps'>;
 
 function viewOf(store: HomeMapRepositories, touched: readonly HomeMapId[]): HomeMapSetView {
   const entries = store.homeMaps.entries();
@@ -136,7 +136,7 @@ export function removeHomeMap(
 }
 
 export function saveHomeMapVersion(
-  store: Pick<Store, 'homeMaps' | 'homeMapVersions'>,
+  store: Pick<HostStore, 'homeMaps' | 'homeMapVersions'>,
   input: HomeMapVersionInput,
 ): HomeMapVersion {
   const map = store.homeMaps.read(input.mapId);

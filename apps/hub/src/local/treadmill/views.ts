@@ -45,7 +45,7 @@ export interface Viewer {
 }
 
 export interface ViewDeps {
-  readonly store: Pick<Store, 'host' | 'settings'>;
+  readonly store: Pick<Store, 'host' | 'live'>;
   readonly fleet: Fleet;
   readonly holder: (device: DeviceRow) => WatchBridge | null;
   readonly walkerOf: (device: DeviceRow) => Promise<WalkerNow>;
@@ -58,7 +58,7 @@ function visibleTo(viewer: Viewer, session: Pick<TreadmillSession, 'walkerProfil
 }
 
 function localDay(deps: ViewDeps, at: Date): string {
-  const offset = zoneOffsetSeconds(deps.store.settings.read().time_zone, at);
+  const offset = zoneOffsetSeconds(deps.store.live.home.settings.read().time_zone, at);
   return new Date(at.getTime() + offset * 1000).toISOString().slice(0, 10);
 }
 

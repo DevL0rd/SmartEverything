@@ -25,7 +25,8 @@ import { CreditsWatch } from '../../src/ledger/budget-credits';
 import { floorsSeenBy } from '../../src/server/live-access';
 import { imageSpendCheck } from '../../src/server/image-authority';
 import { visible, type Hearing } from '../../src/server/live-visibility';
-import { assertModelAllowed, scopesOf } from '../../src/server/person-scope';
+import { assertModelAllowedOf } from '../../src/assistant/model-scope';
+import { scopesOf } from '../../src/server/person-scope-units';
 import { TalkMembership } from '../../src/talk/membership';
 import { captureLogs, testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
@@ -243,12 +244,12 @@ describe('the models a person may use', () => {
     const open = member('Open', {});
     const limited = member('Limited', { models: { mode: 'only', ids: ['openai/gpt-6'] } });
     const parent = owner();
-    assertModelAllowed(opened.store, open.profile.id, 'google/gemini-3');
-    assertModelAllowed(opened.store, parent.profile.id, 'google/gemini-3');
-    assertModelAllowed(opened.store, limited.profile.id, 'openai/gpt-6');
-    const refused = refusal(() => {
-      assertModelAllowed(opened.store, limited.profile.id, 'google/gemini-3');
-    });
+    await assertModelAllowedOf(opened.store, open.profile.id, 'google/gemini-3');
+    await assertModelAllowedOf(opened.store, parent.profile.id, 'google/gemini-3');
+    await assertModelAllowedOf(opened.store, limited.profile.id, 'openai/gpt-6');
+    const refused = await refusalAsync(() =>
+      assertModelAllowedOf(opened.store, limited.profile.id, 'google/gemini-3'),
+    );
     expect(refused.code).toBe('forbidden');
     expect(refused.message).toContain('google/gemini-3');
     await expect(
@@ -345,7 +346,13 @@ describe('the AI budget of a person', () => {
     });
     const made = new Budget({
       ledger: opened.store.ledger,
-      settings: opened.store.settingsKv,
+      settings: {
+        read: (key): Readonly<Record<string, unknown>> | null => opened.store.settingsKv.read(key),
+        save: (key, settings): Promise<void> => {
+          opened.store.settingsKv.save(key, settings);
+          return Promise.resolve();
+        },
+      },
       credits: new CreditsWatch(
         {
           hasKey: (): boolean => false,

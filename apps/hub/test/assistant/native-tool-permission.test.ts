@@ -55,6 +55,7 @@ async function running(sandbox: NonNullable<CodexProviderOptions['sandbox_policy
   readonly engine: Extract<AiChatRow['engine'], { kind: 'codex' }>;
   readonly state: ProviderState;
   readonly validate: (write: boolean) => void;
+  readonly settled: () => Promise<void>;
 }> {
   const { store } = opened;
   const owner = store.clients.create(
@@ -95,26 +96,27 @@ async function running(sandbox: NonNullable<CodexProviderOptions['sandbox_policy
   });
   const state = new ProviderState(store, directory, 'codex');
   const jobId = randomUUID();
-  state.save(chat, {
-    ...state.read(chat),
+  await state.save(chat, {
+    ...(await state.read(chat)),
     state: 'working',
     job_id: jobId,
     session_id: 'codex-session',
   });
-  const validate = providerToolValidation(
+  const { validate, settled } = await providerToolValidation(
     { store, directory, runtime: 'codex' },
     state,
     { chat: { ...chat, engine }, event, jobId, executionEngine: { ...engine, settings: options } },
     () => true,
   );
-  return { store, chat, engine, state, validate };
+  return { store, chat, engine, state, validate, settled };
 }
 
 it('keeps the current Codex tool grant usable after a next-turn permission change', async () => {
-  const { store, chat, engine, validate } = await running(FULL);
+  const { store, chat, engine, validate, settled } = await running(FULL);
   store.aiChats.update(chat.id, {
     engine: { ...engine, settings: { cwd: CWD, sandbox_policy: FULL, approval_policy: 'never' } },
   });
+  await settled();
   expect((): void => {
     validate(false);
   }).not.toThrow();
@@ -129,10 +131,11 @@ it.each([
 ] as const)(
   'keeps project writes within both the admitted and current sandbox',
   async (admitted, next) => {
-    const { store, chat, engine, validate } = await running(admitted);
+    const { store, chat, engine, validate, settled } = await running(admitted);
     store.aiChats.update(chat.id, {
       engine: { ...engine, settings: { sandbox_policy: next, approval_policy: 'never' } },
     });
+    await settled();
     expect((): void => {
       validate(false);
     }).not.toThrow();
@@ -143,13 +146,15 @@ it.each([
 );
 
 it('rejects a different native execution folder and an unowned provider session', async () => {
-  const { store, chat, engine, state, validate } = await running(FULL);
+  const { store, chat, engine, state, validate, settled } = await running(FULL);
   store.aiChats.update(chat.id, { engine: { ...engine, settings: { cwd: '/different/folder' } } });
+  await settled();
   expect((): void => {
     validate(false);
   }).toThrow('execution binding changed');
   store.aiChats.update(chat.id, { engine });
-  state.save(chat, { ...state.read(chat), session_id: 'different-session' });
+  await state.save(chat, { ...(await state.read(chat)), session_id: 'different-session' });
+  await settled();
   expect((): void => {
     validate(false);
   }).toThrow('no longer belongs to the current turn');

@@ -43,7 +43,7 @@ function build(): AlarmScheduler {
   const sunrise = new SunriseRamp({
     store: test.store,
     clock,
-    submit: (): never[] => [],
+    submit: (): Promise<never[]> => Promise.resolve([]),
     log: testLogger(),
   });
   return new AlarmScheduler({ store: test.store, clock, rings, wake, sunrise, log: testLogger() });

@@ -1,3 +1,4 @@
+import { hostFoods } from '../../src/store/host/hosted';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { FoodLookup } from '../../src/foods/food-lookup';
 import { FakeClock } from '../support/fake-clock';
@@ -44,7 +45,7 @@ describe('FoodLookup', () => {
 
   function lookupAnswering(status: number, body: (url: string) => string): FoodLookup {
     return new FoodLookup({
-      foods: held.store.foods,
+      foods: hostFoods(held.store.host),
       fetch: (input): Promise<Response> => {
         const url = new Request(input).url;
         requests.push(url);

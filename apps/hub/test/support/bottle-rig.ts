@@ -253,7 +253,7 @@ function partsOf(seeded: Seeded, capture: Capture, bridge: BottleRig['bridge']):
       store: test.store,
       holder: (): WatchBridge | null => bridge.holder,
       syncing: (): boolean => false,
-      clock: homeClock(test.store),
+      clock: homeClock(test.store.live.home.settings),
       now: clock.now,
       stats,
     },

@@ -1,6 +1,6 @@
 import type { ChatWidget } from '@smarteverything/domain';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { attachWidgets, workingReply, type AttachedWidgets } from './attach-widgets';
 import { widgetRejection, type WidgetViewer } from './widget-check';
 
@@ -15,7 +15,7 @@ export type WidgetShown =
   | { readonly kind: 'rejected'; readonly reasons: readonly string[] }
   | ({ readonly kind: 'attached' } & AttachedWidgets);
 
-function showWidgetsNow(store: Store, input: WidgetShow): WidgetShown {
+function showWidgetsNow(store: HostStore, input: WidgetShow): WidgetShown {
   const reply = workingReply(store, input.chatId);
   if (reply === null) return { kind: 'no_reply' };
   const reasons = input.widgets.flatMap(

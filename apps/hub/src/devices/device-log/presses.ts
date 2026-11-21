@@ -1,5 +1,7 @@
 import {
   PRESS_EFFECT_WINDOW_MS,
+  PRESS_RUN_CLOCK_LEAD_MS,
+  RUN_EFFECT_OUTCOMES,
   buttonActionTitle,
   respondsToSignal,
   type StoredAutomationRow,
@@ -14,21 +16,7 @@ import { causeOfDetails, peopleByClient } from './causes';
 import { signalOfEvent } from './event-signal';
 import type { DeviceLogSource, LogRequest, LogStore } from './types';
 
-const RUN_CLOCK_LEAD_MS = 1000;
 const PRESS_ACTION = 'action';
-
-const OUTCOMES: Readonly<Record<AutomationRunSummary['status'], DeviceLogEffect['outcome']>> = {
-  succeeded: 'ok',
-  failed: 'failed',
-  interrupted: 'failed',
-  ignored: 'skipped',
-  cancelled: 'skipped',
-  queued: 'running',
-  running: 'running',
-  waiting: 'running',
-  paused: 'running',
-  cancelling: 'running',
-};
 
 function pressTitle(details: EventRow['details']): string {
   const action = details[PRESS_ACTION];
@@ -50,13 +38,19 @@ function effectsOf(
         const started = Date.parse(candidate.created_at);
         return (
           candidate.automation_id === automation.id &&
-          started >= pressedAt - RUN_CLOCK_LEAD_MS &&
+          started >= pressedAt - PRESS_RUN_CLOCK_LEAD_MS &&
           started <= pressedAt + PRESS_EFFECT_WINDOW_MS
         );
       });
       return run === undefined
         ? []
-        : [{ title: automation.name, automationId: automation.id, outcome: OUTCOMES[run.status] }];
+        : [
+            {
+              title: automation.name,
+              automationId: automation.id,
+              outcome: RUN_EFFECT_OUTCOMES[run.status],
+            },
+          ];
     });
 }
 
@@ -83,7 +77,7 @@ function readPresses(store: LogStore, request: LogRequest): readonly DeviceLogEn
   const automations = store.automations.list();
   const people = peopleByClient(store);
   const runs = store.automationRuns.startedBetween(
-    new Date(Date.parse(oldest.occurred_at) - RUN_CLOCK_LEAD_MS).toISOString(),
+    new Date(Date.parse(oldest.occurred_at) - PRESS_RUN_CLOCK_LEAD_MS).toISOString(),
     new Date(Date.parse(newest.occurred_at) + PRESS_EFFECT_WINDOW_MS + 1).toISOString(),
   );
   return presses.map((press): DeviceLogEntry => {

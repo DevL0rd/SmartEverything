@@ -10,7 +10,7 @@ import {
   type DrivePlacementStatus,
 } from '@smarteverything/domain';
 import type { DrivePlacementTarget } from '../../store/repositories/drive-placements';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { canRead, type DriveActor, type ItemAccess } from '../access';
 import { targetAccess } from '../placement-access';
@@ -143,14 +143,14 @@ function startingStatus(reportedAt: string, readOnly: boolean): DrivePlacementSt
   };
 }
 
-export function mayManage(store: Store, actor: DriveActor, deviceId: string): boolean {
+export function mayManage(store: HostStore, actor: DriveActor, deviceId: string): boolean {
   return store.computerNodes.personOf(deviceId) === actor.profileId;
 }
 
 export class PlacementRules {
   private readonly touched = new Map<string, string>();
 
-  constructor(private readonly store: Store) {}
+  constructor(private readonly store: HostStore) {}
 
   private activeFor(deviceId: string): readonly DrivePlacement[] {
     return this.store.drivePlacements.forDevice(deviceId).filter(isActive);
@@ -382,7 +382,7 @@ export class PlacementRules {
 }
 
 export function placementChangeIn(
-  store: Store,
+  store: HostStore,
   changes: readonly PlacementChange[],
 ): { readonly placements: (DrivePlacement | null)[]; readonly devices: string[] } {
   const rules = new PlacementRules(store);

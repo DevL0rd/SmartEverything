@@ -43,9 +43,7 @@ beforeEach(() => {
     .prepare("insert into drive_item_text_search (item_id, body) values ('item-a', 'apple words')")
     .run();
   database
-    .prepare(
-      "insert into drive_item_text_search (item_id, body) values ('item-b', 'banana words')",
-    )
+    .prepare("insert into drive_item_text_search (item_id, body) values ('item-b', 'banana words')")
     .run();
 });
 

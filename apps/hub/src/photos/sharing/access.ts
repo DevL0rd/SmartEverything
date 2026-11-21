@@ -1,10 +1,10 @@
 import { ApiError, type AlbumMemberRole, type DriveAlbum } from '@smarteverything/domain';
 import type { DriveActor } from '../../drive/access';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export type AlbumRole = AlbumMemberRole | 'owner';
 
-export type AccessStore = Pick<Store, 'driveAlbums' | 'photoAlbumMembers'>;
+export type AccessStore = Pick<HostStore, 'driveAlbums' | 'photoAlbumMembers'>;
 
 export interface AlbumAccess {
   readonly album: DriveAlbum;

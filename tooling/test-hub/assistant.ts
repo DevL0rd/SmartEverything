@@ -1,7 +1,7 @@
 import { DEFAULT_AI_HARNESS_PERMISSION, type DshEngine } from '@smarteverything/domain';
 import type { NewAssistantMessage } from '../../apps/hub/src/store/repositories/assistant-message-contract.ts';
 import type { NewChat } from '../../apps/hub/src/store/repositories/ai-chat-input.ts';
-import type { Store } from '../../apps/hub/src/store/store.ts';
+import type { Seeded } from './store.ts';
 import { daysAgo, type Anchor } from './clock.ts';
 import type { Random } from './random.ts';
 
@@ -107,7 +107,7 @@ interface Person {
 }
 
 interface Writer {
-  readonly store: Store;
+  readonly store: Seeded;
   readonly rng: Random;
 }
 
@@ -262,7 +262,7 @@ function writeMemories(writer: Writer, people: readonly Person[]): number {
 }
 
 export function seedAssistant(
-  store: Store,
+  store: Seeded,
   people: readonly Person[],
   anchor: Anchor,
   rng: Random,

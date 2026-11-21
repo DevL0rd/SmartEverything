@@ -1,5 +1,5 @@
 import type { LiveChange, LiveMessage } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { storeUnit } from '../store/host/unit';
 import { driveNoticeView, projected, seenBy, type Hearing, type LiveView } from './live-visibility';
 
@@ -54,7 +54,7 @@ function sameOr(source: LiveMessage, shown: LiveMessage | null): LiveViewOf {
   return shown === source ? SAME_VIEW : shown;
 }
 
-function jobViews(store: Store, hearers: readonly Hearing[], job: LiveViewJob): LiveViewOf[] {
+function jobViews(store: HostStore, hearers: readonly Hearing[], job: LiveViewJob): LiveViewOf[] {
   if (job.kind === 'change') {
     return job.hearers.map((index) =>
       sameOr(job.change, projected(hearerAt(hearers, index), job.change, store)),

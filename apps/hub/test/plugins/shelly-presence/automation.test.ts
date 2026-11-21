@@ -53,6 +53,7 @@ import {
   type ShellyToolPorts,
 } from '../../../src/plugins/builtin/shelly-presence/tools';
 import { testRun } from '../../automations-v3/effects/support';
+import { directFetch } from '../../support/direct-fetch';
 import { trigger } from '../../support/automation-fixture';
 import { captureLogs, testLogger } from '../../support/logs';
 import { testStore, type TestStore } from '../../support/store';
@@ -478,7 +479,15 @@ describe('the Shelly Presence zone count', () => {
     if (handler === undefined) throw new Error('no handler');
     return handler(
       { zone },
-      { automationId: 'a', nodeId: 'n', nodeKey: 'n', seed: 1, activation: '0' },
+      {
+        automationId: 'a',
+        nodeId: 'n',
+        nodeKey: 'n',
+        seed: 1,
+        activation: '0',
+        fetch: directFetch(opened.store),
+        now: () => new Date(),
+      },
     ).outputs;
   }
 

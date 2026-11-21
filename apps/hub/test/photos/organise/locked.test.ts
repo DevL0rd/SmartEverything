@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { accessFilter } from '../../../src/drive/access';
 import { LibraryReader } from '../../../src/photos/library';
-import { UNLOCK_LIFETIME_MS, LockedService } from '../../../src/photos/organise/locked';
+import { UNLOCK_LIFETIME_MS, LockedService, hostLocked } from '../../../src/photos/organise/locked';
 import { OrganisePages } from '../../../src/photos/organise/pages';
 import { libraryVisible, photoVisible } from '../../../src/photos/membership';
 import { openKit, type Kit } from './fixture';
@@ -11,7 +11,10 @@ let service: LockedService;
 
 beforeEach(async () => {
   kit = await openKit();
-  service = new LockedService({ locked: kit.store.photoLocked, now: (): Date => kit.time.current });
+  service = new LockedService({
+    locked: hostLocked(kit.store.host),
+    now: (): Date => kit.time.current,
+  });
 });
 afterEach(async () => {
   await kit.test.close();
@@ -19,17 +22,15 @@ afterEach(async () => {
 
 const ALICE = (): string => kit.alice.profileId;
 
-function attempt(profile: string, client: string, token: string | undefined): () => void {
-  return () => {
-    service.require(profile, client, token);
-  };
+function attempt(profile: string, client: string, token: string | undefined): Promise<string> {
+  return service.require(profile, client, token);
 }
 
 describe('the Locked folder PIN', () => {
   it('starts unconfigured and is set once without a current PIN', async () => {
-    expect(service.state(ALICE())).toEqual({ configured: false });
+    expect(await service.state(ALICE())).toEqual({ configured: false });
     await service.setPin(ALICE(), { pin: '2468', currentPin: null });
-    expect(service.state(ALICE())).toEqual({ configured: true });
+    expect(await service.state(ALICE())).toEqual({ configured: true });
     expect(kit.store.photoLocked.pin(ALICE())?.hash).not.toContain('2468');
   });
 
@@ -53,9 +54,9 @@ describe('the Locked folder PIN', () => {
     ).rejects.toMatchObject({
       code: 'forbidden',
     });
-    service.require(ALICE(), kit.phone, open.token);
+    await service.require(ALICE(), kit.phone, open.token);
     await service.setPin(ALICE(), { pin: '1357', currentPin: '2468' });
-    expect(attempt(ALICE(), kit.phone, open.token)).toThrow(
+    await expect(attempt(ALICE(), kit.phone, open.token)).rejects.toThrow(
       expect.objectContaining({ code: 'forbidden' }),
     );
     await expect(service.unlock(ALICE(), kit.phone, '2468')).rejects.toMatchObject({
@@ -94,19 +95,19 @@ describe('unlock tokens', () => {
 
   it('are bound to the person and the client that unlocked', async () => {
     const open = await service.unlock(ALICE(), kit.phone, '2468');
-    service.require(ALICE(), kit.phone, open.token);
+    await service.require(ALICE(), kit.phone, open.token);
     for (const [profile, client] of [
       [ALICE(), kit.tablet],
       [kit.bob.profileId, kit.phone],
     ] as const) {
-      expect(attempt(profile, client, open.token)).toThrow(
+      await expect(attempt(profile, client, open.token)).rejects.toThrow(
         expect.objectContaining({ code: 'forbidden' }),
       );
     }
-    expect(attempt(ALICE(), kit.phone, undefined)).toThrow(
+    await expect(attempt(ALICE(), kit.phone, undefined)).rejects.toThrow(
       expect.objectContaining({ code: 'forbidden' }),
     );
-    expect(attempt(ALICE(), kit.phone, 'not-a-token')).toThrow(
+    await expect(attempt(ALICE(), kit.phone, 'not-a-token')).rejects.toThrow(
       expect.objectContaining({ code: 'forbidden' }),
     );
   });
@@ -117,7 +118,7 @@ describe('unlock tokens', () => {
       new Date(kit.time.current.getTime() + UNLOCK_LIFETIME_MS).toISOString(),
     );
     kit.time.current = new Date(kit.time.current.getTime() + UNLOCK_LIFETIME_MS + 1);
-    expect(attempt(ALICE(), kit.phone, open.token)).toThrow(
+    await expect(attempt(ALICE(), kit.phone, open.token)).rejects.toThrow(
       expect.objectContaining({ code: 'forbidden' }),
     );
   });
@@ -125,10 +126,10 @@ describe('unlock tokens', () => {
   it('end when the client locks, and a second unlock replaces the first token', async () => {
     const first = await service.unlock(ALICE(), kit.phone, '2468');
     const second = await service.unlock(ALICE(), kit.phone, '2468');
-    expect(attempt(ALICE(), kit.phone, first.token)).toThrow();
-    service.require(ALICE(), kit.phone, second.token);
-    service.lock(ALICE(), kit.phone);
-    expect(attempt(ALICE(), kit.phone, second.token)).toThrow();
+    await expect(attempt(ALICE(), kit.phone, first.token)).rejects.toThrow();
+    await service.require(ALICE(), kit.phone, second.token);
+    await service.lock(ALICE(), kit.phone);
+    await expect(attempt(ALICE(), kit.phone, second.token)).rejects.toThrow();
   });
 });
 

@@ -1,7 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
-import type { Store } from '../../apps/hub/src/store/store.ts';
+import type { Seeded } from './store.ts';
 import type { Counted, FilesContext } from './context.ts';
 import { layoutOf } from './layout.ts';
 import { writeJpeg, writeVideo, type Shot } from './media.ts';
@@ -28,7 +28,7 @@ function shotOf(rng: Random, takenAt: Date): Shot {
   };
 }
 
-export async function seedCameraRecordings(store: Store, context: FilesContext): Promise<Counted> {
+export async function seedCameraRecordings(store: Seeded, context: FilesContext): Promise<Counted> {
   const layout = layoutOf(context.paths);
   const rng = context.rng('camera-recordings');
   const events = store.database

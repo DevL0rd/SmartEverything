@@ -16,7 +16,7 @@ let automationId: string;
 
 beforeEach(async () => {
   captureLogs();
-  rig = programRig();
+  rig = await programRig();
   const made = await rig.service.create(rig.owner.caller, {
     name: 'Door',
     enabled: true,
@@ -31,8 +31,8 @@ beforeEach(async () => {
   routes = automationQuestionRoutes({ store: rig.store, questions: desk });
 });
 
-afterEach(() => {
-  rig.close();
+afterEach(async () => {
+  await rig.close();
 });
 
 function ask(personId: string): string {

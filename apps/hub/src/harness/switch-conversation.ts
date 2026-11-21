@@ -21,7 +21,7 @@ export async function switchConversation(
   switching: Set<string>,
   request: SwitchRequest,
 ): Promise<AiHarnessSwitchResult> {
-  const chat = service.own(request.owner, request.chatId);
+  const chat = await service.own(request.owner, request.chatId);
   if (service.binding(chat).session_id === null)
     throw new ApiError('conflict', 'This conversation has no native binding.');
   if (switching.has(chat.id))
@@ -45,7 +45,7 @@ async function decide(
   const reselect = here && sameSelection(binding, input) && input.directory === undefined;
   if (reselect) return clearPending(service, chat);
   service.admitTarget(request.owner, service.directory.get(input.target).host);
-  if (service.turnRunning(chat)) return queue(service, request, chat);
+  if (await service.turnRunning(chat)) return queue(service, request, chat);
   await moveNow(service, request, chat);
   return result(service, chat.id, 'applied');
 }
@@ -58,21 +58,24 @@ function sameSelection(binding: DshEngine, input: AiHarnessHandoffRequest): bool
   );
 }
 
-function clearPending(service: HarnessService, chat: AiChatRow): AiHarnessSwitchResult {
+async function clearPending(
+  service: HarnessService,
+  chat: AiChatRow,
+): Promise<AiHarnessSwitchResult> {
   if (chat.pending_execution_target === null) return result(service, chat.id, 'applied');
-  service.store.aiChats.setPendingTarget(chat.id, null);
+  await service.store.host.call('aiChats', 'setPendingTarget', chat.id, null);
   return result(service, chat.id, 'cleared');
 }
 
-function queue(
+async function queue(
   service: HarnessService,
   request: SwitchRequest,
   chat: AiChatRow,
-): AiHarnessSwitchResult {
+): Promise<AiHarnessSwitchResult> {
   const { input } = request;
   if (input.directory !== undefined || !sameSelection(service.binding(chat), input))
     throw new ApiError('conflict', 'Wait for the reply to finish to change the model or folder.');
-  service.store.aiChats.setPendingTarget(chat.id, input.target);
+  await service.store.host.call('aiChats', 'setPendingTarget', chat.id, input.target);
   return result(service, chat.id, 'pending');
 }
 
@@ -82,28 +85,28 @@ async function moveNow(
   chat: AiChatRow,
 ): Promise<void> {
   const { owner, input } = request;
-  const session = service.state(owner, chat.id);
+  const session = await service.state(owner, chat.id);
   const outcome = await moveConversation(service, {
     owner,
     chat,
     session,
-    grant: service.storage.grant(session.session_id),
+    grant: await service.storage.grant(session.session_id),
     target: input.target,
     route: input.route,
     directory: input.directory,
     interrupt: false,
   });
-  service.store.aiChats.setPendingTarget(chat.id, null);
+  await service.store.host.call('aiChats', 'setPendingTarget', chat.id, null);
   if (outcome.state !== 'moved') throw new ApiError('conflict', outcome.reason);
   await noteMachineChange(service, chat.id, outcome.note);
 }
 
-function result(
+async function result(
   service: HarnessService,
   chatId: string,
   state: AiHarnessSwitchResult['state'],
-): AiHarnessSwitchResult {
-  const chat = service.store.aiChats.chat(chatId);
+): Promise<AiHarnessSwitchResult> {
+  const chat = await service.store.host.call('aiChats', 'chat', chatId);
   return {
     state,
     execution_target: service.binding(chat).execution_target,

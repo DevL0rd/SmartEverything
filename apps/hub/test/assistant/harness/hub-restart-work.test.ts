@@ -16,7 +16,7 @@ async function waitingChat(target: AiHarnessTarget): Promise<string> {
   const chat = rig.newChat(target);
   const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(target, randomUUID(), open);
-  const session = rig.service.state(rig.owner, chat.id);
+  const session = await rig.service.state(rig.owner, chat.id);
   rig.opened.store.harnessSessions.project(
     {
       ...session,
@@ -30,11 +30,11 @@ async function waitingChat(target: AiHarnessTarget): Promise<string> {
   return chat.id;
 }
 
-function restartHub(): void {
-  new HarnessService(rig.opened.store, rig.service.routes, () => undefined, {
+async function restartHub(): Promise<void> {
+  await new HarnessService(rig.opened.store, rig.service.routes, () => undefined, {
     layout: hubLayout(rig.opened.directory, {}),
     clock: systemClock,
-  });
+  }).start();
 }
 
 describe('a hub that restarts while a chat on the hub is working', () => {
@@ -43,10 +43,10 @@ describe('a hub that restarts while a chat on the hub is working', () => {
     const onHub = await waitingChat(rig.hub.target);
     const onDesk = await waitingChat(rig.desk.target);
 
-    restartHub();
+    await restartHub();
 
-    expect(rig.service.state(rig.owner, onHub)).toMatchObject({ state: 'idle', work: [] });
-    expect(rig.service.state(rig.owner, onDesk)).toMatchObject({ state: 'waiting' });
+    expect(await rig.service.state(rig.owner, onHub)).toMatchObject({ state: 'idle', work: [] });
+    expect(await rig.service.state(rig.owner, onDesk)).toMatchObject({ state: 'waiting' });
     expect(
       logs.records.filter((record) => record.event === 'harness.work_interrupted'),
     ).toHaveLength(1);

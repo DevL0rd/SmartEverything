@@ -1,4 +1,4 @@
-import { assertHelperDelivery, helperParentMessageId } from '../../delegation/helper-dialogue';
+import { assertHelperDelivery, helperParentMessageId } from '../../delegation/helper-delivery';
 import {
   helperContinuation,
   helperContinuationReady,
@@ -7,7 +7,7 @@ import {
 } from './helper-continuation';
 import type { Continuation } from './helper-continuation';
 import { deliveryReferences } from '../../../harness/reference-delivery';
-import { effectiveClientById } from '../../../server/person-access';
+import { effectiveClientOf } from '../../../server/person-access';
 import { nativeControl } from './session-control';
 import { rewriteNativeHistory } from '../../../harness/history-mutation';
 import { OwnEngineSelections } from '../../../harness/own-selection';
@@ -19,7 +19,7 @@ import { sessionAttached } from '../../../harness/attach';
 import { closeNativeHistory } from './history-change';
 import { followInterruptedHelpers } from './helper-wake';
 import { nativeReplyId } from './projector-replay';
-import { restoredTurns } from './runner-restore';
+import { admitRestoredInput, restoredTurns } from './runner-restore';
 import { recordPrompt } from './prompt-record';
 import {
   eventAuthority,
@@ -57,9 +57,7 @@ export class DshRunner {
     this.turns = new ConversationProjector(
       options,
       this.authorizeEvent.bind(this),
-      (turn) => {
-        this.moves.atToolCall(turn);
-      },
+      (turn) => this.moves.atToolCall(turn),
       (turn, deliveryId, text) => this.resume(turn, deliveryId, text),
     );
     this.moves = new TurnMachineMoves(options.service, this.turns);
@@ -92,11 +90,11 @@ export class DshRunner {
   engine(): Engine {
     return {
       kind: 'dsh',
-      activity: (profileId) => [
+      activity: async (profileId) => [
         ...[...this.turns.active.values()]
           .filter((turn) => turn.event.profile_id === profileId)
           .map((turn) => turn.stream.current()),
-        ...this.turns.sessions.activity(profileId),
+        ...(await this.turns.sessions.activity(profileId)),
       ],
       ownerOnly: false,
       helperReady: (chat, role, attachments) =>
@@ -129,18 +127,19 @@ export class DshRunner {
   }
   private async deliver(event: StoredEvent, original: AiChatRow): Promise<void> {
     await this.restored;
-    const authority = eventAuthority(this.service.store, event);
+    const authority = await eventAuthority(this.service.store, event);
     return withExecutionAuthority(authority, () => this.deliverAdmitted(event, original));
   }
   private async deliverAdmitted(event: StoredEvent, original: AiChatRow): Promise<void> {
-    new OwnEngineSelections(this.service).migrate(original.id);
-    const admitted = this.service.store.aiChats.chat(original.id);
-    if (helperParentMessageId(event) === null && this.runningChild(admitted)) {
+    await new OwnEngineSelections(this.service).migrate(original.id);
+    const { store } = this.service;
+    const admitted = await store.host.call('aiChats', 'chat', original.id);
+    if (helperParentMessageId(event) === null && (await this.runningChild(admitted))) {
       await this.steerChild(event, admitted);
       return;
     }
-    this.admitRestoredInput(admitted);
-    const existing = this.service.store.harnessDeliveries.find(event.id);
+    await admitRestoredInput(this.service, admitted);
+    const existing = await store.host.call('harnessDeliveries', 'find', event.id);
     const trace = new DshTrace(event, original.id);
     if (existing !== undefined) {
       trace.replayed(existing.state);
@@ -148,8 +147,8 @@ export class DshRunner {
     }
     const { id: sessionId, helper } = await this.session(event, admitted);
     trace.sessionReady(sessionId);
-    this.authorizeEvent(event, admitted, sessionId);
-    const chat = this.service.store.aiChats.chat(original.id);
+    await this.admitEvent(event, admitted, sessionId);
+    const chat = await store.host.call('aiChats', 'chat', original.id);
     const delivery = await this.conversation.admitNative({
       deliveryId: event.id,
       sessionId,
@@ -175,18 +174,18 @@ export class DshRunner {
     trace.turnFinished(sessionId);
     await this.moves.atTurnEnd(chat.id);
   }
-  private resume(turn: ActiveTurn, deliveryId: string, text: string): Promise<void> {
-    const authority = eventAuthority(this.service.store, turn.event);
-    return withExecutionAuthority(authority, async () => {
-      const chat = this.service.store.aiChats.chat(turn.chat.id);
+  private async resume(turn: ActiveTurn, deliveryId: string, text: string): Promise<void> {
+    const authority = await eventAuthority(this.service.store, turn.event);
+    await withExecutionAuthority(authority, async () => {
+      const chat = await this.service.store.host.call('aiChats', 'chat', turn.chat.id);
       const { id, helper } = await this.session(turn.event, chat);
-      this.authorizeEvent(turn.event, chat, id);
+      await this.admitEvent(turn.event, chat, id);
       if (this.unsent.has(turn.event.id)) {
         await this.prompt(turn.event, chat, helper);
         this.unsent.delete(turn.event.id);
         return;
       }
-      const state = this.service.state(
+      const state = await this.service.state(
         { profileId: turn.event.profile_id, role: executionRole(authority) },
         chat.id,
       );
@@ -216,22 +215,27 @@ export class DshRunner {
       },
     });
   }
-  private steerable(event: StoredEvent, chat: AiChatRow): boolean {
+  private async steerable(event: StoredEvent, chat: AiChatRow): Promise<boolean> {
     if (event.message_id === null || chat.kind !== 'chat') return false;
-    const message = this.service.store.assistantChat.message(event.message_id);
+    const message = await this.service.store.host.call(
+      'assistantChat',
+      'message',
+      event.message_id,
+    );
     return message.attachments.length === 0 && (message.references?.length ?? 0) === 0;
   }
   private async steer(event: StoredEvent, chat: AiChatRow): Promise<boolean> {
     const turn = this.turns.ofChat(chat.id);
-    if (turn === undefined || this.moves.moves(chat.id) || !this.steerable(event, chat)) {
+    const steerable = turn !== undefined && (await this.steerable(event, chat));
+    if (turn === undefined || this.moves.moves(chat.id) || !steerable) {
       steerSkipped(event, chat.id, {
         activeTurn: turn !== undefined,
         moving: this.moves.moves(chat.id),
-        steerable: turn !== undefined && this.steerable(event, chat),
+        steerable,
       });
       return false;
     }
-    const state = this.service.state({ profileId: chat.profile_id, role: 'member' }, chat.id);
+    const state = await this.service.state({ profileId: chat.profile_id, role: 'member' }, chat.id);
     if (state.epoch === null) {
       steerSkipped(event, chat.id, { reason: 'no_epoch' });
       return false;
@@ -248,12 +252,15 @@ export class DshRunner {
     await this.conversation.stateOf(event.message_id, 'delivered');
     return true;
   }
-  private runningChild(chat: AiChatRow): boolean {
+  private async runningChild(chat: AiChatRow): Promise<boolean> {
     if (chat.kind !== 'subagent') return false;
     if (chat.engine.kind !== 'dsh' || chat.engine.session_id === null) return false;
-    return (
-      this.service.store.aiAgentRuns.currentOfSession(chat.engine.session_id)?.completed_at === null
+    const run = await this.service.store.host.call(
+      'aiAgentRuns',
+      'currentOfSession',
+      chat.engine.session_id,
     );
+    return run?.completed_at === null;
   }
   private async steerChild(event: StoredEvent, chat: AiChatRow): Promise<void> {
     await nativeControl(this.service, chat, { kind: 'steer', text: midWorkMessage(event.text) });
@@ -261,55 +268,37 @@ export class DshRunner {
     await this.service.store.host.call('assistantEvents', 'mark', event.id, 'answered_at');
     this.options.finished(event, '', true);
   }
-  private admitRestoredInput(chat: AiChatRow): void {
-    const binding = this.service.binding(chat);
-    const pending = this.service.store.harnessDeliveries
-      .pending(binding.session_id ?? undefined)
-      .filter(
-        (delivery) =>
-          this.service.store.assistantEvents.event(delivery.delivery_id).chat_id === chat.id,
-      );
-    if (pending.length === 0) return;
-    const connection = this.service.directory.get(binding.execution_target);
-    if (connection.host.manifest?.delivery_correlation !== true)
-      throw new ApiError(
-        'conflict',
-        'This execution host must support native delivery correlation before restoring pending conversation input.',
-      );
-    for (const delivery of pending) {
-      const event = this.service.store.assistantEvents.event(delivery.delivery_id);
-      const authority = withExecutionAuthority(undefined, () =>
-        eventAuthority(this.service.store, event),
-      );
-      admitExecutionTarget(this.service.store, chat, authority);
-    }
-  }
-  private authorizeEvent(event: StoredEvent, chat: AiChatRow, id: string): void {
-    const authority = eventAuthority(this.service.store, event);
-    admitExecutionTarget(this.service.store, chat, authority);
-    this.service.own({ profileId: event.profile_id, role: 'member' }, chat.id);
-    if (this.service.store.dshSessions.stat(id, event.profile_id)?.chat_id !== chat.id)
+  private async authorizeEvent(event: StoredEvent, chat: AiChatRow, id: string): Promise<void> {
+    const { store } = this.service;
+    const authority = await eventAuthority(store, event);
+    admitExecutionTarget(store, chat, authority);
+    await this.service.own({ profileId: event.profile_id, role: 'member' }, chat.id);
+    if ((await store.host.call('dshSessions', 'stat', id, event.profile_id))?.chat_id !== chat.id)
       throw new ApiError('forbidden', 'Delivery cannot reuse another conversation native session.');
     const client =
       authority.client_id === null
         ? undefined
-        : effectiveClientById(this.service.store, authority.client_id);
+        : await effectiveClientOf(store, authority.client_id);
     if (
       client !== undefined &&
-      this.service.store.profiles.activeOf(client.id).id !== event.profile_id
+      (await store.host.call('profiles', 'activeOf', client.id)).id !== event.profile_id
     )
       throw new ApiError(
         'forbidden',
         'The initiating app changed its active profile before native delivery.',
       );
+  }
+  private async admitEvent(event: StoredEvent, chat: AiChatRow, id: string): Promise<void> {
+    await this.authorizeEvent(event, chat, id);
+    const authority = await eventAuthority(this.service.store, event);
     const role = executionRole(authority);
     if (helperParentMessageId(event) !== null) {
-      const attachments = assertHelperDelivery(this.service.store, chat, event);
-      helperContinuation(this.service, chat, role, attachments.length > 0);
+      const attachments = await assertHelperDelivery(this.service.store, chat, event);
+      await helperContinuation(this.service, chat, role, attachments.length > 0);
       return;
     }
-    const grant = this.service.storage.grant(id);
-    this.service.store.harnessSessions.issue({
+    const grant = await this.service.storage.grant(id);
+    await this.service.store.host.call('harnessSessions', 'issue', {
       ...grant,
       event_id: event.id,
       role,
@@ -325,14 +314,14 @@ export class DshRunner {
     original: AiChatRow,
   ): Promise<{ readonly id: string; readonly helper?: Continuation }> {
     const binding = this.service.binding(original);
-    const authority = eventAuthority(this.service.store, event);
+    const authority = await eventAuthority(this.service.store, event);
     if (helperParentMessageId(event) !== null)
       return prepareDirectedHelper(this.service, original, event, {
         role: executionRole(authority),
         pendingInput: (input) => this.options.dispatcher.runtime.pendingInput(input),
       });
     let sessionId = binding.session_id;
-    if (!sessionAttached(this.service, sessionId, event.profile_id)) {
+    if (!(await sessionAttached(this.service, sessionId, event.profile_id))) {
       const open = await openConversation(this.service, {
         owner: { profileId: event.profile_id, role: executionRole(authority) },
         chatId: original.id,
@@ -349,7 +338,7 @@ export class DshRunner {
     return { id: sessionId };
   }
   private async prompt(event: StoredEvent, chat: AiChatRow, helper?: Continuation): Promise<void> {
-    const authority = eventAuthority(this.service.store, event);
+    const authority = await eventAuthority(this.service.store, event);
     if (helperParentMessageId(event) !== null) {
       if (helper === undefined)
         throw new ApiError('conflict', 'The admitted helper writer is unavailable.');
@@ -358,7 +347,7 @@ export class DshRunner {
         expected: helper,
       });
     }
-    const state = this.service.state(
+    const state = await this.service.state(
       { profileId: event.profile_id, role: executionRole(authority) },
       chat.id,
     );
@@ -370,10 +359,10 @@ export class DshRunner {
       clientId: authority.client_id,
       startSeq: state.metadata.next_seq,
     });
-    const references = deliveryReferences(this.service, event);
+    const references = await deliveryReferences(this.service, event);
     await this.service.directory.execute(state.target, event.id, {
       kind: 'prompt',
-      author: this.authorOf(event),
+      author: await this.authorOf(event),
       session_id: state.session_id,
       expected_epoch: state.epoch,
       delivery_id: event.id,
@@ -382,12 +371,18 @@ export class DshRunner {
       attachments:
         event.message_id === null
           ? []
-          : this.service.store.assistantChat.attachmentsOf(event.message_id).map((file) => file.id),
+          : (
+              await this.service.store.host.call('assistantChat', 'attachmentsOf', event.message_id)
+            ).map((file) => file.id),
     });
   }
-  private authorOf(event: StoredEvent): 'person' | 'hub' {
+  private async authorOf(event: StoredEvent): Promise<'person' | 'hub'> {
     if (event.message_id === null) return 'person';
-    const { origin } = this.service.store.assistantChat.message(event.message_id);
+    const { origin } = await this.service.store.host.call(
+      'assistantChat',
+      'message',
+      event.message_id,
+    );
     return origin?.source === 'hub' ? 'hub' : 'person';
   }
 }

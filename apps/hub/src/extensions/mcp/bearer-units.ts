@@ -2,7 +2,7 @@ import { COMPUTER_MCP_TOKEN, MCP_SCOPE, MCP_TOKEN, hashMcpToken } from '@smartev
 import { computerMcpGrant } from '../../computers/node-mcp-grant';
 import { storeUnit } from '../../store/host/unit';
 import type { OAuthTokenRow } from '../../store/repositories/oauth';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { McpCaller } from './bearer';
 import { ACCESS_TOKEN_PREFIX, hashSecret } from './secrets';
 
@@ -17,7 +17,7 @@ export interface BearerFound {
   readonly personalTokenId: string | null;
 }
 
-export function grantStillHolds(store: Store, token: OAuthTokenRow): boolean {
+export function grantStillHolds(store: HostStore, token: OAuthTokenRow): boolean {
   const client = store.oauth.findClient(token.client_id);
   return (
     client?.row.revoked_at === null &&
@@ -26,7 +26,7 @@ export function grantStillHolds(store: Store, token: OAuthTokenRow): boolean {
   );
 }
 
-function pluginCaller(store: Store, token: string): McpCaller | null {
+function pluginCaller(store: HostStore, token: string): McpCaller | null {
   const row = store.plugins.tokenByHash(hashMcpToken(token));
   return row === undefined
     ? null
@@ -40,7 +40,7 @@ function pluginCaller(store: Store, token: string): McpCaller | null {
       };
 }
 
-function computerCaller(store: Store, token: string): McpCaller | null {
+function computerCaller(store: HostStore, token: string): McpCaller | null {
   const grant = computerMcpGrant(store, token);
   if (grant !== null) {
     return {
@@ -61,7 +61,7 @@ function computerCaller(store: Store, token: string): McpCaller | null {
     : null;
 }
 
-function personal(store: Store, token: string): BearerFound {
+function personal(store: HostStore, token: string): BearerFound {
   const row = store.oauth.activePersonalTokenByHash(hashMcpToken(token));
   if (row === undefined) {
     return {
@@ -81,7 +81,7 @@ function personal(store: Store, token: string): BearerFound {
   };
 }
 
-function delegated(store: Store, check: BearerRead): McpCaller {
+function delegated(store: HostStore, check: BearerRead): McpCaller {
   const row = store.oauth.token(hashSecret(check.token));
   if (row?.kind !== 'access') {
     return { kind: 'refused', reason: 'This access token is not known to this server' };

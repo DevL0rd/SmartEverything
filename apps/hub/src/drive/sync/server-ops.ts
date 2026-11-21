@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http';
-import { ApiError, type DriveItem } from '@smarteverything/domain';
+import { ApiError } from '@smarteverything/domain';
 import type { SyncFileMeta, SyncHubMessage, SyncXattr } from '@smarteverything/domain/drive-sync';
 import { SYNC_HUB_MESSAGE } from '@smarteverything/domain/drive-sync';
 import type { ComputerNodeAccess } from '../../computers/node-access';
@@ -31,21 +31,7 @@ export type SyncPosix = Pick<
 >;
 
 export interface SyncEnv extends ConflictEnv {
-  readonly store: ChangeEnv['store'] &
-    Pick<
-      Store,
-      | 'driveBlocks'
-      | 'driveSyncOps'
-      | 'drivePlacements'
-      | 'driveRoots'
-      | 'driveGrants'
-      | 'computerNodes'
-      | 'driveQuotas'
-      | 'devices'
-      | 'driveInodes'
-      | 'driveXattrs'
-      | 'driveInodeLeases'
-    >;
+  readonly store: ChangeEnv['store'] & Pick<Store, 'host' | 'now'>;
   readonly posix: SyncPosix;
   readonly space: DataSpaceProbe['space'];
   readonly hasher: Pick<ContentHasher, 'hash'>;
@@ -61,7 +47,7 @@ export function syncAuthentication(
     if (token === null) return null;
     try {
       const identity = await nodes.authenticate(token);
-      const caller = nodeCaller(store, identity);
+      const caller = await nodeCaller(store, identity);
       const profileId = profileIdOf(caller);
       return {
         deviceId: identity.device_id,
@@ -90,12 +76,17 @@ export function syncActor(origin: Pick<Origin, 'deviceId' | 'profileId'>): Chang
   return { actorProfileId: origin.profileId, via: 'sync', deviceId: origin.deviceId };
 }
 
-export function acceptOf(env: SyncEnv, rootId: string, opId: string, rev: number): AcceptMessage {
+export async function acceptOf(
+  env: SyncEnv,
+  rootId: string,
+  opId: string,
+  rev: number,
+): Promise<AcceptMessage> {
   return {
     type: 'accept',
     opId,
     rev,
-    seq: env.store.driveFeed.latestSeqInRoot(rootId),
+    seq: await env.store.host.call('driveFeed', 'latestSeqInRoot', rootId),
   };
 }
 
@@ -108,32 +99,26 @@ export function conflictOf(
   return { type: 'conflict', opId, reason, conflictPath, hubRev };
 }
 
-export function remember(
+export async function remember(
   env: SyncEnv,
   origin: Pick<Origin, 'placementId'>,
   message: AcceptMessage | ConflictMessage,
-): void {
-  env.store.driveSyncOps.remember(origin.placementId, message.opId, message);
+): Promise<void> {
+  await env.store.host.call('driveSyncOps', 'remember', origin.placementId, message.opId, message);
 }
 
-export function recall(
+export async function recall(
   env: SyncEnv,
   origin: Pick<Origin, 'placementId'>,
   opId: string,
-): AcceptMessage | ConflictMessage | null {
-  const stored = env.store.driveSyncOps.recall(origin.placementId, opId);
+): Promise<AcceptMessage | ConflictMessage | null> {
+  const stored = await env.store.host.call('driveSyncOps', 'recall', origin.placementId, opId);
   if (stored === undefined) return null;
   const message = SYNC_HUB_MESSAGE.parse(stored);
   if (message.type !== 'accept' && message.type !== 'conflict') {
     throw new ApiError('internal', 'A remembered sync result is neither accepted nor refused.');
   }
   return message;
-}
-
-export type ContentItem = Exclude<DriveItem, { readonly kind: 'folder' | 'link' | 'special' }>;
-
-export function fileOf(item: DriveItem): ContentItem | null {
-  return item.kind === 'folder' || item.kind === 'link' || item.kind === 'special' ? null : item;
 }
 
 const WRITE_FAILURE_CODE = {

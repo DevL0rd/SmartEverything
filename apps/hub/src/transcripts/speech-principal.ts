@@ -3,8 +3,6 @@ import { ApiError, PLUGIN_REQUESTERS } from '@smarteverything/domain';
 import { CONVERSATION_AUTHORITY } from '../harness/authority-contract';
 import { currentExecutionAuthority, executionRole } from '../assistant/turn-authority';
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
-import { effectiveClientById } from '../server/person-access';
-import type { Store } from '../store/store';
 import type { ToolCaller } from '../ai-tools/hub-tool';
 
 export const SPEECH_PRINCIPAL = z.strictObject({
@@ -23,7 +21,7 @@ export const SPEECH_PRINCIPAL = z.strictObject({
 });
 export type SpeechPrincipal = z.infer<typeof SPEECH_PRINCIPAL>;
 
-export function speechPrincipal(store: Store, caller: Caller): SpeechPrincipal {
+export function speechPrincipal(caller: Caller): SpeechPrincipal {
   if (caller.kind !== 'client')
     throw new ApiError(
       'forbidden',
@@ -37,7 +35,7 @@ export function speechPrincipal(store: Store, caller: Caller): SpeechPrincipal {
     client.role === 'owner' &&
     roleOfCaller(caller) === 'owner' &&
     authorities.every((authority) => executionRole(authority) === 'owner');
-  const principal = SPEECH_PRINCIPAL.parse({
+  return SPEECH_PRINCIPAL.parse({
     ...origin,
     clientId: client.id,
     profileId: profileIdOf(caller),
@@ -46,31 +44,12 @@ export function speechPrincipal(store: Store, caller: Caller): SpeechPrincipal {
     authorities,
     plugins: [],
   });
-  speechCaller(store, principal);
-  return principal;
 }
 
-export function speechCaller(
-  store: Store,
+export function toolCallerOf(
   principal: SpeechPrincipal,
-): Extract<Caller, { kind: 'client' }> {
-  const client = effectiveClientById(store, principal.clientId);
-  store.profiles.byId(principal.profileId);
-  const caller = principalCaller(client, principal);
-  if (
-    client.role !== principal.clientRole ||
-    (principal.role === 'owner' &&
-      (roleOfCaller(caller) !== 'owner' ||
-        principal.authorities.some((authority) => executionRole(authority) !== 'owner')))
-  )
-    throw new ApiError('forbidden', 'The speech trigger initiating role changed.');
-  if (caller.pluginId !== undefined && !store.plugins.byId(caller.pluginId).enabled)
-    throw new ApiError('forbidden', 'The initiating plugin is disabled.');
-  return caller;
-}
-
-export function speechToolCaller(store: Store, principal: SpeechPrincipal): ToolCaller {
-  const caller = speechCaller(store, principal);
+  caller: Extract<Caller, { kind: 'client' }>,
+): ToolCaller {
   return {
     profileId: principal.profileId,
     role: principal.role,
@@ -80,24 +59,5 @@ export function speechToolCaller(store: Store, principal: SpeechPrincipal): Tool
     ...(caller.authority === undefined ? {} : { authority: caller.authority }),
     ...(caller.pluginId === undefined ? {} : { pluginId: caller.pluginId }),
     ...(caller.pluginRequester === undefined ? {} : { pluginRequester: caller.pluginRequester }),
-  };
-}
-
-function principalCaller(
-  client: Extract<Caller, { kind: 'client' }>['client'],
-  principal: SpeechPrincipal,
-): Extract<Caller, { kind: 'client' }> {
-  return {
-    kind: 'client',
-    client,
-    profileId: principal.profileId,
-    ...(principal.via === undefined ? {} : { via: principal.via }),
-    ...(principal.mcpOrigin === undefined ? {} : { mcpOrigin: principal.mcpOrigin }),
-    ...(principal.pluginId === undefined ? {} : { pluginId: principal.pluginId }),
-    ...(principal.pluginRequester === undefined
-      ? {}
-      : { pluginRequester: principal.pluginRequester }),
-    ...(principal.chatId === undefined ? {} : { chatId: principal.chatId }),
-    ...(principal.authority === undefined ? {} : { authority: principal.authority }),
   };
 }

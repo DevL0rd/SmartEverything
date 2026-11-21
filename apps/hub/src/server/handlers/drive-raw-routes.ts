@@ -46,7 +46,7 @@ function exchangeOf(
   return { request, response, url: new URL(request.url ?? '/', 'http://drive') };
 }
 
-function contentRoutes(deps: DriveDeps, runtime: DriveRuntime): readonly RawRoute[] {
+function contentRoutes(runtime: DriveRuntime): readonly RawRoute[] {
   const { extras } = runtime;
   return [
     {
@@ -62,11 +62,10 @@ function contentRoutes(deps: DriveDeps, runtime: DriveRuntime): readonly RawRout
       method: 'GET',
       path: MEDIA_PATHS.driveVersion,
       handle: (request, response, params) =>
-        serveDriveVersion(
-          { files: runtime.services.files, versions: deps.store.driveVersions },
-          exchangeOf(request, response),
-          { itemId: params['itemId'] ?? '', versionId: params['versionId'] ?? '' },
-        ),
+        serveDriveVersion({ files: runtime.services.files }, exchangeOf(request, response), {
+          itemId: params['itemId'] ?? '',
+          versionId: params['versionId'] ?? '',
+        }),
     },
     {
       method: 'GET',
@@ -87,7 +86,7 @@ export function driveRawRoutes(
     ...uploadRoutes(runtime, sweeper),
     fileRoute(runtime),
     driveDownloadRawRoute(deps.links, runtime.extras.downloads),
-    ...contentRoutes(deps, runtime),
+    ...contentRoutes(runtime),
     {
       method: 'GET',
       path: MEDIA_PATHS.driveThumb,

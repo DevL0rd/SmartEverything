@@ -1,13 +1,12 @@
+import { testStore, type TestStore, type SeededStore } from '../support/store';
 import { randomUUID } from 'node:crypto';
 import { type ClientRow, type EndpointName, type ProfileRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OperatingContext } from '../../src/extensions/mcp/tools/acting';
 import { DRIVE_EDIT } from '../../src/extensions/mcp/tools/drive-edits';
 import { DRIVE_READ } from '../../src/extensions/mcp/tools/drive-reads';
-import type { Store } from '../../src/store/store';
 import { operatingContext, selected, type Answers, type Call } from './mcp-rig';
 import { captureLogs } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 
 const ITEM = randomUUID();
 const ALBUM = randomUUID();
@@ -31,7 +30,7 @@ let context: OperatingContext;
 function operating(client: ClientRow, profile: ProfileRow): OperatingContext {
   return operatingContext(
     {
-      store: (): Store => opened.store,
+      store: (): SeededStore => opened.store,
       record: (call): void => {
         calls.push(call);
       },

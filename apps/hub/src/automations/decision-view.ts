@@ -1,8 +1,8 @@
 import type { AutomationDecision } from '@smarteverything/domain';
-import type { AutomationDecisionsRepository } from '../store/repositories/automation-decisions';
+import type { HostedRepository } from '../store/host/hosted';
 import type { PendingDecision } from './driver/decisions';
 
-type DecisionReader = Pick<AutomationDecisionsRepository, 'forAutomation'>;
+export type DecisionReader = HostedRepository<'automationDecisions', 'forAutomation'>;
 
 function later(left: string, right: string): string {
   return Date.parse(right) > Date.parse(left) ? right : left;
@@ -27,7 +27,7 @@ export function decisionView(
   pending: (automationId: string) => readonly PendingDecision[],
 ): DecisionReader {
   return {
-    forAutomation: (automationId, since, limit) =>
-      withPending(stored.forAutomation(automationId, since, limit), pending(automationId)),
+    forAutomation: async (automationId, since, limit) =>
+      withPending(await stored.forAutomation(automationId, since, limit), pending(automationId)),
   };
 }

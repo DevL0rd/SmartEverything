@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createClientToken, hashClientToken } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ChangeEnv } from '../../src/drive/changes';
+import { hostQuotaSource } from '../../src/drive/quotas';
 import { Readable } from 'node:stream';
 import { commitContent } from '../../src/drive/changes';
 import { DriveReadService } from '../../src/drive/service-read';
@@ -62,7 +63,7 @@ function depsOf(): DavDeps {
     store,
     env,
     guard: {
-      status: (profileId) => store.driveQuotas.status(profileId),
+      status: hostQuotaSource(store),
       space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },
     nodes: {

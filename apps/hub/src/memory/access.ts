@@ -9,7 +9,7 @@ import type { LatestMessage, MemoryService } from './service';
 import { runMemoryTool } from './tool';
 
 export interface MemorySessions {
-  readonly principal: (sessionId: string) => MemoryPrincipal;
+  readonly principal: (sessionId: string) => Promise<MemoryPrincipal>;
   readonly latest: (sessionId: string) => Promise<LatestMessage | null>;
 }
 
@@ -19,22 +19,22 @@ export class HubMemoryAccess implements AiMemoryAccess {
     private readonly sessions: MemorySessions,
   ) {}
 
-  offered(sessionId: string): boolean {
-    return this.service.offered(this.sessions.principal(sessionId));
+  async offered(sessionId: string): Promise<boolean> {
+    return this.service.offered(await this.sessions.principal(sessionId));
   }
 
   async prepare(sessionId: string): Promise<void> {
     await this.service.prepare(
-      this.sessions.principal(sessionId),
+      await this.sessions.principal(sessionId),
       await this.sessions.latest(sessionId),
     );
   }
 
-  recall(sessionId: string): AiMemoryRecall {
-    return this.service.recall(this.sessions.principal(sessionId));
+  async recall(sessionId: string): Promise<AiMemoryRecall> {
+    return this.service.recall(await this.sessions.principal(sessionId));
   }
 
-  call(sessionId: string, args: AiMemoryToolArguments): Promise<AiMemoryToolResult> {
-    return runMemoryTool(this.service, this.sessions.principal(sessionId), args);
+  async call(sessionId: string, args: AiMemoryToolArguments): Promise<AiMemoryToolResult> {
+    return runMemoryTool(this.service, await this.sessions.principal(sessionId), args);
   }
 }

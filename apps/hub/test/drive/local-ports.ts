@@ -3,7 +3,7 @@ import type { TextEnvironment } from '../../src/drive/content/text-job';
 import type { FolderIconStore } from '../../src/drive/content/folder-icon/refresh';
 import type { DriveFolderIconsRepository } from '../../src/store/repositories/drive-folder-icons';
 import type { MetadataEnvironment } from '../../src/drive/metadata';
-import { readDriveSettings } from '../../src/drive/settings';
+import { readDriveSettings } from '../../src/drive/units/settings';
 import { collectPending, recordMetadata, type MetadataParts } from '../../src/drive/units/metadata';
 import { changedFolders, recordText, textBacklog } from '../../src/drive/units/text';
 import { DriveFeedRepository } from '../../src/store/repositories/drive-feed';

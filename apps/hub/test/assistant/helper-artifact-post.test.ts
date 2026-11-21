@@ -15,7 +15,8 @@ import { ConversationLog } from '../../src/assistant/conversation-log';
 import { postHelperArtifacts } from '../../src/assistant/delegation/helper-artifact-post';
 import { withProviderToolAuthority } from '../../src/assistant/engines/computer/tool-authority';
 import { AssistantFiles } from '../../src/assistant/files';
-import { eventAuthority, withExecutionAuthority } from '../../src/assistant/turn-authority';
+import { withExecutionAuthority, authorityScope } from '../../src/assistant/turn-authority';
+import { issueEventAuthority } from '../../src/assistant/event-authority-issue';
 import type { Caller } from '../../src/server/auth';
 import { withSignal } from '../../src/server/request-signal';
 import { summaryOf, type StoredAttachment } from '../../src/store/repositories/assistant-files';
@@ -50,21 +51,21 @@ beforeEach(async () => {
   profile = store.profiles.activeOf(client.id).id;
   files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now,
   });
   log = new ConversationLog(store);
   chats = new ChatDirectory(store, files);
-  parent = chats.create(
+  parent = await chats.create(
     { profileId: profile, role: 'owner' },
     { title: 'House', engine: TEST_ENGINE },
   );
 });
 afterEach(async () => opened.close());
 
-function helper(engine: Engine = CLAUDE_TEST_ENGINE): AiChatRow {
-  return chats.create(
+async function helper(engine: Engine = CLAUDE_TEST_ENGINE): Promise<AiChatRow> {
+  return await chats.create(
     { profileId: profile, role: 'owner' },
     { title: 'File worker', engine, parent_id: parent.id },
   );
@@ -87,7 +88,7 @@ function callerOf(chat: AiChatRow): ClientCaller {
     client,
     via: 'assistant',
     chatId: chat.id,
-    authority: eventAuthority(store, event),
+    authority: issueEventAuthority(store, event, authorityScope()),
   };
 }
 
@@ -114,8 +115,11 @@ function save(name: string, content: Buffer, mime: string): Promise<StoredAttach
   });
 }
 
-function keep(chat: AiChatRow, attachments: readonly StoredAttachment[]): AssistantMessageRow {
-  return log.responderInChat({ chat, replyTo: null, text: '', files: attachments });
+async function keep(
+  chat: AiChatRow,
+  attachments: readonly StoredAttachment[],
+): Promise<AssistantMessageRow> {
+  return await log.responderInChat({ chat, replyTo: null, text: '', files: attachments });
 }
 
 function selected(...attachments: readonly StoredAttachment[]): AssistantHelperPost {
@@ -185,11 +189,11 @@ describe('explicit helper artifact sharing', () => {
   it.each(['claude', 'codex'] as const)(
     'copies files independently through a current %s grant',
     async (kind) => {
-      const child = helper(
+      const child = await helper(
         kind === 'claude' ? CLAUDE_TEST_ENGINE : { ...CLAUDE_TEST_ENGINE, kind, settings: {} },
       );
       const original = await save('result.txt', Buffer.from('private result'), 'text/plain');
-      const source = keep(child, [original]);
+      const source = await keep(child, [original]);
       const caller = callerOf(child);
       const input = selected(original);
 
@@ -215,11 +219,11 @@ describe('explicit helper artifact sharing', () => {
   );
 
   it('copies exactly the retained results of a completed image operation', async () => {
-    const child = helper();
+    const child = await helper();
     const image = await save('image.png', PNG, 'image/png');
     const unrelated = await save('other.png', PNG, 'image/png');
-    const row = keep(child, [image]);
-    keep(child, [unrelated]);
+    const row = await keep(child, [image]);
+    await keep(child, [unrelated]);
     const operationId = savedImageReceipt(child, row, image);
     const result = await post(callerOf(child), {
       requestId: randomUUID(),
@@ -240,12 +244,12 @@ describe('explicit helper artifact sharing', () => {
   });
 
   it('rejects siblings, unbound uploads, duplicated IDs and direct app impersonation', async () => {
-    const child = helper();
+    const child = await helper();
     const own = await save('mine.txt', Buffer.from('mine'), 'text/plain');
     const sibling = await save('sibling.txt', Buffer.from('sibling'), 'text/plain');
     const unbound = await save('upload.txt', Buffer.from('upload'), 'text/plain');
-    keep(child, [own]);
-    keep(helper(), [sibling]);
+    await keep(child, [own]);
+    await keep(await helper(), [sibling]);
     const caller = callerOf(child);
     for (const file of [sibling, unbound])
       await expect(post(caller, selected(file))).rejects.toThrow('not saved in this helper chat');
@@ -261,9 +265,9 @@ describe('explicit helper artifact sharing', () => {
   });
 
   it('keeps one receipt and refuses changed payloads on racing retries', async () => {
-    const child = helper();
+    const child = await helper();
     const original = await save('result.txt', Buffer.from('content'), 'text/plain');
-    keep(child, [original]);
+    await keep(child, [original]);
     const caller = callerOf(child);
     const input = selected(original);
     const [first, second] = await Promise.all([post(caller, input), post(caller, input)]);
@@ -275,9 +279,9 @@ describe('explicit helper artifact sharing', () => {
   });
 
   it('discards staged copies if native admission changes before the commit', async () => {
-    const child = helper();
+    const child = await helper();
     const original = await save('result.txt', Buffer.from('content'), 'text/plain');
-    keep(child, [original]);
+    await keep(child, [original]);
     const caller = callerOf(child);
     const stage = files.prepareCopy.bind(files);
     let current = true;
@@ -298,10 +302,10 @@ describe('explicit helper artifact sharing', () => {
   });
 
   it('removes earlier staged copies if a later file fails', async () => {
-    const child = helper();
+    const child = await helper();
     const first = await save('one.txt', Buffer.from('one'), 'text/plain');
     const second = await save('two.txt', Buffer.from('two'), 'text/plain');
-    keep(child, [first, second]);
+    await keep(child, [first, second]);
     const stage = files.prepareCopy.bind(files);
     vi.spyOn(files, 'prepareCopy')
       .mockImplementationOnce(stage)
@@ -342,10 +346,14 @@ it('fences a DSH copy after transport abort and rejects a detached writer', asyn
     const eventId = store.harnessSessions.grant(session.claim.session_id)?.event_id;
     if (eventId === undefined || eventId === null)
       throw new Error('Expected the adopted DSH tool grant.');
-    const authority = eventAuthority(store, store.assistantEvents.event(eventId));
+    const authority = issueEventAuthority(
+      store,
+      store.assistantEvents.event(eventId),
+      authorityScope(),
+    );
     const dshFiles = new AssistantFiles({
       layout: hubLayout(rig.opened.directory, {}),
-      chat: store.assistantChat,
+      store: store,
       attachments: store.live.attachments,
       now: (): Date => new Date(),
     });
@@ -357,7 +365,7 @@ it('fences a DSH copy after transport abort and rejects a detached writer', asyn
       content: Buffer.from('native'),
       signal: new AbortController().signal,
     });
-    new ConversationLog(store).responderInChat({
+    await new ConversationLog(store).responderInChat({
       chat: child,
       replyTo: null,
       text: '',

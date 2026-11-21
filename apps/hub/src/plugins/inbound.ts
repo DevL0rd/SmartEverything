@@ -156,7 +156,7 @@ export class PluginInbox {
     const { identity, files } = turn;
     const { profileId, requester } = identity;
     const pluginId = plugin.id;
-    const chat = assistant.chats.chatForPlugin(
+    const chat = await assistant.chats.chatForPlugin(
       profileId,
       identityChatKey(identity.guest, plugin.id, message.conversation.key),
       message.conversation.title,

@@ -94,7 +94,7 @@ describe('the flow read port', () => {
           { activation: `main/${String(round)}` },
         ),
       );
-      return result.ok ? result.value['item'] : undefined;
+      return 'pending' in result || !result.ok ? undefined : result.value['item'];
     });
     expect([...seen.slice(0, 3)].sort()).toEqual(['a', 'b', 'c']);
     expect([...seen.slice(3)].sort()).toEqual(['a', 'b', 'c']);

@@ -14,7 +14,8 @@ export async function storeStartupJournal(
   logs: Pick<LogStore, 'append'>,
   log: Logger,
 ): Promise<void> {
-  const batch = await readStartupJournal(HUB_UNIT, store.settingsKv.read(KEY)?.['cursor']);
+  const saved = await store.host.call('settingsKv', 'read', KEY);
+  const batch = await readStartupJournal(HUB_UNIT, saved?.['cursor']);
   if (batch === null) return;
   if (batch.more) log.warn('journal.more_at_next_start');
   const now = store.now().toISOString();
@@ -30,5 +31,5 @@ export async function storeStartupJournal(
       now,
     );
   }
-  store.settingsKv.save(KEY, { cursor: batch.cursor });
+  await store.host.call('settingsKv', 'save', KEY, { cursor: batch.cursor });
 }

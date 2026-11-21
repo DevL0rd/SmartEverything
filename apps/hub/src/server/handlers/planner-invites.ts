@@ -2,7 +2,7 @@ import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
 import type { InviteService } from '../../planner/invites/service';
 import { writes } from '../../planner/sharing/edit-rules';
 import { bound } from '../router';
-import { plannerProfileOf, type PlannerContext } from './planner-profile';
+import { plannerProfileFor, type PlannerContext } from './planner-profile';
 
 export interface PlannerInviteServices {
   readonly invites: Pick<InviteService, 'deliver' | 'publicLinkOf'>;
@@ -12,7 +12,7 @@ export const plannerInviteRoutes = (context: PlannerContext, services: PlannerIn
   ({
     resendPlannerInvite: bound(E.resendPlannerInvite, async ({ params, query, caller }) => {
       const { store } = context;
-      const profileId = plannerProfileOf(context, caller, query.personId);
+      const profileId = await plannerProfileFor(context, caller, query.personId);
       const { item, role } = await store.host.read('plannerItemResolve', {
         profileId,
         itemId: params.itemId,
@@ -27,7 +27,7 @@ export const plannerInviteRoutes = (context: PlannerContext, services: PlannerIn
     }),
     plannerInviteLink: bound(E.plannerInviteLink, async ({ params, query, caller }) => {
       const { store } = context;
-      const profileId = plannerProfileOf(context, caller, query.personId);
+      const profileId = await plannerProfileFor(context, caller, query.personId);
       const { item, role } = await store.host.read('plannerItemResolve', {
         profileId,
         itemId: params.itemId,

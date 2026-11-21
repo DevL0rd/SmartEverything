@@ -1,8 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { declaredPackageNames, workspaceManifestPaths } from './contract-helpers';
 import { applicationWithoutContract, loadTargets } from './coverage';
 
+const SOURCE_SCAN_TIMEOUT_MS = 60_000;
+
 describe('dependency manifests', () => {
+  let targets: readonly string[] = [];
+
+  beforeAll(() => {
+    targets = loadTargets().map((target) => target.specifier);
+  }, SOURCE_SCAN_TIMEOUT_MS);
+
   it('lists the root, every application, package and tool', () => {
     expect(workspaceManifestPaths()).toStrictEqual(
       expect.arrayContaining([
@@ -20,15 +28,12 @@ describe('dependency manifests', () => {
   });
 
   it('loads every other external dependency, the ones without a dedicated contract test included', () => {
-    const targets = loadTargets().map((target) => target.specifier);
     expect(targets).toContain('@deepseek-ai/dsh-fs');
     expect(targets).toContain('mqtt');
   });
 
   it('needs no contract test for a package of our own, which has its own suite', () => {
     expect(declaredPackageNames('package.json')).toContain('@smarteverything/logging');
-    expect(loadTargets().map((target) => target.specifier)).not.toContain(
-      '@smarteverything/logging',
-    );
+    expect(targets).not.toContain('@smarteverything/logging');
   });
 });

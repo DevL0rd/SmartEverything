@@ -1,7 +1,7 @@
 import type { PlannerPreferences } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 
-const DEFAULT_PREFERENCES: PlannerPreferences = {
+export const DEFAULT_PREFERENCES: PlannerPreferences = {
   general: {
     week_start: 1,
     day_start: '06:00',
@@ -60,13 +60,6 @@ const DEFAULT_PREFERENCES: PlannerPreferences = {
   watch: { watch_alarm_sync: true, watch_calendar_push: true },
   ai: { briefing: 'off', evening_review: false, plan_suggestions: true },
 };
-
-export function plannerPreferencesOf(
-  store: Pick<Store, 'plannerPreferences'>,
-  profileId: string,
-): PlannerPreferences {
-  return store.plannerPreferences.find(profileId)?.preferences ?? DEFAULT_PREFERENCES;
-}
 
 export async function loadPlannerPreferences(
   store: Pick<Store, 'host'>,

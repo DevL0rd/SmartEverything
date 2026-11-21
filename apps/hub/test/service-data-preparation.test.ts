@@ -14,7 +14,7 @@ import { nodeFiles } from '../src/drive/versions';
 import { assertPhotosFolderPrepared } from '../src/photos/folder-migration';
 import { PHOTO_FOLDER_RECEIPTS } from '../src/photos/folder-receipts';
 import { preparationLayout, prepareHubData } from '../src/service/data-preparation';
-import { openStore, type Store } from '../src/store/store';
+import { openSeededStore, type SeededStore } from './support/store';
 import { testLogger } from './support/logs';
 import { testStoreHost } from './support/store-host';
 
@@ -22,8 +22,8 @@ const NOW = '2026-11-08T12:00:00.000Z';
 const directories: string[] = [];
 const log = testLogger();
 
-function opened(layout: HubLayout): Store {
-  return openStore({
+function opened(layout: HubLayout): Promise<SeededStore> {
+  return openSeededStore({
     host: testStoreHost(),
     path: layout.system.database.file,
     log,
@@ -43,7 +43,7 @@ async function fixture(): Promise<{
   directories.push(directory);
   const layout = hubLayout(directory, {});
   await mkdir(dirname(layout.system.database.file), { recursive: true });
-  const store = opened(layout);
+  const store = await opened(layout);
   try {
     const person = store.profiles.create({ name: 'Alice' });
     const roots = await ensureDrives(store, layout, store.profiles.list());
@@ -76,8 +76,7 @@ async function fixture(): Promise<{
     );
     return { layout, itemId: item.id, rootPath: root.path, original };
   } finally {
-    await store.host.close();
-    store.close();
+    await store.close();
   }
 }
 
@@ -102,7 +101,7 @@ it('finishes lossless offline preparation before the normal Drive readiness chec
   const target = await fixture();
   await prepareHubData(target.layout, log, { host: testStoreHost() });
   await prepareHubData(target.layout, log, { host: testStoreHost() });
-  const store = opened(target.layout);
+  const store = await opened(target.layout);
   try {
     await expect(assertPhotosFolderPrepared(store.host)).resolves.toBeUndefined();
     expect(store.driveItems.byId(target.itemId, null).relPath).toBe('Photos/a.jpg');
@@ -112,7 +111,7 @@ it('finishes lossless offline preparation before the normal Drive readiness chec
       await nodeFiles.stamp(join(target.rootPath, PHOTO_FOLDER_RECEIPTS, `${target.itemId}.json`)),
     ).not.toBeNull();
   } finally {
-    store.close();
+    await store.close();
   }
 });
 
@@ -168,13 +167,13 @@ it('releases its database and data lock after a failed preparation and resumes t
   const lock = await lockDataDirectory(target.layout);
   await lock.release();
   expect(await readFile(target.original, 'utf8')).toBe('image');
-  const before = opened(target.layout);
+  const before = await opened(target.layout);
   try {
     await expect(assertPhotosFolderPrepared(before.host)).rejects.toThrow(
       /preparation is incomplete/,
     );
   } finally {
-    before.close();
+    await before.close();
   }
   await prepareHubData(target.layout, log, { host: testStoreHost() });
   expect(await readFile(join(target.rootPath, 'Photos/a.jpg'), 'utf8')).toBe('image');
@@ -231,7 +230,7 @@ it('releases the unlinked folders recorded by the drive migration and leaves the
     await mkdir(record, { recursive: true });
     await writeFile(join(record, 'root.json'), '{}');
   }
-  const store = opened(target.layout);
+  const store = await opened(target.layout);
   try {
     for (const [id, path, flag] of [
       [writableId, writable, 0],
@@ -244,10 +243,10 @@ it('releases the unlinked folders recorded by the drive migration and leaves the
       );
     }
   } finally {
-    store.close();
+    await store.close();
   }
   await prepareHubData(target.layout, log, { host: testStoreHost() });
-  const after = opened(target.layout);
+  const after = await opened(target.layout);
   try {
     expect(
       after.context.sql.all(
@@ -256,7 +255,7 @@ it('releases the unlinked folders recorded by the drive migration and leaves the
       ),
     ).toEqual([]);
   } finally {
-    after.close();
+    await after.close();
   }
   await expect(readRootMarker(writable)).rejects.toMatchObject({ failure: 'missing' });
   expect(await readFile(join(writable, 'mine.txt'), 'utf8')).toBe('kept');
@@ -269,7 +268,7 @@ it('leaves a folder alone whose marker belongs to another drive', async () => {
   const folder = join(target.layout.root, 'elsewhere', 'other');
   await mkdir(folder, { recursive: true });
   await writeRootMarker(folder, randomUUID());
-  const store = opened(target.layout);
+  const store = await opened(target.layout);
   try {
     store.context.sql.run(
       'record the unlinked folder',
@@ -277,7 +276,7 @@ it('leaves a folder alone whose marker belongs to another drive', async () => {
       { id: randomUUID(), path: folder },
     );
   } finally {
-    store.close();
+    await store.close();
   }
   await prepareHubData(target.layout, log, { host: testStoreHost() });
   expect((await readRootMarker(folder)).id).toBeDefined();

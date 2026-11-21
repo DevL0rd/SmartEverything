@@ -1,3 +1,4 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -9,7 +10,6 @@ import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { meteredRouteId } from '../../src/openrouter/metered-engine';
 import { Sql } from '../../src/store/sql';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import { testStoreHost } from '../support/store-host';
 
@@ -58,7 +58,7 @@ function seedBefore(): void {
     database.prepare(sql).run(...values);
   };
   run(
-    "insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at) values (?, 'Ann', 'amber', '{}', 0, ?, ?)",
+    "insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at) values (?, 'Ann', 'amber', json_object('steps', null, 'move_kcal', null, 'active_minutes', null, 'sleep_minutes', null, 'hydration_ml', null), 0, ?, ?)",
     PROFILE,
     NOW,
     NOW,
@@ -103,17 +103,19 @@ function engines(): Record<string, unknown> {
 }
 
 describe('migrating a database that still has chats on the retired hub engine', () => {
-  it('turns every openrouter chat into an unopened native chat on the hub with the metered route', () => {
+  it('turns every openrouter chat into an unopened native chat on the hub with the metered route', async () => {
     seedBefore();
 
-    openStore({
-      host: testStoreHost(),
-      path,
-      log: testLogger(),
-      now: () => new Date(NOW),
-      systemTimeZone: 'UTC',
-      driveFolders: null,
-    }).close();
+    await closedStore(
+      await openSeededStore({
+        host: testStoreHost(),
+        path,
+        log: testLogger(),
+        now: () => new Date(NOW),
+        systemTimeZone: 'UTC',
+        driveFolders: null,
+      }),
+    );
 
     const stored = engines();
     for (const id of [FULL, NAMED_MODEL, PLAIN_MODEL]) {
@@ -127,49 +129,55 @@ describe('migrating a database that still has chats on the retired hub engine', 
     }
   });
 
-  it('keeps the model the chat had and uses the default model for a chat without one', () => {
+  it('keeps the model the chat had and uses the default model for a chat without one', async () => {
     seedBefore();
 
-    openStore({
-      host: testStoreHost(),
-      path,
-      log: testLogger(),
-      now: () => new Date(NOW),
-      systemTimeZone: 'UTC',
-      driveFolders: null,
-    }).close();
+    await closedStore(
+      await openSeededStore({
+        host: testStoreHost(),
+        path,
+        log: testLogger(),
+        now: () => new Date(NOW),
+        systemTimeZone: 'UTC',
+        driveFolders: null,
+      }),
+    );
 
     const stored = engines();
     expect(stored[NAMED_MODEL]).toMatchObject({ model: 'openai/gpt-5', effort: 'high' });
     expect(stored[FULL]).toMatchObject({ model: AI_DEFAULT_MODEL, effort: 'low' });
   });
 
-  it('drops the effort of a model that does not reason', () => {
+  it('drops the effort of a model that does not reason', async () => {
     seedBefore();
 
-    openStore({
-      host: testStoreHost(),
-      path,
-      log: testLogger(),
-      now: () => new Date(NOW),
-      systemTimeZone: 'UTC',
-      driveFolders: null,
-    }).close();
+    await closedStore(
+      await openSeededStore({
+        host: testStoreHost(),
+        path,
+        log: testLogger(),
+        now: () => new Date(NOW),
+        systemTimeZone: 'UTC',
+        driveFolders: null,
+      }),
+    );
 
     expect(engines()[PLAIN_MODEL]).toMatchObject({ model: 'plain/model', effort: null });
   });
 
-  it('tightens a stored permission no host offers and leaves an offered one alone', () => {
+  it('tightens a stored permission no host offers and leaves an offered one alone', async () => {
     seedBefore();
 
-    openStore({
-      host: testStoreHost(),
-      path,
-      log: testLogger(),
-      now: () => new Date(NOW),
-      systemTimeZone: 'UTC',
-      driveFolders: null,
-    }).close();
+    await closedStore(
+      await openSeededStore({
+        host: testStoreHost(),
+        path,
+        log: testLogger(),
+        now: () => new Date(NOW),
+        systemTimeZone: 'UTC',
+        driveFolders: null,
+      }),
+    );
 
     const stored = engines();
     expect(stored[UNOFFERED]).toMatchObject({
@@ -180,17 +188,19 @@ describe('migrating a database that still has chats on the retired hub engine', 
     });
   });
 
-  it('leaves every stored engine, chats and the default, readable by the current schema with no openrouter kind', () => {
+  it('leaves every stored engine, chats and the default, readable by the current schema with no openrouter kind', async () => {
     seedBefore();
 
-    openStore({
-      host: testStoreHost(),
-      path,
-      log: testLogger(),
-      now: () => new Date(NOW),
-      systemTimeZone: 'UTC',
-      driveFolders: null,
-    }).close();
+    await closedStore(
+      await openSeededStore({
+        host: testStoreHost(),
+        path,
+        log: testLogger(),
+        now: () => new Date(NOW),
+        systemTimeZone: 'UTC',
+        driveFolders: null,
+      }),
+    );
 
     const database = new DatabaseSync(path);
     const columns = z

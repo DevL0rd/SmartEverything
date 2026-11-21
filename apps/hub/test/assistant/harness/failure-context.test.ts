@@ -2,7 +2,7 @@ import { repairLogOrigin } from '../../../src/server/repair-wiring';
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { harnessFailureContext } from '../../../src/harness/failure-context';
-import { queueEvent } from '../../../src/assistant/request-events';
+import { queueEventSoon } from '../../../src/assistant/request-events';
 import {
   currentExecutionAuthority,
   withExecutionAuthority,
@@ -28,8 +28,8 @@ it('uses the exact durable claimed turn without latest grant or stale driver pro
     client_id: null,
     text: 'Investigate',
   };
-  const repair = queueEvent(store, { ...input, id: repairId }, undefined, repairId);
-  const ordinary = queueEvent(store, { ...input, id: randomUUID() });
+  const repair = await queueEventSoon(store, { ...input, id: repairId }, undefined, repairId);
+  const ordinary = await queueEventSoon(store, { ...input, id: randomUUID() });
   store.harnessRecovery.claimTurn(sessionId, 1, repair.id);
   store.harnessRecovery.claimTurn(sessionId, 2, ordinary.id);
   store.harnessRecovery.claimTurn(sessionId, 3, ordinary.id);
@@ -44,13 +44,13 @@ it('uses the exact durable claimed turn without latest grant or stale driver pro
     roots.push(currentExecutionAuthority()?.repair_origin);
   };
   const stale = store.harnessRecovery.authority(repair.id);
-  withExecutionAuthority(stale, () => {
-    failureContext({ sessionId, turn: 2 }, capture);
-    failureContext({ sessionId, turn: 1 }, capture);
-    failureContext({ sessionId, turn: 3 }, capture);
-    failureContext({ sessionId, turn: 4 }, capture);
-    failureContext({ sessionId: randomUUID(), turn: 1 }, capture);
-    failureContext({ sessionId, turn: 1, publicationFailed: true }, capture);
+  await withExecutionAuthority(stale, async () => {
+    await failureContext({ sessionId, turn: 2 }, capture);
+    await failureContext({ sessionId, turn: 1 }, capture);
+    await failureContext({ sessionId, turn: 3 }, capture);
+    await failureContext({ sessionId, turn: 4 }, capture);
+    await failureContext({ sessionId: randomUUID(), turn: 1 }, capture);
+    await failureContext({ sessionId, turn: 1, publicationFailed: true }, capture);
   });
   expect(roots).toEqual([undefined, repairId, repairId, undefined, undefined, undefined]);
   expect(unknown).toEqual([undefined, undefined, undefined, undefined, undefined, true]);

@@ -1,8 +1,8 @@
 import type { AiUsageRow } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from './host/host-store';
 
 export function costRolledUp(
-  store: Pick<Store, 'assistantChat' | 'aiChats'>,
+  store: Pick<HostStore, 'assistantChat' | 'aiChats'>,
 ): (row: AiUsageRow, deltaMicros: number) => void {
   return (row, delta): void => {
     if (row.message_id !== null && store.assistantChat.find(row.message_id) !== undefined) {

@@ -1,7 +1,7 @@
 import { ApiError, type PlannerItemRow } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
-export type ProposalStore = Pick<Store, 'plannerItems'>;
+export type ProposalStore = Pick<HostStore, 'plannerItems'>;
 
 function proposed(store: ProposalStore, profileId: string, id: string): PlannerItemRow {
   const item = store.plannerItems.find(id, profileId);

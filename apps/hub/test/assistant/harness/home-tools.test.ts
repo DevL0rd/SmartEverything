@@ -119,6 +119,7 @@ describe('the hub transport of the home tools', () => {
     const made = fixture(beforeResult);
     const chat = rig.newChat(rig.hub.target);
     const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    await rig.service.sessions.load(open.claim.session_id);
     const access = new HarnessHubTools(rig.service, made.hub);
     return { ...made, home: new HubHomeTools(access, made.hub), session: open.claim.session_id };
   }

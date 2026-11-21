@@ -1,6 +1,7 @@
 import type { ErrorClass, JsonValue } from '@smarteverything/domain';
 import type { Checked } from '@smarteverything/flow/interpret/frames';
 import type { KeptStart } from '@smarteverything/flow/interpret/kept-types';
+import type { ReadFetch } from './step-reads';
 
 export type ReadInputs = Readonly<Record<string, JsonValue>>;
 
@@ -15,6 +16,8 @@ export interface ReadScope {
   readonly memory?: JsonValue;
   readonly deviceTest?: (deviceId: string) => boolean;
   readonly kept?: (name: string) => KeptStart | undefined;
+  readonly fetch: ReadFetch;
+  readonly now: () => Date;
 }
 
 export interface ReadResult {

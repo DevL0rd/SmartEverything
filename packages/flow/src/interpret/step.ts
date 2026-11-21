@@ -10,6 +10,7 @@ import { clipToPass, interruptPass, passExpired } from './pass-deadline';
 import { sizeGuarded } from './size-guard';
 import type { Checked, Env, Evaluated, NodeResult, Outputs, StepContext } from './frames';
 import type { KeptScope, KeptStart } from './kept-types';
+import { ReadSuspended } from './read-pending';
 import type { OpHandlers, OpName, OpOf, StepEvent, StepResult } from './frames';
 import {
   InterpreterError,
@@ -179,6 +180,7 @@ function read(env: Env, producer: Extract<PlanOp, { op: 'read' }>): NodeResult {
     instance: instanceOf(env.state),
     kept: (name) => keptFor(env, name),
   });
+  if ('pending' in fresh) throw new ReadSuspended(producer.kind);
   if (!fresh.ok) return fresh;
   return { ok: true, value: asRecord(capture(env, producer.at.key, fresh.value)) };
 }
@@ -323,5 +325,10 @@ function advanced(env: Env, event: StepEvent): StepResult {
 
 export function step(ctx: StepContext, state: RunState, event: StepEvent): StepResult {
   const env = makeEnv(ctx, prepared(state, event), event.now);
-  return sizeGuarded(ctx, event.now, env.state, advanced(env, event));
+  try {
+    return sizeGuarded(ctx, event.now, env.state, advanced(env, event));
+  } catch (cause) {
+    if (cause instanceof ReadSuspended) return { state, outcome: { kind: 'read' }, records: [] };
+    throw cause;
+  }
 }

@@ -53,7 +53,7 @@ function wakesProfile(caller: Caller, asked: string | undefined): string {
 export const signalRoutes = (context: ServerContext) =>
   ({
     listSignalKinds: bound(E.listSignalKinds, ({ query }) =>
-      installedSignalSources(context.store)
+      installedSignalSources(context.store.live.home)
         .filter(
           (spec) =>
             query.automationRuntime ||
@@ -66,7 +66,7 @@ export const signalRoutes = (context: ServerContext) =>
       return context.hub.signals.latest(query).filter(visible).slice(0, query.limit);
     }),
     listTriggerCatalogue: bound(E.listTriggerCatalogue, ({ query, caller }) =>
-      triggerCatalogueView(context.store, deviceScopeOf(context.store, caller), query),
+      triggerCatalogueView(context.store.live.home, deviceScopeOf(context.store, caller), query),
     ),
     listWakes: bound(
       E.listWakes,

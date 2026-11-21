@@ -32,7 +32,7 @@ beforeEach(async () => {
   test = await testStore();
   secrets = await SecretStore.open(join(test.directory, 'secrets'), Buffer.alloc(32, 3));
   smtp = await startFakeSmtp();
-  settings = new MailSettingsStore({ settingsKv: test.store.settingsKv, secrets });
+  settings = new MailSettingsStore({ saved: test.store.live.home.saved, secrets });
   mail = new MailService({ settings, store: test.store, log: testLogger('mail') });
 });
 

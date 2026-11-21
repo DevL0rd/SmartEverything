@@ -141,7 +141,7 @@ async function rigged(store: TestStore['store'], directory: string): Promise<Plu
       uploadFile: (): Promise<null> => Promise.resolve(null),
       pictureFile: (): Promise<null> => Promise.resolve(null),
       layout: hubLayout(directory, {}),
-      submit: (): [] => [],
+      submit: (): Promise<[]> => Promise.resolve([]),
       signals: { emit: nothing },
       home: storePluginHome(store),
       now,

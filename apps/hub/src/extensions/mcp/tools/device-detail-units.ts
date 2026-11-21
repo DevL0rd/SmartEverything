@@ -16,7 +16,7 @@ import {
   resolveDeviceModel,
   type ModelResolveSources,
 } from '../../../models/device-model';
-import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 import { storeUnit } from '../../../store/host/unit';
 import { placedFrom } from './targets';
 
@@ -34,9 +34,9 @@ export interface DeviceFactsRequest {
   readonly viewer: PhoneViewer;
 }
 
-const MODEL_SERVICES = new WeakMap<Store, ModelResolveSources>();
+const MODEL_SERVICES = new WeakMap<HostStore, ModelResolveSources>();
 
-function modelOf(store: Store, device: DeviceRow): DeviceModelView {
+function modelOf(store: HostStore, device: DeviceRow): DeviceModelView {
   const services = MODEL_SERVICES.get(store) ?? modelResolveSources(store);
   MODEL_SERVICES.set(store, services);
   return modelViewOf(resolveDeviceModel(services, device).resolution);
@@ -50,7 +50,7 @@ function directLinkOf(
   return host === null || mac === null ? null : { address: host, mac };
 }
 
-function televisionOf(store: Store, device: DeviceRow): Record<string, unknown> {
+function televisionOf(store: HostStore, device: DeviceRow): Record<string, unknown> {
   const settings = store.televisionSettings.find(device.id);
   return {
     direct_link: directLinkOf(settings),
@@ -60,12 +60,12 @@ function televisionOf(store: Store, device: DeviceRow): Record<string, unknown> 
   };
 }
 
-function assumedState(store: Store, remoteId: string): IrRemoteState {
+function assumedState(store: HostStore, remoteId: string): IrRemoteState {
   return store.settings.read().ir_remotes[remoteId] ?? EMPTY_IR_REMOTE_STATE;
 }
 
 function infraredOf(
-  store: Store,
+  store: HostStore,
   device: DeviceRow,
   scope: DeviceScope | null,
 ): Record<string, unknown> {
@@ -88,7 +88,7 @@ function infraredOf(
 }
 
 function factsOf(
-  store: Store,
+  store: HostStore,
   device: DeviceRow,
   { scope, viewer }: DeviceFactsRequest,
 ): DeviceFacts {

@@ -1,7 +1,7 @@
 import { ApiError, FOOD_CANDIDATE, type FoodCandidate } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import type { FoodsRepository } from '../store/repositories/foods';
+import type { HostedRepository } from '../store/host/hosted';
 import { OFF_FIELDS, OFF_PRODUCT, candidateOf } from './open-food-facts';
 import { DAY_MS } from '../metrics/minute';
 import { userAgentOf } from '../outbound/provider-json';
@@ -19,7 +19,7 @@ const SEARCH_ANSWER = z.object({ hits: z.array(z.unknown()) });
 const CACHED_SEARCH = z.array(FOOD_CANDIDATE);
 
 export interface FoodLookupOptions {
-  readonly foods: FoodsRepository;
+  readonly foods: HostedRepository<'foods', 'remember' | 'cached'>;
   readonly fetch: typeof fetch;
   readonly now: () => Date;
   readonly version: string;
@@ -31,7 +31,9 @@ export class FoodLookup {
 
   async byBarcode(barcode: string): Promise<FoodCandidate> {
     const key = `product:${barcode}`;
-    const cached = this.fresh(key, (answer) => (answer === null ? FRESH.missing : FRESH.product));
+    const cached = await this.fresh(key, (answer) =>
+      answer === null ? FRESH.missing : FRESH.product,
+    );
     if (cached !== undefined) {
       return this.productFrom(barcode, cached === null ? null : FOOD_CANDIDATE.parse(cached));
     }
@@ -39,7 +41,7 @@ export class FoodLookup {
       await this.get(`${PRODUCT_URL}${barcode}?fields=${OFF_FIELDS}`, [200, 404]),
     );
     const candidate = answer.product === undefined ? null : candidateOf(answer.product);
-    this.options.foods.remember(key, candidate);
+    await this.options.foods.remember(key, candidate);
     this.options.log.info('foods.looked_up', { found: candidate !== null });
     return this.productFrom(barcode, candidate);
   }
@@ -47,7 +49,7 @@ export class FoodLookup {
   async search(query: string): Promise<FoodCandidate[]> {
     const text = query.trim().toLowerCase();
     const key = `search:${text}`;
-    const cached = this.fresh(key, () => FRESH.search);
+    const cached = await this.fresh(key, () => FRESH.search);
     if (cached !== undefined) {
       return CACHED_SEARCH.parse(cached);
     }
@@ -58,7 +60,7 @@ export class FoodLookup {
       const candidate = product.success ? candidateOf(product.data) : null;
       return candidate === null ? [] : [candidate];
     });
-    this.options.foods.remember(key, candidates);
+    await this.options.foods.remember(key, candidates);
     return candidates;
   }
 
@@ -69,8 +71,8 @@ export class FoodLookup {
     return candidate;
   }
 
-  private fresh(key: string, lifetime: (answer: unknown) => number): unknown {
-    const cached = this.options.foods.cached(key);
+  private async fresh(key: string, lifetime: (answer: unknown) => number): Promise<unknown> {
+    const cached = await this.options.foods.cached(key);
     if (cached === undefined) {
       return undefined;
     }

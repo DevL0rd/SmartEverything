@@ -11,7 +11,7 @@ useRig((made) => {
 interface Open {
   readonly chat: AiChatRow;
   readonly epoch: number;
-  readonly publish: (seq: number, rest: Record<string, unknown>) => void;
+  readonly publish: (seq: number, rest: Record<string, unknown>) => Promise<void>;
   readonly text: (seq: number) => AiHarnessEvent;
 }
 
@@ -27,9 +27,8 @@ async function open(): Promise<Open> {
   return {
     chat: rig.opened.store.aiChats.chat(chat.id),
     epoch: request.claim.epoch,
-    publish: (seq, rest): void => {
-      rig.service.publish(AI_HARNESS_EVENT.parse({ ...base, seq, ...rest }));
-    },
+    publish: (seq, rest): Promise<void> =>
+      rig.service.publish(AI_HARNESS_EVENT.parse({ ...base, seq, ...rest })),
     text: (seq): AiHarnessEvent => ({ ...base, seq, kind: 'text', delta: `chunk ${String(seq)}` }),
   };
 }
@@ -44,11 +43,9 @@ describe('native events published to the hub', () => {
       seen.push(event.seq);
     });
 
-    expect(() => {
-      rig.service.publish(opened.text(1));
-    }).toThrow('listener failed');
+    await expect(rig.service.publish(opened.text(1))).rejects.toThrow('listener failed');
     failing = false;
-    rig.service.publish(opened.text(1));
+    await rig.service.publish(opened.text(1));
 
     expect(seen).toStrictEqual([1]);
   });
@@ -57,23 +54,23 @@ describe('native events published to the hub', () => {
     const opened = await open();
     const seen: number[] = [];
     const leave = rig.service.onEvent((event) => seen.push(event.seq));
-    rig.service.publish(opened.text(1));
+    await rig.service.publish(opened.text(1));
     leave();
-    rig.service.publish(opened.text(2));
+    await rig.service.publish(opened.text(2));
 
     expect(seen).toStrictEqual([1]);
   });
 
   it('record the working state when text arrives while the chat waits on a request', async () => {
     const opened = await open();
-    opened.publish(1, {
+    await opened.publish(1, {
       kind: 'interaction',
       interaction: { id: 'allow-1', epoch: opened.epoch, kind: 'permission', request: {} },
     });
-    expect(rig.service.state(rig.owner, opened.chat.id).state).toBe('waiting');
+    expect((await rig.service.state(rig.owner, opened.chat.id)).state).toBe('waiting');
 
-    rig.service.publish(opened.text(2));
+    await rig.service.publish(opened.text(2));
 
-    expect(rig.service.state(rig.owner, opened.chat.id).state).toBe('working');
+    expect((await rig.service.state(rig.owner, opened.chat.id)).state).toBe('working');
   });
 });

@@ -1,7 +1,7 @@
 import type { HarnessSkillUpdateResult, HarnessSkillUpdates } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { Clock, Cancel } from '../clock';
-import type { HarnessSkillUpdatesRepository } from '../store/repositories/harness-skill-updates';
+import type { HostedRepository } from '../store/host/hosted';
 import type { HarnessConfigurationService } from './configuration';
 import type { HarnessExtensions } from './extensions';
 
@@ -14,18 +14,18 @@ export class HarnessSkillUpdatesService {
   private readonly log = new Logger('hub.harness-skill-updates');
 
   constructor(
-    private readonly repository: HarnessSkillUpdatesRepository,
+    private readonly repository: HostedRepository<'harnessSkillUpdates', 'read' | 'replace'>,
     private readonly configuration: HarnessConfigurationService,
     private readonly extensions: HarnessExtensions,
     private readonly clock: Clock,
   ) {}
 
-  read(): HarnessSkillUpdates {
+  read(): Promise<HarnessSkillUpdates> {
     return this.repository.read();
   }
 
-  replace(input: unknown): HarnessSkillUpdates {
-    const result = this.repository.replace(input);
+  async replace(input: unknown): Promise<HarnessSkillUpdates> {
+    const result = await this.repository.replace(input);
     this.configuration.notifySettings();
     if (result.automatic && this.running) this.automatic();
     return result;
@@ -58,10 +58,14 @@ export class HarnessSkillUpdatesService {
   }
 
   private automatic(): void {
-    if (!this.read().automatic) return;
-    void this.update().catch((cause: unknown) => {
+    void this.automaticUpdate().catch((cause: unknown) => {
       this.log.error('updates.failed', cause);
     });
+  }
+
+  private async automaticUpdate(): Promise<void> {
+    if (!(await this.read()).automatic) return;
+    await this.update();
   }
 
   private schedule(): void {

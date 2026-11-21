@@ -298,7 +298,7 @@ describe('where widget_show is offered', () => {
     ).toContain(WIDGET_MANNER);
   });
 
-  it('puts the board types of the home in the reply context only when widget_show is offered', () => {
+  it('puts the board types of the home in the reply context only when widget_show is offered', async () => {
     pluginWithBoards('garden', ['garden.soil'], true);
     pluginWithBoards('attic', ['attic.heat'], false);
     const tool: HubTool = {
@@ -319,10 +319,10 @@ describe('where widget_show is offered', () => {
     const chat = opened.store.aiChats.chat(chatId);
     const now = new Date('2026-10-08T10:00:00.000Z');
     expect(
-      turnPrompt(facts(opened.store, chat, new ToolHub([source]), { now, clientId: null })),
+      turnPrompt(await facts(opened.store, chat, new ToolHub([source]), { now, clientId: null })),
     ).toContain('Board types for widget_show kind board: garden.soil.');
     expect(
-      turnPrompt(facts(opened.store, chat, new ToolHub([]), { now, clientId: null })),
+      turnPrompt(await facts(opened.store, chat, new ToolHub([]), { now, clientId: null })),
     ).not.toContain('Board types');
   });
 });

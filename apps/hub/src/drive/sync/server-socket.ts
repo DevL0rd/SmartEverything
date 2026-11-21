@@ -1,12 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
-import {
-  ApiError,
-  DRIVE_PLACEMENT_STATUS,
-  type ComputerNodeRow,
-  type DrivePlacementStatus,
-  type LiveChange,
-} from '@smarteverything/domain';
+import { ApiError, type ComputerNodeRow, type LiveChange } from '@smarteverything/domain';
 import { SYNC_CLIENT_MESSAGE, type SyncClientMessage } from '@smarteverything/domain/drive-sync';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import type { WebSocket } from 'ws';
@@ -19,7 +13,7 @@ import { nodeCaller } from '../node-caller';
 import type { DriveActor } from '../access';
 import { SyncConnection, SyncRegistry, type SyncMode, type SyncSession } from './server-connection';
 import { firstIndexCursor, type IndexCursor, type IndexPage } from './server-index';
-import { resolveScope, type SyncScope } from './placement-scope';
+import { syncScopeOf, type SyncScope } from './placement-scope';
 
 export type { SyncMode, SyncSession } from './server-connection';
 
@@ -55,7 +49,7 @@ class DriveSyncCore {
 
   async admit(access: ComputerNodeAccess, request: IncomingMessage): Promise<void> {
     try {
-      nodeCaller(this.store, await access.authenticate(bearerOf(request)));
+      await nodeCaller(this.store, await access.authenticate(bearerOf(request)));
     } catch (cause) {
       this.log.warn('drive_sync.refused_upgrade', { reason: messageOf(cause) });
       throw cause;
@@ -114,34 +108,23 @@ class DriveSyncCore {
       throw new ApiError('forbidden', 'This channel only listens for changes.');
     }
     if (message.type !== 'client_state') return this.operations.handle(session, message);
-    this.report(session.placementId, message);
-    return Promise.resolve();
+    return this.report(session.placementId, message);
   }
 
-  private report(placementId: string, message: ClientState): void {
-    const { drivePlacements } = this.store;
-    const { status } = drivePlacements.byId(placementId);
-    const settled = message.need === 0 && message.errors.length === 0;
-    const lastSyncedAt =
-      settled && (status.needBytes !== 0 || status.lastSyncedAt === null)
-        ? this.store.now().toISOString()
-        : status.lastSyncedAt;
-    const next: DrivePlacementStatus = DRIVE_PLACEMENT_STATUS.parse({
-      ...status,
-      needBytes: message.need,
+  private async report(placementId: string, message: ClientState): Promise<void> {
+    await this.store.host.write('driveSyncReport', {
+      placementId,
+      need: message.need,
       errors: message.errors,
-      lastSyncedAt,
     });
-    if (JSON.stringify(next) === JSON.stringify(status)) return;
-    drivePlacements.writeStatus(placementId, next);
   }
 
   private async hello(connection: SyncConnection, hello: Hello): Promise<void> {
     if (connection.session !== null) {
       throw new ApiError('conflict', 'This channel already said hello.');
     }
-    const actor = this.actorOf(connection);
-    const scope = resolveScope(
+    const actor = await this.actorOf(connection);
+    const scope = await syncScopeOf(
       this.store,
       hello.placementId,
       connection.identity.device_id,
@@ -160,8 +143,8 @@ class DriveSyncCore {
     await this.pump(connection);
   }
 
-  private actorOf(connection: SyncConnection): DriveActor {
-    const caller = nodeCaller(this.store, connection.identity);
+  private async actorOf(connection: SyncConnection): Promise<DriveActor> {
+    const caller = await nodeCaller(this.store, connection.identity);
     return { profileId: profileIdOf(caller) };
   }
 
@@ -223,7 +206,7 @@ class DriveSyncCore {
     try {
       do {
         connection.startRound();
-        const scope = this.currentScope(connection);
+        const scope = await this.currentScope(connection);
         if (scope !== null) await this.sendUpdates(connection, scope, false);
       } while (connection.hasMoreWaiting());
     } finally {
@@ -231,10 +214,15 @@ class DriveSyncCore {
     }
   }
 
-  private currentScope(connection: SyncConnection): SyncScope | null {
+  private async currentScope(connection: SyncConnection): Promise<SyncScope | null> {
     const session = connection.session;
     if (session === null) return null;
-    const scope = resolveScope(this.store, session.placementId, session.deviceId, session.mode);
+    const scope = await syncScopeOf(
+      this.store,
+      session.placementId,
+      session.deviceId,
+      session.mode,
+    );
     if (scope.indexId !== connection.indexId) {
       throw new ApiError('conflict', 'The index was rebuilt; reconnect to index again.');
     }

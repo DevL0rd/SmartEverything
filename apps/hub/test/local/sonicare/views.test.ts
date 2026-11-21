@@ -29,9 +29,9 @@ function depsOf(brushed: SonicareRig): ViewDeps {
   return {
     store: brushed.test.store,
     fleet: brushed.fleet,
-    clock: homeClock(brushed.test.store),
+    clock: homeClock(brushed.test.store.live.home.settings),
     holder: () => null,
-    series: () => ({ resolution: 'hour', points: [] }),
+    series: () => Promise.resolve({ resolution: 'hour', points: [] }),
     now: brushed.clock.now,
   };
 }

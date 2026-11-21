@@ -5,8 +5,8 @@ import type { VoiceTools } from './tools';
 
 const CALLS_SHOWN = 200;
 
-export function summaryFor(tools: VoiceTools, callId: string): CallSummary {
-  const session = tools.transcripts.find(callId);
+export async function summaryFor(tools: VoiceTools, callId: string): Promise<CallSummary> {
+  const session = await tools.transcripts.find(callId);
   const summary = session === null ? null : summaryOf(session);
   if (summary === null) throw new UnknownCallError(callId);
   return summary;
@@ -25,8 +25,7 @@ export function transcriptActions(
       run: async (_args, caller): Promise<LocalOutput> => {
         await services.authority.access(caller, undefined);
         return plain(
-          tools.transcripts
-            .list(CALLS_SHOWN)
+          (await tools.transcripts.list(CALLS_SHOWN))
             .map(summaryOf)
             .filter(
               (summary): summary is CallSummary =>

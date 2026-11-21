@@ -1,12 +1,13 @@
 import type {
   Battery,
+  DiskUsagePart,
   DisksPart,
   InterfaceSnapshot,
   MemoryPart,
   NetworkPart,
 } from '@smarteverything/domain';
 import type { NetworkInterfaceInfo } from 'node:os';
-import { percent, rate } from '../rounding';
+import { bytesOf, percent, rate } from '../rounding';
 import { CounterRates } from './counter-rates';
 import type { DiskReading, InterfaceReading, MemoryReading } from './platform-readings';
 
@@ -50,6 +51,19 @@ export function disksPartOf(readings: readonly DiskReading[]): DisksPart {
       readRate: rate(disk.readRate),
       writeRate: rate(disk.writeRate),
       temperature: null,
+    })),
+  };
+}
+
+export function diskUsagePartOf(part: DisksPart): DiskUsagePart {
+  return {
+    disks: part.disks.map((disk) => ({
+      mount: disk.mount,
+      device: disk.device,
+      label: disk.label,
+      filesystem: disk.filesystem,
+      usedBytes: bytesOf(disk.usedBytes, disk.totalBytes),
+      totalBytes: disk.totalBytes,
     })),
   };
 }

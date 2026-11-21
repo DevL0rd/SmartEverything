@@ -173,7 +173,7 @@ export interface BrandRuntime {
   values(context: ValuesContext): BrandValues;
   headView(context: ViewContext): HeadView;
   handleView(context: ViewContext): HandleView;
-  headTimeline(context: ViewContext): HeadTimeline;
+  headTimeline(context: ViewContext): Promise<HeadTimeline>;
   diagnostics(context: ViewContext): DiagnosticsBrand;
 }
 

@@ -35,8 +35,8 @@ type AnyNotice = DeviceNotice | AutomationTraceNotice;
 
 export interface TraceSource {
   readonly viewers: Pick<Viewers<DeviceDetail>, 'hold' | 'release'>;
-  readonly allowed: (client: ClientRow, subject: string) => boolean;
-  readonly keyframe: (subject: string, client: ClientRow) => AutomationTraceNotice | null;
+  readonly allowed: (client: ClientRow, subject: string) => Promise<boolean>;
+  readonly keyframe: (subject: string, client: ClientRow) => Promise<AutomationTraceNotice | null>;
 }
 
 export interface WatchSource {
@@ -195,10 +195,21 @@ function merged(older: WatchNotice | undefined, newer: DeviceNotice): WatchNotic
   return newer;
 }
 
+function freshTopics(before: Topics, topics: Topics): [string, ReadonlySet<string>][] {
+  return [...topics]
+    .map(([subject, wanted]): [string, ReadonlySet<string>] => [
+      subject,
+      new Set([...wanted].filter((topic) => before.get(subject)?.has(topic) !== true)),
+    ])
+    .filter(([, fresh]) => fresh.size > 0);
+}
+
 export class LiveWatch<Subscriber extends WatchConnection> {
   private readonly sources = new Set<WatchSource>();
   private readonly traceSources = new Set<TraceSource>();
   private readonly watching = new Map<Subscriber, Watching>();
+  private readonly traceTurns = new WeakMap<Subscriber, Promise<void>>();
+  private readonly closed = new WeakSet<Subscriber>();
 
   constructor(private readonly options: LiveWatchOptions<Subscriber>) {}
 
@@ -226,7 +237,8 @@ export class LiveWatch<Subscriber extends WatchConnection> {
       sources.some((source) => source.allowed(connection.client, demand.deviceId)),
     );
     const topics = topicsOf(demands);
-    this.replace(connection, 'devices', { topics, leases: leasesOf(demands) });
+    const changed = this.replace(connection, 'devices', { topics, leases: leasesOf(demands) });
+    this.sendKeyframes(connection, changed.before, changed.topics);
     this.options.log.debug('live.watch_changed', () => ({
       socketId: connection.id,
       clientId: connection.client.id,
@@ -236,7 +248,14 @@ export class LiveWatch<Subscriber extends WatchConnection> {
     }));
   }
 
-  receiveTrace(connection: Subscriber, message: AutomationWatchMessage): void {
+  receiveTrace(connection: Subscriber, message: AutomationWatchMessage): Promise<void> {
+    const next = (): Promise<void> => this.traceTurn(connection, message);
+    const turn = (this.traceTurns.get(connection) ?? Promise.resolve()).then(next, next);
+    this.traceTurns.set(connection, turn);
+    return turn;
+  }
+
+  private async traceTurn(connection: Subscriber, message: AutomationWatchMessage): Promise<void> {
     const sources = [...this.traceSources];
     if (sources.length === 0 || this.options.sendTrace === undefined) {
       this.options.log.warn('live.trace_unwired', {
@@ -246,15 +265,21 @@ export class LiveWatch<Subscriber extends WatchConnection> {
       });
       return;
     }
-    const subjects = new Set(
-      message.demands
-        .map(demandSubject)
-        .filter((subject) => sources.some((source) => source.allowed(connection.client, subject))),
+    const asked = [...new Set(message.demands.map(demandSubject))];
+    const allowed = await Promise.all(
+      asked.map(async (subject) =>
+        (
+          await Promise.all(sources.map((source) => source.allowed(connection.client, subject)))
+        ).some((yes) => yes),
+      ),
     );
-    this.replace(connection, 'traces', {
+    if (this.closed.has(connection)) return;
+    const subjects = new Set(asked.filter((_subject, index) => allowed[index] === true));
+    const changed = this.replace(connection, 'traces', {
       topics: new Map([...subjects].map((subject) => [subject, new Set([TRACE_TOPIC])])),
       leases: traceLeasesOf(subjects),
     });
+    await this.sendTraceKeyframes(connection, changed.before, changed.topics);
     this.options.log.debug('live.trace_watch_changed', () => ({
       socketId: connection.id,
       clientId: connection.client.id,
@@ -268,6 +293,7 @@ export class LiveWatch<Subscriber extends WatchConnection> {
   }
 
   close(connection: Subscriber): void {
+    this.closed.add(connection);
     if (!this.watching.delete(connection)) return;
     this.viewersOf().forEach((viewers) => {
       viewers.release(holderOf(connection));
@@ -300,13 +326,17 @@ export class LiveWatch<Subscriber extends WatchConnection> {
     ]);
   }
 
-  private replace(connection: Subscriber, name: FamilyName, family: Family): void {
+  private replace(
+    connection: Subscriber,
+    name: FamilyName,
+    family: Family,
+  ): { readonly before: Topics; readonly topics: Topics } {
     const known = this.watching.get(connection);
     const before = known?.topics ?? NO_TOPICS;
     const next = withFamily(known, name, family);
     this.watching.set(connection, next);
     this.hold(connection, next);
-    this.sendKeyframes(connection, before, next.topics);
+    return { before, topics: next.topics };
   }
 
   private hold(connection: Subscriber, watching: Watching): void {
@@ -323,20 +353,29 @@ export class LiveWatch<Subscriber extends WatchConnection> {
   }
 
   private sendKeyframes(connection: Subscriber, before: Topics, topics: Topics): void {
-    for (const [subject, wanted] of topics) {
-      const fresh = new Set(
-        [...wanted].filter((topic) => before.get(subject)?.has(topic) !== true),
-      );
-      if (fresh.size === 0) continue;
-      const keyframe = this.keyframeOf(subject, connection.client);
+    for (const [subject, fresh] of freshTopics(before, topics)) {
+      if (!subject.startsWith('device:')) continue;
+      const keyframe = this.keyframeOf(subject.slice('device:'.length), connection.client);
       const cut = keyframe === null ? null : covered(keyframe, fresh);
       if (cut !== null) this.emit(connection, cut);
     }
   }
 
-  private keyframeOf(subject: string, client: ClientRow): AnyNotice | null {
-    if (!subject.startsWith('device:')) return this.traceKeyframeOf(subject, client);
-    const deviceId = subject.slice('device:'.length);
+  private async sendTraceKeyframes(
+    connection: Subscriber,
+    before: Topics,
+    topics: Topics,
+  ): Promise<void> {
+    for (const [subject, fresh] of freshTopics(before, topics)) {
+      if (subject.startsWith('device:')) continue;
+      const keyframe = await this.traceKeyframeOf(subject, connection.client);
+      if (this.closed.has(connection)) return;
+      const cut = keyframe === null ? null : covered(keyframe, fresh);
+      if (cut !== null) this.emit(connection, cut);
+    }
+  }
+
+  private keyframeOf(deviceId: string, client: ClientRow): DeviceNotice | null {
     for (const source of this.sources) {
       const keyframe = source.keyframe(deviceId, client);
       if (keyframe !== null) return keyframe;
@@ -344,9 +383,12 @@ export class LiveWatch<Subscriber extends WatchConnection> {
     return null;
   }
 
-  private traceKeyframeOf(subject: string, client: ClientRow): AutomationTraceNotice | null {
+  private async traceKeyframeOf(
+    subject: string,
+    client: ClientRow,
+  ): Promise<AutomationTraceNotice | null> {
     for (const source of this.traceSources) {
-      const keyframe = source.keyframe(subject, client);
+      const keyframe = await source.keyframe(subject, client);
       if (keyframe !== null) return keyframe;
     }
     return null;

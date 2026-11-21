@@ -9,7 +9,7 @@ import {
 import type { BottleLogsRepository } from '../../store/repositories/bottle-logs';
 import type { BottleReadingsRepository } from '../../store/repositories/bottle-readings';
 import type { LocalDeviceEntry } from '../../store/repositories/local-devices';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { NoteLog } from '../unit-notes';
 import { homeClock, type HomeClock } from './clock';
 import { entryConfigOf, saveConfig, type BottleEntryConfig } from './config';
@@ -26,7 +26,7 @@ import { SNAP, Snapshots } from './snapshots';
 import { capOf, isoOfSeconds, levelOf } from './summary';
 
 export interface BottleWorkerDeps {
-  readonly store: Store;
+  readonly store: HostStore;
   readonly readings: BottleReadingsRepository;
   readonly logs: BottleLogsRepository;
   readonly snapshots: Snapshots;
@@ -35,14 +35,14 @@ export interface BottleWorkerDeps {
   readonly log: NoteLog;
 }
 
-export function bottleWorkerDeps(store: Store, now: string): BottleWorkerDeps {
+export function bottleWorkerDeps(store: HostStore, now: string): BottleWorkerDeps {
   const at = new Date(now);
   return {
     store,
     readings: store.bottleReadings,
     logs: store.bottleLogs,
     snapshots: new Snapshots(store.bottleLogs),
-    clock: homeClock(store),
+    clock: homeClock(store.settings),
     now: () => at,
     log: new NoteLog(),
   };

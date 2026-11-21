@@ -157,7 +157,7 @@ describe('claimable chat files', () => {
       await writeFile(path, sample.content);
       const files = new AssistantFiles({
         layout,
-        chat: store.assistantChat,
+        store: store,
         attachments: store.live.attachments,
         now: (): Date => NOW,
       });

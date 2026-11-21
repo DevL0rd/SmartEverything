@@ -1,3 +1,4 @@
+import { testStore, type TestStore, type SeededStore } from './support/store';
 import { join } from 'node:path';
 import type { ProviderAdapter } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -7,10 +8,8 @@ import { startHub, type RunningHub } from '../src/hub';
 import { SecretStore } from '../src/secrets/store';
 import { recordingPathIn } from '../src/services';
 import { storeDatabase } from '../src/store/hub-database';
-import type { Store } from '../src/store/store';
 import { FakeClock } from './support/fake-clock';
 import { captureLogs, testLogger } from './support/logs';
-import { testStore, type TestStore } from './support/store';
 
 let opened: TestStore;
 
@@ -56,7 +55,7 @@ const SAMSUNG: ProviderModule<'samsung_tv'> = {
 };
 
 function addTelevision(
-  store: Store,
+  store: SeededStore,
   externalId: string,
   provider: 'smartthings' | 'samsung_tv' = 'smartthings',
 ): string {
@@ -136,7 +135,7 @@ function linkTo(
   });
 }
 
-function directOf(store: Store, deviceId: string): unknown {
+function directOf(store: SeededStore, deviceId: string): unknown {
   const row = store.televisionSettings.find(deviceId);
   return row === undefined ? undefined : { host: row.direct_host, mac: row.direct_mac };
 }
@@ -202,7 +201,7 @@ describe('the direct link of a television', () => {
     const tv = addTelevision(opened.store, 'tv-1');
     const hub = await startHubWithoutAccounts();
     await linkTo(hub, tv);
-    hub.submit([
+    await hub.submit([
       {
         deviceId: null,
         capability: 'hub:unlink_provider',

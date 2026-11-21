@@ -6,7 +6,7 @@ import {
   type BrushingSession,
   type TreadmillSession,
 } from '@smarteverything/domain';
-import type { Store } from '../../apps/hub/src/store/store.ts';
+import type { Seeded } from './store.ts';
 import { daysAgo, type Anchor } from './clock.ts';
 import type { Counted } from './context.ts';
 import type { Random } from './random.ts';
@@ -19,7 +19,7 @@ const SOURCE_ZONE = 0;
 const BOTTLE_ML = 600;
 
 interface Scene {
-  readonly store: Store;
+  readonly store: Seeded;
   readonly profiles: readonly string[];
   readonly anchor: Anchor;
   readonly rng: Random;
@@ -266,7 +266,7 @@ function seedBody(scene: Scene, deviceId: string): number {
 }
 
 export function seedActivity(
-  store: Store,
+  store: Seeded,
   household: {
     readonly profiles: readonly string[];
     readonly deviceIds: ReadonlyMap<string, string>;

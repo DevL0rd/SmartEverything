@@ -212,9 +212,7 @@ export class VacuumCleanTracker {
   }
 
   private freshTask(deviceId: string, taskId: number | null): number | null {
-    return taskId !== null && this.ports.cleans.get(deviceId, taskKey(taskId)) === undefined
-      ? taskId
-      : null;
+    return taskId !== null && !this.ports.cleans.has(deviceId, taskKey(taskId)) ? taskId : null;
   }
 
   private continues(vacuum: Tracked, stored: VacuumClean, map: CleanMap): boolean {

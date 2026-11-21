@@ -8,15 +8,12 @@ import {
   type ProviderAnswer,
   type ProviderControl,
   type ProviderEvent,
-  type ClaudePrompt,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { ComputerAiDirectory } from '../../../computers/ai-directory';
 import type { Store } from '../../../store/store';
-import {
-  metadataSubscriptionUsage,
-  observeNativeSubscription,
-} from '../computer/subscription-usage';
+import { metadataSubscriptionUsage } from '../../native-subscription';
+import { changesMetadata } from './provider-update';
 
 function emptyProvider(chat: AiChatRow): AiChatProvider {
   if (chat.engine.kind !== 'claude')
@@ -41,9 +38,9 @@ export class ProviderState {
     private readonly directory: ComputerAiDirectory,
   ) {}
 
-  read(chat: AiChatRow): AiChatProvider {
+  async read(chat: AiChatRow): Promise<AiChatProvider> {
     const empty = emptyProvider(chat);
-    const saved = this.store.aiProvider.read(chat.id);
+    const saved = await this.store.host.call('aiProvider', 'read', chat.id);
     if (saved?.device_id !== empty.device_id) return empty;
     const status = this.directory.status(saved.device_id);
     return !status.online
@@ -55,8 +52,8 @@ export class ProviderState {
       : saved;
   }
 
-  bound(chat: AiChatRow): AiChatProvider & { readonly job_id: string } {
-    const state = this.read(chat);
+  async bound(chat: AiChatRow): Promise<AiChatProvider & { readonly job_id: string }> {
+    const state = await this.read(chat);
     if (state.job_id === null)
       throw new ApiError(
         'conflict',
@@ -66,7 +63,7 @@ export class ProviderState {
   }
 
   async metadata(chat: AiChatRow): Promise<AiChatProvider> {
-    const state = this.read(chat);
+    const state = await this.read(chat);
     if (state.metadata !== null) return state;
     const status = this.directory.status(state.device_id);
     if (
@@ -100,7 +97,7 @@ export class ProviderState {
       },
       PROVIDER_METADATA,
     );
-    const current = this.read(chat);
+    const current = await this.read(chat);
     if (current.job_id !== state.job_id || this.metadataRevision.get(chat.id) !== revision)
       throw new ApiError(
         'conflict',
@@ -112,15 +109,16 @@ export class ProviderState {
       metadata,
       ...(usage?.runtime === 'claude' ? { subscription_usage: usage } : {}),
     };
-    this.store.write(() => {
-      this.store.aiProvider.save(chat.id, updated);
-      if (usage !== undefined) observeNativeSubscription(this.store, chat, usage);
+    await this.store.host.write('claudeProviderMetadataSave', {
+      chat,
+      state: updated,
+      usage: usage ?? null,
     });
     return updated;
   }
 
   async answer(chat: AiChatRow, promptId: string, answer: ProviderAnswer): Promise<void> {
-    const state = this.bound(chat);
+    const state = await this.bound(chat);
     const prompt = state.prompts.find((item) => item.id === promptId && item.status === 'pending');
     if (prompt === undefined)
       throw new ApiError('conflict', 'This exact prompt is no longer pending in this chat.');
@@ -134,23 +132,23 @@ export class ProviderState {
         'conflict',
         'The provider no longer recognizes this exact pending prompt.',
       );
-    const current = this.bound(chat);
+    const current = await this.bound(chat);
     if (current.job_id !== state.job_id)
       throw new ApiError(
         'conflict',
         'The provider job changed before the prompt answer was acknowledged.',
       );
-    this.store.aiProvider.save(chat.id, {
+    await this.store.host.call('aiProvider', 'save', chat.id, {
       ...current,
       prompts: current.prompts.map((item) =>
-        item.id === promptId ? { ...item, status: 'answered' } : item,
+        item.id === promptId ? { ...item, status: 'answered' as const } : item,
       ),
     });
   }
 
   async control(chat: AiChatRow, control: ProviderControl): Promise<JsonValue> {
-    const state = this.bound(chat);
-    this.assertSession(chat, 'session_id' in control ? control.session_id : undefined);
+    const state = await this.bound(chat);
+    await this.assertSession(chat, 'session_id' in control ? control.session_id : undefined);
     const result = await this.directory.request(
       state.device_id,
       { operation: 'provider_control', job_id: state.job_id, control },
@@ -158,21 +156,36 @@ export class ProviderState {
     );
     if (control.action === 'fork_session') {
       const fork = z.object({ sessionId: z.string().min(1).max(200) }).parse(result);
-      this.store.aiProvider.associate(chat.id, state.device_id, fork.sessionId);
+      await this.store.host.call(
+        'aiProvider',
+        'associate',
+        chat.id,
+        state.device_id,
+        fork.sessionId,
+      );
     }
     if (control.action === 'delete_session')
-      this.store.aiProvider.forgetSession(chat.id, state.device_id, control.session_id);
+      await this.store.host.call(
+        'aiProvider',
+        'forgetSession',
+        chat.id,
+        state.device_id,
+        control.session_id,
+      );
     if (changesMetadata(control)) {
       this.metadataRevision.set(chat.id, (this.metadataRevision.get(chat.id) ?? 0) + 1);
       this.readingMetadata.delete(JSON.stringify([chat.id, state.job_id]));
-      this.store.aiProvider.save(chat.id, { ...this.read(chat), metadata: null });
+      await this.store.host.call('aiProvider', 'save', chat.id, {
+        ...(await this.read(chat)),
+        metadata: null,
+      });
     }
     if (
       control.action === 'close' ||
       (control.action === 'delete_session' && control.session_id === state.session_id)
     )
-      this.store.aiProvider.save(chat.id, {
-        ...this.read(chat),
+      await this.store.host.call('aiProvider', 'save', chat.id, {
+        ...(await this.read(chat)),
         job_id: null,
         state: 'idle',
         prompts: [],
@@ -181,11 +194,17 @@ export class ProviderState {
     return result;
   }
 
-  assertSession(chat: AiChatRow, sessionId: string | undefined): void {
-    const state = this.read(chat);
+  async assertSession(chat: AiChatRow, sessionId: string | undefined): Promise<void> {
+    const state = await this.read(chat);
     if (
       sessionId !== undefined &&
-      !this.store.aiProvider.ownsSession(chat.id, state.device_id, sessionId)
+      !(await this.store.host.call(
+        'aiProvider',
+        'ownsSession',
+        chat.id,
+        state.device_id,
+        sessionId,
+      ))
     )
       throw new ApiError(
         'forbidden',
@@ -193,83 +212,7 @@ export class ProviderState {
       );
   }
 
-  received(chat: AiChatRow, event: ProviderEvent): boolean {
-    if (!this.store.aiProvider.append(chat.id, event)) return false;
-    if (
-      event.kind === 'accepted' ||
-      event.kind === 'completed' ||
-      event.kind === 'failed' ||
-      event.kind === 'prompt' ||
-      event.kind === 'dialog'
-    ) {
-      const state = this.store.aiProvider.read(chat.id, false);
-      if (state !== null) this.store.aiProvider.save(chat.id, updatedProvider(state, event));
-    }
-    return true;
+  received(chat: AiChatRow, event: ProviderEvent): Promise<boolean> {
+    return this.store.host.write('claudeProviderReceive', { chatId: chat.id, event });
   }
-}
-
-function promptOf(event: ProviderEvent): AiChatProvider['prompts'][number] | null {
-  if (event.kind === 'dialog')
-    return {
-      id: event.prompt_id,
-      kind: event.dialog_kind,
-      request: event.request,
-      status: event.status ?? 'pending',
-    };
-  if (event.kind !== 'prompt') return null;
-  return {
-    id: event.prompt.id,
-    kind: event.prompt.kind,
-    request: z.record(z.string(), JSON_VALUE).parse(event.prompt),
-    status: nativePromptStatus(event.prompt.state),
-  };
-}
-
-function nativePromptStatus(
-  state: ClaudePrompt['state'],
-): AiChatProvider['prompts'][number]['status'] {
-  switch (state) {
-    case 'waiting':
-      return 'pending';
-    case 'expired':
-    case 'taken_over':
-      return 'expired';
-    case 'allowed':
-    case 'denied':
-    case 'answered':
-      return 'answered';
-  }
-}
-
-function changesMetadata(control: ProviderControl): boolean {
-  return (
-    control.action === 'set_model' ||
-    control.action === 'set_permission_mode' ||
-    control.action === 'set_mcp_servers' ||
-    control.action === 'apply_flags' ||
-    control.action === 'update_settings'
-  );
-}
-
-function updatedProvider(state: AiChatProvider, event: ProviderEvent): AiChatProvider {
-  const session =
-    event.kind === 'accepted' || event.kind === 'completed' ? event.session_id : state.session_id;
-  const terminal = event.kind === 'completed' || event.kind === 'failed';
-  const prompts = terminal
-    ? state.prompts.map((item) =>
-        item.status === 'pending' ? { ...item, status: 'expired' as const } : item,
-      )
-    : state.prompts;
-  const prompt = promptOf(event);
-  const base = {
-    ...state,
-    session_id: session,
-    prompts:
-      prompt === null ? prompts : [...prompts.filter((item) => item.id !== prompt.id), prompt],
-  };
-  if (event.kind === 'completed') return { ...base, state: 'completed' };
-  if (event.kind === 'failed')
-    return { ...base, state: 'failed', job_id: null, reason: event.message };
-  return base;
 }

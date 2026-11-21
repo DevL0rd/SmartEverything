@@ -21,25 +21,7 @@ export interface DriveCaller extends DriveActor {
   readonly deviceId: string | null;
 }
 
-export type WriteStore = Pick<
-  Store,
-  | 'driveRoots'
-  | 'driveItems'
-  | 'driveInodes'
-  | 'driveAlbums'
-  | 'driveFeed'
-  | 'driveTrash'
-  | 'driveVersions'
-  | 'driveIntents'
-  | 'driveQuotas'
-  | 'driveStars'
-  | 'driveGrants'
-  | 'feed'
-  | 'settingsKv'
-  | 'write'
-  | 'now'
-  | 'host'
->;
+export type WriteStore = Pick<Store, 'feed' | 'now' | 'host'>;
 
 export function changeActorOf(caller: DriveCaller): ChangeActor {
   return { actorProfileId: caller.profileId, via: caller.via, deviceId: caller.deviceId };

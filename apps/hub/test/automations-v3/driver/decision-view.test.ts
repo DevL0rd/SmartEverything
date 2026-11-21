@@ -20,7 +20,7 @@ function storedOf(dropped: readonly DroppedRun[]): AutomationDecision[] {
 }
 
 describe('decision view', () => {
-  it('counts the refusals of the open window before the window is written', () => {
+  it('counts the refusals of the open window before the window is written', async () => {
     const clock = new FakeClock('2026-10-08T10:00:05.000Z');
     const written: DroppedRun[] = [];
     const decisions = new Decisions(
@@ -35,10 +35,11 @@ describe('decision view', () => {
     clock.advanceTo('2026-10-08T10:00:07.000Z');
     decisions.record(AUTOMATION, 'parallel_full');
     expect(written).toHaveLength(1);
-    const view = decisionView({ forAutomation: () => storedOf(written) }, (automationId) =>
-      decisions.pending(automationId),
+    const view = decisionView(
+      { forAutomation: () => Promise.resolve(storedOf(written)) },
+      (automationId) => decisions.pending(automationId),
     );
-    expect(view.forAutomation(AUTOMATION, null, 50)).toMatchObject([
+    expect(await view.forAutomation(AUTOMATION, null, 50)).toMatchObject([
       { reason: 'parallel_full', count: 2, last_at: '2026-10-08T10:00:07.000Z' },
     ]);
     expect(decisions.pending('00000000-0000-4000-8000-0000000000b2')).toEqual([]);

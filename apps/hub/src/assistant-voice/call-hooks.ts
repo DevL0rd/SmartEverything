@@ -61,8 +61,13 @@ function sightAnswer(
   return name === VOICE_TOOL_NAMES.stopLooking ? Promise.resolve(call.sight.stopLooking()) : null;
 }
 
-function taskOf(deps: CallHooksDeps, call: Call, task: string, said: string | null): string {
-  const eventId = deps.options.responder.request({
+async function taskOf(
+  deps: CallHooksDeps,
+  call: Call,
+  task: string,
+  said: string | null,
+): Promise<string> {
+  const eventId = await deps.options.responder.request({
     profileId: call.caller.profileId,
     clientId: call.caller.clientId,
     device: call.caller.device,

@@ -13,7 +13,11 @@ import { READS, defineTool, type Tool, type ToolContext } from './registry';
 
 async function reportIn(context: ToolContext): Promise<WeatherReport> {
   const { store, clock } = context;
-  return reportOf(await store.host.call('weather', 'read'), store.settings.read(), clock.now());
+  return reportOf(
+    await store.host.call('weather', 'read'),
+    store.live.home.settings.read(),
+    clock.now(),
+  );
 }
 
 function source(report: WeatherReport): Record<string, unknown> {

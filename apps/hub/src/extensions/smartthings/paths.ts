@@ -28,14 +28,14 @@ function publicPathsOf(publicUrl: string): PublicPaths {
 }
 
 export function savedPaths(store: Store): PublicPaths | null {
-  const url = store.settings.read().public_url;
+  const url = store.live.home.settings.read().public_url;
   return url === null ? null : publicPathsOf(url);
 }
 
 export type PublicUrlState = 'missing' | 'unverified' | 'verified';
 
 export function publicUrlState(store: Store): PublicUrlState {
-  const settings = store.settings.read();
+  const settings = store.live.home.settings.read();
   if (settings.public_url === null) {
     return 'missing';
   }

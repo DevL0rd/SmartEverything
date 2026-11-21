@@ -32,8 +32,8 @@ import { resolveTarget, type ResolvedTarget } from './targets';
 export type PersonNotice = Pick<NotifyPerson, 'text' | 'image' | 'tag' | 'link' | 'sound'>;
 
 export interface ReachAssistant {
-  readonly conversationChat: (profileId: string) => string;
-  readonly turn: (chatId: string, text: string, origin: PluginOrigin | null) => void;
+  readonly conversationChat: (profileId: string) => Promise<string>;
+  readonly turn: (chatId: string, text: string, origin: PluginOrigin | null) => Promise<void>;
   readonly message: (asker: Asker, personId: string, notice: PersonNotice) => Promise<string>;
   readonly aiName: () => string;
   readonly liveVideo: () => boolean;
@@ -92,7 +92,7 @@ export class ReachService implements OutreachDesk {
     });
     this.hosting = new Hosting({
       ...options,
-      chatFor: (asker): string => this.chatFor(asker, asker.profileId),
+      chatFor: (asker): Promise<string> => this.chatFor(asker, asker.profileId),
       aiName: options.assistant.aiName,
       liveVideo: options.assistant.liveVideo,
       muteMic: options.assistant.muteMic,
@@ -182,7 +182,7 @@ export class ReachService implements OutreachDesk {
     const personId = target.kind === 'app' ? target.owner : asker.profileId;
     if (target.kind === 'app') {
       await this.mayDisturb(asker, personId, false);
-      const refusal = this.options.app.refusal(target.client);
+      const refusal = await this.options.app.refusal(target.client);
       if (refusal !== null) {
         throw new ReachRefusedError(refusal);
       }
@@ -299,7 +299,7 @@ export class ReachService implements OutreachDesk {
     const name = await this.mayDisturb(asker, ring.personId, ring.urgent);
     return this.ringing.start(ring.plan, {
       profile_id: ring.personId,
-      chat_id: this.chatFor(asker, ring.personId),
+      chat_id: await this.chatFor(asker, ring.personId),
       from_chat_id: asker.chatId,
       how: ring.how,
       target: ring.personId,
@@ -376,17 +376,15 @@ export class ReachService implements OutreachDesk {
     if (from === null || (row.state === 'ended' && from === row.chat_id)) {
       return;
     }
-    try {
-      this.options.assistant.turn(from, outcomeText(row), row.origin);
-    } catch (cause) {
+    this.options.assistant.turn(from, outcomeText(row), row.origin).catch((cause: unknown) => {
       this.options.log.error('reach.outcome_failed', cause, { outreachId: row.id });
-    }
+    });
   }
 
-  private chatFor(asker: Asker, personId: string): string {
+  private async chatFor(asker: Asker, personId: string): Promise<string> {
     return asker.chatId !== null && asker.profileId === personId
       ? asker.chatId
-      : this.options.assistant.conversationChat(personId);
+      : await this.options.assistant.conversationChat(personId);
   }
 }
 

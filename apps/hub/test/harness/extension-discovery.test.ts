@@ -302,8 +302,8 @@ describe('the known sources', () => {
     await fixture.commit({ 'skills/a/SKILL.md': SKILL('a', 'A.') });
     const seeded = rig.service.sources.list().sources;
 
-    for (const entry of seeded) rig.service.sources.remove(entry.id);
-    const added = rig.service.sources.add({ source: here(), label: 'Team skills' });
+    for (const entry of seeded) await rig.service.sources.remove(entry.id);
+    const added = await rig.service.sources.add({ source: here(), label: 'Team skills' });
     const page = await rig.service.discovery.browse({});
 
     expect(seeded.map((entry) => entry.source.url)).toEqual([
@@ -320,9 +320,10 @@ describe('the known sources', () => {
   it('reports a broken known source alongside matches from healthy sources', async () => {
     await fixture.commit({ 'skills/a/SKILL.md': SKILL('a', 'A.') });
     const unavailable = { url: join(fixture.repository, 'missing') };
-    for (const entry of rig.service.sources.list().sources) rig.service.sources.remove(entry.id);
-    rig.service.sources.add({ source: unavailable });
-    rig.service.sources.add({ source: here() });
+    for (const entry of rig.service.sources.list().sources)
+      await rig.service.sources.remove(entry.id);
+    await rig.service.sources.add({ source: unavailable });
+    await rig.service.sources.add({ source: here() });
 
     const page = await rig.service.discovery.browse({ kind: 'skill' });
 
@@ -333,7 +334,7 @@ describe('the known sources', () => {
     });
   });
 
-  it('refuses to remove a source it does not know', () => {
-    expect(() => rig.service.sources.remove('missing')).toThrow(/no known source/u);
+  it('refuses to remove a source it does not know', async () => {
+    await expect(rig.service.sources.remove('missing')).rejects.toThrow(/no known source/u);
   });
 });

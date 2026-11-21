@@ -1,3 +1,4 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,7 +8,6 @@ import { z } from 'zod';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import { testStoreHost } from '../support/store-host';
 
@@ -82,7 +82,7 @@ function seedBefore(): void {
   );
   database
     .prepare(
-      "insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at) values (?, 'Ann', 'amber', '{}', 0, ?, ?)",
+      "insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at) values (?, 'Ann', 'amber', json_object('steps', null, 'move_kcal', null, 'active_minutes', null, 'sleep_minutes', null, 'hydration_ml', null), 0, ?, ?)",
     )
     .run(PROFILE, NOW, NOW);
   const night = wholeNight();
@@ -105,30 +105,32 @@ function storedStages(id: string): Stage[] {
   return STAGES.parse(JSON.parse(row.data)).stages;
 }
 
-function openAt(): void {
-  openStore({
-    host: testStoreHost(),
-    path,
-    log: testLogger(),
-    now: () => new Date(NOW),
-    systemTimeZone: 'UTC',
-    driveFolders: null,
-  }).close();
+async function openAt(): Promise<void> {
+  await closedStore(
+    await openSeededStore({
+      host: testStoreHost(),
+      path,
+      log: testLogger(),
+      now: () => new Date(NOW),
+      systemTimeZone: 'UTC',
+      driveFolders: null,
+    }),
+  );
 }
 
 describe('removing sleep stages the watch parser stored twice', () => {
-  it('keeps each distinct stage of a doubled night once, in its original order', () => {
+  it('keeps each distinct stage of a doubled night once, in its original order', async () => {
     seedBefore();
 
-    openAt();
+    await openAt();
 
     expect(storedStages('doubled')).toEqual(wholeNight());
   });
 
-  it('never drops a distinct stage, even one sharing a start with another', () => {
+  it('never drops a distinct stage, even one sharing a start with another', async () => {
     seedBefore();
 
-    openAt();
+    await openAt();
 
     expect(storedStages('clean')).toEqual(wholeNight().slice(0, 20));
     expect(storedStages('overlapping')).toHaveLength(3);

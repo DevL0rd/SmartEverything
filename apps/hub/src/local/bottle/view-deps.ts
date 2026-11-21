@@ -10,14 +10,14 @@ import type {
   StoredDrink,
   StoredReading,
 } from '../../store/repositories/bottle-readings';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { Viewer } from './access';
 import type { HomeClock } from './clock';
 import { isoOfSeconds } from './summary';
 import type { Snapshots } from './snapshots';
 
 export interface ViewDeps {
-  readonly store: Store;
+  readonly store: HostStore;
   readonly readings: BottleReadingsRepository;
   readonly logs: BottleLogsRepository;
   readonly snapshots: Snapshots;

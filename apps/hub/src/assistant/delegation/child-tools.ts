@@ -7,15 +7,15 @@ import {
 } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
 import type { ToolHub } from '../../ai-tools/tool-hub';
-import { effectiveTools, scopedHub } from '../tool-scope';
+import { effectiveToolsOf, scopedHub } from '../tool-scope';
 
-export function childTools(
+export async function childTools(
   store: Store,
   parent: AiChatRow,
   body: AiSubagent,
   hub: ToolHub | null,
-): string[] {
-  const inherited = effectiveTools(store, parent);
+): Promise<string[]> {
+  const inherited = await effectiveToolsOf(store, parent);
   const allowed =
     scopedHub(hub, inherited === null ? null : [...inherited])
       ?.list()
@@ -27,9 +27,13 @@ export function childTools(
   return [...new Set(child)];
 }
 
-export function assertChildChange(store: Store, chat: AiChatRow, change: AiChatChange): void {
+export async function assertChildChange(
+  store: Store,
+  chat: AiChatRow,
+  change: AiChatChange,
+): Promise<void> {
   if (chat.kind !== 'subagent' || chat.parent_id === null) return;
-  const parent = store.aiChats.chat(chat.parent_id);
+  const parent = await store.host.call('aiChats', 'chat', chat.parent_id);
   assertToolChange(chat, change);
   const binding = parent.engine.kind === 'dsh' && chat.engine.kind !== 'dsh' ? chat : parent;
   assertNativeChange(binding, change);

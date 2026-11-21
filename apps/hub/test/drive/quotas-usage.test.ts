@@ -182,75 +182,75 @@ describe('usage totals kept by the store', () => {
 });
 
 describe('quota check', () => {
-  const status = (profileId: string): DriveQuotaStatus => quotas.status(profileId);
+  const status = (profileId: string): Promise<DriveQuotaStatus> =>
+    Promise.resolve(quotas.status(profileId));
 
-  it('allows any write when no quota is set or the writer is unattributed', () => {
+  it('allows any write when no quota is set or the writer is unattributed', async () => {
     file(HOME, robin, 1_000_000);
-    expect(() => {
-      checkDriveQuota(status, { profileId: robin, addBytes: 1e12, releasedBytes: 0 });
-    }).not.toThrow();
-    expect(() => {
-      checkDriveQuota(status, { profileId: null, addBytes: 1e12, releasedBytes: 0 });
-    }).not.toThrow();
+    await expect(
+      checkDriveQuota(status, { profileId: robin, addBytes: 1e12, releasedBytes: 0 }),
+    ).resolves.toBeUndefined();
+    await expect(
+      checkDriveQuota(status, { profileId: null, addBytes: 1e12, releasedBytes: 0 }),
+    ).resolves.toBeUndefined();
   });
 
-  it('sums the usage only for a writer who has a quota', () => {
+  it('sums the usage only for a writer who has a quota', async () => {
     let summed = 0;
-    const counting = (profileId: string): DriveQuotaStatus => {
+    const counting = (profileId: string): Promise<DriveQuotaStatus> => {
       const found = quotas.status(profileId);
-      return {
+      return Promise.resolve({
         quota: found.quota,
         get usage(): DriveQuotaStatus['usage'] {
           summed += 1;
           return found.usage;
         },
-      };
+      });
     };
-    checkDriveQuota(counting, { profileId: robin, addBytes: 10, releasedBytes: 0 });
+    await checkDriveQuota(counting, { profileId: robin, addBytes: 10, releasedBytes: 0 });
     expect(summed).toBe(0);
   });
 
-  it('refuses a write that would cross the limit and counts versions and trash as used', () => {
+  it('refuses a write that would cross the limit and counts versions and trash as used', async () => {
     const a = file(HOME, robin, 50);
     version(a, HOME, robin, 30);
     trash('gone', HOME, robin, 10);
     quotas.set(robin, 100);
-    expect(() => {
-      checkDriveQuota(status, { profileId: robin, addBytes: 10, releasedBytes: 0 });
-    }).not.toThrow();
-    const attempt = (): void => {
+    await expect(
+      checkDriveQuota(status, { profileId: robin, addBytes: 10, releasedBytes: 0 }),
+    ).resolves.toBeUndefined();
+    const attempt = (): Promise<void> =>
       checkDriveQuota(status, { profileId: robin, addBytes: 11, releasedBytes: 0 });
-    };
-    expect(attempt).toThrow(DriveQuotaExceededError);
-    expect(attempt).toThrow(/Nothing was removed/);
+    await expect(attempt()).rejects.toThrow(DriveQuotaExceededError);
+    await expect(attempt()).rejects.toThrow(/Nothing was removed/);
   });
 
-  it('never purges: the trash and versions stay after a refusal', () => {
+  it('never purges: the trash and versions stay after a refusal', async () => {
     const a = file(HOME, robin, 50);
     version(a, HOME, robin, 30);
     trash('gone', HOME, robin, 10);
     quotas.set(robin, 90);
-    expect(() => {
-      checkDriveQuota(status, { profileId: robin, addBytes: 5, releasedBytes: 0 });
-    }).toThrow(DriveQuotaExceededError);
+    await expect(
+      checkDriveQuota(status, { profileId: robin, addBytes: 5, releasedBytes: 0 }),
+    ).rejects.toThrow(DriveQuotaExceededError);
     expect(quotas.usage(robin)).toMatchObject({ live: 50, versions: 30, trash: 10 });
   });
 
-  it('lets a replacement that frees as much as it adds through even at the limit', () => {
+  it('lets a replacement that frees as much as it adds through even at the limit', async () => {
     file(HOME, robin, 100);
     quotas.set(robin, 100);
-    expect(() => {
-      checkDriveQuota(status, { profileId: robin, addBytes: 60, releasedBytes: 60 });
-    }).not.toThrow();
-    expect(() => {
-      checkDriveQuota(status, { profileId: robin, addBytes: 61, releasedBytes: 60 });
-    }).toThrow(DriveQuotaExceededError);
+    await expect(
+      checkDriveQuota(status, { profileId: robin, addBytes: 60, releasedBytes: 60 }),
+    ).resolves.toBeUndefined();
+    await expect(
+      checkDriveQuota(status, { profileId: robin, addBytes: 61, releasedBytes: 60 }),
+    ).rejects.toThrow(DriveQuotaExceededError);
   });
 
-  it('stops a stream of unknown length at the chunk that crosses the limit', () => {
+  it('stops a stream of unknown length at the chunk that crosses the limit', async () => {
     file(HOME, robin, 40);
     quotas.set(robin, 100);
-    const meter = new DriveQuotaMeter(status, robin);
+    const meter = await DriveQuotaMeter.start(status, robin);
     meter.admit(30);
     meter.admit(30);
     expect(() => {
@@ -261,7 +261,7 @@ describe('quota check', () => {
 
 describe('free space check', () => {
   const guard = (freeBytes: number): DriveWriteGuard => ({
-    status: (profileId: string) => quotas.status(profileId),
+    status: (profileId: string) => Promise.resolve(quotas.status(profileId)),
     space: () => Promise.resolve({ totalBytes: 1000, freeBytes }),
   });
 

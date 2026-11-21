@@ -1,3 +1,4 @@
+import { testStore, type TestStore, type SeededStore } from '../support/store';
 import { randomUUID } from 'node:crypto';
 import {
   API_ENDPOINTS,
@@ -9,10 +10,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OperatingContext } from '../../src/extensions/mcp/tools/acting';
 import { DRIVE_EDIT } from '../../src/extensions/mcp/tools/drive-edits';
 import { DRIVE_READ } from '../../src/extensions/mcp/tools/drive-reads';
-import type { Store } from '../../src/store/store';
 import { operatingContext, selected, type Answers, type Call } from './mcp-rig';
 import { captureLogs } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 import { DriveReadService } from '../../src/drive/service-read';
 import { readDriveUsage } from '../../src/drive/usage';
 import { actorOf, usageViewerOf } from '../../src/server/handlers/drive-services';
@@ -32,7 +31,7 @@ let context: OperatingContext;
 function operating(client: ClientRow, profile: ProfileRow): OperatingContext {
   return operatingContext(
     {
-      store: (): Store => opened.store,
+      store: (): SeededStore => opened.store,
       record: (call): void => {
         calls.push(call);
       },

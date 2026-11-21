@@ -13,7 +13,7 @@ export interface ReferenceContext {
   readonly caller: Caller;
   readonly chat: AiChatRow;
   readonly authority: ProjectAuthority;
-  readonly validate: () => void;
+  readonly validate: () => Promise<void>;
 }
 export interface ReferenceMatches {
   readonly items: readonly AiReferenceSummary[];

@@ -13,6 +13,12 @@ export function liveOf(snapshot: RouterSnapshot): RouterLive {
     system: snapshot.system,
     network: snapshot.network,
     stations: snapshot.stations,
+    radios: snapshot.radios.map(({ band, noiseDbm, temperatureCelsius, airtimeBusyPercent }) => ({
+      band,
+      noiseDbm,
+      temperatureCelsius,
+      airtimeBusyPercent,
+    })),
   };
 }
 
@@ -20,7 +26,14 @@ export function inventoryOf(snapshot: RouterSnapshot): RouterInventory {
   return {
     at: snapshot.at,
     info: snapshot.info,
-    radios: snapshot.radios,
+    radios: snapshot.radios.map(
+      ({
+        noiseDbm: _noise,
+        temperatureCelsius: _temperature,
+        airtimeBusyPercent: _busy,
+        ...radio
+      }) => radio,
+    ),
     clients: snapshot.clients,
     people: snapshot.people,
   };
@@ -43,12 +56,12 @@ export class RouterStreams {
     private readonly sendToViewers: (stream: string, value: RouterLive) => void,
   ) {}
 
-  publish(snapshot: RouterSnapshot, full: boolean, audience: WireAudience): void {
+  publish(snapshot: RouterSnapshot, audience: WireAudience): void {
     if (audience === 'viewers') this.sendToViewers(LIVE_STREAM, liveOf(snapshot));
     else this.send(LIVE_STREAM, liveOf(snapshot));
     const inventory = inventoryOf(snapshot);
     const signature = signatureOf(inventory);
-    if (full || signature !== this.#published) {
+    if (signature !== this.#published) {
       this.#published = signature;
       this.send(SNAPSHOT_STREAM, inventory);
     }

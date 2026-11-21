@@ -1,6 +1,6 @@
 import type { PlannerGuestRow, PlannerItemRow } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export interface InviteMail {
   readonly organiser: string;
@@ -12,7 +12,10 @@ function cancelled(item: PlannerItemRow): boolean {
   return item.deleted_at !== null || item.status === 'cancelled';
 }
 
-function bumped(store: Store, { masterId }: { readonly masterId: string }): PlannerItemRow | null {
+function bumped(
+  store: HostStore,
+  { masterId }: { readonly masterId: string },
+): PlannerItemRow | null {
   const master = store.plannerItems.findAny(masterId);
   if (master === undefined || cancelled(master)) return null;
   const guests = store.plannerGuests.forItem(masterId);

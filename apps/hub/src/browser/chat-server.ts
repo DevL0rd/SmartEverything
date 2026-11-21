@@ -4,9 +4,9 @@ import { viewerOf } from '../computers/computer-access';
 import { hiddenComputer } from '../computers/computer-visibility';
 import { storeUnit } from '../store/host/unit';
 import type { Caller } from '../server/auth';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
-function computersOf(store: Store, caller: Caller): readonly DeviceRow[] {
+function computersOf(store: HostStore, caller: Caller): readonly DeviceRow[] {
   const viewer = viewerOf(caller);
   return store.devices
     .list()
@@ -21,7 +21,7 @@ function listed(computers: readonly DeviceRow[]): string {
   return computers.map((device) => `${nameOf(device)} (deviceId ${device.id})`).join(', ');
 }
 
-function chatComputer(store: Store, chatId: string): string | null {
+function chatComputer(store: HostStore, chatId: string): string | null {
   const engine = store.aiChats.find(chatId)?.engine;
   if (engine === undefined) return null;
   if (engine.kind === 'dsh' && engine.execution_target.kind === 'device')
@@ -30,7 +30,7 @@ function chatComputer(store: Store, chatId: string): string | null {
 }
 
 export function chatServerComputer(
-  store: Store,
+  store: HostStore,
   caller: Caller,
   chatId: string,
   wanted: string | null,

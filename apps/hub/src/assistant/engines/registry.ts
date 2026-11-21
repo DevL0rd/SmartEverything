@@ -1,6 +1,4 @@
-import { admitExecutionTarget, eventAuthority, executionRole } from '../turn-authority';
-import { assertHelperDelivery } from '../delegation/helper-dialogue';
-import { admitChatExecution } from '../native-helpers';
+import { admitExecutionTarget, authorityScope, executionRole } from '../turn-authority';
 import {
   ApiError,
   type Role,
@@ -30,10 +28,15 @@ export class EngineRegistry {
     return this.engines.get(chat.engine.kind) ?? null;
   }
 
-  activity(profileId: string): readonly ChatActivityNotice[] {
-    return [...this.engines.values()].flatMap((engine) =>
-      engine.kind === 'dsh' ? [...(engine.activity?.(profileId) ?? [])] : [],
+  async activity(profileId: string): Promise<readonly ChatActivityNotice[]> {
+    const lists = await Promise.all(
+      [...this.engines.values()].map((engine) =>
+        engine.kind === 'dsh' && engine.activity !== undefined
+          ? engine.activity(profileId)
+          : Promise.resolve([]),
+      ),
     );
+    return lists.flat();
   }
 
   forMutation(chat: AiChatRow, role: Role): Engine | null {
@@ -43,12 +46,15 @@ export class EngineRegistry {
     return engine;
   }
 
-  route(event: StoredEvent): Routing {
-    const chat = this.store.aiChats.chat(event.chat_id);
+  async route(event: StoredEvent): Promise<Routing> {
+    const facts = await this.store.host.write('assistantDeliveryRoute', {
+      event,
+      held: this.store.live.chatWork.holds.held(),
+      scope: authorityScope(),
+    });
+    if (!facts.ok) return { kind: 'blocked', reason: facts.reason };
+    const { chat, authority } = facts;
     try {
-      const authority = eventAuthority(this.store, event);
-      admitChatExecution(chat);
-      assertHelperDelivery(this.store, chat, event);
       admitExecutionTarget(this.store, chat, authority);
       this.forMutation(chat, executionRole(authority));
     } catch (cause) {
@@ -58,9 +64,7 @@ export class EngineRegistry {
       };
     }
     const engine = this.engineOf(chat);
-    return engine === null
-      ? { kind: 'waiting' }
-      : { kind: 'engine', engine, chat, authority: eventAuthority(this.store, event) };
+    return engine === null ? { kind: 'waiting' } : { kind: 'engine', engine, chat, authority };
   }
 
   ready(chat: AiChatRow): string | null {

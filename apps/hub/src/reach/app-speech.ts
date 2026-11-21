@@ -12,7 +12,7 @@ import type { PushCommandChannel } from '../extensions/push/commands';
 export interface AppSpeechDeps {
   readonly online: () => ReadonlySet<string>;
   readonly toClient: (clientId: string, notice: AiSpeechNotice) => Promise<number>;
-  readonly pushTargets: () => ReadonlySet<string>;
+  readonly pushTargets: () => Promise<ReadonlySet<string>>;
   readonly pushConfigured: () => boolean;
   readonly push: Pick<PushCommandChannel, 'send'>;
   readonly clock: Pick<Clock, 'now' | 'at'>;
@@ -32,8 +32,8 @@ export class AppSpeech {
 
   constructor(private readonly deps: AppSpeechDeps) {}
 
-  refusal(client: ClientRow): string | null {
-    if (this.deps.online().has(client.id) || this.pushable(client)) {
+  async refusal(client: ClientRow): Promise<string | null> {
+    if (this.deps.online().has(client.id) || (await this.pushable(client))) {
       return null;
     }
     return `SmartEverything is not open on ${client.name} and it cannot be reached by push (${this.whyNotPushable(client)}); ring the person or send them a notification instead.`;
@@ -43,7 +43,7 @@ export class AppSpeech {
     if ((await this.deps.toClient(client.id, notice)) > 0) {
       return null;
     }
-    const reason = this.refusal(client);
+    const reason = await this.refusal(client);
     if (reason !== null) {
       return reason;
     }
@@ -95,11 +95,11 @@ export class AppSpeech {
     });
   }
 
-  private pushable(client: ClientRow): boolean {
+  private async pushable(client: ClientRow): Promise<boolean> {
     return (
       client.platform === 'android' &&
       this.deps.pushConfigured() &&
-      this.deps.pushTargets().has(client.id)
+      (await this.deps.pushTargets()).has(client.id)
     );
   }
 

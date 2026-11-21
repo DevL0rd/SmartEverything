@@ -52,7 +52,8 @@ function fixture(steer: Engine['steer']): Fixture {
   };
   const delivery = new AssistantDelivery({
     events: mainDeliveryEvents(store),
-    route: (): ReturnType<DeliveryOptions['route']> => ({ kind: 'engine', engine, chat }),
+    route: (): ReturnType<DeliveryOptions['route']> =>
+      Promise.resolve({ kind: 'engine', engine, chat }),
     delivered: (): undefined => undefined,
     failed: (): undefined => undefined,
     retrying: (): undefined => undefined,

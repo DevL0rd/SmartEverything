@@ -17,6 +17,7 @@ import { automationHits } from '../../../src/extensions/mcp/tools/search';
 import {
   automationOf,
   programRig,
+  type ProgramRig,
   step,
   trigger as programTrigger,
 } from '../../automations-v3/support/program-rig';
@@ -97,10 +98,10 @@ describe('the engine reads kinds from the catalog it was given', () => {
 });
 
 describe('saving an automation checks plugin triggers against the catalog', () => {
-  let rig: ReturnType<typeof programRig>;
+  let rig: ProgramRig;
 
-  afterEach(() => {
-    rig.close();
+  afterEach(async () => {
+    await rig.close();
   });
 
   async function create(
@@ -108,7 +109,7 @@ describe('saving an automation checks plugin triggers against the catalog', () =
     kinds: KindCatalog,
     member: boolean,
   ): Promise<boolean> {
-    rig = programRig();
+    rig = await programRig();
     const service = automationPrograms({ ...rig.env, kinds });
     const caller = member ? rig.member.caller : rig.owner.caller;
     return (await service.create(caller, { name: 'Vault', enabled: true, definition })).ok;

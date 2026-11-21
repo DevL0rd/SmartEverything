@@ -20,17 +20,6 @@ export type PlannerAsk<N extends keyof typeof E> = Asked<
   z.output<(typeof E)[N]['params']>
 >;
 
-export function plannerProfileOf(
-  context: PlannerContext,
-  caller: Caller,
-  personId: string | undefined,
-): string {
-  const own = profileIdOf(caller);
-  if (personId === undefined || personId === own) return own;
-  ownerOrSelf(roleOfCaller(caller), false);
-  return context.store.profiles.byId(personId).id;
-}
-
 export async function plannerProfileFor(
   context: { readonly store: Pick<Store, 'host'> },
   caller: Caller,

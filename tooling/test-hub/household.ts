@@ -1,7 +1,7 @@
 import type { JsonValue } from '@smarteverything/domain';
 import { z } from 'zod';
 import { DeviceMetricsRepository } from '../../apps/hub/src/store/repositories/device-metrics.ts';
-import type { Store } from '../../apps/hub/src/store/store.ts';
+import type { Seeded } from './store.ts';
 import { DAY_MS, HISTORY_DAYS, HOUR_MS, daysAgo, type Anchor } from './clock.ts';
 import { DEVICE_SPECS, ROOMS } from './device-specs.ts';
 import { capability, type Behaviour, type DeviceSpec } from './devices.ts';
@@ -104,7 +104,7 @@ function chunks<T>(items: readonly T[], size: number): T[][] {
   return out;
 }
 
-function storeDevices(store: Store, roomIds: ReadonlyMap<string, string>): Map<string, string> {
+function storeDevices(store: Seeded, roomIds: ReadonlyMap<string, string>): Map<string, string> {
   const upserted = store.devices.upsert(
     DEVICE_SPECS.map((spec) => ({
       provider: PROVIDER,
@@ -147,7 +147,7 @@ function storeSeries(
 }
 
 function storeStates(
-  store: Store,
+  store: Seeded,
   anchor: Anchor,
   rng: Random,
   deviceIds: ReadonlyMap<string, string>,
@@ -169,12 +169,12 @@ function storeStates(
   return metricRows;
 }
 
-function historyCount(store: Store): number {
+function historyCount(store: Seeded): number {
   const row = store.database.prepare('select count(*) as n from state_history').get();
   return COUNT_ROW.parse(row).n;
 }
 
-function storeCameras(store: Store, deviceIds: ReadonlyMap<string, string>): void {
+function storeCameras(store: Seeded, deviceIds: ReadonlyMap<string, string>): void {
   store.cameras.upsert(
     DEVICE_SPECS.filter((spec) => spec.kind === 'camera').map((spec) => ({
       deviceId: deviceIds.get(spec.id) ?? '',
@@ -186,7 +186,7 @@ function storeCameras(store: Store, deviceIds: ReadonlyMap<string, string>): voi
   );
 }
 
-export function seedHousehold(store: Store, anchor: Anchor, rng: Random): HouseholdResult {
+export function seedHousehold(store: Seeded, anchor: Anchor, rng: Random): HouseholdResult {
   const profiles = [store.profiles.first().id];
   for (const member of MEMBERS) profiles.push(store.profiles.create({ ...member }).id);
   const roomIds = new Map(
@@ -207,12 +207,12 @@ export function seedHousehold(store: Store, anchor: Anchor, rng: Random): Househ
 }
 
 function eventsOf(
-  store: Store,
+  store: Seeded,
   anchor: Anchor,
   rng: Random,
   deviceIds: ReadonlyMap<string, string>,
 ): number {
-  const rows: Parameters<Store['events']['insert']>[0][number][] = [];
+  const rows: Parameters<Seeded['events']['insert']>[0][number][] = [];
   const plan: readonly [string, 'motion' | 'person' | 'doorbell' | 'opened' | 'pet', number][] = [
     ['hw-camera', 'person', 2],
     ['hw-camera', 'motion', 3],

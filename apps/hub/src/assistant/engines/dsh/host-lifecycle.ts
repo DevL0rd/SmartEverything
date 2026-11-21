@@ -2,24 +2,32 @@ import type { EngineStatus } from '../engine';
 import { ApiError, harnessTargetKey } from '@smarteverything/domain';
 import type { AiChatRow } from '@smarteverything/domain';
 import type { HarnessService } from '../../../harness/service';
-import { messageOf } from '@smarteverything/logging';
+import { background, messageOf } from '@smarteverything/logging';
 
 export function followDisconnectedTurns<T extends { readonly chat: AiChatRow }>(
   service: HarnessService,
   turns: () => Iterable<T>,
   failed: (turn: T) => void,
 ): void {
+  const { store } = service;
   service.directory.onOwnershipLost((loss) => {
     for (const turn of turns()) {
       const binding = service.binding(turn.chat);
       if (binding.session_id !== loss.session_id) continue;
-      const claim = service.store.dshSessions.attached(loss.session_id, turn.chat.profile_id);
-      if (
-        claim?.epoch === loss.epoch &&
-        claim.connection_generation === loss.generation &&
-        claim.runtime_instance === loss.runtime_instance
-      )
-        failed(turn);
+      background(
+        store.host
+          .call('dshSessions', 'attached', loss.session_id, turn.chat.profile_id)
+          .then((claim) => {
+            if (
+              claim?.epoch === loss.epoch &&
+              claim.connection_generation === loss.generation &&
+              claim.runtime_instance === loss.runtime_instance
+            )
+              failed(turn);
+          }),
+        'dsh.ownership_loss_failed',
+        { chatId: turn.chat.id },
+      );
     }
   });
   service.directory.onOffline((host) => {
@@ -30,12 +38,17 @@ export function followDisconnectedTurns<T extends { readonly chat: AiChatRow }>(
         binding.session_id === null
       )
         continue;
-      const grant = service.store.harnessSessions.grant(binding.session_id);
-      if (
-        grant?.generation === host.connection_generation &&
-        grant.runtime_instance === host.runtime_instance
-      )
-        failed(turn);
+      background(
+        store.host.call('harnessSessions', 'grant', binding.session_id).then((grant) => {
+          if (
+            grant?.generation === host.connection_generation &&
+            grant.runtime_instance === host.runtime_instance
+          )
+            failed(turn);
+        }),
+        'dsh.host_offline_failed',
+        { chatId: turn.chat.id },
+      );
     }
   });
 }

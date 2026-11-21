@@ -1,8 +1,8 @@
 import { MICROS_PER_USD, type ImageOperationReceipt } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export function recordImageUsage(
-  store: Store,
+  store: HostStore,
   receipt: ImageOperationReceipt,
 ): ImageOperationReceipt {
   if (receipt.usage_ledger_id !== null) return receipt;

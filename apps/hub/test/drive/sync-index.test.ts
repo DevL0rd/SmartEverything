@@ -10,7 +10,7 @@ import { SYNC_HUB_MESSAGE, type SyncHubMessage } from '@smarteverything/domain/d
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
-import { resolveScope } from '../../src/drive/sync/placement-scope';
+import { resolveScope } from '../../src/drive/units/sync-scope';
 import { blocksHashOf, NO_BLOCKS_HASH } from '../../src/drive/sync/server-index';
 import {
   DRIVE_SUBSCRIBE_PROTOCOL,

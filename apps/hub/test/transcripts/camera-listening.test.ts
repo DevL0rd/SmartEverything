@@ -5,6 +5,7 @@ import { Transcripts } from '../../src/transcripts/transcript-service';
 import type { SpeechSegment } from '../../src/listening/speech-segment';
 import { FakeClock } from '../support/fake-clock';
 import { testLogger } from '../support/logs';
+import { settleWithHost } from '../support/host-settle';
 import { testStore, type TestStore } from '../support/store';
 
 const START = '2026-10-15T18:00:00.000Z';
@@ -43,7 +44,7 @@ function listening(): CameraListening {
     },
     ready: () => Promise.resolve(),
     keyPresent: () => keyPresent,
-    inConversation: () => false,
+    inConversation: () => Promise.resolve(false),
     names: () => ['Ann'],
     clock,
     log: testLogger('listening'),
@@ -51,11 +52,7 @@ function listening(): CameraListening {
 }
 
 async function settle(): Promise<void> {
-  for (let turn = 0; turn < 20; turn += 1) {
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
-  }
+  await settleWithHost();
 }
 
 async function hear(camera: CameraListening, heard: readonly SpeechSegment[]): Promise<void> {
@@ -69,9 +66,9 @@ async function hear(camera: CameraListening, heard: readonly SpeechSegment[]): P
   await settle();
 }
 
-function lines(): ReturnType<Transcripts['read']>['lines'] {
-  const [session] = transcripts.list({ source: 'camera', sourceId: CAMERA, limit: 5 });
-  return session === undefined ? [] : transcripts.read(session.id, 0, 50).lines;
+async function lines(): Promise<Awaited<ReturnType<Transcripts['read']>>['lines']> {
+  const [session] = await transcripts.list({ source: 'camera', sourceId: CAMERA, limit: 5 });
+  return session === undefined ? [] : (await transcripts.read(session.id, 0, 50)).lines;
 }
 
 beforeEach(async () => {
@@ -92,7 +89,7 @@ describe('camera listening timestamps', () => {
   it('writes the line with the start and end of the audio that was heard, labelled wall clock', async () => {
     said = ['Is anyone home'];
     await hear(listening(), [segment(1000, 1200)]);
-    expect(lines()).toMatchObject([
+    expect(await lines()).toMatchObject([
       {
         at: new Date(Date.parse(START) + 1000).toISOString(),
         ended_at: new Date(Date.parse(START) + 2200).toISOString(),
@@ -106,7 +103,7 @@ describe('camera listening timestamps', () => {
     said = ['Turn the lights on please'];
     await hear(listening(), [segment(1000, 900), segment(2300, 900)]);
     expect(requests).toHaveLength(1);
-    expect(lines()).toMatchObject([
+    expect(await lines()).toMatchObject([
       {
         at: new Date(Date.parse(START) + 1000).toISOString(),
         ended_at: new Date(Date.parse(START) + 3200).toISOString(),
@@ -119,7 +116,7 @@ describe('camera listening timestamps', () => {
     const camera = listening();
     await hear(camera, [segment(1000, 1000)]);
     await hear(camera, [segment(20_000, 1000)]);
-    expect(lines().map((line) => line.text)).toEqual(['First thing', 'Second thing']);
+    expect((await lines()).map((line) => line.text)).toEqual(['First thing', 'Second thing']);
   });
 
   it('writes nothing while no transcription key is present', async () => {
@@ -127,7 +124,7 @@ describe('camera listening timestamps', () => {
     said = ['Nobody hears this'];
     await hear(listening(), [segment(1000, 1200)]);
     expect(requests).toHaveLength(0);
-    expect(lines()).toEqual([]);
+    expect(await lines()).toEqual([]);
   });
 
   it('drops the same words said again within half a minute', async () => {
@@ -135,6 +132,6 @@ describe('camera listening timestamps', () => {
     const camera = listening();
     await hear(camera, [segment(1000, 1000)]);
     await hear(camera, [segment(8000, 1000)]);
-    expect(lines()).toHaveLength(1);
+    expect(await lines()).toHaveLength(1);
   });
 });

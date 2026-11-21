@@ -5,7 +5,6 @@ import {
   type ImageOperationOrigin,
 } from '@smarteverything/domain';
 import { currentExecutionAuthority } from '../assistant/turn-authority';
-import { effectiveTools } from '../assistant/tool-scope';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import type { ImageActor, ImageEffect } from '../assistant/image/contract';
 import type { Budget } from '../ledger/budget';
@@ -13,7 +12,6 @@ import type { Store } from '../store/store';
 import { profileIdOf, type Caller } from './auth';
 import { ImageAdmissionError } from './image-admission';
 
-const IMAGE_SPEND_TOOL = 'image_gen';
 export interface ImageSpend {
   readonly background: boolean;
   readonly profileId: string;
@@ -37,7 +35,10 @@ interface ImagePrincipal {
   readonly scopes: readonly ConversationAuthority[];
   readonly origin: ImageOperationOrigin;
 }
-export function imageActorOf(options: ImageAuthorityOptions, caller: Caller): ImageActor {
+export async function imageActorOf(
+  options: ImageAuthorityOptions,
+  caller: Caller,
+): Promise<ImageActor> {
   if (caller.kind !== 'client' && caller.kind !== 'service')
     throw new ApiError(
       'forbidden',
@@ -52,14 +53,13 @@ export function imageActorOf(options: ImageAuthorityOptions, caller: Caller): Im
     ).values(),
   ];
   const principal = imagePrincipal({ caller, profileId, scopes });
-  authorizeImage(options, principal, 'read', '');
+  await authorizeImage(options, principal, 'read', '');
   return {
     profileId,
     key: principal.origin.principal_id,
     origin: principal.origin,
-    authorize: (effect, chatId): void => {
-      authorizeImage(options, principal, effect, chatId);
-    },
+    authorize: (effect, chatId): Promise<void> =>
+      authorizeImage(options, principal, effect, chatId),
   };
 }
 function imagePrincipal(
@@ -77,37 +77,30 @@ function imagePrincipal(
   });
   return { ...input, origin };
 }
-function authorizeImage(
+async function authorizeImage(
   options: ImageAuthorityOptions,
   principal: ImagePrincipal,
   effect: ImageEffect,
   chatId: string,
-): void {
-  validatePrincipal(options.store, principal, chatId);
-  if (effect === 'read') return;
-  if (chatId === '') throw new ApiError('forbidden', 'Image spend requires a specific owned chat.');
-  if (effect === 'persist') {
-    admitImageToolEnabled(options.store);
-    return;
-  }
-  admitImageTools(options.store, principal, chatId);
+): Promise<void> {
+  const initiatingChat = principal.caller.chatId;
+  const answer = await options.store.host.read('imageAuthority', {
+    profileId: principal.profileId,
+    chatId,
+    effect,
+    initiatingChat: initiatingChat ?? null,
+    callerService: principal.caller.kind === 'service',
+    scopes: principal.scopes.map((scope) => ({ kind: scope.kind, tools: scope.tools })),
+  });
+  if (answer.kind === 'refused')
+    throw new ImageAdmissionError(answer.refused.reason, answer.refused.detail);
+  if (effect === 'read' || effect === 'persist') return;
   if (!options.configured())
     throw new ImageAdmissionError(
       'not_configured',
       'The OpenRouter image-provider key is not configured.',
     );
-  options.spend({
-    background: imageBackground(options.store, principal, chatId),
-    profileId: principal.profileId,
-  });
-}
-function validatePrincipal(store: Store, principal: ImagePrincipal, chatId: string): void {
-  store.profiles.byId(principal.profileId);
-  if (chatId === '') return;
-  store.aiChats.chat(chatId);
-  const initiatingChat = principal.caller.chatId;
-  if (initiatingChat !== undefined && initiatingChat !== null && initiatingChat !== chatId)
-    throw new ApiError('forbidden', 'An image tool cannot leave its initiating chat.');
+  options.spend({ background: answer.background, profileId: principal.profileId });
 }
 function principalAttribution(caller: ImagePrincipal['caller']): {
   readonly principal_id: string;
@@ -122,35 +115,4 @@ function principalAttribution(caller: ImagePrincipal['caller']): {
     client_id: caller.authority.client_id,
     plugin_id,
   };
-}
-function imageBackground(store: Store, principal: ImagePrincipal, chatId: string): boolean {
-  return (
-    principal.caller.kind === 'service' ||
-    store.aiChats.chat(chatId).kind === 'subagent' ||
-    principal.scopes.some((scope) => scope.kind === 'service')
-  );
-}
-
-function admitImageTools(store: Store, principal: ImagePrincipal, chatId: string): void {
-  const tools = effectiveTools(store, store.aiChats.chat(chatId));
-  if (tools !== null && !tools.includes(IMAGE_SPEND_TOOL))
-    throw new ImageAdmissionError(
-      'grant_required',
-      'This chat’s tool grant does not allow the metered image operation.',
-    );
-  for (const scope of principal.scopes) {
-    if (scope.tools !== null && !scope.tools.includes(IMAGE_SPEND_TOOL))
-      throw new ImageAdmissionError(
-        'grant_required',
-        'The initiating execution tool grant does not allow the metered image operation.',
-      );
-  }
-  admitImageToolEnabled(store);
-}
-function admitImageToolEnabled(store: Store): void {
-  if (store.settings.read().mcp_disabled_tools.includes(IMAGE_SPEND_TOOL))
-    throw new ImageAdmissionError(
-      'tool_disabled',
-      'The metered image-operation tool is disabled in this home.',
-    );
 }

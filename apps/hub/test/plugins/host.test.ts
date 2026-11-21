@@ -1,3 +1,4 @@
+import { testStore, type TestStore, type SeededStore } from '../support/store';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import {
@@ -19,10 +20,8 @@ import { SecretStore } from '../../src/secrets/store';
 import { ingestOwnLogs } from '../../src/server/hub-log-sink';
 import type { LogStore } from '../../src/logs/log-store';
 import { Transcripts } from '../../src/transcripts/transcript-service';
-import type { Store } from '../../src/store/store';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { testLogStore } from '../support/log-worker';
-import { testStore, type TestStore } from '../support/store';
 import { writeFakePlugin } from './fake-plugin';
 import { storePluginHome } from '../support/plugin-home';
 
@@ -59,7 +58,7 @@ let rig: Rig | null = null;
 let logs: CapturedLogs;
 let stopLogs: () => void;
 
-function storeOf(): Store {
+function storeOf(): SeededStore {
   if (opened === null) {
     throw new Error('no store');
   }
@@ -153,7 +152,7 @@ async function rigged(): Promise<Rig> {
       uploadFile: (): Promise<null> => Promise.resolve(null),
       pictureFile: (): Promise<null> => Promise.resolve(null),
       layout: hubLayout(directory, {}),
-      submit: (): [] => [],
+      submit: (): Promise<[]> => Promise.resolve([]),
       signals: { emit: nothing },
       home: storePluginHome(store),
       now,

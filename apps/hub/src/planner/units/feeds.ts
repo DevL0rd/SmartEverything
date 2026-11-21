@@ -1,7 +1,7 @@
 import type { PlannerCollectionRow } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
 import type { PlannerCollectionInput } from '../../store/repositories/planner-collections';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { reconcileBirthdays } from '../birthdays/sync';
 import { allDayEvent } from '../feeds/all-day-event';
 import { holidaysOfYear, type HolidayDay } from '../holidays/rules';
@@ -10,14 +10,14 @@ function uidOf(day: HolidayDay): string {
   return `holiday:${day.date}:${day.name}`;
 }
 
-function nextPosition(store: Store, profileId: string): number {
+function nextPosition(store: HostStore, profileId: string): number {
   return store.plannerCollections
     .list(profileId)
     .reduce((highest, row) => Math.max(highest, row.position + 1), 0);
 }
 
 function inserted(
-  store: Store,
+  store: HostStore,
   { input }: { readonly input: Omit<PlannerCollectionInput, 'position'> },
 ): PlannerCollectionRow {
   return store.plannerCollections.insert({
@@ -26,13 +26,13 @@ function inserted(
   });
 }
 
-function clearCollection(store: Store, collection: PlannerCollectionRow): void {
+function clearCollection(store: HostStore, collection: PlannerCollectionRow): void {
   for (const row of store.plannerItems.inCollection(collection.id)) {
     store.plannerItems.purge(row.id, row.profile_id);
   }
 }
 
-function reconcileYear(store: Store, collection: PlannerCollectionRow, year: number): void {
+function reconcileYear(store: HostStore, collection: PlannerCollectionRow, year: number): void {
   const { feed } = collection;
   if (feed?.kind !== 'holidays') return;
   const days = holidaysOfYear(feed.country, feed.state, year);

@@ -169,7 +169,7 @@ beforeEach(async () => {
         };
       },
     },
-    submit: (): never[] => [],
+    submit: (): Promise<never[]> => Promise.resolve([]),
     automations: { start: (): Submission => ({ kind: 'started', runId: 'run-1' }) },
     google: { reminderPull, sync },
     calendars: inProcessCalendars,

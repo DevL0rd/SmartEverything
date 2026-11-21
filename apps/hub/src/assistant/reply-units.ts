@@ -7,7 +7,7 @@ import { hostErrorOf } from '../store/host/errors';
 import type { HostError } from '../store/host/protocol';
 import { durableStoreUnit, storeUnit } from '../store/host/unit';
 import type { HarnessDelivery } from '../store/repositories/harness-deliveries';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import {
   applyReplyOp,
   savedSources,
@@ -21,7 +21,10 @@ export type ReplyOutcome =
   | { readonly ok: true; readonly value: AssistantMessageRow | null }
   | { readonly ok: false; readonly error: HostError };
 
-function replyWrites(store: Store, input: { readonly ops: readonly ReplyOp[] }): ReplyOutcome[] {
+function replyWrites(
+  store: HostStore,
+  input: { readonly ops: readonly ReplyOp[] },
+): ReplyOutcome[] {
   return input.ops.map((op) => {
     try {
       return { ok: true, value: applyReplyOp(store, op) };
@@ -32,7 +35,7 @@ function replyWrites(store: Store, input: { readonly ops: readonly ReplyOp[] }):
 }
 
 function replyStart(
-  store: Store,
+  store: HostStore,
   start: ReplyStart & { readonly id?: string },
 ): AssistantMessageRow {
   return addConversationMessage(store, {
@@ -48,7 +51,7 @@ export interface NativeAdmission {
   readonly start: ReplyStart;
 }
 
-function nativeAdmit(store: Store, input: NativeAdmission): HarnessDelivery {
+function nativeAdmit(store: HostStore, input: NativeAdmission): HarnessDelivery {
   return store.harnessDeliveries.admit(
     input.deliveryId,
     input.sessionId,
@@ -79,7 +82,7 @@ export interface NativeCompletionRecord {
   readonly result: NativeReplyResult;
 }
 
-function nativeComplete(store: Store, input: NativeCompletionRecord): void {
+function nativeComplete(store: HostStore, input: NativeCompletionRecord): void {
   const { result } = input;
   store.harnessDeliveries.update(input.deliveryId, input.outcome, () => {
     if (result.ok) {

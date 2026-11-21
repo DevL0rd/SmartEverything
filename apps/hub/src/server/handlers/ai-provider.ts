@@ -25,12 +25,12 @@ function selections(context: ServerContext): EngineSelections {
   return context.assistant.selections;
 }
 
-function owned(
+async function owned(
   context: ServerContext,
   caller: Caller,
   chatId: string,
-): { readonly chat: AiChatRow; readonly runner: ComputerRunner } {
-  const chat = context.assistant.chats.own(
+): Promise<{ readonly chat: AiChatRow; readonly runner: ComputerRunner }> {
+  const chat = await context.assistant.chats.own(
     { profileId: profileIdOf(caller), role: roleOfCaller(caller) },
     chatId,
   );
@@ -67,8 +67,8 @@ const engineRoutes = (context: ServerContext) =>
     }),
     updateAiEnginePreference: bound(E.updateAiEnginePreference, async ({ params, body }) => {
       const model = params[MODEL_PARAMS];
-      const settings = context.store.computerAi
-        .models(body.device_id)
+      const settings = context.store.live.computers
+        .aiModels(body.device_id)
         .find((entry) => entry.id === model);
       if (settings === undefined)
         throw new ApiError(
@@ -83,16 +83,18 @@ const runtimePreferenceRoute = (context: ServerContext) =>
   ({
     updateAiRuntimeEnginePreference: bound(
       E.updateAiRuntimeEnginePreference,
-      ({ params, body }) => {
-        const model = context.store.computerRuntimes
-          .models({ device_id: body.device_id, runtime: params.runtime })
+      async ({ params, body }) => {
+        const model = context.store.live.computers
+          .runtimeModels({ device_id: body.device_id, runtime: params.runtime })
           .find((entry) => entry.id === params.modelId);
         if (model === undefined)
           throw new ApiError(
             'invalid_request',
             'This model has not been discovered on that computer and runtime.',
           );
-        return context.store.aiRuntimeProvider.prefer(
+        return await context.store.host.call(
+          'aiRuntimeProvider',
+          'prefer',
           params.runtime,
           params.modelId,
           body.device_id,
@@ -104,14 +106,14 @@ const runtimePreferenceRoute = (context: ServerContext) =>
 export const aiProviderRoutes = (context: ServerContext) =>
   ({
     ...engineRoutes(context),
-    readAiChatProvider: bound(E.readAiChatProvider, ({ params, caller }) => {
-      const { chat, runner } = owned(context, caller, params.chatId);
+    readAiChatProvider: bound(E.readAiChatProvider, async ({ params, caller }) => {
+      const { chat, runner } = await owned(context, caller, params.chatId);
       return runner.state.metadata(chat);
     }),
     ...providerReadRoute(context),
     ...providerControlRoute(context),
     answerAiChatProvider: bound(E.answerAiChatProvider, async ({ params, body, caller }) => {
-      const { chat, runner } = owned(context, caller, params.chatId);
+      const { chat, runner } = await owned(context, caller, params.chatId);
       if ('runtime' in body) {
         if (chat.engine.kind !== 'codex')
           throw new ApiError('conflict', 'Prompt answer runtime disagrees with this chat.');
@@ -127,14 +129,17 @@ export const aiProviderRoutes = (context: ServerContext) =>
 
 const providerReadRoute = (context: ServerContext) =>
   ({
-    readAiChatProviderState: bound(E.readAiChatProviderState, ({ params, body, caller }) => {
-      const { chat, runner } = owned(context, caller, params.chatId);
-      const state = runner.state.bound(chat);
+    readAiChatProviderState: bound(E.readAiChatProviderState, async ({ params, body, caller }) => {
+      const { chat, runner } = await owned(context, caller, params.chatId);
+      const state = await runner.state.bound(chat);
       if ('runtime' in body) {
         if (chat.engine.kind !== 'codex')
           throw new ApiError('conflict', 'Provider read runtime disagrees with this chat.');
         const query = CODEX_PROVIDER_READ_QUERY.parse(body.query);
-        runner.state.assertSession(chat, 'session_id' in query ? query.session_id : undefined);
+        await runner.state.assertSession(
+          chat,
+          'session_id' in query ? query.session_id : undefined,
+        );
         return runtimeValue(
           context.computerAi,
           { device_id: state.device_id, runtime: 'codex' },
@@ -147,7 +152,7 @@ const providerReadRoute = (context: ServerContext) =>
       }
       if (chat.engine.kind !== 'claude')
         throw new ApiError('conflict', 'The Codex provider requires a runtime-tagged read.');
-      runner.state.assertSession(chat, 'session_id' in body ? body.session_id : undefined);
+      await runner.state.assertSession(chat, 'session_id' in body ? body.session_id : undefined);
       return context.computerAi.request(
         state.device_id,
         { operation: 'provider_read', job_id: state.job_id, query: body },
@@ -159,7 +164,7 @@ const providerReadRoute = (context: ServerContext) =>
 const providerControlRoute = (context: ServerContext) =>
   ({
     controlAiChatProvider: bound(E.controlAiChatProvider, async ({ params, body, caller }) => {
-      const { chat, runner } = owned(context, caller, params.chatId);
+      const { chat, runner } = await owned(context, caller, params.chatId);
       if ('runtime' in body) {
         if (chat.engine.kind !== 'codex')
           throw new ApiError('conflict', 'Provider control runtime disagrees with this chat.');
@@ -182,7 +187,7 @@ const providerControlRoute = (context: ServerContext) =>
         throw new ApiError('conflict', 'The Codex provider requires a runtime-tagged control.');
       validateControl(context, chat, body);
       const result = await runner.control(chat, body);
-      persistControl(context, chat, body);
+      await persistControl(context, chat, body);
       return result;
     }),
   }) as const;
@@ -196,10 +201,14 @@ function validateControl(context: ServerContext, chat: AiChatRow, control: Provi
   }
 }
 
-function persistControl(context: ServerContext, chat: AiChatRow, control: ProviderControl): void {
+async function persistControl(
+  context: ServerContext,
+  chat: AiChatRow,
+  control: ProviderControl,
+): Promise<void> {
   if (chat.engine.kind !== 'claude') return;
   const engine = changedEngine(context, chat, control);
-  if (engine !== null) context.store.aiChats.update(chat.id, { engine });
+  if (engine !== null) await context.store.host.call('aiChats', 'update', chat.id, { engine });
 }
 
 function changedEngine(

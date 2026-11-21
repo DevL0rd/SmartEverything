@@ -1,7 +1,7 @@
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { machineLabel, machineOfClient } from './machine';
 
-export function senderNote(store: Store, clientId: string | null): string | null {
+export function senderNote(store: HostStore, clientId: string | null): string | null {
   if (clientId === null) return null;
   const client = store.clients.find(clientId);
   if (client === undefined) return null;

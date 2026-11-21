@@ -20,7 +20,7 @@ export interface ImageProviderInput {
   readonly inputs: readonly { readonly image: ImageBytes }[];
   readonly signal: AbortSignal;
   readonly submitted: () => void;
-  readonly usage: (usage: Usage, source: ImageProviderResult['usageSource']) => void;
+  readonly usage: (usage: Usage, source: ImageProviderResult['usageSource']) => Promise<void>;
   readonly preview: (content: Buffer) => Promise<void>;
 }
 export class OpenRouterImageProvider {
@@ -40,7 +40,7 @@ export class OpenRouterImageProvider {
   }
   private async buffered(body: unknown, input: ImageProviderInput): Promise<ImageProviderResult> {
     const wire = await this.client.image(body, IMAGE_RESPONSE_WIRE, input.signal);
-    if (wire.usage !== undefined) input.usage(wire.usage, 'provider_response');
+    if (wire.usage !== undefined) await input.usage(wire.usage, 'provider_response');
     const decoded = await Promise.all(wire.data.map((item) => readable(item.b64_json)));
     return resultOf(decoded, wire.usage ?? null, 'provider_response');
   }
@@ -59,7 +59,7 @@ export class OpenRouterImageProvider {
         decoded.push(await readable(event.b64_json));
         if (event.usage !== undefined) {
           usage = event.usage;
-          input.usage(event.usage, 'provider_event');
+          await input.usage(event.usage, 'provider_event');
         }
       }
     } catch (cause) {

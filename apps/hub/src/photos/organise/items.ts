@@ -2,7 +2,7 @@ import { ApiError } from '@smarteverything/domain';
 import { z } from 'zod';
 import { driveSql, type DriveActor } from '../../drive/access';
 import type { StoreContext } from '../../store/context';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { inList } from '../../store/sql';
 import { PHOTO_VISIBLE } from '../membership';
 
@@ -59,7 +59,7 @@ export function visibleItems(
   return items;
 }
 
-export type AnnounceStore = Pick<Store, 'feed' | 'driveFeed'>;
+export type AnnounceStore = Pick<HostStore, 'feed' | 'driveFeed'>;
 
 export function announceItems(
   store: AnnounceStore,

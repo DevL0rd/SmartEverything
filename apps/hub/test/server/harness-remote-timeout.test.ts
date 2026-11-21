@@ -101,6 +101,7 @@ describe('computer operation timeouts', () => {
 
     const next = randomUUID();
     const answered = remote.execute(next, request('interrupt'));
+    await vi.advanceTimersByTimeAsync(0);
     remote.receive(reply(binding, next));
     await expect(answered).resolves.toMatchObject({ operation_id: next });
   });

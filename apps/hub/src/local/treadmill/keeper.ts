@@ -21,7 +21,7 @@ const DEFAULT_CONTEXT: FigureContext = {
 };
 
 export interface KeeperOptions {
-  readonly store: Pick<Store, 'host' | 'settings'>;
+  readonly store: Pick<Store, 'host' | 'live'>;
   readonly deviceId: string;
   readonly log: Logger;
 }
@@ -41,7 +41,7 @@ function sessionOf(
   summary: SessionSummary,
   facts: WalkerContext & Measured,
 ): TreadmillSession {
-  const timeZone = options.store.settings.read().time_zone;
+  const timeZone = options.store.live.home.settings.read().time_zone;
   return {
     ...summary,
     ...facts.figures,

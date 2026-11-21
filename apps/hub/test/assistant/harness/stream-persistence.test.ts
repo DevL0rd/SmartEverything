@@ -25,7 +25,7 @@ type Tail = Record<string, unknown>;
 interface Streaming {
   readonly chat: AiChatRow;
   readonly replyId: string;
-  readonly publish: (rest: Tail) => void;
+  readonly publish: (rest: Tail) => Promise<void>;
   readonly row: () => Promise<ReturnType<Rig['opened']['store']['assistantChat']['message']>>;
 }
 
@@ -42,8 +42,8 @@ async function streaming(): Promise<Streaming> {
       emit: (): void => undefined,
       finished: (): void => undefined,
     },
-    (): void => undefined,
-    (): void => undefined,
+    (): Promise<void> => Promise.resolve(),
+    (): Promise<void> => Promise.resolve(),
     (): Promise<void> => Promise.resolve(),
   );
   rig.service.onEvent(streams.received);
@@ -68,12 +68,12 @@ async function streaming(): Promise<Streaming> {
     native_turn: 1,
   };
   let seq = 0;
-  const publish = (rest: Tail): void => {
+  const publish = async (rest: Tail): Promise<void> => {
     const next = AI_HARNESS_EVENT.parse({ ...base, seq, ...rest });
     seq += 1;
-    rig.service.publish(next);
+    await rig.service.publish(next);
   };
-  publish({ kind: 'state', session: rig.service.state(rig.owner, chat.id) });
+  await publish({ kind: 'state', session: await rig.service.state(rig.owner, chat.id) });
   return {
     chat: current,
     replyId: reply.id,
@@ -110,15 +110,16 @@ function timelineTexts(embeds: readonly unknown[]): string[] {
 describe('a streamed native reply', () => {
   it('costs no database write per text chunk and no live row update', async () => {
     const turn = await streaming();
-    turn.publish({ kind: 'text', delta: 'first ' });
+    await turn.publish({ kind: 'text', delta: 'first ' });
     const exec = vi.spyOn(DatabaseSync.prototype, 'exec');
     const changes: LiveChange[] = [];
     rig.opened.store.feed.subscribe((change) => changes.push(change));
 
     for (let index = 0; index < 400; index += 1)
-      turn.publish({ kind: 'text', delta: 'word '.repeat(10) });
+      await turn.publish({ kind: 'text', delta: 'word '.repeat(10) });
 
-    for (let index = 0; index < 100; index += 1) turn.publish({ kind: 'reasoning', delta: 'hmm ' });
+    for (let index = 0; index < 100; index += 1)
+      await turn.publish({ kind: 'reasoning', delta: 'hmm ' });
 
     expect(exec.mock.calls.filter(([sql]) => sql === 'commit')).toStrictEqual([]);
     expect(changes).toStrictEqual([]);
@@ -127,26 +128,26 @@ describe('a streamed native reply', () => {
 
   it('saves the text so far when a tool call starts and finishes', async () => {
     const turn = await streaming();
-    turn.publish({ kind: 'text', delta: 'Looking. ' });
+    await turn.publish({ kind: 'text', delta: 'Looking. ' });
     expect((await turn.row()).text).toBe('');
 
-    turn.publish(tool('call-1', 'running'));
+    await turn.publish(tool('call-1', 'running'));
     expect((await turn.row()).text).toBe('Looking.');
     expect(timelineTexts((await turn.row()).embeds)).toStrictEqual(['Looking. ']);
 
-    turn.publish({ kind: 'text', delta: 'Found it. ' });
+    await turn.publish({ kind: 'text', delta: 'Found it. ' });
     expect((await turn.row()).text).toBe('Looking.');
 
-    turn.publish(tool('call-1', 'completed'));
+    await turn.publish(tool('call-1', 'completed'));
     expect((await turn.row()).text).toBe('Looking. Found it.');
     expect(timelineTexts((await turn.row()).embeds)).toStrictEqual(['Looking. ', 'Found it. ']);
   });
 
   it('saves the whole reply and answers when the turn completes', async () => {
     const turn = await streaming();
-    turn.publish({ kind: 'text', delta: 'Done ' });
-    turn.publish({ kind: 'text', delta: 'now.' });
-    turn.publish({ kind: 'completed', durable_seq: 3, interrupted: false });
+    await turn.publish({ kind: 'text', delta: 'Done ' });
+    await turn.publish({ kind: 'text', delta: 'now.' });
+    await turn.publish({ kind: 'completed', durable_seq: 3, interrupted: false });
 
     expect((await turn.row()).text).toBe('Done now.');
     expect((await turn.row()).state).toBe('answered');
@@ -157,11 +158,13 @@ describe('a streamed native reply', () => {
     async function commitsFor(chunks: number): Promise<number> {
       const turn = await streaming();
       const exec = vi.spyOn(DatabaseSync.prototype, 'exec');
-      for (let index = 0; index < chunks; index += 1) turn.publish({ kind: 'text', delta: 'w ' });
-      turn.publish(tool('call-1', 'running'));
-      turn.publish(tool('call-1', 'completed'));
-      for (let index = 0; index < chunks; index += 1) turn.publish({ kind: 'text', delta: 'm ' });
-      turn.publish({ kind: 'completed', durable_seq: 3, interrupted: false });
+      for (let index = 0; index < chunks; index += 1)
+        await turn.publish({ kind: 'text', delta: 'w ' });
+      await turn.publish(tool('call-1', 'running'));
+      await turn.publish(tool('call-1', 'completed'));
+      for (let index = 0; index < chunks; index += 1)
+        await turn.publish({ kind: 'text', delta: 'm ' });
+      await turn.publish({ kind: 'completed', durable_seq: 3, interrupted: false });
       const commits = exec.mock.calls.filter(([sql]) => sql === 'commit').length;
       exec.mockRestore();
       return commits;
@@ -175,8 +178,8 @@ describe('a streamed native reply', () => {
   it('keeps a reply longer than the old 16 000 character limit whole', async () => {
     const turn = await streaming();
     for (let chunk = 0; chunk < 15; chunk += 1)
-      turn.publish({ kind: 'text', delta: 'x'.repeat(10_000) });
-    turn.publish({ kind: 'completed', durable_seq: 3, interrupted: false });
+      await turn.publish({ kind: 'text', delta: 'x'.repeat(10_000) });
+    await turn.publish({ kind: 'completed', durable_seq: 3, interrupted: false });
 
     expect((await turn.row()).text).toBe('x'.repeat(150_000));
   });

@@ -1,6 +1,6 @@
 import { NODE_REGISTRY, type NodeKind, type NodeKindLookup } from '@smarteverything/domain';
 import type { KindAvailability } from '@smarteverything/flow/check/lint-types';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { availabilityOf } from './plugin-kinds/versions';
 
 export type UnitKinds = NodeKindLookup & {
@@ -8,7 +8,7 @@ export type UnitKinds = NodeKindLookup & {
 };
 
 export function unitKinds(
-  store: Pick<Store, 'pluginKinds'>,
+  store: Pick<HostStore, 'pluginKinds'>,
   kinds: readonly NodeKind[],
 ): UnitKinds {
   const loaded = new Map(kinds.map((kind) => [kind.id, kind]));

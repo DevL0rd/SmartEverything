@@ -1,9 +1,9 @@
 import type { WakeAiAction } from '@smarteverything/domain';
 import type { ActionOrigin } from '../automations/automation-ai';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { unlessGone } from './unless-gone';
 
-export type WakeRefusalStore = Pick<Store, 'profiles' | 'aiChats'>;
+export type WakeRefusalStore = Pick<HostStore, 'profiles' | 'aiChats'>;
 
 export interface WakeRefusal {
   readonly reason: string;

@@ -7,7 +7,7 @@ import {
   type SessionSample,
   type TreadmillSession,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { entrySettingsOf } from './config';
 
 const SPEED_SAMPLE_SECONDS = 10;
@@ -184,7 +184,7 @@ function healthRecordsOf(
   ]);
 }
 
-type HealthStore = Pick<Store, 'health' | 'treadmillSessions' | 'devices' | 'localDevices'>;
+type HealthStore = Pick<HostStore, 'health' | 'treadmillSessions' | 'devices' | 'localDevices'>;
 
 function scaleOf(store: HealthStore, session: TreadmillSession): InclineScale {
   const device = store.devices.byId(session.deviceId);

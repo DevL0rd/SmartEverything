@@ -157,7 +157,7 @@ class MessageListener implements PacketSink {
 
   private async transcribe(segment: SpeechSegment): Promise<string | null> {
     const { messageId, channel } = this.message;
-    const skipped = this.skipReason();
+    const skipped = await this.skipReason();
     if (skipped !== null) {
       this.options.log.info('talk.transcript_skipped', { messageId, reason: skipped });
       return null;
@@ -182,11 +182,11 @@ class MessageListener implements PacketSink {
     return text;
   }
 
-  private skipReason(): string | null {
+  private async skipReason(): Promise<string | null> {
     if (!this.options.keyPresent()) {
       return 'no_openrouter_key';
     }
-    return this.options.budget.capReached() ? 'cap_reached' : null;
+    return (await this.options.budget.capReached()) ? 'cap_reached' : null;
   }
 }
 

@@ -3,49 +3,38 @@ import { currentRequestSignal } from '../server/request-signal';
 import { ApiError, type AiProjectRequest } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import { profileIdOf, type Caller } from '../server/auth';
-import { admitExecutionTool, currentExecutionAuthority } from '../assistant/turn-authority';
+import { currentExecutionAuthority } from '../assistant/turn-authority';
 
 export interface ProjectAuthority {
   readonly chatId: string;
   readonly profileId: string;
-  readonly validate: (write: boolean) => void;
+  readonly validate: (write: boolean) => Promise<void>;
 }
-export function projectCallerAuthority(
+export async function projectCallerAuthority(
   store: Store,
   caller: Caller,
   chatId: string,
   request?: AiProjectRequest,
-): ProjectAuthority {
+): Promise<ProjectAuthority> {
   const profileId = profileIdOf(caller);
   const signal = currentRequestSignal();
   const native = currentProviderToolAuthority()?.validate;
   const authority =
     (caller.kind === 'client' || caller.kind === 'service' ? caller.authority : undefined) ??
     currentExecutionAuthority();
-  const validate = (write: boolean): void => {
+  const validate = async (write: boolean): Promise<void> => {
     validateNativeRequest(signal, native, write);
-    const chat = store.aiChats.chat(chatId);
-    if (chat.profile_id !== profileId)
-      throw new ApiError('forbidden', 'The managed project belongs to a different profile.');
-    store.live.chatWork.assertWorkAllowed(chatId, write ? 'write' : 'read');
+    await store.host.read('projectAuthority', {
+      chatId,
+      profileId,
+      write,
+      authority: authority ?? null,
+      tool: request === undefined ? null : projectTool(request),
+    });
+    store.live.chatWork.holds.assertWork(chatId);
     validateCaller(caller, chatId);
-    if (write && chat.engine.kind === 'dsh' && chat.engine.permission.sandbox === 'read-only')
-      throw new ApiError(
-        'forbidden',
-        'The current chat permission allows reading its managed project only.',
-      );
-    if (authority === undefined) return;
-    if (
-      authority.profile_id !== profileId ||
-      store.assistantEvents.event(authority.event_id).chat_id !== chatId
-    )
-      throw new ApiError(
-        'forbidden',
-        'Managed project access differs from its initiating authority.',
-      );
-    if (request !== undefined) admitExecutionTool(store, projectTool(request), authority);
   };
-  validate(false);
+  await validate(false);
   return { chatId, profileId, validate };
 }
 function projectTool(request: AiProjectRequest): string {

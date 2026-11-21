@@ -69,7 +69,7 @@ export async function completeNativeTurn(input: Completion): Promise<void> {
   let persisted = false;
   try {
     const authority =
-      input.replay === undefined ? completionAuthority(input.service, turn.event) : undefined;
+      input.replay === undefined ? await completionAuthority(input.service, turn.event) : undefined;
     event = trusted(input, authority) ? input.event : unconfirmedCompletion();
     await persistCompletion(input, event);
     persisted = true;
@@ -78,12 +78,12 @@ export async function completeNativeTurn(input: Completion): Promise<void> {
     retireCompletion(input, persisted ? event : unconfirmedCompletion());
   }
 }
-function completionAuthority(
+async function completionAuthority(
   service: HarnessService,
   event: StoredEvent,
-): ConversationAuthority | undefined {
+): Promise<ConversationAuthority | undefined> {
   try {
-    return eventAuthority(service.store, event);
+    return await eventAuthority(service.store, event);
   } catch (cause) {
     log.warn('native_completion.authority_unavailable', {
       event_id: event.id,

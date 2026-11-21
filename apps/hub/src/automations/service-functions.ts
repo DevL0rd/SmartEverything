@@ -59,13 +59,15 @@ async function updateCallers(
   });
   const prepared = admitReach(env.store, caller, read);
   if (prepared.kind === 'done') return prepared.reply;
-  const targets = prepared.targets.map((target) => ({
-    ...target,
-    speech:
-      target.automation === null
-        ? null
-        : speechPlan(env.store, caller, AUTOMATION_V4.parse(target.program), target.prior),
-  }));
+  const targets = await Promise.all(
+    prepared.targets.map(async (target) => ({
+      ...target,
+      speech:
+        target.automation === null
+          ? null
+          : await speechPlan(env.store, caller, AUTOMATION_V4.parse(target.program), target.prior),
+    })),
+  );
   const updated = await env.store.host.write('commitFunctionCallers', {
     kinds: pluginKindsOf(env.kinds),
     caller,
@@ -94,7 +96,7 @@ async function extract(
   });
   const ready = admitReach(env.store, caller, read);
   if (ready.kind === 'done') return ready.reply;
-  const speech = speechPlan(env.store, caller, ready.found.caller, ready.prior);
+  const speech = await speechPlan(env.store, caller, ready.found.caller, ready.prior);
   return env.store.host.write('commitFunctionExtract', {
     kinds: pluginKindsOf(env.kinds),
     caller,

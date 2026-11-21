@@ -1,3 +1,4 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -17,7 +18,6 @@ import {
 } from '../../src/self-update/pipeline-steps';
 import { startConfiguredSource } from '../../src/self-update/source';
 import { testLogger } from '../support/logs';
-import { openStore } from '../../src/store/store';
 import { testLayout } from '../support/test-layout';
 import { testStoreHost } from '../support/store-host';
 
@@ -59,14 +59,16 @@ beforeEach(async () => {
   scratch = await mkdtemp(join(tmpdir(), 'build-refusal-'));
   layout = await testLayout(scratch);
   await mkdir(dirname(layout.system.database.file), { recursive: true });
-  openStore({
-    host: testStoreHost(),
-    path: layout.system.database.file,
-    log: testLogger('store'),
-    now: () => new Date(AT),
-    systemTimeZone: 'UTC',
-    driveFolders: null,
-  }).close();
+  await closedStore(
+    await openSeededStore({
+      host: testStoreHost(),
+      path: layout.system.database.file,
+      log: testLogger('store'),
+      now: () => new Date(AT),
+      systemTimeZone: 'UTC',
+      driveFolders: null,
+    }),
+  );
   deps = {
     layout,
     publicServer: (): Promise<string> => Promise.resolve('https://home.example'),

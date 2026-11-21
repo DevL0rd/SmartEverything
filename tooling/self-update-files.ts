@@ -11,6 +11,8 @@ const STEP_ENTRY = join(ROOT, 'tooling', 'self-update-step.ts');
 
 const HUB_COMMAND_ENTRY = join(ROOT, 'tooling', 'self-update-hub-command.ts');
 
+const STORE_HOST_ENTRY = join(ROOT, 'apps', 'hub', 'src', 'store', 'host', 'worker.ts');
+
 const MIGRATION_CHECK_ENTRY = join(
   ROOT,
   'apps',
@@ -28,6 +30,7 @@ export const UPDATE_ENTRIES: readonly {
   { entry: WATCHDOG_ENTRY, file: UPDATE_ENTRY_FILES.watchdog },
   { entry: STEP_ENTRY, file: UPDATE_ENTRY_FILES.step },
   { entry: MIGRATION_CHECK_ENTRY, file: UPDATE_ENTRY_FILES.migrationCheck },
+  { entry: STORE_HOST_ENTRY, file: UPDATE_ENTRY_FILES.storeHost },
 ];
 
 export interface SelfUpdatePaths {

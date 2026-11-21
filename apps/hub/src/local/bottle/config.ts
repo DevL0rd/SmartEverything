@@ -11,7 +11,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { LocalDeviceEntry } from '../../store/repositories/local-devices';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export { BOTTLE_DRIVER };
 
@@ -41,7 +41,7 @@ export function entryConfigOf(entry: Pick<LocalDeviceEntry, 'config'>): BottleEn
 }
 
 export function saveConfig(
-  store: Pick<Store, 'localDevices'>,
+  store: Pick<HostStore, 'localDevices'>,
   entry: Pick<LocalDeviceEntry, 'externalId'>,
   config: BottleEntryConfig,
 ): void {

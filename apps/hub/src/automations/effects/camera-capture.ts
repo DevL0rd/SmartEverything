@@ -190,7 +190,7 @@ async function several(
   size: MediaSize,
   run: EffectRun,
 ): Promise<Pictures> {
-  const devices = resolveTarget(ports.store, target);
+  const devices = resolveTarget(ports.store.live.home, target);
   if (devices.length === 0) throw new ApiError('not_found', 'This target has no cameras.');
   const outcomes = await Promise.all(devices.map((device) => attempt(ports, device, size, run)));
   const taken = outcomes.filter(isTaken);

@@ -45,7 +45,7 @@ beforeEach(async () => {
   sender = { clientId: client.id, profileId: store.profiles.activeOf(client.id).id };
   files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now,
   });
@@ -69,15 +69,15 @@ afterEach(async () => {
   await opened.close();
 });
 
-function coordinator(title: string): AiChatRow {
-  return chats.create(
+async function coordinator(title: string): Promise<AiChatRow> {
+  return await chats.create(
     { profileId: sender.profileId, role: 'owner' },
     { title, engine: TEST_ENGINE },
   );
 }
 
-function helper(parent: AiChatRow, engine: Engine = CLAUDE_TEST_ENGINE): AiChatRow {
-  return chats.create(
+async function helper(parent: AiChatRow, engine: Engine = CLAUDE_TEST_ENGINE): Promise<AiChatRow> {
+  return await chats.create(
     { profileId: parent.profile_id, role: 'owner' },
     { title: 'Keyboard review', engine, parent_id: parent.id },
   );
@@ -125,8 +125,8 @@ function onlyPending(): StoredEvent {
 
 describe('parent conversation helper messages', () => {
   it('queues one child input across identical retries and keeps group speech out of parent model history', async () => {
-    const parent = coordinator('Planner');
-    const target = helper(parent);
+    const parent = await coordinator('Planner');
+    const target = await helper(parent);
     const body = sendBody(target);
     const row = await send(parent, body);
     expect(helperDialogueOf(row)).toEqual({
@@ -149,19 +149,19 @@ describe('parent conversation helper messages', () => {
       text: body.text,
     });
     expect(event.message_id).not.toBe(row.id);
-    expect(engines.route(event).kind).toBe('engine');
-    expect(chatContext(opened.store, parent.id).rows).toEqual([]);
+    expect((await engines.route(event)).kind).toBe('engine');
+    expect((await chatContext(opened.store, parent.id)).rows).toEqual([]);
   });
 
   it('projects one terminal answer under the stable helper name and supplies a reply quote to the helper', async () => {
-    const parent = coordinator('Planner');
-    const target = helper(parent);
+    const parent = await coordinator('Planner');
+    const target = await helper(parent);
     const first = await send(parent, sendBody(target));
     const event = onlyPending();
     const { store } = opened;
     store.assistantEvents.mark(event.id, 'answered_at');
-    delegation.finished(event, 'Only in landscape.', true);
-    delegation.finished(event, 'Only in landscape.', true);
+    await delegation.finished(event, 'Only in landscape.', true);
+    await delegation.finished(event, 'Only in landscape.', true);
     await delegation.settled();
     const response = store.assistantChat.message(event.id);
     expect(response).toMatchObject({
@@ -200,9 +200,9 @@ describe('parent conversation helper messages', () => {
   });
 
   it('refuses a helper or quote outside the selected conversation and blocks removed delivery sources', async () => {
-    const parent = coordinator('Planner');
-    const foreign = helper(coordinator('Other'));
-    const target = helper(parent);
+    const parent = await coordinator('Planner');
+    const foreign = await helper(await coordinator('Other'));
+    const target = await helper(parent);
     await expect(send(parent, sendBody(foreign))).rejects.toThrow('direct helper');
     await expect(
       send(parent, {
@@ -214,14 +214,14 @@ describe('parent conversation helper messages', () => {
     const row = await send(parent, sendBody(target));
     const event = onlyPending();
     opened.store.assistantChat.removeMessages([row.id]);
-    const route = engines.route(event);
+    const route = await engines.route(event);
     if (route.kind !== 'blocked') throw new Error('Expected removed delivery to be blocked.');
     expect(route.reason).toContain('removed');
   });
 
   it('keeps later accepted child messages out of the first provider turn', async () => {
-    const parent = coordinator('Planner');
-    const target = helper(parent);
+    const parent = await coordinator('Planner');
+    const target = await helper(parent);
     const first = sendBody(target);
     await send(parent, first);
     const event = onlyPending();
@@ -231,8 +231,8 @@ describe('parent conversation helper messages', () => {
   });
 
   it('retains the original key after parent deletion without re-enqueuing the work', async () => {
-    const parent = coordinator('Planner');
-    const target = helper(parent);
+    const parent = await coordinator('Planner');
+    const target = await helper(parent);
     const body = sendBody(target);
     const row = await send(parent, body);
     opened.store.assistantChat.removeMessages([row.id]);
@@ -248,8 +248,8 @@ describe('parent conversation helper messages', () => {
   it.each(['claude', 'codex'] as const)(
     'includes a late earlier answer in cold %s history',
     async (runtime) => {
-      const parent = coordinator('Planner');
-      const target = helper(parent);
+      const parent = await coordinator('Planner');
+      const target = await helper(parent);
       const { store } = opened;
       const first = sendBody(target);
       await send(parent, first);
@@ -279,8 +279,8 @@ describe('parent conversation helper messages', () => {
   );
 
   it('fails unresolved parent messages if the addressed helper is deleted', async () => {
-    const parent = coordinator('Planner');
-    const target = helper(parent);
+    const parent = await coordinator('Planner');
+    const target = await helper(parent);
     const row = await send(parent, sendBody(target));
     const { store } = opened;
     store.aiChats.remove(target.id);
@@ -292,16 +292,16 @@ describe('parent conversation helper messages', () => {
   });
 
   it('refuses adopted harness helpers before accepting a message', async () => {
-    const parent = coordinator('Planner');
-    const target = helper(parent, TEST_ENGINE);
+    const parent = await coordinator('Planner');
+    const target = await helper(parent, TEST_ENGINE);
     await expect(send(parent, sendBody(target))).rejects.toThrow('cannot receive a separate turn');
     expect(opened.store.assistantChat.messages({ chatId: parent.id, limit: 10 })).toEqual([]);
     expect(opened.store.assistantEvents.pending()).toEqual([]);
   });
 
   it('reconciles the persisted child answer when the hub missed the completion callback', async () => {
-    const parent = coordinator('Planner');
-    const target = helper(parent);
+    const parent = await coordinator('Planner');
+    const target = await helper(parent);
     const first = await send(parent, sendBody(target));
     const event = onlyPending();
     const reply = await conversation.startReply({
@@ -325,8 +325,8 @@ describe('parent conversation helper messages', () => {
   it.each(['parent', 'child'] as const)(
     'retains the other attachment after deleting the %s row',
     async (removed) => {
-      const parent = coordinator('Planner');
-      const target = helper(parent);
+      const parent = await coordinator('Planner');
+      const target = await helper(parent);
       const id = await upload('context.txt', 'Useful context.');
       const body = { ...sendBody(target), text: '', attachments: [id] };
       const [row, retried] = await Promise.all([send(parent, body), send(parent, body)]);
@@ -343,16 +343,16 @@ describe('parent conversation helper messages', () => {
       expect(copied.storage_path).not.toBe(original.storage_path);
       expect(copied.sha256).toBe(original.sha256);
       expect(store.assistantChat.unattachedBefore('2099-11-05T15:00:00.000Z')).toEqual([]);
-      expect(() =>
+      await expect(
         chats.attachment({ profileId: sender.profileId, role: 'owner', confinedTo: target.id }, id),
-      ).toThrow('belongs to someone else');
+      ).rejects.toThrow('belongs to someone else');
       await expect(providerMessages({ store, files }, target, event, true)).resolves.toEqual([
         {
           role: 'user',
           content: [{ type: 'text', text: '[Attached file: context.txt]\nUseful context.' }],
         },
       ]);
-      expect(chatContext(store, parent.id).rows).toEqual([]);
+      expect((await chatContext(store, parent.id)).rows).toEqual([]);
       const removedRow = removed === 'parent' ? row.id : event.message_id;
       const remaining = removed === 'parent' ? copied : original;
       await files.remove(store.assistantChat.removeMessages([removedRow]));
@@ -362,8 +362,8 @@ describe('parent conversation helper messages', () => {
   );
 
   it('retains uploads when a partial copy attempt fails and accepts the same draft on retry', async () => {
-    const parent = coordinator('Planner');
-    const target = helper(parent);
+    const parent = await coordinator('Planner');
+    const target = await helper(parent);
     const first = await upload('first.txt', 'First.');
     const second = await upload('second.txt', 'Second.');
     const body = { ...sendBody(target), attachments: [first, second] };
@@ -388,8 +388,8 @@ describe('parent conversation helper messages', () => {
   });
 
   it('reauthorizes a raced receipt after the initiating app switches profiles', async () => {
-    const parent = coordinator('Planner');
-    const target = helper(parent);
+    const parent = await coordinator('Planner');
+    const target = await helper(parent);
     const id = await upload('context.txt', 'Useful context.');
     const body = { ...sendBody(target), attachments: [id] };
     const reached = latch();
@@ -421,8 +421,8 @@ describe('parent conversation helper messages', () => {
   });
 
   it('rejects foreign, duplicate and already-bound uploads without creating a second helper row', async () => {
-    const parent = coordinator('Planner');
-    const target = helper(parent);
+    const parent = await coordinator('Planner');
+    const target = await helper(parent);
     const id = await upload('context.txt', 'Useful context.');
     const body = { ...sendBody(target), attachments: [id] };
     const other = opened.store.profiles.create({ name: 'Other' }).id;

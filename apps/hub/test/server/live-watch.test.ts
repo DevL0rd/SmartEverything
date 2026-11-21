@@ -116,6 +116,30 @@ describe('live watch', () => {
     expect(sent).toEqual([[1, SYSTEM_PART]]);
   });
 
+  it('keeps the per second disk activity from a connection that watches disk usage only', () => {
+    const disk = {
+      mount: '/',
+      device: '/dev/sda1',
+      label: null,
+      filesystem: 'ext4',
+      usedBytes: 400,
+      totalBytes: 1000,
+    };
+    const usage = { disks: [disk] };
+    const activity = {
+      disks: [{ ...disk, readRate: 5, writeRate: 7, temperature: null }],
+    };
+    const { watch, sent } = rig(notice({ disks: activity, disk_usage: usage }));
+    const drive = connection(1);
+    watch.receive(drive, {
+      type: 'watch',
+      demands: [{ deviceId: PC, topics: ['disk_usage', 'drive_mounts'] }],
+    });
+    watch.publish(notice({ disks: activity }));
+    watch.publish(notice({ disks: activity }));
+    expect(sent).toEqual([[1, notice({ disk_usage: usage })]]);
+  });
+
   it('sends the merged view at once for newly demanded topics only', () => {
     const { watch, sent } = rig(notice({ windows: WINDOWS }));
     const phone = connection(1);

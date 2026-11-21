@@ -1,6 +1,6 @@
 import { DRIVE_SUGGESTION, DRIVE_SUGGESTION_REASONS } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { accessSql, type DriveActor } from '../access';
 import { encodeCursor } from '../search';
@@ -35,7 +35,7 @@ const SIGNALS = `
     where n.profile_id = $profile and n.kind in ('commented', 'replied', 'mentioned')`;
 
 function suggestions(
-  store: Pick<Store, 'context' | 'driveItems'>,
+  store: Pick<HostStore, 'context' | 'driveItems'>,
   { actor, after }: { readonly actor: DriveActor; readonly after: SuggestionCursor | null },
 ): SuggestionPage {
   const rows = store.context.sql.all(

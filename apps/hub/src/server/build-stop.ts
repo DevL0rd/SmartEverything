@@ -67,7 +67,7 @@ function stopComputersAndServing(context: ServerContext, served: Serving): void 
 
 async function stopAssistantServices(context: ServerContext): Promise<void> {
   await context.harness.skillUpdates.stop();
-  context.assistant.stop();
+  await context.assistant.stop();
   await context.imageRuntime.stop();
   context.browser.stop();
 }

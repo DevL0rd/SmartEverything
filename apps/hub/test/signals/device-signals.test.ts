@@ -72,10 +72,11 @@ function matching(match: Record<string, unknown>, signal: SignalInput | undefine
 }
 
 describe('device state signals', () => {
-  it('carry the facts that let one trigger cover every light, a room, a role or a unit', () => {
+  it('carry the facts that let one trigger cover every light, a room, a role or a unit', async () => {
     const room = opened.store.rooms.create('Study', 0);
     const lamp = lightIn(room.id);
     signals.moved({ deviceId: lamp, capability: 'brightness', value: 60, previous: 50 });
+    await signals.settled();
     expect(heard).toHaveLength(1);
     expect(heard[0]?.data).toStrictEqual({
       family: 'light',
@@ -95,36 +96,39 @@ describe('device state signals', () => {
     expect(matching({ name: 'Desk lamp' }, heard[0])).toBe(true);
   });
 
-  it('call a device by the name the home gave it', () => {
+  it('call a device by the name the home gave it', async () => {
     const lamp = lightIn(null);
     opened.store.devices.update(lamp, { display_name: 'Reading light' });
     signals.moved({ deviceId: lamp, capability: 'power', value: true, previous: false });
+    await signals.settled();
     expect(matching({ name: 'Reading light' }, heard[0])).toBe(true);
     expect(matching({ name: 'Desk lamp' }, heard[0])).toBe(false);
   });
 
-  it('say a value became unknown instead of staying silent, and carry the value it had', () => {
+  it('say a value became unknown instead of staying silent, and carry the value it had', async () => {
     const lamp = lightIn(null);
     signals.moved({ deviceId: lamp, capability: 'brightness', value: null, previous: 50 });
+    await signals.settled();
     expect(heard.map((signal) => [signal.value, signal.previous])).toStrictEqual([[null, 50]]);
   });
 
-  it('are dropped for a device that no longer exists', () => {
+  it('are dropped for a device that no longer exists', async () => {
     signals.moved({
       deviceId: '6f3b9d0e-0000-4000-8000-000000000000',
       capability: 'power',
       value: true,
       previous: false,
     });
+    await signals.settled();
     expect(heard).toStrictEqual([]);
   });
 });
 
 describe('the cause of a device state signal', () => {
-  function causeAfter(
+  async function causeAfter(
     command: { source: 'app' | 'assistant' | 'automation'; requestedBy: string | null } | null,
     automationId: string | null = null,
-  ): string | undefined {
+  ): Promise<string | undefined> {
     const plug = lightIn(null);
     if (command !== null) {
       const [row] = opened.store.commands.insert([
@@ -138,6 +142,7 @@ describe('the cause of a device state signal', () => {
     }
     clock.set('2026-10-18T10:00:03.000Z');
     signals.moved({ deviceId: plug, capability: 'power', value: true, previous: false });
+    await signals.settled();
     const cause = heard.at(-1)?.data['cause'];
     return typeof cause === 'string' ? cause : undefined;
   }
@@ -150,29 +155,31 @@ describe('the cause of a device state signal', () => {
     }).id;
   }
 
-  it('is physical when nobody sent a command to that value', () => {
-    expect(causeAfter(null)).toBe('physical');
+  it('is physical when nobody sent a command to that value', async () => {
+    expect(await causeAfter(null)).toBe('physical');
   });
 
-  it('is the app when a person sent the command', () => {
+  it('is the app when a person sent the command', async () => {
     const { client } = addPerson(opened.store, 'Dana');
-    expect(causeAfter({ source: 'app', requestedBy: client.id })).toBe('app');
+    expect(await causeAfter({ source: 'app', requestedBy: client.id })).toBe('app');
   });
 
-  it('is the assistant when the assistant sent the command', () => {
-    expect(causeAfter({ source: 'assistant', requestedBy: null })).toBe('assistant');
+  it('is the assistant when the assistant sent the command', async () => {
+    expect(await causeAfter({ source: 'assistant', requestedBy: null })).toBe('assistant');
   });
 
-  it('is an automation when one that reacts to something ran the command', () => {
+  it('is an automation when one that reacts to something ran the command', async () => {
     const motion = automationOn('Hallway motion', [
       trigger('trigger.signal', { source: 'event', kind: 'motion' }),
     ]);
-    expect(causeAfter({ source: 'automation', requestedBy: null }, motion)).toBe('automation');
+    expect(await causeAfter({ source: 'automation', requestedBy: null }, motion)).toBe(
+      'automation',
+    );
   });
 
-  it('is a schedule when an automation that only the clock starts ran the command', () => {
+  it('is a schedule when an automation that only the clock starts ran the command', async () => {
     const nightly = automationOn('Lights out', [trigger('trigger.time', { at: '23:00' })]);
-    expect(causeAfter({ source: 'automation', requestedBy: null }, nightly)).toBe('schedule');
+    expect(await causeAfter({ source: 'automation', requestedBy: null }, nightly)).toBe('schedule');
   });
 });
 
@@ -223,9 +230,11 @@ describe('device online and lifecycle signals', () => {
   it('tell that a computer went offline, once, with its kind of device', async () => {
     await inventory.apply('local', [COMPUTER]);
     const id = inventory.deviceOf('local', 'computer-1')?.id ?? '';
+    await signals.settled();
     heard.length = 0;
     await inventory.setOnlineById(id, false);
     await inventory.setOnlineById(id, false);
+    await signals.settled();
     expect(heard.map((signal) => [signal.kind, signal.subject, signal.value])).toStrictEqual([
       ['online', id, false],
     ]);
@@ -235,6 +244,7 @@ describe('device online and lifecycle signals', () => {
       provider: 'local',
     });
     await inventory.setOnlineById(id, true);
+    await signals.settled();
     expect(heard.map((signal) => signal.value)).toStrictEqual([false, true]);
   });
 
@@ -242,6 +252,7 @@ describe('device online and lifecycle signals', () => {
     await inventory.apply('xiaomi', [LAMP]);
     await inventory.apply('xiaomi', [{ ...LAMP, name: 'Reading lamp' }]);
     await inventory.remove('xiaomi', ['lamp-1']);
+    await signals.settled();
     const lifecycle = heard.filter((signal) => signal.kind === 'lifecycle');
     expect(lifecycle.map((signal) => signal.data['change'])).toStrictEqual([
       'added',

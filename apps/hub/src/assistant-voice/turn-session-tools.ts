@@ -178,8 +178,9 @@ export class TurnTools {
       reply({ error: 'No task was given' }, false);
       return;
     }
-    try {
-      const eventId = kit.responder.request({
+    const asked = session();
+    kit.responder
+      .request({
         profileId: who.caller.profileId,
         clientId: who.caller.clientId,
         device: who.caller.device,
@@ -187,13 +188,17 @@ export class TurnTools {
         said: text.recentHeard(),
         callMessageId: messageId,
         chatId: who.chatId,
-      });
-      this.tasks.set(eventId, { id, name, session: session() });
-      record({ who: 'tool', text: 'Handed over a task', ok: true, detail: null });
-      reply({ status: 'started; it is running now' }, true);
-    } catch (cause) {
-      trace.taskRefused(cause);
-      reply({ error: messageOf(cause) }, false);
-    }
+      })
+      .then(
+        (eventId) => {
+          this.tasks.set(eventId, { id, name, session: asked });
+          record({ who: 'tool', text: 'Handed over a task', ok: true, detail: null });
+          reply({ status: 'started; it is running now' }, true);
+        },
+        (cause: unknown) => {
+          trace.taskRefused(cause);
+          reply({ error: messageOf(cause) }, false);
+        },
+      );
   }
 }

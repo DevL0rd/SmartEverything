@@ -4,7 +4,7 @@ import {
   type AssistantReasonCode,
   type MessageOrigin,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { reasonWithActions } from './failure-reason';
 
 export const STOPPED_BY_USER = 'Stopped by the user.';
@@ -31,7 +31,7 @@ export const HUB_ORIGIN: MessageOrigin = {
   name: HUB_AUTHOR,
 };
 
-export function interruptionNote(store: Store, chatId: string): string | null {
+export function interruptionNote(store: HostStore, chatId: string): string | null {
   const reply = store.assistantChat.latestSettledReply(chatId);
   if (reply?.state !== 'failed' || !isInterruption(reply.reason_code)) return null;
   if (store.assistantChat.latestPersonText(chatId)?.id !== reply.reply_to) return null;

@@ -32,7 +32,7 @@ export async function readSessionInfo(
   owner: ChatOwner,
   chatId: string,
 ): Promise<AiSessionInfo> {
-  const session = sessionLogOf(source, owner, chatId);
+  const session = await sessionLogOf(source, owner, chatId);
   return session === null ? NO_SESSION_INFO : fold(session.metadata, session.events);
 }
 

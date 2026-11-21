@@ -108,7 +108,7 @@ async function stateView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): Pro
     link: linkOf(deps, device, state, viewer),
     frame: liveFrameOf(state, now.toISOString(), mine),
     head: headViewOf(deps, device, state),
-    battery: batteryViewOf(deps, device, state),
+    battery: await batteryViewOf(deps, device, state),
     handle: handleViewOf(deps, device, state),
     personId: settings.personId,
     personName: await nameOf(deps, settings.personId),

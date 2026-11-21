@@ -30,8 +30,7 @@ export interface PurgeSchedule {
   readonly rearm: () => void;
 }
 
-export type ChangeStore = DriveFileStore &
-  Pick<Store, 'driveItems' | 'driveFeed' | 'driveGrants' | 'driveBlocks' | 'feed' | 'host'>;
+export type ChangeStore = DriveFileStore & Pick<Store, 'feed'>;
 
 export interface ChangeEnv extends FileEnv {
   readonly store: ChangeStore;
@@ -44,18 +43,6 @@ export function fileDraft(item: NewItem, content: FileContent): DriveItemDraft {
 
 export function folderDraft(item: NewItem, bytes: number): DriveItemDraft {
   return { ...commonOf(item), kind: 'folder', childCount: 0, bytes };
-}
-
-export function parentOf(env: ChangeEnv, rootId: string, relPath: string): DriveItem | null {
-  const folder = dirname(relPath);
-  if (folder === '.') {
-    return null;
-  }
-  const parent = env.store.driveItems.byPath(rootId, folder, null);
-  if (parent?.kind !== 'folder') {
-    throw new DriveWriteError('missing', 'The folder is not in the index.');
-  }
-  return parent;
 }
 
 export async function parentIn(

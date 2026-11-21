@@ -1,13 +1,13 @@
 import { PLANNER_OCCURRENCE_SINGLE, type PlannerItemRow } from '@smarteverything/domain';
 import type { PlannerItemPatch } from '../../store/repositories/planner-items';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { IcalEntry } from './model';
 import { itemIdOfLocalUid, plannedItemOf, type PlannedItem } from './map-item';
 import { projectionOf } from './projection';
 import { syncGuests } from './sync-guests';
 
 export type ApplyStore = Pick<
-  Store,
+  HostStore,
   'write' | 'plannerItems' | 'plannerGuests' | 'plannerOccurrences'
 >;
 

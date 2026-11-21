@@ -5,7 +5,7 @@ import type { HarnessGrant } from '../../../harness/grant';
 import { durableStoreUnit } from '../../../store/host/unit';
 import type { HeldChats } from '../../../store/repositories/ai-chat-removal-hold';
 import type { DshSessionPrincipal } from '../../../store/repositories/dsh-session-claims';
-import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 import { recordHelperRenewal, type HelperSettlement } from './helper-renewal-record';
 
 export interface HelperRenewal {
@@ -18,7 +18,7 @@ export interface HelperRenewal {
 }
 
 function renewedHelperWriter(
-  store: Store,
+  store: HostStore,
   { child, parent, principal, grant, settlement, held }: HelperRenewal,
 ): DshWriterClaim {
   store.dshSessions.verifyWriter(parent, principal);

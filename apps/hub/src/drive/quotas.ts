@@ -2,7 +2,11 @@ import type { DriveQuotaStatus } from '../store/repositories/drive-quotas';
 import type { Store } from '../store/store';
 import type { DataSpaceProbe } from './data-space';
 
-export type DriveQuotaSource = (profileId: string) => DriveQuotaStatus;
+export type DriveQuotaSource = (profileId: string) => Promise<DriveQuotaStatus>;
+
+export function hostQuotaSource(store: Pick<Store, 'host'>): DriveQuotaSource {
+  return (profileId) => store.host.read('driveQuotaStatus', profileId);
+}
 
 export interface DriveWriteRequest {
   readonly profileId: string | null;
@@ -53,11 +57,8 @@ export class DriveFileTooLargeError extends DriveFreeSpaceError {
   }
 }
 
-export function checkDriveQuota(status: DriveQuotaSource, request: DriveWriteRequest): void {
-  if (request.profileId === null) {
-    return;
-  }
-  const current = status(request.profileId);
+function quotaCheck(current: DriveQuotaStatus, request: DriveWriteRequest): void {
+  if (request.profileId === null) return;
   const { quota } = current;
   if (quota === null) {
     return;
@@ -70,13 +71,19 @@ export function checkDriveQuota(status: DriveQuotaSource, request: DriveWriteReq
   }
 }
 
-export async function loadedQuotaCheck(
-  store: Pick<Store, 'host'>,
+export async function checkDriveQuota(
+  status: DriveQuotaSource,
   request: DriveWriteRequest,
 ): Promise<void> {
   if (request.profileId === null) return;
-  const status = await store.host.call('driveQuotas', 'status', request.profileId);
-  checkDriveQuota(() => status, request);
+  quotaCheck(await status(request.profileId), request);
+}
+
+export function loadedQuotaCheck(
+  store: Pick<Store, 'host'>,
+  request: DriveWriteRequest,
+): Promise<void> {
+  return checkDriveQuota(hostQuotaSource(store), request);
 }
 
 export async function checkDriveFreeSpace(
@@ -106,7 +113,7 @@ export async function checkDriveWrite(
   guard: DriveWriteGuard,
   check: DriveWriteCheck,
 ): Promise<void> {
-  checkDriveQuota(guard.status, check);
+  await checkDriveQuota(guard.status, check);
   await checkDriveFreeSpace(guard.space, check.path, check.addBytes);
 }
 
@@ -122,15 +129,25 @@ export async function checkLoadedDriveWrite(
 export class DriveQuotaMeter {
   private received = 0;
 
-  constructor(
-    private readonly status: DriveQuotaSource,
+  private constructor(
+    private readonly status: DriveQuotaStatus | null,
     private readonly profileId: string | null,
-    private readonly releasedBytes = 0,
+    private readonly releasedBytes: number,
   ) {}
+
+  static async start(
+    source: DriveQuotaSource,
+    profileId: string | null,
+    releasedBytes = 0,
+  ): Promise<DriveQuotaMeter> {
+    const status = profileId === null ? null : await source(profileId);
+    return new DriveQuotaMeter(status, profileId, releasedBytes);
+  }
 
   admit(chunkBytes: number): void {
     this.received += chunkBytes;
-    checkDriveQuota(this.status, {
+    if (this.status === null) return;
+    quotaCheck(this.status, {
       profileId: this.profileId,
       addBytes: this.received,
       releasedBytes: this.releasedBytes,

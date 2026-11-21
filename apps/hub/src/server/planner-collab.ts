@@ -37,7 +37,7 @@ export function collabOf(context: ServerContext, now: () => Date): PlannerCollab
   const known = COLLABS.get(context.store);
   if (known !== undefined) return known;
   const { store, secrets, hub } = context;
-  const settings = new MailSettingsStore({ settingsKv: store.settingsKv, secrets });
+  const settings = new MailSettingsStore({ saved: store.live.home.saved, secrets });
   const mail = new MailService({ settings, store, log: context.log.forArea('hub.mail') });
   const invites = new InviteService({
     store,

@@ -42,7 +42,7 @@ const HELPER_RECEIPT = z.strictObject({
   payload_hash: z.string(),
 });
 
-interface HelperMessageKey {
+export interface HelperMessageKey {
   readonly chat: string;
   readonly profile: string;
   readonly clientMessage: string;

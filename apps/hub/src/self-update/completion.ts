@@ -12,6 +12,7 @@ import { addConversationMessage } from '../assistant/store-units';
 import { durableStoreUnit } from '../store/host/unit';
 import { repairWorkClaims } from '../store/repositories/repair-work-claims';
 import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 const OUTCOME_TEXT: Readonly<Record<HubUpdateOutcome, string>> = {
   updated: 'The hub update is complete. The hub and node passed their checks.',
@@ -26,7 +27,10 @@ const OUTCOME_TEXT: Readonly<Record<HubUpdateOutcome, string>> = {
 const DECISION_TEXT =
   'The hub update failed and waits for your decision. Its backup is kept and nothing was rolled back. With update_control, rollback restores the previous release, recover tries this release again, or keep it as it is, which makes the update finished while its backup stays. The details are in update_control status.';
 
-function ownerChat(store: Store, origin: HubUpdateOrigin): ReturnType<Store['aiChats']['find']> {
+function ownerChat(
+  store: HostStore,
+  origin: HubUpdateOrigin,
+): ReturnType<HostStore['aiChats']['find']> {
   const chat = store.aiChats.find(origin.chatId);
   return chat?.kind === 'chat' &&
     chat.profile_id === origin.profileId &&
@@ -36,7 +40,7 @@ function ownerChat(store: Store, origin: HubUpdateOrigin): ReturnType<Store['aiC
 }
 
 function postOnce(
-  store: Store,
+  store: HostStore,
   target: { readonly origin: HubUpdateOrigin; readonly key: string; readonly text: string },
 ): void {
   if (store.hubUpdateNotes.has(target.key)) return;
@@ -49,14 +53,17 @@ function postOnce(
     });
 }
 
-function postOutcome(store: Store, release: HubUpdateRelease): void {
+function postOutcome(store: HostStore, release: HubUpdateRelease): void {
   const { origin, runId } = release;
   const outcome = hubUpdateOutcome(release);
   if (origin === undefined || outcome === null) return;
   postOnce(store, { origin, key: runId, text: `${OUTCOME_TEXT[outcome]} Run ID: ${runId}` });
 }
 
-function decisionRecipients(store: Store, release: HubUpdateRelease): readonly HubUpdateOrigin[] {
+function decisionRecipients(
+  store: HostStore,
+  release: HubUpdateRelease,
+): readonly HubUpdateOrigin[] {
   const now = store.now().toISOString();
   const claimed = repairWorkClaims(store.settingsKv)
     .filter((claim) => claim.component === 'hub.service' && claim.expiresAt > now)
@@ -75,7 +82,7 @@ function decisionNoteId(runId: string, revision: number, chatId: string): string
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-function postDecision(store: Store, release: HubUpdateRelease): void {
+function postDecision(store: HostStore, release: HubUpdateRelease): void {
   if (release.phase !== 'awaiting_decision') return;
   const { runId, revision } = release;
   for (const origin of decisionRecipients(store, release))

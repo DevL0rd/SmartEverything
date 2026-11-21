@@ -3,7 +3,7 @@ import {
   type PhotoAiModels,
   type PhotoAiModelsUpdate,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { PHOTO_AI_DEFAULT_MODELS, PHOTOS_AI_SETTINGS_KEY } from './defaults';
 
 export class PhotoAiModelsUnreadableError extends Error {
@@ -15,7 +15,7 @@ export class PhotoAiModelsUnreadableError extends Error {
 }
 
 export class PhotoAiModelStore {
-  constructor(private readonly store: Pick<Store, 'settingsKv'>) {}
+  constructor(private readonly store: Pick<HostStore, 'settingsKv'>) {}
 
   read(): PhotoAiModels {
     const stored = this.store.settingsKv.read(PHOTOS_AI_SETTINGS_KEY);

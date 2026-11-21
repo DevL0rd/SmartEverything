@@ -28,11 +28,12 @@ export interface ToolHubOptions {
 }
 
 export function deviceLabel(store: Store, id: string): string | null {
-  const device = store.devices.find(id);
+  const { home } = store.live;
+  const device = home.devices.find(id);
   if (device === undefined) {
     return null;
   }
-  const room = device.room_id === null ? undefined : store.rooms.byId(device.room_id).name;
+  const room = device.room_id === null ? undefined : home.rooms.byId(device.room_id).name;
   const name = device.name.toLowerCase();
   if (room === undefined || name.includes(room.toLowerCase())) {
     return name;

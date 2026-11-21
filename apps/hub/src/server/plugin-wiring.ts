@@ -1,3 +1,4 @@
+import { background } from '@smarteverything/logging';
 import type { Server } from 'node:http';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { RunningExtension } from '../extensions';
@@ -108,25 +109,47 @@ function adminOf(
 }
 
 function followPorts(options: BuildOptions, context: ServerContext, host: PluginHost): () => void {
+  let order: Promise<void> = Promise.resolve();
   const sync = (): void => {
-    context.firewall.pluginsChanged(portNeedsOf(options.store.plugins.list()));
+    order = order
+      .then(async () => {
+        context.firewall.pluginsChanged(
+          portNeedsOf(await options.store.host.call('plugins', 'list')),
+        );
+      })
+      .catch((cause: unknown) => {
+        context.log.error('plugins.ports_sync_failed', cause);
+      });
   };
   sync();
   return host.changes(sync);
 }
 
 function followKinds(options: BuildOptions, context: ServerContext, host: PluginHost): () => void {
-  return followPluginKinds(
+  const failed = (cause: unknown): void => {
+    context.log.error('plugins.kinds_sync_failed', cause);
+  };
+  const following = followPluginKinds(
     context.hub.automationKinds,
     {
-      plugins: () => options.store.plugins.list(),
+      plugins: () => options.store.host.call('plugins', 'list'),
       loaded: (pluginId) => host.slot(pluginId) !== undefined,
       changes: (listener) => host.changes(listener),
     },
-    (pluginId, detail) => {
-      options.store.plugins.update(pluginId, { statusDetail: detail });
+    async (pluginId, detail) => {
+      await options.store.host.call('plugins', 'update', pluginId, { statusDetail: detail });
     },
+    failed,
   );
+  background(following, 'plugins.kinds_follow_failed');
+  return (): void => {
+    background(
+      following.then((follow) => {
+        follow.stop();
+      }),
+      'plugins.kinds_stop_failed',
+    );
+  };
 }
 
 function inboxOf(options: BuildOptions, context: ServerContext, host: PluginHost): PluginInbox {

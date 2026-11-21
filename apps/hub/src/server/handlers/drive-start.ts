@@ -3,7 +3,7 @@ import { finishCommitFromDisk } from '../../drive/commit-recovery';
 import { textTrigger } from '../../drive/content/text-job';
 import { recoverIntents } from '../../drive/intents';
 import { sweepOrphansAtStart } from '../../drive/orphans';
-import { readDriveSettings } from '../../drive/settings';
+import { loadDriveSettings } from '../../drive/settings';
 import { ensureDrives } from '../../drive/spaces';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import { sweepOrphanVersionsAtStart } from '../../drive/versions';
@@ -22,7 +22,7 @@ export interface RunningDrive {
 
 async function onlineDrives(deps: DriveDeps, runtime: DriveRuntime): Promise<StoredDrive[]> {
   const online: StoredDrive[] = [];
-  for (const root of deps.store.driveRoots.list()) {
+  for (const root of await deps.store.host.call('driveRoots', 'list')) {
     if ((await runtime.availability(root)) === 'online') {
       online.push(root);
     }
@@ -50,7 +50,7 @@ async function recoverFiles(deps: DriveDeps, runtime: DriveRuntime): Promise<voi
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 async function sweepRequestPartials(deps: DriveDeps, runtime: DriveRuntime): Promise<void> {
-  const olderThanMs = readDriveSettings(deps.store).uploadExpiryDays * DAY_MS;
+  const olderThanMs = (await loadDriveSettings(deps.store)).uploadExpiryDays * DAY_MS;
   for (const root of await onlineDrives(deps, runtime)) {
     const removed = await runtime.extras.intake.sweepStale(root, olderThanMs);
     if (removed > 0) deps.log.info('drive_file_request.swept', { rootId: root.id, removed });
@@ -75,7 +75,8 @@ class RootFollower {
   }
 
   async reconcileAll(): Promise<void> {
-    for (const root of this.deps.store.driveRoots.list()) await this.watch(root);
+    for (const root of await this.deps.store.host.call('driveRoots', 'list'))
+      await this.watch(root);
   }
 
   follow(): () => void {
@@ -94,7 +95,8 @@ class RootFollower {
 
   async ensureSpaces(): Promise<void> {
     const { store, layout } = this.deps;
-    for (const root of await ensureDrives(store, layout, store.profiles.list())) {
+    const profiles = await store.host.call('profiles', 'list');
+    for (const root of await ensureDrives(store, layout, profiles)) {
       await this.watch(root);
     }
   }
@@ -110,7 +112,7 @@ class RootFollower {
   }
 }
 
-function startExtras(deps: DriveDeps, runtime: DriveRuntime): () => void {
+async function startExtras(deps: DriveDeps, runtime: DriveRuntime): Promise<() => void> {
   const { extras, queue } = runtime;
   const stops = [
     extras.expiry.start(),
@@ -120,7 +122,8 @@ function startExtras(deps: DriveDeps, runtime: DriveRuntime): () => void {
       queue.enqueue({ kind: 'text', rootId });
     }),
   ];
-  for (const root of deps.store.driveRoots.list()) queue.enqueue({ kind: 'text', rootId: root.id });
+  for (const root of await deps.store.host.call('driveRoots', 'list'))
+    queue.enqueue({ kind: 'text', rootId: root.id });
   return (): void => {
     for (const stop of stops) stop();
   };
@@ -130,7 +133,7 @@ export async function startDrive(deps: DriveDeps): Promise<RunningDrive> {
   await assertPhotosFolderPrepared(deps.store.host);
   const runtime = createDrive(deps);
   const follower = new RootFollower(deps, runtime);
-  await ensureDrives(deps.store, deps.layout, deps.store.profiles.list());
+  await ensureDrives(deps.store, deps.layout, await deps.store.host.call('profiles', 'list'));
   await recoverFiles(deps, runtime);
   await runtime.media.start();
   runtime.purge.start();
@@ -140,7 +143,7 @@ export async function startDrive(deps: DriveDeps): Promise<RunningDrive> {
   await sweepRequestPartials(deps, runtime);
   await follower.reconcileAll();
   const unfollow = follower.follow();
-  const stopExtras = startExtras(deps, runtime);
+  const stopExtras = await startExtras(deps, runtime);
   return {
     routes: {
       ...driveRoutes(deps.store, runtime.services),

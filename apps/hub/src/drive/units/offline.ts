@@ -5,7 +5,7 @@ import {
   type DriveOfflineReport,
   type DriveOfflineSet,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { canRead, itemAccess, mayExport, type DriveActor } from '../access';
 import { requireExport } from '../sharing/export-guard';
@@ -22,7 +22,7 @@ const CHANGING: ReadonlySet<DriveFeedOp> = new Set([
 ]);
 
 type OfflineStore = Pick<
-  Store,
+  HostStore,
   | 'clients'
   | 'profiles'
   | 'driveOffline'

@@ -13,6 +13,7 @@ import { TurnStream } from '../../conversation/stream';
 import { ProviderReplies } from './replies';
 import { nativeProjectReadOnly } from './tool-validation';
 import { routeProviderTool, type ProviderGrant } from './tool-bridge';
+import { LiveCheck } from '../../../harness/live-check';
 import type { ComputerRunnerDeps } from './ports';
 import type { ComputerEvent } from './provider-state';
 import { CodexMessageText } from './codex-message-text';
@@ -29,22 +30,41 @@ export class NativeCommandOutput {
   private closed = false;
   private readonly input: AiNativeCommandWrite;
   private readonly failed: (reason: string) => void;
-  constructor(
-    private readonly deps: ComputerRunnerDeps,
-    private readonly chat: AiChatRow,
+  private readonly messageId: string;
+  static async open(
+    deps: ComputerRunnerDeps,
+    chat: AiChatRow,
     operation: { readonly input: AiNativeCommandWrite; readonly failed: (reason: string) => void },
-  ) {
+  ): Promise<NativeCommandOutput> {
     const { input } = operation;
-    this.input = input;
-    this.failed = operation.failed;
     if (chat.engine.kind !== 'claude' && chat.engine.kind !== 'codex')
       throw new ApiError('conflict', 'Command output requires a native provider chat.');
-    const authority = commandAuthority(deps, chat, input.scope);
-    manualCommandCaller(deps, chat, input);
-    this.grant = authority.grant;
-    const messageId = deps.store.assistantEvents.event(input.operation_id).message_id;
-    if (messageId === null)
+    const authority = await commandAuthority(deps, chat, input.scope);
+    await manualCommandCaller(deps, chat, input);
+    const event = await deps.store.host.call('assistantEvents', 'event', input.operation_id);
+    if (event.message_id === null)
       throw new ApiError('conflict', 'The native command lost its real manual request message.');
+    return new NativeCommandOutput(deps, chat, {
+      ...operation,
+      grant: authority.grant,
+      messageId: event.message_id,
+    });
+  }
+  private constructor(
+    private readonly deps: ComputerRunnerDeps,
+    private readonly chat: AiChatRow,
+    operation: {
+      readonly input: AiNativeCommandWrite;
+      readonly failed: (reason: string) => void;
+      readonly grant: ProviderGrant;
+      readonly messageId: string;
+    },
+  ) {
+    const { input, messageId } = operation;
+    this.input = input;
+    this.failed = operation.failed;
+    this.grant = operation.grant;
+    this.messageId = messageId;
     this.replies = new ProviderReplies(deps.conversation, chat, messageId, chat.engine.model);
     this.stream = new TurnStream(
       { chatId: chat.id, turnId: input.operation_id, messageId, profileId: chat.profile_id },
@@ -89,7 +109,7 @@ export class NativeCommandOutput {
   settle(receipt: AiNativeCommandReceipt): void {
     if (this.closed || ['pending', 'running'].includes(receipt.status)) return;
     this.closed = true;
-    const messageId = this.deps.store.assistantEvents.event(this.input.operation_id).message_id;
+    const { messageId } = this;
     this.written(
       this.deps.store.host.call('assistantEvents', 'mark', this.input.operation_id, 'answered_at'),
     );
@@ -137,23 +157,26 @@ export class NativeCommandOutput {
         );
       });
   }
-  private validateTool(write: boolean): void {
-    if (this.closed)
-      throw new ApiError('forbidden', 'This native command output is already closed.');
-    const chat = this.deps.store.aiChats.chat(this.chat.id);
-    manualCommandCaller(this.deps, chat, this.input);
-    if (JSON.stringify(chat.engine) !== JSON.stringify(this.chat.engine))
-      throw new ApiError('forbidden', 'The native command execution binding changed.');
-    if (write && nativeProjectReadOnly(this.deps, chat))
-      throw new ApiError('forbidden', 'The native permission allows reading project files only.');
+  private async validation(): Promise<LiveCheck<boolean>> {
+    return LiveCheck.start(this.deps.store, async (): Promise<boolean> => {
+      const chat = await this.deps.store.host.call('aiChats', 'chat', this.chat.id);
+      await manualCommandCaller(this.deps, chat, this.input);
+      if (JSON.stringify(chat.engine) !== JSON.stringify(this.chat.engine))
+        throw new ApiError('forbidden', 'The native command execution binding changed.');
+      return nativeProjectReadOnly(this.deps, chat);
+    });
   }
-  private route(
+  private async route(
     event: Extract<ComputerEvent, { kind: 'tool_call' }>,
   ): ReturnType<typeof routeProviderTool> {
-    return Promise.resolve().then(() =>
-      withManualCommand(
+    const live = await this.validation();
+    try {
+      return await withManualCommand(
         this.deps,
-        { chat: this.deps.store.aiChats.chat(this.chat.id), input: this.input },
+        {
+          chat: await this.deps.store.host.call('aiChats', 'chat', this.chat.id),
+          input: this.input,
+        },
         (caller) =>
           routeProviderTool(
             {
@@ -163,12 +186,20 @@ export class NativeCommandOutput {
               grant: this.grant,
               caller,
               validate: (write): void => {
-                this.validateTool(write);
+                if (this.closed)
+                  throw new ApiError('forbidden', 'This native command output is already closed.');
+                if (write && live.value())
+                  throw new ApiError(
+                    'forbidden',
+                    'The native permission allows reading project files only.',
+                  );
               },
             },
             event,
           ),
-      ),
-    );
+      );
+    } finally {
+      live.stop();
+    }
   }
 }

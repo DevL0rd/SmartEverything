@@ -1,7 +1,7 @@
 import type { PhotoFolderHide, PhotoFolders, PhotoHiddenFolders } from '@smarteverything/domain';
 import type { DriveActor } from '../drive/access';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { listFolders } from './folder-list';
 import { PhotoFolderStore } from './folder-store';
 
@@ -9,7 +9,7 @@ export class PhotoFolderService {
   private readonly folders: PhotoFolderStore;
 
   constructor(
-    private readonly store: Pick<Store, 'context' | 'feed' | 'write'>,
+    private readonly store: Pick<HostStore, 'context' | 'feed' | 'write'>,
     private readonly now: () => Date,
   ) {
     this.folders = new PhotoFolderStore(store.context.sql);

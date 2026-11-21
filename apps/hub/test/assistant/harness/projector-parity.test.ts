@@ -30,7 +30,7 @@ interface Conversation {
   readonly claim: DshWriterClaim;
   readonly sessionId: string;
   readonly append: (events: readonly Omit<DshSessionEvent, 'seq'>[]) => Promise<void>;
-  readonly send: (body: Record<string, unknown>) => void;
+  readonly send: (body: Record<string, unknown>) => Promise<void>;
 }
 
 async function conversation(): Promise<Conversation> {
@@ -78,16 +78,16 @@ async function conversation(): Promise<Conversation> {
         { claim: open.claim, expected_next_seq: appended.next_seq },
         principal,
       );
+      await rig.service.ingested();
     },
-    send: (body): void => {
+    send: (body): Promise<void> =>
       rig.service.native(
         HARNESS_NATIVE_FRAME.parse({
           session_id: open.claim.session_id,
           epoch: open.claim.epoch,
           ...body,
         }),
-      );
-    },
+      ),
   };
 }
 
@@ -202,27 +202,25 @@ async function liveTurn(ending: JsonValue): Promise<unknown> {
       emit: (): void => undefined,
       finished: (): void => undefined,
     },
-    (): void => undefined,
-    (): void => undefined,
+    (): Promise<void> => Promise.resolve(),
+    (): Promise<void> => Promise.resolve(),
     () => Promise.resolve(),
   );
-  const off = rig.service.onEvent((event) => {
-    streams.received(event);
-  });
+  const off = rig.service.onEvent(streams.received);
   const done = streams.start(live.event, live.chat, live.reply.id);
-  live.send({ kind: 'open' });
+  await live.send({ kind: 'open' });
   await live.append(log['claim'] ?? []);
-  live.send({ kind: 'input', message_id: live.event.id, turn: 1 });
-  live.send({ kind: 'status', status: 'running', work: [] });
+  await live.send({ kind: 'input', message_id: live.event.id, turn: 1 });
+  await live.send({ kind: 'status', status: 'running', work: [] });
   await live.append(log['prompt'] ?? []);
-  live.send({ kind: 'attempt', id: 'a:1', state: 'started' });
-  live.send({ kind: 'reasoning', delta: 'Thinking. ' });
-  live.send({ kind: 'text', delta: 'Looking. ' });
-  live.send({ kind: 'attempt', id: 'a:1', state: 'committed' });
+  await live.send({ kind: 'attempt', id: 'a:1', state: 'started' });
+  await live.send({ kind: 'reasoning', delta: 'Thinking. ' });
+  await live.send({ kind: 'text', delta: 'Looking. ' });
+  await live.send({ kind: 'attempt', id: 'a:1', state: 'committed' });
   await live.append(log['first'] ?? []);
-  live.send({ kind: 'attempt', id: 'a:2', state: 'started' });
-  live.send({ kind: 'text', delta: 'Done.' });
-  live.send({ kind: 'attempt', id: 'a:2', state: 'committed' });
+  await live.send({ kind: 'attempt', id: 'a:2', state: 'started' });
+  await live.send({ kind: 'text', delta: 'Done.' });
+  await live.send({ kind: 'attempt', id: 'a:2', state: 'committed' });
   await live.append(log['second'] ?? []);
   await live.append(log['end'] ?? []);
   await done;

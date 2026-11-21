@@ -1,6 +1,7 @@
 import {
   API_ENDPOINTS as E,
   ApiError,
+  type PlannerAlarmSound,
   type PlannerPreferences,
   type PlannerRingRow,
 } from '@smarteverything/domain';
@@ -14,9 +15,16 @@ import type { Caller } from '../auth';
 import { refusal } from '../person-access';
 import { subjectOf } from '../person-scope';
 import { DONE_REPLY, bound, type RouteOf } from '../router';
-import { requireSound } from './planner-alarm-checks';
 import { plannerProfileFor, type PlannerContext } from './planner-profile';
 import type { Checked } from './planner-shared-units';
+
+async function requireSound(
+  sounds: Pick<AlarmSoundCheck, 'assertUsable'>,
+  profileId: string,
+  sound: PlannerAlarmSound | undefined,
+): Promise<void> {
+  if (sound !== undefined) await sounds.assertUsable(profileId, sound);
+}
 
 export interface PlannerClockDependencies {
   readonly preferencesOf: (profileId: string) => Promise<PlannerPreferences>;

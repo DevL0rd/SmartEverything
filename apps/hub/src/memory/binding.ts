@@ -17,7 +17,7 @@ export function bindHubMemory(
       service,
       new HarnessMemorySessions(
         callers,
-        messageOfEvent(store.assistantEvents),
+        messageOfEvent(store),
         async (id) => (await store.host.call('assistantChat', 'message', id)).text,
       ),
     ),

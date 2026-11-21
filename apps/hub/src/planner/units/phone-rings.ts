@@ -11,11 +11,11 @@ import { Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
 import { clientIdOfPhone } from '../../phones/phone-device';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { AlarmSounds, DEFAULT_TONE } from '../alarm-sound';
 import { ringSetOf } from '../phone-ring-set';
 import type { PHONE_RING_ALARM, PHONE_RING_TIMER, PhoneRingSet } from '../phone-rings';
-import { plannerPreferencesOf } from '../preferences';
+import { plannerPreferencesOf } from './preferences-of';
 
 const log = new Logger('hub.planner');
 
@@ -60,7 +60,7 @@ function byId<T extends { readonly id: string }>(left: T, right: T): number {
   return left.id.localeCompare(right.id);
 }
 
-function clientOf(store: Store, target: PlannerRingTarget): string | null {
+function clientOf(store: HostStore, target: PlannerRingTarget): string | null {
   if (target.kind === 'client') {
     return target.clientId;
   }
@@ -68,12 +68,12 @@ function clientOf(store: Store, target: PlannerRingTarget): string | null {
   return device?.kind === 'phone' ? clientIdOfPhone(device.external_id) : null;
 }
 
-function hasRings(store: Store, clientId: string): boolean {
+function hasRings(store: HostStore, clientId: string): boolean {
   const platform = store.clients.find(clientId)?.platform;
   return platform === 'android' || platform === 'desktop';
 }
 
-function reaches(store: Store, row: Targeted, clientId: string): boolean {
+function reaches(store: HostStore, row: Targeted, clientId: string): boolean {
   return row.targets.some((target) => clientOf(store, target) === clientId);
 }
 
@@ -88,7 +88,7 @@ function mediaOf(
   return [...new Set([...entries, ...ending])].sort();
 }
 
-function desired(store: Store, clientId: string): PhoneRingSet {
+function desired(store: HostStore, clientId: string): PhoneRingSet {
   const profileId = store.clients.find(clientId)?.profile_id ?? null;
   const preferences = profileId === null ? null : plannerPreferencesOf(store, profileId);
   const alarms = store.plannerAlarms
@@ -119,7 +119,7 @@ export interface PhoneRingRead {
 }
 
 function readRings(
-  store: Store,
+  store: HostStore,
   {
     clientId,
     profileId,
@@ -137,7 +137,7 @@ function readRings(
 }
 
 function ringClientsOf(
-  store: Store,
+  store: HostStore,
   { targets }: { readonly targets: readonly PlannerRingTarget[] },
 ): string[] {
   const clients = new Set<string>();

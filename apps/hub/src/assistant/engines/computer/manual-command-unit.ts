@@ -6,16 +6,12 @@ import {
 } from '@smarteverything/domain';
 import { durableStoreUnit } from '../../../store/host/unit';
 import { assertHeldQueued, type HeldChats } from '../../../store/repositories/ai-chat-removal-hold';
-import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 import { personMessage } from '../../conversation-log';
 import { applyReplyOp } from '../../reply-records';
 import { addConversationMessage } from '../../store-units';
-import {
-  admitExecutionOn,
-  executionRole,
-  issueEventAuthority,
-  type AuthorityScope,
-} from '../../turn-authority';
+import { admitExecutionOn, executionRole, type AuthorityScope } from '../../turn-authority';
+import { issueEventAuthority } from '../../event-authority-issue';
 
 export interface ManualCommandRetention {
   readonly chat: AiChatRow;
@@ -28,7 +24,7 @@ export interface ManualCommandRetention {
   readonly localDevice: string | null;
 }
 
-function retain(store: Store, retention: ManualCommandRetention): void {
+function retain(store: HostStore, retention: ManualCommandRetention): void {
   const { chat, client, input } = retention;
   if (client.id !== input.scope.client_id)
     throw new ApiError('forbidden', 'The native command has another initiating manual event.');

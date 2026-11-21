@@ -7,7 +7,7 @@ import {
 import type { Store } from '../store/store';
 import { chatContext, transcriptLine } from '../assistant/conversation/history';
 import { attachmentNote } from '@smarteverything/domain';
-import { machineLabel, machineOfClient, ownScreenRule, type Machine } from '../assistant/machine';
+import { machineLabel, machineOf, ownScreenRule, type Machine } from '../assistant/machine';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { PromptFacts } from '../assistant/conversation/prompt';
 import { facts, stableFacts } from '../assistant/prompt-facts';
@@ -35,7 +35,7 @@ export async function callerOf(store: Store, client: ClientRow, device: string):
     profileId: profile.id,
     person: profile.name,
     device,
-    machine: machineOfClient(store, client),
+    machine: await machineOf(store, client),
   };
 }
 
@@ -89,7 +89,7 @@ async function linesOf(store: Store, row: AssistantMessageRow): Promise<string[]
 
 export async function historyOf(store: Store, chatId: string): Promise<string[]> {
   const budget = historyCharacters(store.live.home.assistant.read());
-  const { summary, rows } = chatContext(store, chatId);
+  const { summary, rows } = await chatContext(store, chatId);
   const lines = (await Promise.all(rows.map((row) => linesOf(store, row)))).flat();
   const kept = newest(lines, budget);
   const summaryLine =
@@ -142,10 +142,10 @@ async function contextOf(input: NoteInput): Promise<PromptFacts> {
   const { store, caller } = input;
   const chat = await store.host.call('aiChats', 'chat', input.chatId);
   return {
-    ...facts(store, chat, input.tools, {
+    ...(await facts(store, chat, input.tools, {
       now: input.now,
       clientId: null,
-    }),
+    })),
     role: caller.role,
     sender: caller.machine === null ? caller.device : machineLabel(caller.machine),
     interruption: null,
@@ -160,7 +160,7 @@ export async function noteOf(input: NoteInput): Promise<VoiceNote> {
     screenRule: caller.machine === null ? null : ownScreenRule(caller.machine),
     place: input.place,
     recentSpeech: input.recentSpeech,
-    memories: input.memory.recall(callPrincipal({ ...caller, chatId: input.chatId })),
+    memories: await input.memory.recall(callPrincipal({ ...caller, chatId: input.chatId })),
     history: known === null ? history : history.filter((line) => !known.has(line)),
     since: known === null ? 'start' : 'last_talk',
     starting: input.starting,

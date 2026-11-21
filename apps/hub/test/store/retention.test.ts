@@ -1,7 +1,7 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { openStore } from '../../src/store/store';
-import { sweepRetention } from '../../src/store/retention';
+import { sweepRetention } from '../support/retention-sweep';
 import { AiOutreachRepository } from '../../src/store/repositories/ai-outreach';
 import { AiWakesRepository } from '../../src/store/repositories/ai-wakes';
 import { AppSessionsRepository } from '../../src/store/repositories/app-sessions';
@@ -158,10 +158,10 @@ describe('the store sweep', () => {
     await rm(directory, { recursive: true, force: true });
   });
 
-  it('waits for the hub to start serving, then sweeps and repeats every day', () => {
+  it('waits for the hub to start serving, then sweeps and repeats every day', async () => {
     let now = DAY_ZERO;
-    const open = (): ReturnType<typeof openStore> =>
-      openStore({
+    const open = (): ReturnType<typeof openSeededStore> =>
+      openSeededStore({
         host: testStoreHost(),
         path: join(directory, 'sweep.db'),
         log: testLogger('store'),
@@ -169,7 +169,7 @@ describe('the store sweep', () => {
         systemTimeZone: 'UTC',
         driveFolders: null,
       });
-    const wake = (store: ReturnType<typeof openStore>, profile: string): void => {
+    const wake = (store: Awaited<ReturnType<typeof openSeededStore>>, profile: string): void => {
       store.aiWakes.add({
         profile_id: profile,
         chat_id: null,
@@ -181,19 +181,23 @@ describe('the store sweep', () => {
         reason: null,
       });
     };
-    const first = open();
+    const first = await open();
     const profile = first.profiles.first().id;
     wake(first, profile);
-    first.close();
+    await closedStore(first);
     now = DAY_ZERO + 91 * DAY;
-    const store = open();
+    const store = await open();
     expect(store.aiWakes.recent(profile, 10)).toHaveLength(1);
     store.startRetention();
-    expect(store.aiWakes.recent(profile, 10)).toHaveLength(0);
+    await vi.waitFor(() => {
+      expect(store.aiWakes.recent(profile, 10)).toHaveLength(0);
+    });
     wake(store, profile);
     now += 91 * DAY;
     vi.advanceTimersByTime(DAY);
-    expect(store.aiWakes.recent(profile, 10)).toHaveLength(0);
-    store.close();
+    await vi.waitFor(() => {
+      expect(store.aiWakes.recent(profile, 10)).toHaveLength(0);
+    });
+    await closedStore(store);
   });
 });

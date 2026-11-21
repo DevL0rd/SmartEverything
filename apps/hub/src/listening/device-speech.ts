@@ -86,31 +86,31 @@ export class DeviceSpeech {
     this.chains.set(deviceId, chain);
   }
 
-  private pauseOf(): TranscriptPauseReason | null {
+  private async pauseOf(): Promise<TranscriptPauseReason | null> {
     if (!this.options.keyPresent()) {
       return 'no_openrouter_key';
     }
-    return this.options.budget.capReached() ? 'cap_reached' : null;
+    return (await this.options.budget.capReached()) ? 'cap_reached' : null;
   }
 
   private async handle(deviceId: string, segment: SpeechSegment): Promise<void> {
-    const reason = this.pauseOf();
+    const reason = await this.pauseOf();
     this.noteReason(deviceId, reason);
     if (reason !== null) {
       return;
     }
     const text = await this.options.transcriber.transcribe({
       pcm16k: segment.pcm,
-      profileId: await this.profileOf(deviceId),
+      profileId: this.profileOf(deviceId),
       pluginId: null,
       names: this.options.names(),
-      recent: this.recentLines(deviceId),
+      recent: await this.recentLines(deviceId),
       meta: { listening: this.options.source, device_id: deviceId },
     });
     if (text === null || this.unheard(deviceId, text, segment.startedAt)) {
       return;
     }
-    this.options.transcripts.add(this.sessionOf(deviceId).id, {
+    await this.options.transcripts.add((await this.sessionOf(deviceId)).id, {
       at: new Date(segment.startedAt).toISOString(),
       ended_at: new Date(segment.endedAt).toISOString(),
       timing: 'wall_clock',
@@ -155,27 +155,31 @@ export class DeviceSpeech {
     this.options.paused(deviceId, reason);
   }
 
-  private recentLines(deviceId: string): string[] {
+  private async recentLines(deviceId: string): Promise<string[]> {
     const open = this.open.get(deviceId);
-    if (open === undefined || this.options.transcripts.find(open.sessionId) === undefined) {
+    if (open === undefined || (await this.options.transcripts.find(open.sessionId)) === undefined) {
       return [];
     }
-    return this.options.transcripts
-      .recent(open.sessionId, CONTEXT_WINDOW_MS, CONTEXT_LINES)
-      .map((line) => line.text);
+    const lines = await this.options.transcripts.recent(
+      open.sessionId,
+      CONTEXT_WINDOW_MS,
+      CONTEXT_LINES,
+    );
+    return lines.map((line) => line.text);
   }
 
-  private sessionOf(deviceId: string): TranscriptSession {
+  private async sessionOf(deviceId: string): Promise<TranscriptSession> {
     const day = this.dayOf();
     const held = this.open.get(deviceId);
-    const session = held === undefined ? undefined : this.options.transcripts.find(held.sessionId);
+    const session =
+      held === undefined ? undefined : await this.options.transcripts.find(held.sessionId);
     if (held?.day === day && session?.ended_at === null) {
       return session;
     }
     if (session !== undefined) {
-      this.options.transcripts.close(session.id);
+      await this.options.transcripts.close(session.id);
     }
-    const opened = this.options.transcripts.open({
+    const opened = await this.options.transcripts.open({
       source: this.options.source,
       sourceId: deviceId,
       pluginId: null,
@@ -186,11 +190,11 @@ export class DeviceSpeech {
     return opened;
   }
 
-  private async profileOf(deviceId: string): Promise<string> {
+  private profileOf(deviceId: string): string {
     const { home } = this.options.store.live;
     const device = home.devices.find(deviceId);
     const person = device === undefined ? null : personOfDevice(home, device);
-    return person ?? (await this.options.store.host.call('personAccess', 'homeOwner'));
+    return person ?? this.options.store.live.access.homeOwner();
   }
 
   private nameOf(deviceId: string): string {

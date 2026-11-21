@@ -105,7 +105,7 @@ beforeEach(async () => {
   ramp = new SunriseRamp({
     store: test.store,
     clock,
-    submit: (commands): never[] => {
+    submit: (commands): Promise<never[]> => {
       sent.push(
         commands.map((command) => ({
           deviceId: command.deviceId,
@@ -113,7 +113,7 @@ beforeEach(async () => {
           value: command.value,
         })),
       );
-      return [];
+      return Promise.resolve([]);
     },
     log: testLogger('sunrise'),
   });
@@ -240,7 +240,7 @@ describe('the sunrise ramp', () => {
     const quiet = new SunriseRamp({
       store: test.store,
       clock,
-      submit: (): never[] => [],
+      submit: (): Promise<never[]> => Promise.resolve([]),
       log: testLogger('sunrise'),
     });
     quiet.arm(alarmWith(['0e000000-0000-4000-8000-000000000009'], 10, false), RING);

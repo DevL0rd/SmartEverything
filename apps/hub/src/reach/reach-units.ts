@@ -6,7 +6,7 @@ import {
   type ReachPresence,
 } from '@smarteverything/domain';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 export interface PresenceDevice {
   readonly id: string;
@@ -27,13 +27,13 @@ export interface AppTarget {
   readonly owner: string;
 }
 
-function clientsOf(store: Store, personId: string): ClientRow[] {
+function clientsOf(store: HostStore, personId: string): ClientRow[] {
   return store.clients
     .list()
     .filter((client) => store.profiles.activeOf(client.id).id === personId);
 }
 
-function channelsOf(store: Store, clientIds: ReadonlySet<string>): ReachPresence['channels'] {
+function channelsOf(store: HostStore, clientIds: ReadonlySet<string>): ReachPresence['channels'] {
   const joined = new Set(
     store.talk
       .members()

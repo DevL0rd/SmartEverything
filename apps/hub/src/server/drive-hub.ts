@@ -1,6 +1,6 @@
 import { join } from 'node:path';
-import { ApiError, PHOTOS_CLIENT_PREFS, type DriveChange } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { ApiError, type DriveChange } from '@smarteverything/domain';
+import { background, type Logger } from '@smarteverything/logging';
 import { PlacementLifecycle } from '../drive/placement-lifecycle';
 import type { DrivePlacements } from '../drive/placements';
 import type { DriveActor } from '../drive/access';
@@ -40,7 +40,7 @@ class DriveNotStartedError extends Error {
 class WriteSlot {
   private write: DriveWriteService | null = null;
 
-  constructor(private readonly store: Pick<Store, 'personAccess'>) {}
+  constructor(private readonly store: Pick<Store, 'host'>) {}
 
   attach(write: DriveWriteService): void {
     this.write = write;
@@ -48,14 +48,14 @@ class WriteSlot {
 
   async change(actor: DriveActor, change: DriveChange): Promise<void> {
     if (this.write === null) throw new DriveNotStartedError();
-    const standing = this.store.personAccess.standing(actor.profileId);
+    const standing = await this.store.host.call('personAccess', 'standing', actor.profileId);
     const owner = standing.known && standing.role === 'owner';
     await this.write.change({ ...actor, owner, via: 'app', deviceId: null }, change);
   }
 }
 
-function corruptionAlert(store: Store, corruption: ScrubCorruption): OwnerAlert {
-  const drive = store.driveRoots.byId(corruption.rootId);
+async function corruptionAlert(store: Store, corruption: ScrubCorruption): Promise<OwnerAlert> {
+  const drive = await store.host.call('driveRoots', 'byId', corruption.rootId);
   const data = { rootId: corruption.rootId, itemId: corruption.itemId };
   if (corruption.cause === 'filesystem') {
     return {
@@ -94,15 +94,6 @@ function lanUrlOf(context: ServerContext): string {
   return reachable.url;
 }
 
-function removesLocation(store: Store, sharedBy: string): boolean {
-  const read = store.personal.pref(PHOTOS_CLIENT_PREFS.photos, {
-    clientId: sharedBy,
-    profileId: sharedBy,
-  });
-  if (read.status === 'invalid') throw new Error(read.reason);
-  return read.value.removeLocationOutside;
-}
-
 function depsOf(
   options: BuildOptions,
   context: ServerContext,
@@ -112,13 +103,16 @@ function depsOf(
   return {
     store,
     parts: {
-      context: store.context,
-      database: store.database,
-      conflicts: store.driveConflicts,
       listings: driveListings({ store, read: new DriveReadService(store), duplicates }),
-      removeLocationOutside: (sharedBy) => removesLocation(store, sharedBy),
+      removeLocationOutside: (sharedBy) => store.host.read('driveRemovesLocation', { sharedBy }),
       notifyCorruption: (corruption): void => {
-        options.alerts.raise(corruptionAlert(store, corruption));
+        background(
+          corruptionAlert(store, corruption).then((alert) => {
+            options.alerts.raise(alert);
+          }),
+          'drive.corruption_alert_failed',
+          { rootId: corruption.rootId, itemId: corruption.itemId },
+        );
       },
     },
     layout: options.layout,
@@ -149,7 +143,7 @@ function placementsOf(store: Store, placements: DrivePlacements, log: Logger): S
 
 function permittedCameras(store: Store, context: ServerContext): () => readonly string[] {
   return () =>
-    store.cameras
+    store.live.home.cameras
       .list()
       .map((camera) => camera.device_id)
       .filter((deviceId) => context.firewall.blockingAddress(deviceId) === null);

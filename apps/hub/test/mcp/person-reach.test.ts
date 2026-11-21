@@ -47,12 +47,13 @@ afterEach(async () => {
   await opened.close();
 });
 
-function limit(scopes: Partial<AccessScopes>): void {
+async function limit(scopes: Partial<AccessScopes>): Promise<void> {
   opened.store.personAccess.change(profileId, {
     role: 'member',
     template: 'child',
     scopes: { ...TEMPLATE_SCOPES.adult, ...scopes },
   });
+  await opened.store.live.access.settled();
 }
 
 function member(): Pick<ToolContext, 'store' | 'actor' | 'caller'> {
@@ -67,9 +68,9 @@ function areaOf(tool: string): McpToolArea {
 }
 
 describe('the areas the AI of a person reaches', () => {
-  it('hides the tools of a missing area from a member AI and keeps them for an owner AI', () => {
+  it('hides the tools of a missing area from a member AI and keeps them for an owner AI', async () => {
     const area = areaOf('device_find');
-    limit({ areas: TEMPLATE_SCOPES.adult.areas.filter((one) => one !== area) });
+    await limit({ areas: TEMPLATE_SCOPES.adult.areas.filter((one) => one !== area) });
     expect(toolInScope(member(), 'device_find')).toBe(false);
     expect(toolInScope(member(), 'home_read')).toBe(areaOf('home_read') !== area);
     const ownerActor: ToolActor = { clientId: null, profileId, role: 'owner', chatId: null };
@@ -81,8 +82,8 @@ describe('the areas the AI of a person reaches', () => {
     );
   });
 
-  it('cuts a grant to the areas the person also holds and says whose limit it was', () => {
-    limit({ areas: ['home', 'devices'] });
+  it('cuts a grant to the areas the person also holds and says whose limit it was', async () => {
+    await limit({ areas: ['home', 'devices'] });
     const context = {
       ...member(),
       caller: {
@@ -106,17 +107,18 @@ describe('the areas the AI of a person reaches', () => {
     );
   });
 
-  it('gives a person the areas their scopes name and none when the row cannot be read', () => {
-    limit({ areas: ['home'] });
+  it('gives a person the areas their scopes name and none when the row cannot be read', async () => {
+    await limit({ areas: ['home'] });
     expect(reachableAreas(member())).toStrictEqual(['home']);
     opened.store.personAccess.change(profileId, { scopes: TEMPLATE_SCOPES.child });
+    await opened.store.live.access.settled();
     expect(reachableAreas(member())).toStrictEqual(TEMPLATE_SCOPES.child.areas);
   });
 });
 
 describe('the devices the AI of a person sees and targets', () => {
   it('lists, finds and places only the devices in scope and refuses a hidden one by id', async () => {
-    limit({ devices: { mode: 'only', rooms: [], devices: [home.lamp.id] } });
+    await limit({ devices: { mode: 'only', rooms: [], devices: [home.lamp.id] } });
     const scope = deviceScopeOfActor(member());
     expect(scope).not.toBeNull();
     expect(
@@ -157,7 +159,7 @@ describe('the devices the AI of a person sees and targets', () => {
     ]);
     opened.store.deviceGroups.create({ name: 'Both', device_ids: [home.lamp.id, home.camera.id] });
     opened.store.deviceGroups.create({ name: 'Lamp', device_ids: [home.lamp.id] });
-    limit({ devices: { mode: 'except', rooms: [home.hall.id], devices: [] } });
+    await limit({ devices: { mode: 'except', rooms: [home.hall.id], devices: [] } });
     const scope = deviceScopeOfActor(member());
     expect(await eventsOf(opened.store, scope, OWNER, { limit: 50 })).toStrictEqual([]);
     expect(await eventsOf(opened.store, null, OWNER, { limit: 50 })).toHaveLength(1);

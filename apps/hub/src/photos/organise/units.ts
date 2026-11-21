@@ -2,7 +2,7 @@ import type { LibraryScope, PhotoDescriptionSet, PhotoItemIds } from '@smartever
 import { homeZone } from '../../automations/world-v3/zone';
 import type { DriveActor } from '../../drive/access';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { PageQuery } from '../library';
 import { ArchiveService } from './archive';
 import { DescriptionEditor } from './description';
@@ -25,7 +25,7 @@ export interface Picked {
   readonly request: PhotoItemIds;
 }
 
-function pagesOf(store: Store): OrganisePages {
+function pagesOf(store: HostStore): OrganisePages {
   return new OrganisePages(store.context, () => homeZone(store));
 }
 

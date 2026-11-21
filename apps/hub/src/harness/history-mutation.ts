@@ -12,6 +12,7 @@ import { readNativeHistory } from '@smarteverything/harness/process';
 import { ApiError, DSH_SESSION_EVENTS_WRITE, JSON_VALUE } from '@smarteverything/domain';
 import type { AiChatRow, AssistantMessageRow, DshSessionEvent } from '@smarteverything/domain';
 import type { HarnessService } from './service';
+import type { HarnessDelivery } from '../store/repositories/harness-deliveries';
 
 const DATA = z.record(z.string(), JSON_VALUE);
 const REMOVAL = z.object({ removed: z.array(z.int().nonnegative()) });
@@ -54,36 +55,29 @@ export async function rewriteNativeHistory(
 ): Promise<void> {
   if (chat.engine.kind !== 'dsh' || chat.engine.session_id === null) return;
   const id = chat.engine.session_id;
-  const metadata = service.store.dshSessions.stat(id, chat.profile_id);
-  if (metadata?.chat_id !== chat.id)
+  const read = await service.store.host.read('harnessHistoryRead', {
+    session_id: id,
+    profile_id: chat.profile_id,
+    message_ids: rows.map((row) => row.id),
+  });
+  if (read.metadata?.chat_id !== chat.id)
     throw new ApiError('forbidden', 'Native history belongs to another conversation.');
-  const history = nativeHistory(service, chat, id);
+  const history = readNativeHistory(read.metadata.header, read.events);
   const removed = new Set(editedSequences(history));
   const priorRemoved = removed.size;
-  for (const row of rows)
-    for (const seq of removedSequences(service, id, row, history)) removed.add(seq);
+  for (const [index, row] of rows.entries())
+    for (const seq of removedSequences(id, row, read.cuts[index], history)) removed.add(seq);
   if (removed.size === priorRemoved) return;
   const replacements = replacementEvents(history, removed);
   if (replacements.length === 0) return;
   await service.store.live.dshSessions.rewrite(id, chat.profile_id, replacements);
 }
-function nativeHistory(
-  service: HarnessService,
-  chat: AiChatRow,
-  id: string,
-): ReturnType<typeof readNativeHistory> {
-  return readNativeHistory(
-    service.store.dshSessions.stat(id, chat.profile_id)?.header,
-    service.store.dshSessions.readAll(id, chat.profile_id),
-  );
-}
 function removedSequences(
-  service: HarnessService,
   id: string,
   row: AssistantMessageRow,
+  cut: HarnessDelivery | undefined,
   history: ReturnType<typeof readNativeHistory>,
 ): readonly number[] {
-  const cut = service.store.harnessDeliveries.cutOfMessage(row.id);
   const imported = history.findIndex(
     (event) =>
       hasType(event, 'plugin:smarteverything/legacy-message') &&

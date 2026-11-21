@@ -143,7 +143,7 @@ export function importIcs(): Selection {
           profileId,
           collectionId: collection.id,
           text: input.ics,
-          defaultZone: store.settings.read().time_zone,
+          defaultZone: store.live.home.settings.read().time_zone,
         });
       } catch (cause) {
         if (cause instanceof IcalParseError) throw new ToolError(cause.message);

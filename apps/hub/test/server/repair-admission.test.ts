@@ -3,7 +3,6 @@ import type { AiChatRow } from '@smarteverything/domain';
 import { Logger, type LogRecord } from '@smarteverything/logging';
 import { ChatDirectory } from '../../src/assistant/chat-directory';
 import { AssistantFiles } from '../../src/assistant/files';
-import { ConversationLog } from '../../src/assistant/conversation-log';
 import { RepairDispatch } from '../../src/assistant/repair-dispatch';
 import { startRepair } from '../../src/server/repair-wiring';
 import { runtimeLogRoutes } from '../../src/server/handlers/runtime-logs';
@@ -47,7 +46,7 @@ function directory(): ChatDirectory {
     opened.store,
     new AssistantFiles({
       layout: opened.layout,
-      chat: opened.store.assistantChat,
+      store: opened.store,
       attachments: opened.store.live.attachments,
       now: () => new Date(NOW),
     }),
@@ -57,8 +56,7 @@ function directory(): ChatDirectory {
 function start(chats: ChatDirectory): void {
   const repair = new RepairDispatch({
     store: opened.store,
-    conversation: new ConversationLog(opened.store),
-    repairChat: (profileId): AiChatRow => chats.repairChat(profileId),
+    repairChat: (profileId): Promise<AiChatRow> => chats.repairChat(profileId),
     added: (): undefined => undefined,
   });
   stop = startRepair(
@@ -112,7 +110,7 @@ it('routes app evidence by its authenticated profile identity with two owners', 
   const events = store.assistantEvents.pending();
   expect(events[0]).toMatchObject({
     profile_id: profile.id,
-    chat_id: chats.repairChat(profile.id).id,
+    chat_id: (await chats.repairChat(profile.id)).id,
   });
   expect(store.aiChats.chat(events[0]?.chat_id ?? '').profile_id).toBe(profile.id);
 });
@@ -153,7 +151,7 @@ it('retains failed automatic attempts finitely and retries only after a committe
   expect(records.filter((record) => record.event === 'repair.admission_failed')).toHaveLength(2);
   await store.live.engineDefaults.update(TEST_ENGINE);
   await expect.poll(() => store.assistantEvents.pending(), HOSTED).toHaveLength(2);
-  const chat = chats.repairChat(store.personAccess.homeOwner());
+  const chat = await chats.repairChat(store.personAccess.homeOwner());
   expect(store.assistantEvents.pending().every((event) => event.chat_id === chat.id)).toBe(true);
   owned.flush();
   await logs.settled();
@@ -165,8 +163,7 @@ it('keeps the durable queued admission when waking delivery fails after enqueue'
   const chats = directory();
   const repair = new RepairDispatch({
     store,
-    conversation: new ConversationLog(store),
-    repairChat: (profileId): AiChatRow => chats.repairChat(profileId),
+    repairChat: (profileId): Promise<AiChatRow> => chats.repairChat(profileId),
     added: (): never => {
       throw new Error('Delivery wake failed');
     },

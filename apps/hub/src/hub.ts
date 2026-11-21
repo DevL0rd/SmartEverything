@@ -25,7 +25,8 @@ import type { Rehearsals } from './server/handlers/automation-runs';
 import type { WorldMirror } from './automations/world-v3/world-mirror';
 import type { SignalBus } from './signals/bus';
 import { feedSignals } from './signals/sources/feed';
-import { feedContextOf } from './signals/sources/feed-context';
+import { feedContextOf, type FeedContext } from './signals/sources/feed-context';
+import { sleepEndAsk, sleepEndedSignal, type SleepEndAsk } from './signals/sources/health';
 import { recentSleepEnd } from './signals/sources/sleep-end';
 import { ScaleReadings } from './local/scale-readings';
 import type { BluetoothIdentity } from './local/setup-types';
@@ -36,13 +37,14 @@ import type { ProviderManager } from './providers/manager';
 import type { NewCommand } from './store/repositories/commands';
 import type { VacuumRouteServices } from './server/handlers/vacuums';
 import { background } from '@smarteverything/logging';
+import { currentExecutionAuthority } from './assistant/turn-authority';
 
 export type { HubParts };
 
 export interface RunningHub {
   readonly providersStarted: Promise<void>;
   readonly resumed: Promise<void>;
-  readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
+  readonly submit: (commands: readonly NewCommand[]) => Promise<CommandRow[]>;
   readonly recordEvent: (event: Omit<EventInsert, 'occurredAt'>) => Promise<string>;
   readonly endDeviceEffect: (id: string) => Promise<void>;
   readonly answerOffer: (
@@ -131,14 +133,13 @@ function reacting(parts: HubParts, core: Core): (change: RowChange) => void {
     core.outages.observe(change);
     core.vacuums.rowChanged(change);
     const now = parts.clock.now();
-    const moment = feedContextOf(
-      now,
-      () => parts.store.settings.read().time_zone,
-      (profileId) => recentSleepEnd(parts.store, profileId, now),
-    );
+    const moment = feedContextOf(now, () => parts.store.live.home.settings.read().time_zone);
     for (const signal of feedSignals(change, moment)) {
       core.signals.emit(signal);
     }
+    const sleep = sleepEndAsk(change, moment);
+    if (sleep !== null)
+      background(sleepEnded(parts, core, sleep, moment), 'signals.sleep_end_failed');
     try {
       reloadAutomations(core, change);
     } catch (cause) {
@@ -277,6 +278,56 @@ async function caughtUp(parts: HubParts, core: Core): Promise<void> {
   core.automationTimers.start();
 }
 
+async function sleepEnded(
+  parts: HubParts,
+  core: Core,
+  ask: SleepEndAsk,
+  moment: FeedContext,
+): Promise<void> {
+  const endedAt = await recentSleepEnd(parts.store.host, ask.profileId, new Date(moment.at));
+  if (endedAt !== null) core.signals.emit(sleepEndedSignal(moment, ask, endedAt));
+}
+
+async function submitted(
+  parts: HubParts,
+  core: Core,
+  commands: readonly NewCommand[],
+): Promise<CommandRow[]> {
+  const rows = await parts.store.host.write('insertCommands', {
+    commands,
+    ownerRunId: null,
+    authority: currentExecutionAuthority() ?? null,
+  });
+  for (const row of rows) {
+    background(core.executor.run(row), 'executor.run_failed');
+  }
+  return rows;
+}
+
+class Submissions {
+  private readonly pending = new Set<Promise<unknown>>();
+
+  constructor(
+    private readonly parts: HubParts,
+    private readonly core: Core,
+  ) {}
+
+  submit(commands: readonly NewCommand[]): Promise<CommandRow[]> {
+    const rows = submitted(this.parts, this.core, commands);
+    this.pending.add(rows);
+    rows.then(
+      () => this.pending.delete(rows),
+      () => this.pending.delete(rows),
+    );
+    return rows;
+  }
+
+  async settled(): Promise<void> {
+    await Promise.allSettled([...this.pending]);
+    await flushWrites(this.core, false);
+  }
+}
+
 const STOPPED_MARK = 'stopped';
 
 async function downForOf(parts: HubParts, now: Date): Promise<Readonly<Record<string, JsonValue>>> {
@@ -286,10 +337,10 @@ async function downForOf(parts: HubParts, now: Date): Promise<Readonly<Record<st
   return stopped === null ? {} : { downFor: Math.max(0, now.getTime() - Date.parse(stopped)) };
 }
 
-function quiet(parts: HubParts, core: Core, unsubscribe: () => void): void {
+async function quiet(parts: HubParts, core: Core, unsubscribe: () => void): Promise<void> {
   unsubscribe();
   core.automationTimers.stop();
-  parts.store.hubMarks.write(STOPPED_MARK, parts.clock.now().toISOString());
+  await parts.store.host.call('hubMarks', 'write', STOPPED_MARK, parts.clock.now().toISOString());
 }
 
 async function announceStart(parts: HubParts, core: Core): Promise<void> {
@@ -312,7 +363,7 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
   const core = assemble(parts);
   await core.inventory.load();
   await Promise.all([core.state.load(), core.cameras.load()]);
-  core.vacuums.start(core.inventory.all());
+  await core.vacuums.start(core.inventory.all());
   background(core.cameras.sync(core.inventory.all()), 'stream.sync_failed');
   parts.devicesChanged(core.inventory.all());
   await core.engine.sync();
@@ -327,24 +378,19 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
   background(providersStarted, 'hub.providers_start_failed');
   const resumed = resume(parts, core, local, readings);
   background(resumed, 'hub.resume_failed');
+  const submissions = new Submissions(parts, core);
   return {
     providersStarted,
     resumed,
     endDeviceEffect: (id) => core.effects.end(id, () => undefined),
-    submit: (commands): CommandRow[] => {
-      const rows = parts.store.commands.insert(commands);
-      for (const row of rows) {
-        background(core.executor.run(row), 'executor.run_failed');
-      }
-      return rows;
-    },
+    submit: (commands) => submissions.submit(commands),
     answerOffer: (deviceId, sdp, clientId, quality) =>
       core.cameras.answer(deviceId, sdp, clientId, quality),
     answerTalk: (deviceId, sdp, clientId) => core.cameras.talk(deviceId, sdp, clientId),
     snapshot: (deviceId, size) => core.cameras.snapshot(deviceId, size),
     streamReady: (deviceId) => core.cameras.streamReady(deviceId),
     onStreamAdded: (listener) => core.cameras.onStreamAdded(listener),
-    settled: (): Promise<void> => flushWrites(core, false),
+    settled: (): Promise<void> => submissions.settled(),
     local,
     watches,
     readings,
@@ -367,7 +413,7 @@ async function stopHub(
   },
 ): Promise<void> {
   await Promise.allSettled([running.providersStarted, running.resumed]);
-  quiet(parts, core, unsubscribe);
+  await quiet(parts, core, unsubscribe);
   core.engine.shutdown();
   await core.engine.driver.settled();
   await core.effects.stop();

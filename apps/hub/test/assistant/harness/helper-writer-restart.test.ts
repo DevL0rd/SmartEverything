@@ -31,7 +31,7 @@ async function interruptedChild(): Promise<{
   const child = await adoptSubagentSession(store, {
     principal: before,
     parentClaim: opened.claim,
-    parentGrant: service.storage.grant(opened.claim.session_id),
+    parentGrant: await service.storage.grant(opened.claim.session_id),
     header: DSH_SESSION_HEADER.parse({
       version: 4,
       id: randomUUID(),
@@ -82,7 +82,7 @@ describe('retired helper writer recovery', () => {
       id: child.session_id,
       parent,
       principal,
-      grant: made.service.storage.grant(child.session_id),
+      grant: await made.service.storage.grant(child.session_id),
     });
     expect(resumed.claim).toEqual({
       ...child,
@@ -92,14 +92,14 @@ describe('retired helper writer recovery', () => {
     });
     expect(store.dshSessions.readAll(child.session_id, made.owner.profileId)).toEqual(events);
     expect(() => store.dshSessions.verifyWriter(child, world.before)).toThrow();
-    expect(made.service.storage.grant(child.session_id).generation).toBe(
+    expect((await made.service.storage.grant(child.session_id)).generation).toBe(
       principal.connection_generation,
     );
     const again = await resumeHelperWriter(store, {
       id: child.session_id,
       parent,
       principal,
-      grant: made.service.storage.grant(child.session_id),
+      grant: await made.service.storage.grant(child.session_id),
     });
     expect(again.claim).toEqual(resumed.claim);
   });
@@ -124,7 +124,7 @@ describe('retired helper writer recovery', () => {
         id: child.session_id,
         parent: unrelated,
         principal,
-        grant: made.service.storage.grant(child.session_id),
+        grant: await made.service.storage.grant(child.session_id),
       }),
     ).rejects.toThrow('direct parent');
     expect(store.dshSessions.attached(child.session_id, made.owner.profileId)).toEqual(child);
@@ -136,7 +136,7 @@ describe('retired helper writer recovery', () => {
         id: child.session_id,
         parent: { ...parent, epoch: parent.epoch - 1 },
         principal,
-        grant: made.service.storage.grant(child.session_id),
+        grant: await made.service.storage.grant(child.session_id),
       }),
     ).rejects.toThrow();
     expect(store.dshSessions.attached(child.session_id, made.owner.profileId)).toEqual(child);

@@ -2,10 +2,10 @@ import { extname } from 'node:path';
 import { ApiError, RECORDING_ROW, deviceInScope } from '@smarteverything/domain';
 import { z } from 'zod';
 import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
-import { sharedDrive } from '../../drive/spaces';
+import { sharedDrive } from '../../drive/units/spaces';
 import { storeUnit } from '../../store/host/unit';
 import { inList } from '../../store/sql';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { keptHashes, keptNames } from './kept';
 import {
   decodeCursor,
@@ -99,7 +99,7 @@ export interface CameraKeepPlan {
 
 class CameraReads {
   constructor(
-    private readonly store: Store,
+    private readonly store: HostStore,
     private readonly permitted: readonly string[],
   ) {}
 
@@ -228,7 +228,7 @@ class CameraReads {
 }
 
 class AiImageReads {
-  constructor(private readonly store: Store) {}
+  constructor(private readonly store: HostStore) {}
 
   page(viewer: SourceViewer, query: SourceQuery): SourcePage {
     const after = decodeCursor(query.cursor);

@@ -45,7 +45,7 @@ function rig(openApps: number): {
   const speech = new AppSpeech({
     online: (): ReadonlySet<string> => new Set(),
     toClient: (): Promise<number> => Promise.resolve(openApps),
-    pushTargets: (): ReadonlySet<string> => new Set([client.id]),
+    pushTargets: (): Promise<ReadonlySet<string>> => Promise.resolve(new Set([client.id])),
     pushConfigured: (): boolean => true,
     push: {
       send: (request): Promise<PushCommandOutcome> => {

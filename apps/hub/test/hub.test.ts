@@ -1,3 +1,4 @@
+import { testStore, type TestStore, type SeededStore } from './support/store';
 import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -8,11 +9,9 @@ import { startHub, type RunningHub } from '../src/hub';
 import { SecretStore } from '../src/secrets/store';
 import { recordingPathIn } from '../src/services';
 import { storeDatabase } from '../src/store/hub-database';
-import type { Store } from '../src/store/store';
 import { FakeClock } from './support/fake-clock';
 import { CAMERA, LAMP, fakeModule, type FakeModule } from './support/fake-provider';
 import { captureLogs, testLogger, type CapturedLogs } from './support/logs';
-import { testStore, type TestStore } from './support/store';
 import { EMPTY_LAYOUT, node, saveAutomation, trigger } from './support/automation-fixture';
 
 let logs: CapturedLogs;
@@ -28,7 +27,7 @@ afterEach(async () => {
 });
 
 interface Started {
-  readonly store: Store;
+  readonly store: SeededStore;
   readonly fake: FakeModule;
   readonly hub: RunningHub;
   readonly go2rtcCalls: string[];
@@ -62,7 +61,7 @@ async function until(condition: () => boolean): Promise<void> {
 }
 
 async function start(
-  before: (store: Store) => void = () => undefined,
+  before: (store: SeededStore) => void = () => undefined,
   gate: Promise<void> | null = null,
 ): Promise<Started> {
   const store = opened.store;
@@ -103,7 +102,7 @@ async function start(
   return { store, fake, hub, go2rtcCalls, accountChanges };
 }
 
-function deviceId(store: Store, externalId: string): string {
+function deviceId(store: SeededStore, externalId: string): string {
   const device = store.devices.list().find((candidate) => candidate.external_id === externalId);
   if (device === undefined) {
     throw new Error(`no device ${externalId}`);
@@ -202,7 +201,7 @@ describe('hub core on the SQLite store', () => {
     store.feed.subscribe((change) => changes.push(change));
     fake.adapter.result = { applied: true };
     const lamp = deviceId(store, 'lamp-1');
-    const [row] = hub.submit([
+    const [row] = await hub.submit([
       { deviceId: lamp, capability: 'brightness', value: 40, source: 'app', requestedBy: null },
     ]);
     await hub.settled();
@@ -423,7 +422,7 @@ describe('hub core on the SQLite store', () => {
       value: true,
       observedAt: '2026-10-08T10:00:01Z',
     });
-    const runs = (): ReturnType<Store['automationRunRecords']['summaries']> =>
+    const runs = (): ReturnType<SeededStore['automationRunRecords']['summaries']> =>
       store.automationRunRecords.summaries(automation.id, 10);
     await until(() => runs().length === 1);
     const lookups = vi.spyOn(store.automations, 'find');
@@ -491,7 +490,7 @@ describe('hub core on the SQLite store', () => {
 
   it('announces devices going offline when their provider is unlinked', async () => {
     const { store, hub, accountChanges } = await start();
-    const [row] = hub.submit([
+    const [row] = await hub.submit([
       {
         deviceId: null,
         capability: 'hub:unlink_provider',

@@ -49,7 +49,7 @@ export interface LivePublisher {
 }
 
 export interface IngestDeps {
-  readonly store: Pick<Store, 'host' | 'settings' | 'profiles'>;
+  readonly store: Pick<Store, 'host' | 'live'>;
   readonly fleet: Fleet;
   readonly publisher: Publisher;
   readonly sink: () => AdapterSink;
@@ -182,7 +182,7 @@ export class TreadmillIngest {
   ): Promise<void> {
     const { store, now, log } = this.deps;
     const seen = device.details['padRecordSeen'];
-    const timeZone = store.settings.read().time_zone;
+    const timeZone = store.live.home.settings.read().time_zone;
     const at = now();
     const done = await store.host.write('treadmillReconcile', {
       facts: {
@@ -388,7 +388,7 @@ export class TreadmillIngest {
     const scale = entrySettingsOf(state.entry).inclineScale;
     const facts: FrameFacts = { state, at: now, walker, heartRate, scale };
     this.deps.live.publish(device.id, (client) => {
-      const profileId = this.deps.store.profiles.activeOf(client.id).id;
+      const profileId = this.deps.store.live.access.activeProfileOf(client.id);
       return noticeOf(device, liveFrameOf(facts, mayShowBody(client, profileId, walker.profileId)));
     });
   }

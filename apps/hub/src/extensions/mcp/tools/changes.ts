@@ -135,7 +135,7 @@ async function planned(
   const lit = new Set(
     asked.scope === 'on'
       ? litMembers(
-          context.store,
+          context.store.live.home,
           placedAll.map(({ device }) => device),
         ).map((device) => device.id)
       : placedAll.map(({ device }) => device.id),

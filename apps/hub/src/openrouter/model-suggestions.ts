@@ -7,7 +7,8 @@ import {
   type AiModelRow,
   type AiModelSuggested,
 } from '@smarteverything/domain';
-import type { LayoutOwner, PersonalRepository } from '../store/repositories/personal';
+import { storeUnit } from '../store/host/unit';
+import type { LayoutOwner } from '../store/repositories/personal';
 import type { Catalogue } from './catalogue';
 import type { AiModelsState } from '../store/ai-models-state';
 
@@ -23,16 +24,16 @@ export interface SuggestionRequest {
 export interface SuggestionDeps {
   readonly catalogue: Catalogue;
   readonly models: Pick<AiModelsState, 'recentModelIds'>;
-  readonly personal: PersonalRepository;
+  readonly favourites: (owner: LayoutOwner) => Promise<readonly string[]>;
 }
 
-function favouriteIds(personal: PersonalRepository, owner: LayoutOwner): readonly string[] {
-  const read = personal.pref(CLIENT_PREFS.ai_models, owner);
+export const AI_MODEL_FAVOURITES_UNIT = storeUnit((store, owner: LayoutOwner): string[] => {
+  const read = store.personal.pref(CLIENT_PREFS.ai_models, owner);
   if (read.status === 'invalid') {
     throw new ApiError('conflict', read.reason);
   }
-  return read.value.favourites;
-}
+  return [...read.value.favourites];
+});
 
 function rowsFor(catalogue: Catalogue, ids: readonly string[], kind: AiModelKind): AiModelRow[] {
   const seen = new Set<string>();
@@ -69,7 +70,7 @@ export async function suggestionsOf(
     default: overview.default,
     default_model: defaultId === undefined ? null : catalogue.usable(defaultId),
     current: currentOf(catalogue, request.current),
-    favourites: rowsFor(catalogue, favouriteIds(deps.personal, request.owner), request.kind),
+    favourites: rowsFor(catalogue, await deps.favourites(request.owner), request.kind),
     recent: rowsFor(
       catalogue,
       await deps.models.recentModelIds(request.owner.profileId),

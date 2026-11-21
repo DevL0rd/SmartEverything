@@ -70,7 +70,7 @@ export function ringsBetween(
   }
 }
 
-export type AlarmStore = Pick<Store, 'host' | 'settings' | 'feed'>;
+export type AlarmStore = Pick<Store, 'host' | 'feed' | 'live'>;
 
 export interface AlarmSchedulerOptions {
   readonly store: AlarmStore;
@@ -143,7 +143,7 @@ export class AlarmScheduler {
   }
 
   private zone(): string {
-    return this.options.store.settings.read().time_zone;
+    return this.options.store.live.home.settings.read().time_zone;
   }
 
   private follow(record: PlannerAlarmRow | null, before: PlannerAlarmRow | null): void {

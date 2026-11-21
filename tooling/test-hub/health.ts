@@ -7,7 +7,7 @@ import {
   type FoodRow,
   type MealType,
 } from '@smarteverything/domain';
-import type { Store } from '../../apps/hub/src/store/store.ts';
+import type { Seeded } from './store.ts';
 import { HISTORY_DAYS, HOUR_MS, daysAgo, dayKey, type Anchor } from './clock.ts';
 import { FOODS } from './foods.ts';
 import type { Random } from './random.ts';
@@ -37,7 +37,7 @@ export interface HealthResult {
 }
 
 interface Subject {
-  readonly store: Store;
+  readonly store: Seeded;
   readonly profileId: string;
   readonly index: number;
   readonly persona: Persona;
@@ -207,7 +207,7 @@ function dailyRecords(subject: Subject, day: number): unknown[] {
   return rows;
 }
 
-function ingest(store: Store, profileId: string, records: readonly unknown[]): number {
+function ingest(store: Seeded, profileId: string, records: readonly unknown[]): number {
   let stored = 0;
   for (let offset = 0; offset < records.length; offset += HEALTH_BATCH_LIMIT) {
     const batch = HEALTH_BATCH.parse({
@@ -370,13 +370,13 @@ function seedPerson(subject: Subject): { records: number; foods: number } {
   return { records, foods: saved.length };
 }
 
-function entryCount(store: Store): number {
+function entryCount(store: Seeded): number {
   const row = store.database.prepare('select count(*) as n from health_entries').get();
   return typeof row?.['n'] === 'number' ? row['n'] : 0;
 }
 
 export function seedHealth(
-  store: Store,
+  store: Seeded,
   profiles: readonly string[],
   anchor: Anchor,
   rng: Random,

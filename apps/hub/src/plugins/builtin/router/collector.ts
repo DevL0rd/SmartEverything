@@ -13,12 +13,17 @@ const WIRE_QUIET_MS = 30_000;
 const SAMPLE_SECONDS = 1;
 const MAX_BACKOFF_SECONDS = 30;
 
+function signatureOf(snapshot: RouterSnapshot): string {
+  const { at: _at, ...rest } = snapshot;
+  return JSON.stringify(rest);
+}
+
 interface CollectorOptions {
   readonly shell: RouterShell;
   readonly pingTarget: string;
   readonly log: Logger;
   readonly record: (snapshot: RouterSnapshot) => void;
-  readonly publish: (snapshot: RouterSnapshot, full: boolean, audience: WireAudience) => void;
+  readonly publish: (snapshot: RouterSnapshot, audience: WireAudience) => void;
 }
 
 const EMPTY_PARTS: FrameParts = {
@@ -64,7 +69,7 @@ export class RouterCollector {
     this.#loop.setCadence(cadence);
     if (cadence === 'paused') {
       this.#connection = { state: 'paused' };
-      this.#emit(true, true);
+      this.#emit(true);
     }
   }
 
@@ -88,18 +93,18 @@ export class RouterCollector {
       this.#connection = { state: 'online' };
       this.#failures = 0;
       this.#loop.setSampleSeconds(SAMPLE_SECONDS);
-      this.#emit(changed, slowTick);
+      this.#emit(changed);
     } catch (error) {
       this.#markUnreachable(error);
     }
   }
 
-  #emit(force: boolean, full: boolean): void {
+  #emit(force: boolean): void {
     const snapshot = this.#snapshot();
     this.options.record(snapshot);
-    const audience = this.#wire.due(this.#loop.viewed, force);
+    const audience = this.#wire.due(this.#loop.viewed, force, signatureOf(snapshot));
     if (audience !== null) {
-      this.options.publish(snapshot, force || full, audience);
+      this.options.publish(snapshot, audience);
     }
   }
 
@@ -120,7 +125,7 @@ export class RouterCollector {
       this.options.log.warn('router.unreachable', { reason });
     }
     this.#connection = { state: 'unreachable', reason, since };
-    this.#emit(changed, changed);
+    this.#emit(changed);
   }
 
   #snapshot(): RouterSnapshot {

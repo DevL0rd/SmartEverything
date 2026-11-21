@@ -90,6 +90,7 @@ function handled(writes: LogWrites, request: LogRequest): LogReply {
 
 function serveWrites(path: string): void {
   const sql = new Sql(openLogWriter(path));
+  reply({ ready: true });
   let clock = new Date(0);
   const writes = new LogWrites(sql, () => clock.toISOString());
   let dueAt = 0;

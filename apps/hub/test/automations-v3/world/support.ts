@@ -1,3 +1,4 @@
+import { testStore, type TestStore, type SeededStore } from '../../support/store';
 import {
   type DeviceCapability,
   type DeviceRow,
@@ -17,12 +18,18 @@ import type {
   ReadResult,
   ReadScope,
 } from '../../../src/automations/world-v3/read-port';
-import type { Store } from '../../../src/store/store';
-import { testStore, type TestStore } from '../../support/store';
+import { directFetch } from '../../support/direct-fetch';
+import type { ReadFetch } from '../../../src/automations/world-v3/step-reads';
 import { loadedWorld } from '../../support/world-mirror';
 import type { WorldMirror } from '../../../src/automations/world-v3/world-mirror';
 
 export const NOW = '2026-10-18T12:00:00.000Z';
+
+let fetchFrom: ReadFetch = () => {
+  throw new Error('Furnish a home before reading from it.');
+};
+
+let clockFrom = (): Date => new Date(NOW);
 
 export const SCOPE: ReadScope = {
   automationId: '9d1f0c52-6a1e-4f3b-8c47-2a5e7b9d3c10',
@@ -30,6 +37,8 @@ export const SCOPE: ReadScope = {
   nodeKey: 'pick',
   seed: 7,
   activation: '0',
+  fetch: (name, input) => fetchFrom(name, input),
+  now: () => clockFrom(),
 };
 
 const POWER: DeviceCapability = {
@@ -139,7 +148,7 @@ interface Fixtures {
   readonly devices: readonly DeviceRow[];
 }
 
-function furnishRooms(store: Store): Fixtures {
+function furnishRooms(store: SeededStore): Fixtures {
   const kitchen = store.rooms.create('Kitchen', 0);
   const study = store.rooms.create('Study', 1);
   const devices = store.devices.upsert([
@@ -199,6 +208,8 @@ export async function furnish(): Promise<Home> {
   const test = await testStore(() => clock.current);
   const { store } = test;
   const { kitchen, study, devices } = furnishRooms(store);
+  fetchFrom = directFetch(store);
+  clockFrom = (): Date => clock.current;
   const intended = new Map<string, Intended>();
   const people: PresenceReading[] = [];
   const persistent = new Map<string, PersistentVariable>();

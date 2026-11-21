@@ -43,7 +43,7 @@ function target(
     const chatId = params['chatId'] ?? '';
     const computerId = params['computerId'] ?? '';
     const port = SERVER_PORT.parse(Number(params['port']));
-    projectCallerAuthority(options.store, caller, chatId);
+    await projectCallerAuthority(options.store, caller, chatId);
     await options.service.access.device(computerId, options.service.viewer(caller));
     const relay = options.directory.byDevice(computerId).relay;
     return { relay, port, prefix: chatServerPrefix(chatId, { computerId, port }) };

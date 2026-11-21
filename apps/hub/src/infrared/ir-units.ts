@@ -12,7 +12,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 interface Sent {
   readonly remoteId: string;
@@ -57,7 +57,7 @@ function learnedPress(
     }));
 }
 
-function pressesOf(store: Store, device: DeviceRow, command: CommandRow): readonly Sent[] {
+function pressesOf(store: HostStore, device: DeviceRow, command: CommandRow): readonly Sent[] {
   if (device.kind === 'ir_remote' && command.capability === 'remote_key') {
     const sent = deviceRemotePress(device, command);
     return sent === null ? [] : [sent];

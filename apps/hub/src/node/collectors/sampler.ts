@@ -17,7 +17,8 @@ import { messageOf } from '@smarteverything/logging';
 
 const SLACK_MS = 50;
 const SUMMARY_LOG_MS = 30_000;
-const RECORDED: readonly SampleTopic[] = SAMPLE_TOPICS.filter((topic) => topic !== 'processes');
+const UNRECORDED: ReadonlySet<SampleTopic> = new Set(['processes', 'disk_usage']);
+const RECORDED: readonly SampleTopic[] = SAMPLE_TOPICS.filter((topic) => !UNRECORDED.has(topic));
 
 export type SampleReaders = {
   readonly [Topic in SampleTopic]: (tick: Tick) => NonNullable<SampleParts[Topic]> | null;

@@ -24,41 +24,53 @@ export function requireOwner(caller: Caller): void {
   }
 }
 
+const cameraFeedRoutes = (store: Store, transcripts: Transcripts) =>
+  ({
+    readCameraTranscriptFeed: bound(E.readCameraTranscriptFeed, async ({ query, caller }) =>
+      transcripts.feed(await transcriptReaderScope(store, caller, query), query),
+    ),
+    searchCameraTranscriptFeed: bound(E.searchCameraTranscriptFeed, async ({ query, caller }) =>
+      transcripts.feed(await transcriptReaderScope(store, caller, query), {
+        ...query,
+        words: query.q,
+      }),
+    ),
+    readCameraTranscriptRange: bound(E.readCameraTranscriptRange, async ({ query, caller }) =>
+      transcripts.range(
+        await transcriptReaderScope(store, caller, query),
+        query.anchor,
+        query.limit,
+      ),
+    ),
+  }) as const;
+
 export const transcriptRoutes = (
   store: Store,
   transcripts: Transcripts,
   listening: Pick<CameraListening, 'status'>,
 ) =>
   ({
-    readCameraTranscriptFeed: bound(E.readCameraTranscriptFeed, ({ query, caller }) =>
-      transcripts.feed(transcriptReaderScope(store, caller, query), query),
-    ),
-    searchCameraTranscriptFeed: bound(E.searchCameraTranscriptFeed, ({ query, caller }) =>
-      transcripts.feed(transcriptReaderScope(store, caller, query), { ...query, words: query.q }),
-    ),
-    readCameraTranscriptRange: bound(E.readCameraTranscriptRange, ({ query, caller }) =>
-      transcripts.range(transcriptReaderScope(store, caller, query), query.anchor, query.limit),
-    ),
+    ...cameraFeedRoutes(store, transcripts),
     listTranscripts: bound(E.listTranscripts, ({ query, caller }) => {
       admitTranscriptCaller(caller);
-      const source = admittedSource(store, caller, query.source, query.sourceId);
+      const source = admittedSource(store.live.home, caller, query.source, query.sourceId);
       return transcripts.list({ ...query, source });
     }),
     readTranscript: bound(E.readTranscript, async ({ params, query, caller }) => {
       admitTranscriptCaller(caller);
       const session = await store.host.call('transcripts', 'byId', params.sessionId);
-      admitTranscriptSource(store, caller, session.source, session.source_id);
+      admitTranscriptSource(store.live.home, caller, session.source, session.source_id);
       return transcripts.read(params.sessionId, query.after ?? 0, query.limit);
     }),
-    removeTranscript: bound(E.removeTranscript, ({ params, query, caller }) => {
+    removeTranscript: bound(E.removeTranscript, async ({ params, query, caller }) => {
       requireOwner(caller);
-      if (query.lineId === undefined) transcripts.remove(params.sessionId);
-      else transcripts.removeLine(params.sessionId, query.lineId);
+      if (query.lineId === undefined) await transcripts.remove(params.sessionId);
+      else await transcripts.removeLine(params.sessionId, query.lineId);
       return DONE_REPLY;
     }),
     searchTranscripts: bound(E.searchTranscripts, ({ query, caller }) => {
       admitTranscriptCaller(caller);
-      const source = admittedSource(store, caller, query.source, query.sourceId);
+      const source = admittedSource(store.live.home, caller, query.source, query.sourceId);
       return transcripts.search({ ...query, source, words: query.q });
     }),
     readTranscriptSettings: bound(E.readTranscriptSettings, ({ caller }) => {

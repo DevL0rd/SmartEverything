@@ -61,11 +61,7 @@ interface SessionChat {
 }
 
 function sessionChat(service: HarnessService, sessionId: string): SessionChat {
-  const grant = service.storage.grant(sessionId);
-  const metadata = service.store.dshSessions.stat(sessionId, grant.profile_id);
-  if (metadata === undefined)
-    throw new ApiError('forbidden', 'Web search lost its initiating conversation.');
-  const chat = service.store.aiChats.chat(metadata.chat_id);
+  const { chat } = service.sessions.get(sessionId);
   return { chat, offered: openRouterSearchAvailable(service, chat) };
 }
 
@@ -82,7 +78,7 @@ async function search(
     complete({ provider: routeId, model, sessionId, system: SEARCH_SYSTEM, input: query }, signal),
   );
   const sources = citations.sources();
-  rememberSources(service, sessionId, sources);
+  await rememberSources(service, sessionId, sources);
   return { content, sources, truncated: false };
 }
 
@@ -107,19 +103,24 @@ function searchAdmission(service: HarnessService, sessionId: string): SearchAdmi
   };
 }
 
-function rememberSources(service: HarnessService, id: string, sources: readonly WebSource[]): void {
-  const grant = service.storage.grant(id);
+async function rememberSources(
+  service: HarnessService,
+  id: string,
+  sources: readonly WebSource[],
+): Promise<void> {
+  const grant = await service.storage.grant(id);
   if (grant.event_id === null) return;
-  const delivery = service.store.harnessDeliveries.find(grant.event_id);
+  const { host } = service.store;
+  const delivery = await host.call('harnessDeliveries', 'find', grant.event_id);
   if (delivery?.reply_id === null || delivery?.reply_id === undefined) return;
-  const row = service.store.assistantChat.message(delivery.reply_id);
+  const row = await host.call('assistantChat', 'message', delivery.reply_id);
   const prior = row.embeds.flatMap((embed) => {
     const parsed = WEB_SOURCES_EMBED.safeParse(embed);
     return parsed.success ? parsed.data.sources : [];
   });
   const merged = mergedSources(prior, sources);
   if (merged.length > 0)
-    service.store.assistantChat.updateMessage(row.id, {
+    await host.call('assistantChat', 'updateMessage', row.id, {
       embeds: [
         ...row.embeds.filter((embed) => embed.kind !== 'web_sources'),
         { kind: 'web_sources', sources: merged },

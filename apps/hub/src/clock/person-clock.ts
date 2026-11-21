@@ -1,14 +1,7 @@
-import { CLIENT_PREFS } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { StoreHost } from '../store/host/host';
 
-export type PersonClockStore = Pick<Store, 'personal'>;
-
-export function personHour24(store: PersonClockStore, profileId: string): boolean {
-  const read = store.personal.profilePref(CLIENT_PREFS.clock_format, profileId);
-  if (read.status === 'invalid') {
-    throw new Error(`The stored clock format of person ${profileId} is invalid: ${read.reason}`);
-  }
-  return read.value.hour24;
+export function personHour24Of(host: StoreHost, profileId: string): Promise<boolean> {
+  return host.read('personHour24', { profileId });
 }
 
 export function clockTextIn(at: Date | string, timeZone: string, hour24: boolean): string {
@@ -30,13 +23,4 @@ export function clockTextIn(at: Date | string, timeZone: string, hour24: boolean
 
 export function wallClockText(hour: number, minute: number, hour24: boolean): string {
   return clockTextIn(new Date(Date.UTC(2000, 0, 1, hour, minute)), 'UTC', hour24);
-}
-
-export function personClockText(
-  store: PersonClockStore,
-  profileId: string,
-  at: Date | string,
-  timeZone: string,
-): string {
-  return clockTextIn(at, timeZone, personHour24(store, profileId));
 }

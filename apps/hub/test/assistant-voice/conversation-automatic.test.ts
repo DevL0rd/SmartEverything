@@ -55,7 +55,7 @@ async function cough(
       webSearch: (): boolean => false,
       window: (): null => null,
       record: (): void => undefined,
-      task: (): string => 'event',
+      task: (): Promise<string> => Promise.resolve('event'),
       run: (): Promise<never> => Promise.reject(new Error('no tools here')),
       ended: (reason): void => {
         endings.push(reason);

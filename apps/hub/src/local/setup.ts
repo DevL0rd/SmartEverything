@@ -85,7 +85,9 @@ export async function resolveSetup(
   }
   if (setup.driver === 'larq_bottle') {
     const now = context.now();
-    return Promise.resolve(bottleSetup(setup, { now, today: homeClock(context.store).dayOf(now) }));
+    return Promise.resolve(
+      bottleSetup(setup, { now, today: homeClock(context.store.live.home.settings).dayOf(now) }),
+    );
   }
   return setup.source === 'xiaomi' ? fromXiaomi(setup, context) : fromManual(setup);
 }

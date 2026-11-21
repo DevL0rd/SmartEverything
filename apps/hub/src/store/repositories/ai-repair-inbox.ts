@@ -41,7 +41,10 @@ export class AiRepairInboxRepository {
     );
   }
 
-  recordPatchApproval(eventId: string, input: z.infer<typeof PATCH_APPROVAL>): void {
+  recordPatchApproval(
+    eventId: string,
+    input: { readonly revision: string; readonly paths: readonly string[] },
+  ): void {
     const approval = PATCH_APPROVAL.parse(input);
     this.context.sql.run(
       'retain approved repair source scope',

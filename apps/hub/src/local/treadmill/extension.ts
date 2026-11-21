@@ -30,7 +30,7 @@ function keyframeOf(
   const { device, client } = target;
   const state = wiring.fleet.of(device);
   const { walker } = state;
-  const profileId = store.profiles.activeOf(client.id).id;
+  const profileId = store.live.access.activeProfileOf(client.id);
   const frame = liveFrameOf(
     {
       state,

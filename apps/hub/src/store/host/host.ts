@@ -33,8 +33,8 @@ export class StoreHostReadersError extends Error {
 export class StoreHost {
   private readonly writer: HostThread;
   private readonly readers: readonly HostThread[];
-  private turn = 0;
   private applying = false;
+  private closing: Promise<void> | null = null;
 
   constructor(private readonly options: StoreHostOptions) {
     if (!Number.isInteger(options.readers) || options.readers < 1)
@@ -83,8 +83,9 @@ export class StoreHost {
     for (const thread of this.all()) thread.committedElsewhere();
   }
 
-  async close(): Promise<void> {
-    await Promise.all(this.all().map((thread) => thread.close()));
+  close(): Promise<void> {
+    this.closing ??= Promise.all(this.all().map((thread) => thread.close())).then(() => undefined);
+    return this.closing;
   }
 
   private all(): readonly HostThread[] {
@@ -92,10 +93,17 @@ export class StoreHost {
   }
 
   private nextReader(): HostThread {
-    const reader = this.readers[this.turn % this.readers.length];
-    if (reader === undefined) throw new StoreHostReadersError(this.readers.length);
-    this.turn += 1;
-    return reader;
+    const started = this.readers.filter((reader) => reader.started);
+    const idle = started.find((reader) => reader.pending === 0);
+    if (idle !== undefined) return idle;
+    const fresh = this.readers.find((reader) => !reader.started);
+    if (fresh !== undefined) return fresh;
+    const least = started.reduce<HostThread | undefined>(
+      (best, reader) => (best === undefined || reader.pending < best.pending ? reader : best),
+      undefined,
+    );
+    if (least === undefined) throw new StoreHostReadersError(this.readers.length);
+    return least;
   }
 
   private thread(readOnly: boolean): HostThread {
@@ -120,7 +128,8 @@ export class StoreHost {
       for (const event of settled.events) {
         if (event.kind === 'row') feed.emit(event.change);
         else if (event.kind === 'notice') feed.notice(event.notice);
-        else feed.speech(event.speech);
+        else if (event.kind === 'speech') feed.speech(event.speech);
+        else feed.accessChanged();
       }
       if (!settled.committed) return;
       for (const thread of this.all()) if (thread !== from) thread.committedElsewhere();

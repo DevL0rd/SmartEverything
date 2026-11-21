@@ -62,67 +62,67 @@ function removal(
 }
 
 describe('removing a finished subagent conversation', () => {
-  it('is allowed once the child has nothing running', () => {
+  it('is allowed once the child has nothing running', async () => {
     const parent = rig.newChat(rig.desk.target);
     const child = rig.newChat(rig.desk.target);
     const finished = rig.opened.store.aiAgentRuns.upsert(run(parent, child, 'completed'));
 
-    expect(() => {
-      admitInactiveRemoval(removal(child, finished.id, 'ready'), [child]);
-    }).not.toThrow();
+    await expect(
+      admitInactiveRemoval(removal(child, finished.id, 'ready'), [child]),
+    ).resolves.toBeUndefined();
   });
 
-  it('is allowed when the machine running the child is offline', () => {
+  it('is allowed when the machine running the child is offline', async () => {
     const parent = rig.newChat(rig.desk.target);
     const child = rig.newChat(rig.desk.target);
     const finished = rig.opened.store.aiAgentRuns.upsert(run(parent, child, 'completed'));
 
-    expect(() => {
-      admitInactiveRemoval(removal(child, finished.id, 'unavailable'), [child]);
-    }).not.toThrow();
+    await expect(
+      admitInactiveRemoval(removal(child, finished.id, 'unavailable'), [child]),
+    ).resolves.toBeUndefined();
   });
 
-  it('is allowed when the engine reports no status', () => {
+  it('is allowed when the engine reports no status', async () => {
     const parent = rig.newChat(rig.desk.target);
     const child = rig.newChat(rig.desk.target);
     const finished = rig.opened.store.aiAgentRuns.upsert(run(parent, child, 'completed'));
 
-    expect(() => {
+    await expect(
       admitInactiveRemoval({ ...removal(child, finished.id, 'ready'), status: () => null }, [
         child,
-      ]);
-    }).not.toThrow();
+      ]),
+    ).resolves.toBeUndefined();
   });
 
-  it('is refused while the child is still working', () => {
+  it('is refused while the child is still working', async () => {
     const parent = rig.newChat(rig.desk.target);
     const child = rig.newChat(rig.desk.target);
     const finished = rig.opened.store.aiAgentRuns.upsert(run(parent, child, 'completed'));
 
-    expect(() => {
-      admitInactiveRemoval(removal(child, finished.id, 'working'), [child]);
-    }).toThrow(/still working/u);
+    await expect(
+      admitInactiveRemoval(removal(child, finished.id, 'working'), [child]),
+    ).rejects.toThrow(/still working/u);
   });
 
-  it('is refused while another run of the child has not finished', () => {
+  it('is refused while another run of the child has not finished', async () => {
     const parent = rig.newChat(rig.desk.target);
     const child = rig.newChat(rig.desk.target);
     const finished = rig.opened.store.aiAgentRuns.upsert(run(parent, child, 'completed'));
     rig.opened.store.aiAgentRuns.upsert(run(parent, child, 'running'));
 
-    expect(() => {
-      admitInactiveRemoval(removal(child, finished.id, 'ready'), [child]);
-    }).toThrow(/still working/u);
+    await expect(
+      admitInactiveRemoval(removal(child, finished.id, 'ready'), [child]),
+    ).rejects.toThrow(/still working/u);
   });
 
-  it('is refused when the run named belongs to another conversation', () => {
+  it('is refused when the run named belongs to another conversation', async () => {
     const parent = rig.newChat(rig.desk.target);
     const child = rig.newChat(rig.desk.target);
     const other = rig.newChat(rig.desk.target);
     const finished = rig.opened.store.aiAgentRuns.upsert(run(parent, other, 'completed'));
 
-    expect(() => {
-      admitInactiveRemoval(removal(child, finished.id, 'ready'), [child]);
-    }).toThrow(/does not belong/u);
+    await expect(
+      admitInactiveRemoval(removal(child, finished.id, 'ready'), [child]),
+    ).rejects.toThrow(/does not belong/u);
   });
 });

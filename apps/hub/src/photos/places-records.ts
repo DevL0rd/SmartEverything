@@ -88,8 +88,7 @@ export class PlaceRecords {
       this.context.sql.run(
         'clear the places of items that lost their location',
         `update drive_media set place_id = null
-         where place_id is not null
-           and exists (select 1 from drive_items i where i.id = drive_media.item_id and i.place_lat is null)`,
+         where place_id is not null and item_id in (select id from drive_items where place_lat is null)`,
       ),
     );
   }

@@ -10,13 +10,13 @@ import {
 import type { z } from 'zod';
 import type { DriveActor } from '../../drive/access';
 import type { PhotoPartnerShareRow } from '../../store/repositories/photo-partner-shares';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { PartnerAutoSaver } from './auto-save';
 import { partnerItemIds, presentCount, recordDelivered } from './partner-items';
 import type { SavedAlbums } from './saved';
 
 export type PartnersStore = Pick<
-  Store,
+  HostStore,
   'context' | 'write' | 'driveAlbums' | 'photoGroups' | 'photoPartnerShares' | 'profiles'
 >;
 

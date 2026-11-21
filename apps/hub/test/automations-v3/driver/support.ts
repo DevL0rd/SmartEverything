@@ -26,6 +26,7 @@ import type {
 import type { ModePolicy } from '../../../src/automations/driver/modes';
 import { SimulatedClock as TestClock } from '../../../src/clock/simulated';
 
+import { noReads } from '../../support/direct-fetch';
 export const START = '2026-10-18T12:00:00.000Z';
 
 let counter = 0;
@@ -242,6 +243,7 @@ export function occurrence(options: OccurrenceOptions): Occurrence {
     start: (runId): RunStart => ({
       state: { ...stateAt(now), runId, automationId },
       context: contextOf(options.body),
+      reads: noReads(),
       name: 'Test automation',
       kind: options.kind ?? 'live',
       startedBy: null,

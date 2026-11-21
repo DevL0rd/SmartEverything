@@ -1,5 +1,6 @@
 import {
   COMPUTER_TOPICS,
+  DISK_SPACE_INTERVAL_MS,
   LIVE_INTERVAL_MS,
   type ComputerTopic,
   type HistoryPolicy,
@@ -33,7 +34,7 @@ function topicsOf(demand: ViewDemand<DeviceDetail>, scopes: DemandScopes): NodeD
   for (const topic of demandedTopics(demand)) {
     if (topic === 'processes' && !scopes.processes) continue;
     if (topic === 'files' && !scopes.files) continue;
-    topics[topic] = LIVE_INTERVAL_MS;
+    topics[topic] = topic === 'disk_usage' ? DISK_SPACE_INTERVAL_MS : LIVE_INTERVAL_MS;
   }
   return topics;
 }

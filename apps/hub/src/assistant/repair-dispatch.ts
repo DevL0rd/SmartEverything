@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto';
 import {
-  AI_REPAIR_SETTINGS,
-  ApiError,
   LOG_PLATFORM,
   LOG_FAILURE,
   LOG_RUNTIME,
@@ -13,14 +11,14 @@ import {
 import { z } from 'zod';
 import type { Store } from '../store/store';
 import type { LogStore } from '../logs/log-store';
-import type { ConversationLog } from './conversation-log';
 import {
   REPAIR_CATEGORY,
   repairCategory,
   repairComponent,
 } from '../store/repositories/repair-fingerprint';
 import { validatedRepairPatch, type RepairPatch } from './repair-source';
-import { queueEvent } from './request-events';
+import { authorityScope } from './turn-authority';
+import { queuedLog } from './request-events';
 
 export const REPAIR_EVIDENCE = z.strictObject({
   category: REPAIR_CATEGORY,
@@ -107,116 +105,67 @@ export function repairFailureOf(
 
 interface RepairDispatchDeps {
   readonly store: Store;
-  readonly conversation: ConversationLog;
-  readonly repairChat: (profileId: string) => AiChatRow;
+  readonly repairChat: (profileId: string) => Promise<AiChatRow>;
   readonly added: () => void;
 }
 
 export class RepairDispatch {
   constructor(private readonly deps: RepairDispatchDeps) {}
 
-  available(profileId: string): boolean {
-    return this.deps.store.personAccess.ownerIds().includes(profileId);
+  async available(profileId: string): Promise<boolean> {
+    return (await this.deps.store.host.call('personAccess', 'ownerIds')).includes(profileId);
   }
 
-  existing(id: string, profileId: string): AiRepairAdmission | undefined {
-    const { store } = this.deps;
-    if (!this.available(profileId)) return undefined;
-    const event = store.assistantEvents.find(id);
-    if (event === undefined) return undefined;
-    const authority = store.harnessRecovery.authority(id);
-    if (authority?.repair_origin !== id || event.profile_id !== profileId)
-      throw new ApiError('conflict', 'This repair identifier belongs to different work.');
-    return { kind: 'existing', eventId: id, chatId: event.chat_id };
+  async existing(id: string, profileId: string): Promise<AiRepairAdmission | undefined> {
+    if (!(await this.available(profileId))) return undefined;
+    return await this.deps.store.host.read('assistantRepairExisting', { id, profileId });
   }
 
-  existingPatch(
+  async existingPatch(
     id: string,
     profileId: string,
     request: AiRepairPatchRequest,
-  ): AiRepairAdmission | undefined {
-    const existing = this.existing(id, profileId);
-    if (existing === undefined) return undefined;
-    const approval = this.deps.store.aiRepairInbox.patchApproval(id);
-    if (
-      approval?.revision !== request.revision ||
-      approval.paths.length !== request.paths.length ||
-      approval.paths.some((path) => !request.paths.includes(path))
-    )
-      throw new ApiError('conflict', 'Use a new request for a different source approval.');
-    return existing;
+  ): Promise<AiRepairAdmission | undefined> {
+    if (!(await this.available(profileId))) return undefined;
+    return await this.deps.store.host.read('assistantRepairExistingPatch', {
+      id,
+      profileId,
+      revision: request.revision,
+      paths: request.paths,
+    });
   }
 
-  admit(input: RepairRequest): AiRepairAdmission {
+  async admit(input: RepairRequest): Promise<AiRepairAdmission> {
     if (!REPAIR_EVIDENCE.safeParse(input.evidence).success)
       return { kind: 'held', reason: 'evidence' };
-    if (!this.available(input.profileId)) return { kind: 'held', reason: 'owner' };
-    const result = this.deps.store.durableWrite<AiRepairAdmission>(() => {
-      if (!this.mayEnqueue(input))
-        return this.existing(input.id, input.profileId) ?? { kind: 'held', reason: 'evidence' };
-      const admission = this.enqueue(input);
-      this.recordAdmission(input, admission);
-      return admission;
-    });
-    if (result.kind === 'queued') this.deps.added();
-    return result;
-  }
-
-  private mayEnqueue({ fingerprint, kind }: RepairRequest): boolean {
-    if (fingerprint === undefined) return true;
-    const inbox = this.deps.store.aiRepairInbox;
-    return inbox.isVisible(fingerprint) && (kind === 'manual' || inbox.mayAutoAdmit(fingerprint));
-  }
-
-  private recordAdmission(input: RepairRequest, admission: AiRepairAdmission): void {
-    const { fingerprint, kind } = input;
-    if (fingerprint === undefined) return;
-    const inbox = this.deps.store.aiRepairInbox;
-    inbox.recordAdmission(fingerprint, admission);
-    if (kind === 'automatic' && admission.kind !== 'held') inbox.markAutomaticAdmitted(fingerprint);
-  }
-
-  private enqueue(input: RepairRequest): AiRepairAdmission {
-    const { store, conversation } = this.deps;
-    const existing = this.existing(input.id, input.profileId);
-    if (existing !== undefined) return existing;
-    const settings = AI_REPAIR_SETTINGS.parse(
-      store.settingsKv.read('ai-repair') ?? { enabled: false },
-    );
-    if (input.kind === 'automatic' && !settings.enabled)
-      return { kind: 'held', reason: 'disabled' };
-    const chat = this.recipient(input);
+    if (!(await this.available(input.profileId))) return { kind: 'held', reason: 'owner' };
+    const { store } = this.deps;
     const text = this.requestText(input);
-    const message = conversation.person({
-      chat,
-      clientId: null,
-      author: 'AI repair',
-      text,
-      files: [],
-      origin: { source: 'hub', plugin_id: null, device_id: null, name: 'AI repair' },
+    const patch = input.patch === undefined ? null : validatedRepairPatch(input.patch);
+    const needsChat = await store.host.read('assistantRepairNeedsChat', {
+      id: input.id,
+      profileId: input.profileId,
+      fingerprint: input.fingerprint,
+      kind: input.kind,
     });
-    const event = queueEvent(
-      store,
-      {
-        id: input.id,
-        kind: 'chat',
-        chat_id: chat.id,
-        message_id: message.id,
-        profile_id: input.profileId,
-        client_id: null,
-        text,
-      },
-      undefined,
-      input.id,
-    );
-    if (input.patch !== undefined) {
-      const patch = validatedRepairPatch(input.patch);
-      store.aiRepairInbox.recordPatchApproval(event.id, {
-        revision: patch.revision,
-        paths: patch.sources.map(({ path }) => path),
-      });
-    }
-    return { kind: 'queued', eventId: event.id, chatId: chat.id };
+    const chat = needsChat ? await this.deps.repairChat(input.profileId) : null;
+    const { admission, event } = await store.host.write('assistantRepairAdmit', {
+      id: input.id,
+      fingerprint: input.fingerprint,
+      profileId: input.profileId,
+      kind: input.kind,
+      chat,
+      text,
+      patch:
+        patch === null
+          ? null
+          : { revision: patch.revision, paths: patch.sources.map(({ path }) => path) },
+      held: store.live.chatWork.holds.held(),
+      scope: authorityScope(undefined, input.id),
+    });
+    if (event !== null) queuedLog(event, 'derived');
+    if (admission.kind === 'queued') this.deps.added();
+    return admission;
   }
 
   private requestText(input: RepairRequest): string {
@@ -258,32 +207,15 @@ export class RepairDispatch {
       'End approved source evidence',
     ];
   }
-
-  private eligible(id: string, profileId: string): AiChatRow | undefined {
-    const chat = this.deps.store.aiChats.find(id);
-    return chat?.profile_id === profileId &&
-      chat.archived_at === null &&
-      chat.deletion_state === null &&
-      (chat.kind === 'chat' || chat.kind === 'subagent')
-      ? chat
-      : undefined;
-  }
-
-  private recipient({ profileId }: RepairRequest): AiChatRow {
-    const chat = this.deps.repairChat(profileId);
-    if (this.eligible(chat.id, profileId) === undefined)
-      throw new ApiError('forbidden', 'The repair chat is no longer available.');
-    return chat;
-  }
 }
 
 export async function retainedLogOf(
-  store: Pick<Store, 'aiRepairInbox'>,
+  store: Pick<Store, 'host'>,
   logs: Pick<LogStore, 'around'>,
   fingerprint: string,
   profileId: string | null,
 ): Promise<RetainedLog | null> {
-  const logId = store.aiRepairInbox.latestLogId(fingerprint);
+  const logId = await store.host.call('aiRepairInbox', 'latestLogId', fingerprint);
   if (logId === null) return null;
   const around = await logs.around({ owner: true, profileId }, { id: logId, before: 0, after: 0 });
   return around === null ? null : { logId, anchor: around.anchor };

@@ -16,7 +16,7 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { NewAssistantMessage } from '../store/repositories/assistant-chat';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 const log = new Logger('hub.assistant-conversation');
 
@@ -41,7 +41,7 @@ export interface ReplyStart {
   readonly model: string;
 }
 
-export function startedReply(store: Store, start: ReplyStart): NewAssistantMessage {
+export function startedReply(store: HostStore, start: ReplyStart): NewAssistantMessage {
   return {
     origin: null,
     embeds: [],
@@ -120,7 +120,7 @@ export type ReplyOp =
     }
   | { readonly kind: 'interrupted'; readonly reason: string };
 
-export function savedSources(store: Store, id: string): readonly WebSource[] {
+export function savedSources(store: HostStore, id: string): readonly WebSource[] {
   return store.assistantChat.message(id).embeds.flatMap((embed) => {
     const parsed = WEB_SOURCES_EMBED.safeParse(embed);
     return parsed.success ? parsed.data.sources : [];
@@ -128,7 +128,7 @@ export function savedSources(store: Store, id: string): readonly WebSource[] {
 }
 
 function withTimeline(
-  store: Store,
+  store: HostStore,
   id: string,
   timeline: ChatTimelineEmbed,
 ): AssistantMessageRow['embeds'] {
@@ -138,7 +138,7 @@ function withTimeline(
   return [...kept, timeline];
 }
 
-function finish(store: Store, id: string, text: string, done: ReplyDone): AssistantMessageRow {
+function finish(store: HostStore, id: string, text: string, done: ReplyDone): AssistantMessageRow {
   const kept = store.assistantChat
     .message(id)
     .embeds.filter((embed) => embed.kind !== WEB_SOURCES_KIND);
@@ -162,7 +162,7 @@ function finish(store: Store, id: string, text: string, done: ReplyDone): Assist
 }
 
 function fail(
-  store: Store,
+  store: HostStore,
   id: string,
   failure: ReplyFailure,
   steps: readonly SettledStep[],
@@ -183,12 +183,12 @@ function fail(
   });
 }
 
-function messageOf(store: Store, id: string | null): AssistantMessageRow | null {
+function messageOf(store: HostStore, id: string | null): AssistantMessageRow | null {
   return id === null ? null : (store.assistantChat.find(id) ?? null);
 }
 
 function stateOf(
-  store: Store,
+  store: HostStore,
   messageId: string | null,
   state: AssistantRequestState,
   reason: string | null,
@@ -209,7 +209,7 @@ function stateOf(
 }
 
 function failedMessage(
-  store: Store,
+  store: HostStore,
   messageId: string | null,
   reason: string,
   code: AssistantReasonCode,
@@ -230,19 +230,19 @@ function failedMessage(
   });
 }
 
-function delivered(store: Store, eventId: string): void {
+function delivered(store: HostStore, eventId: string): void {
   const message = messageOf(store, store.assistantEvents.event(eventId).message_id);
   if (message?.state === 'queued')
     store.assistantChat.updateMessage(message.id, { state: 'delivered' });
 }
 
-function failedEvent(store: Store, op: Extract<ReplyOp, { kind: 'failedEvent' }>): void {
+function failedEvent(store: HostStore, op: Extract<ReplyOp, { kind: 'failedEvent' }>): void {
   store.aiRepairInbox.markFailed(op.eventId);
   const text = op.code === 'unknown' ? `Assistant unavailable: ${op.reason}` : op.reason;
   failedMessage(store, op.messageId, text, op.code);
 }
 
-function interrupted(store: Store, reason: string): void {
+function interrupted(store: HostStore, reason: string): void {
   log.info('turns.interrupted', { reason: reason.slice(0, 200) });
   store.assistantChat.failWorking(reason, 'interrupted');
   for (const event of store.assistantEvents.abandoned()) {
@@ -259,7 +259,7 @@ function isReplyRowOp(op: ReplyOp): op is ReplyRowOp {
   return 'id' in op;
 }
 
-function applyReplyRowOp(store: Store, op: ReplyRowOp): AssistantMessageRow | null {
+function applyReplyRowOp(store: HostStore, op: ReplyRowOp): AssistantMessageRow | null {
   switch (op.kind) {
     case 'text':
       store.assistantChat.updateMessage(op.id, { text: op.text });
@@ -290,7 +290,7 @@ function applyReplyRowOp(store: Store, op: ReplyRowOp): AssistantMessageRow | nu
   }
 }
 
-function applyMessageOp(store: Store, op: Exclude<ReplyOp, ReplyRowOp>): void {
+function applyMessageOp(store: HostStore, op: Exclude<ReplyOp, ReplyRowOp>): void {
   switch (op.kind) {
     case 'state':
       stateOf(store, op.messageId, op.state, op.reason);
@@ -310,7 +310,7 @@ function applyMessageOp(store: Store, op: Exclude<ReplyOp, ReplyRowOp>): void {
   }
 }
 
-export function applyReplyOp(store: Store, op: ReplyOp): AssistantMessageRow | null {
+export function applyReplyOp(store: HostStore, op: ReplyOp): AssistantMessageRow | null {
   if (isReplyRowOp(op)) return applyReplyRowOp(store, op);
   applyMessageOp(store, op);
   return null;

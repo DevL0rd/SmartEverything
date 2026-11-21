@@ -47,7 +47,7 @@ describe('the mount follows the drive settings', () => {
     await writer.client.call('READDIR', { ino: writer.root, cursor: 0 });
     await writer.client.call('READDIR', { ino: writer.root, cursor: 0 });
     expect(read).toHaveBeenCalledTimes(1);
-    updateDriveSettings(rig.posix.opened.store, { listingCacheSeconds: 0 });
+    await updateDriveSettings(rig.posix.opened.store, { listingCacheSeconds: 0 });
     await writer.client.call('READDIR', { ino: writer.root, cursor: 0 });
     await writer.client.call('READDIR', { ino: writer.root, cursor: 0 });
     expect(read).toHaveBeenCalledTimes(3);
@@ -56,23 +56,23 @@ describe('the mount follows the drive settings', () => {
   it('resizes the running hash pool to the saved worker count', async () => {
     const resize = vi.spyOn(HashPool.prototype, 'resize');
     await outOfOrderWrite('first.txt');
-    updateDriveSettings(rig.posix.opened.store, { cpuWorkers: 3 });
+    await updateDriveSettings(rig.posix.opened.store, { cpuWorkers: 3 });
     expect(resize).toHaveBeenCalledWith(3);
   });
 
   it('applies a worker count saved before the pool exists when it starts', async () => {
     const resize = vi.spyOn(HashPool.prototype, 'resize');
-    updateDriveSettings(rig.posix.opened.store, { cpuWorkers: 2 });
+    await updateDriveSettings(rig.posix.opened.store, { cpuWorkers: 2 });
     expect(resize).not.toHaveBeenCalled();
     await outOfOrderWrite('second.txt');
-    updateDriveSettings(rig.posix.opened.store, { cpuWorkers: 5 });
+    await updateDriveSettings(rig.posix.opened.store, { cpuWorkers: 5 });
     expect(resize).toHaveBeenCalledWith(5);
   });
 
-  it('stops following after the mount stops', () => {
+  it('stops following after the mount stops', async () => {
     const apply = vi.spyOn(rig.mount.services, 'applySettings');
     rig.mount.stop();
-    updateDriveSettings(rig.posix.opened.store, { cpuWorkers: 4 });
+    await updateDriveSettings(rig.posix.opened.store, { cpuWorkers: 4 });
     expect(apply).not.toHaveBeenCalled();
   });
 });

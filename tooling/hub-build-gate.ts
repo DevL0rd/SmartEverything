@@ -1,4 +1,4 @@
-import { buildSourceOf } from '../apps/hub/src/self-update/build-source.ts';
+import { buildSourceOf } from './build-source-file.ts';
 import type { HubLayout } from '../apps/hub/src/data-layout/index.ts';
 import type { BuildKind } from './build-scope.ts';
 

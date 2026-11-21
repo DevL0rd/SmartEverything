@@ -1,3 +1,4 @@
+import { background } from '@smarteverything/logging';
 import { harnessFailureContext } from '../harness/failure-context';
 import { hubImageDescription } from './harness-native-ports';
 import { SecretApiKeyVault } from '../harness/api-key-vault';
@@ -81,7 +82,7 @@ export async function startHubHarness(
   });
   configuration.bind(dispatcher);
   registerHub(context, dispatcher, { platform, runtimeInstance, generation }, configuration);
-  configuration.report(false);
+  await configuration.report(false);
   return dispatcher;
 }
 function composeHub(ports: {
@@ -111,12 +112,9 @@ function composeHub(ports: {
     loadAttachments: (id, ids) =>
       new HarnessAttachments(context.harness, context.assistant.files).load(id, ids),
     describeImage: hubImageDescription(context, persistence),
-    authority: (id) => context.harness.storage.grant(id).authority,
+    authority: async (id) => (await context.harness.sessions.load(id)).grant.authority,
     route: (id) => supplierRoute(context, id),
-    publish: (frame) => {
-      context.harness.native(frame);
-      return Promise.resolve();
-    },
+    publish: (frame) => context.harness.native(frame),
     installModelRoutes: (ctx) =>
       installRoutes(ctx, { options, context, persistence, access, tools }),
   });
@@ -182,8 +180,8 @@ function registerHub(
   });
 }
 function supplierRoute(context: ServerContext, id: string): AiModelRoute {
-  for (const profile of context.store.profiles.list()) {
-    const route = context.harness.routes.list(profile.id).find((entry) => entry.id === id);
+  for (const profileId of context.store.live.access.profileIds()) {
+    const route = context.harness.routes.list(profileId).find((entry) => entry.id === id);
     if (route !== undefined) return route;
   }
   throw new ApiError('conflict', 'The selected supplier route is unavailable.');
@@ -200,14 +198,14 @@ function installRoutes(ctx: Context, ports: HubModelPorts): Promise<void> {
   const { context, access, options } = ports;
   bindCompactionPolicy(ctx, async (id): Promise<number> => {
     await ports.persistence.verify(ports.persistence.claim(id));
-    return context.store.assistantChat.settings().compact_at_percent;
+    return context.store.live.home.assistant.read().compact_at_percent;
   });
   const registrations = new Map<string, () => void>();
   const update = (): void => {
     for (const dispose of registrations.values()) dispose();
     registrations.clear();
-    for (const profile of context.store.profiles.list()) {
-      for (const route of context.harness.routes.list(profile.id)) {
+    for (const profileId of context.store.live.access.profileIds()) {
+      for (const route of context.harness.routes.list(profileId)) {
         if (route.state !== 'ready') continue;
         const adapter =
           route.auth.provider === 'openrouter'
@@ -232,7 +230,11 @@ function installRoutes(ctx: Context, ports: HubModelPorts): Promise<void> {
   ctx.effect(() => context.openRouter.keys.onChange(update));
   ctx.effect(() =>
     context.store.feed.subscribe((change) => {
-      if (change.table === 'profiles') update();
+      if (change.table === 'profiles')
+        background(
+          context.store.live.access.settled().then(update),
+          'harness.routes_update_failed',
+        );
     }),
   );
   ctx.effect(() => (): void => {
@@ -296,7 +298,7 @@ function routeAdapter(
       authorize: async (input): Promise<void> => {
         if (input.sessionId === undefined)
           throw new ApiError('forbidden', 'Inference requires an owned native conversation.');
-        const grant = context.harness.storage.grant(input.sessionId);
+        const grant = await context.harness.storage.grant(input.sessionId);
         context.harness.routes.selected(
           grant.profile_id,
           grant.route,
@@ -329,9 +331,11 @@ function accountingFetch(
     sessionId,
     connectionDiagnosticFetch('hub_supplier', options.fetch),
     {
-      verify: (): void => {
+      verify: async (): Promise<void> => {
         const claim = persistence.claim(sessionId);
-        context.store.dshSessions.verifyWriter(
+        await context.store.host.call(
+          'dshSessions',
+          'verifyWriter',
           claim,
           context.harness.hostPrincipal(
             route.profile_id,

@@ -1,5 +1,4 @@
 import type { Logger } from '@smarteverything/logging';
-import type { Store } from '../../store/store';
 import { answeringTelevisions } from './candidates';
 import type { SamsungTvIo } from './io';
 import type { HostSearch } from './lan-sweep';
@@ -15,10 +14,10 @@ export interface FindResult {
 export interface FindTelevisionOptions {
   readonly search: HostSearch;
   readonly io: SamsungTvIo;
-  readonly screens: () => readonly ScreenDevice[];
-  readonly isLinked: (deviceId: string) => boolean;
-  readonly isLinking: () => boolean;
-  readonly learn: (deviceId: string, mac: string) => void;
+  readonly screens: () => Promise<readonly ScreenDevice[]>;
+  readonly isLinked: (deviceId: string) => Promise<boolean>;
+  readonly isLinking: () => Promise<boolean>;
+  readonly learn: (deviceId: string, mac: string) => Promise<void>;
   readonly startLink: (host: string, deviceId: string) => void;
   readonly log: Logger;
 }
@@ -45,16 +44,17 @@ export async function findTelevision(
   deviceId: string,
 ): Promise<FindResult> {
   const { io, search, screens, isLinked, isLinking, learn, startLink, log } = options;
-  if (isLinked(deviceId)) {
+  if (await isLinked(deviceId)) {
     return LINKED;
   }
-  if (isLinking()) {
+  if (await isLinking()) {
     return ASKING;
   }
   const answering = await answeringTelevisions(io, search, log);
   let elsewhere = false;
+  const known = answering.length === 0 ? [] : await screens();
   for (const { host, info } of answering) {
-    const match = matchScreen(info, screens());
+    const match = matchScreen(info, known);
     if (match.kind === 'unsure') {
       log.info('television.match_unsure', { host, model: info.model, reason: match.reason });
     } else if (match.deviceId !== deviceId) {
@@ -62,7 +62,7 @@ export async function findTelevision(
       log.info('television.answered_elsewhere', { deviceId, answeredFor: match.deviceId });
     } else {
       if (match.kind === 'learned') {
-        learn(deviceId, match.mac);
+        await learn(deviceId, match.mac);
         log.info('television.address_learned', { deviceId, model: info.model });
       }
       startLink(host, deviceId);
@@ -73,28 +73,4 @@ export async function findTelevision(
     return NOTHING_ANSWERED;
   }
   return elsewhere ? OTHER_SCREEN_ANSWERED : NOT_THIS_ONE;
-}
-
-export function screensOf(
-  store: Pick<Store, 'devices' | 'televisionSettings' | 'state'>,
-): readonly ScreenDevice[] {
-  return store.devices
-    .list()
-    .filter((device) => device.provider === 'smartthings' && device.kind === 'television')
-    .map((device) => {
-      const settings = store.televisionSettings.find(device.id);
-      const power = store.state.value(device.id, 'power');
-      return {
-        id: device.id,
-        model: device.model,
-        online: device.online,
-        power: typeof power === 'boolean' ? power : null,
-        macs: [
-          ...(settings?.wake_macs ?? []),
-          ...(settings?.direct_mac === null || settings?.direct_mac === undefined
-            ? []
-            : [settings.direct_mac]),
-        ],
-      };
-    });
 }

@@ -1,3 +1,4 @@
+import { hostGoogleAccounts } from '../../src/store/host/hosted';
 import { join } from 'node:path';
 import type { PlannerItemRow } from '@smarteverything/domain';
 import fc from 'fast-check';
@@ -56,17 +57,17 @@ async function build(calendars: readonly CalendarSpec[] = []): Promise<Rig> {
   const nowMs = (): number => google.clock.nowMs();
   const tokens = new GoogleTokens({
     secrets,
-    accounts: store.googleAccounts,
+    accounts: hostGoogleAccounts(store.host),
     fetch: google.fetch,
     nowMs,
   });
   const link = new GoogleLink({
     secrets,
-    accounts: store.googleAccounts,
+    accounts: hostGoogleAccounts(store.host),
     tokens,
     fetch: google.fetch,
   });
-  const started = link.begin({
+  const started = await link.begin({
     profileId: ann,
     client: 'desktop',
     redirectUri: REDIRECT,

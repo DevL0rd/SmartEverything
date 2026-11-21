@@ -1,12 +1,12 @@
 import type { PlannerCollectionRow, PlannerItemRow } from '@smarteverything/domain';
 import { instantsOf } from '../../src/planner/instants';
 import type { PlannerItemInput } from '../../src/store/repositories/planner-items';
-import type { Store } from '../../src/store/store';
+import type { SeededStore } from './store';
 
 export function calendarOf(
-  store: Store,
+  store: SeededStore,
   profileId: string,
-  overrides: Partial<Parameters<Store['plannerCollections']['insert']>[0]> = {},
+  overrides: Partial<Parameters<SeededStore['plannerCollections']['insert']>[0]> = {},
 ): PlannerCollectionRow {
   return store.plannerCollections.insert({
     profile_id: profileId,
@@ -26,7 +26,7 @@ export function calendarOf(
 }
 
 export function eventOf(
-  store: Store,
+  store: SeededStore,
   profileId: string,
   collectionId: string,
   overrides: Partial<PlannerItemInput> = {},

@@ -7,11 +7,11 @@ import {
   type PlannerItemScope,
 } from '@smarteverything/domain';
 import type { PlannerItemInput, PlannerItemPatch } from '../store/repositories/planner-items';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { instantOf, instantsOf, isoOf } from './instants';
 import { occurrencesBetween, type RecurrenceSeries } from './recurrence';
 
-export type SeriesStore = Pick<Store, 'plannerItems' | 'plannerOccurrences'>;
+export type SeriesStore = Pick<HostStore, 'plannerItems' | 'plannerOccurrences'>;
 
 export type PlannerItemChanges = PlannerItemPatch;
 

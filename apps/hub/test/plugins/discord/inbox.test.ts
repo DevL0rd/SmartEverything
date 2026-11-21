@@ -69,7 +69,7 @@ async function hostOf(opened: TestStore): Promise<PluginHost> {
       uploadFile: unused,
       pictureFile: unused,
       layout: hubLayout(directory, {}),
-      submit: (): [] => [],
+      submit: (): Promise<[]> => Promise.resolve([]),
       signals: { emit: nothing },
       home: storePluginHome(store),
       now,
@@ -110,7 +110,7 @@ async function rigged(): Promise<Rig> {
   store.plugins.create({ manifest, source: 'local', location: null, trusted: true });
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: (): Date => NOW,
   });

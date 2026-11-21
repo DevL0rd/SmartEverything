@@ -98,7 +98,7 @@ beforeEach(async () => {
   attachmentId = await storedAttachment(chat.id);
   const files = new AssistantFiles({
     layout: hubLayout(rig.opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: (): Date => new Date(),
   });

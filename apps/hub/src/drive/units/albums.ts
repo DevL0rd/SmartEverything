@@ -9,7 +9,7 @@ import type {
 } from '@smarteverything/domain';
 import { found } from '../../store/context';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { DriveActor } from '../access';
 import {
   DriveAlbumsService,
@@ -22,7 +22,7 @@ const MEMBER_ROW = z.object({ id: z.string(), at: z.number() });
 
 const TOTAL_ROW = z.object({ total: z.number() });
 
-function smartRunnerOf(store: Store): SmartQueryRunner {
+function smartRunnerOf(store: HostStore): SmartQueryRunner {
   const { sql } = store.context;
   return {
     rows: (statement): readonly SmartMemberRow[] =>
@@ -36,7 +36,7 @@ function smartRunnerOf(store: Store): SmartQueryRunner {
   };
 }
 
-function albumsOf(store: Store): DriveAlbumsService {
+function albumsOf(store: HostStore): DriveAlbumsService {
   return new DriveAlbumsService({
     albums: store.driveAlbums,
     items: store.driveItems,

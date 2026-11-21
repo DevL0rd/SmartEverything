@@ -16,17 +16,18 @@ function depsOf(brushed: OralbRig): ViewDeps {
   return {
     store: brushed.test.store,
     fleet: brushed.fleet,
-    clock: homeClock(brushed.test.store),
+    clock: homeClock(brushed.test.store.live.home.settings),
     holder: () => null,
-    series: () => ({
-      resolution: 'hour',
-      points: [
-        { at: brushed.at(0), value: 40, minimum: 40, maximum: 40 },
-        { at: brushed.at(10), value: 30, minimum: 30, maximum: 30 },
-        { at: brushed.at(20), value: 90, minimum: 90, maximum: 90 },
-        { at: brushed.at(30), value: 80, minimum: 80, maximum: 80 },
-      ],
-    }),
+    series: () =>
+      Promise.resolve({
+        resolution: 'hour',
+        points: [
+          { at: brushed.at(0), value: 40, minimum: 40, maximum: 40 },
+          { at: brushed.at(10), value: 30, minimum: 30, maximum: 30 },
+          { at: brushed.at(20), value: 90, minimum: 90, maximum: 90 },
+          { at: brushed.at(30), value: 80, minimum: 80, maximum: 80 },
+        ],
+      }),
     now: brushed.clock.now,
   };
 }

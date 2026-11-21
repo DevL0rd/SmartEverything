@@ -38,7 +38,7 @@ export interface CycleTrackerPorts {
   readonly value: (deviceId: string, key: string) => JsonValue | undefined;
   readonly record: (provider: Provider, event: DeviceEvent) => void;
   readonly push: (provider: Provider, update: StateUpdate) => void;
-  readonly history: (deviceId: string) => readonly HistoryRow[];
+  readonly history: (deviceId: string) => Promise<readonly HistoryRow[]>;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -93,6 +93,8 @@ export class CycleTracker {
   private readonly notified = new Map<string, number | null>();
   private readonly finished = new Map<string, Finished>();
   private readonly tally: CountSummary;
+  private pending: Promise<void> | null = null;
+  private at: Date | null = null;
 
   constructor(private readonly ports: CycleTrackerPorts) {
     this.tally = new CountSummary(ports.log, 'laundry.change_summary');
@@ -102,51 +104,82 @@ export class CycleTracker {
     if (change.previous === undefined || change.previous === null || change.value === null) {
       return;
     }
-    try {
-      this.apply(change.deviceId, change.capability, change.previous, change.value);
-    } catch (cause) {
-      this.ports.log.error('laundry.change_failed', cause, {
-        deviceId: change.deviceId,
-        capability: change.capability,
-      });
-    }
+    const { deviceId, capability, previous, value } = change;
+    this.inOrder(
+      () => this.apply(deviceId, capability, previous, value),
+      (cause) => {
+        this.ports.log.error('laundry.change_failed', cause, { deviceId, capability });
+      },
+    );
+  }
+
+  settled(): Promise<void> {
+    return this.pending ?? Promise.resolve();
   }
 
   claim(device: DeviceRecord, event: DeviceEvent): boolean {
     if (!isDeviceReportedEnd(event)) {
       return false;
     }
-    try {
-      this.reported(device, event);
-    } catch (cause) {
-      this.ports.log.error('laundry.event_failed', cause, { deviceId: device.id });
-    }
+    this.inOrder(
+      () => this.reported(device, event),
+      (cause) => {
+        this.ports.log.error('laundry.event_failed', cause, { deviceId: device.id });
+      },
+    );
     return true;
   }
 
-  private apply(deviceId: string, key: string, previous: JsonValue, value: JsonValue): void {
+  private inOrder(work: () => Promise<void> | null, failed: (cause: unknown) => void): void {
+    const at = this.ports.now();
+    const run = (): Promise<void> | null => {
+      this.at = at;
+      try {
+        return work()?.catch(failed) ?? null;
+      } catch (cause) {
+        failed(cause);
+        return null;
+      }
+    };
+    const waiting = this.pending;
+    const next = waiting === null ? run() : waiting.then(() => run() ?? undefined);
+    if (next === null) return;
+    const tracked: Promise<void> = next.then(() => {
+      if (this.pending === tracked) this.pending = null;
+    });
+    this.pending = tracked;
+  }
+
+  private now(): Date {
+    if (this.at === null) throw new Error('The laundry tracker read its clock outside a change.');
+    return this.at;
+  }
+
+  private apply(
+    deviceId: string,
+    key: string,
+    previous: JsonValue,
+    value: JsonValue,
+  ): Promise<void> | null {
     const laundry = this.laundryOf(deviceId);
     const role = laundry?.roles.get(key);
     if (role === undefined || laundry === null) {
-      return;
+      return null;
     }
     if (role === 'laundry_status') {
-      this.status(laundry, previous, value);
-      return;
+      return this.status(laundry, previous, value);
     }
     if (role === 'fault') {
       this.fault(laundry, value);
-      return;
+      return null;
     }
     if (role === 'door_state') {
       if (value === 'Open') this.unloadPending(laundry, false);
-      return;
+      return null;
     }
     const consumable = CONSUMABLES[role];
-    if (consumable === undefined) {
-      return;
-    }
-    this.consumable(laundry, consumable, value === consumable.bad);
+    if (consumable !== undefined) this.consumable(laundry, consumable, value === consumable.bad);
+    return null;
   }
 
   private laundryOf(deviceId: string): Tracked | null {
@@ -164,16 +197,17 @@ export class CycleTracker {
     return laundry;
   }
 
-  private status(laundry: Tracked, previous: JsonValue, current: JsonValue): void {
+  private status(laundry: Tracked, previous: JsonValue, current: JsonValue): Promise<void> | null {
     const was = statusOf(previous);
     const is = statusOf(current);
     if (RUNNING_STATUSES.has(is) && !RUNNING_STATUSES.has(was)) {
       this.start(laundry);
     } else if (RUNNING_STATUSES.has(was) && is !== DELAY && !RUNNING_STATUSES.has(is)) {
-      this.end(laundry, this.outcomeAt(laundry, is), 'state');
+      return this.end(laundry, this.outcomeAt(laundry, is), 'state');
     } else if (was === DELAY && !RUNNING_STATUSES.has(is)) {
       this.tally.count('delay_cancelled');
     }
+    return null;
   }
 
   private outcomeAt(laundry: Tracked, status: string): CycleOutcome {
@@ -191,7 +225,7 @@ export class CycleTracker {
 
   private start(laundry: Tracked): void {
     const { device } = laundry;
-    const startedAt = this.ports.now().toISOString();
+    const startedAt = this.now().toISOString();
     const values = this.valuesOf(laundry);
     const options = Object.fromEntries(
       (['wash_temperature', 'spin_speed', 'rinse_count'] as const).flatMap((role) =>
@@ -210,13 +244,14 @@ export class CycleTracker {
     this.ports.log.info('laundry.cycle_started', { deviceId: device.id, program: facts.program });
   }
 
-  private end(laundry: Tracked, outcome: CycleOutcome, source: string): void {
+  private async end(laundry: Tracked, outcome: CycleOutcome, source: string): Promise<void> {
     const { device } = laundry;
-    const open = openCycleOf(this.ports.history(device.id));
+    const history = await this.ports.history(device.id);
+    const open = openCycleOf(history);
     const marker = this.finished.get(device.id);
     const repeated =
       marker === undefined
-        ? open === null && this.finishedRecently(device.id)
+        ? open === null && this.finishedRecently(history)
         : open === null || marker.startedAt === open.startedAt;
     if (repeated) {
       this.tally.count('duplicate_end');
@@ -225,13 +260,13 @@ export class CycleTracker {
     this.finish(laundry, open, outcome, source);
   }
 
-  private finishedRecently(deviceId: string): boolean {
-    const latest = this.ports
-      .history(deviceId)
-      .find((row) => row.kind === 'cycle_finished' && row.details['family'] === 'laundry');
+  private finishedRecently(history: readonly HistoryRow[]): boolean {
+    const latest = history.find(
+      (row) => row.kind === 'cycle_finished' && row.details['family'] === 'laundry',
+    );
     return (
       latest !== undefined &&
-      this.ports.now().getTime() - Date.parse(latest.occurredAt) < DUPLICATE_END_WINDOW_MS
+      this.now().getTime() - Date.parse(latest.occurredAt) < DUPLICATE_END_WINDOW_MS
     );
   }
 
@@ -242,7 +277,7 @@ export class CycleTracker {
     source: string,
   ): void {
     const { device } = laundry;
-    const finishedAt = this.ports.now().toISOString();
+    const finishedAt = this.now().toISOString();
     const facts = programFacts(this.valuesOf(laundry).laundry_program);
     const occurrence = endOccurrence(device.id, open?.startedAt ?? finishedAt);
     this.finished.set(device.id, { startedAt: open?.startedAt ?? null, occurrence });
@@ -270,21 +305,21 @@ export class CycleTracker {
       externalId: device.external_id,
       capability: UNLOAD_PENDING_KEY,
       value: pending,
-      observedAt: this.ports.now().toISOString(),
+      observedAt: this.now().toISOString(),
     });
   }
 
-  private reported(device: DeviceRecord, event: DeviceEvent): void {
+  private reported(device: DeviceRecord, event: DeviceEvent): Promise<void> | null {
     const laundry = this.laundryOf(device.id);
     if (laundry === null) {
       this.tally.count('report_unmatched');
-      return;
+      return null;
     }
     if (event.details['miotEvent'] === 'wash-end-log') {
       this.enrich(laundry, event);
-      return;
+      return null;
     }
-    this.end(laundry, 'completed', 'lan-push');
+    return this.end(laundry, 'completed', 'lan-push');
   }
 
   private enrich(laundry: Tracked, event: DeviceEvent): void {
@@ -313,7 +348,7 @@ export class CycleTracker {
     }
     this.record(laundry.device, {
       kind: 'fault',
-      occurredAt: this.ports.now().toISOString(),
+      occurredAt: this.now().toISOString(),
       details: {
         family: 'laundry',
         source: 'state',
@@ -328,7 +363,7 @@ export class CycleTracker {
 
   private consumable(laundry: Tracked, consumable: Consumable, bad: boolean): void {
     const key = `${laundry.device.id}|${consumable.item}`;
-    const now = this.ports.now().getTime();
+    const now = this.now().getTime();
     const goodSince = this.notified.get(key);
     if (!bad) {
       if (goodSince === null) {
@@ -350,7 +385,7 @@ export class CycleTracker {
   private maintenance(laundry: Tracked, consumable: Consumable): void {
     this.record(laundry.device, {
       kind: 'maintenance',
-      occurredAt: this.ports.now().toISOString(),
+      occurredAt: this.now().toISOString(),
       details: {
         family: 'laundry',
         source: 'state',

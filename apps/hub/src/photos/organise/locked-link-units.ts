@@ -3,13 +3,13 @@ import { inLockedFolder } from '../../drive/access';
 import { isFileItem, type FileItem } from '../../drive/file-item';
 import { storeUnit } from '../../store/host/unit';
 import { DriveMediaRepository } from '../../store/repositories/drive-media';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 function hidden(): ApiError {
   return new ApiError('not_found', 'There is no such file for this caller.');
 }
 
-function heldBy(store: Pick<Store, 'driveRoots'>, profileId: string, item: DriveItem): boolean {
+function heldBy(store: Pick<HostStore, 'driveRoots'>, profileId: string, item: DriveItem): boolean {
   const root = store.driveRoots.find(item.rootId);
   return inLockedFolder(item) && root?.scope === 'person' && root.ownerProfileId === profileId;
 }

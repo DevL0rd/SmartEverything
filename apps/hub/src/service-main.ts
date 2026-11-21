@@ -11,7 +11,7 @@ import {
   preparationLayout,
   prepareHubData,
 } from './service/data-preparation';
-import { confirmFileIoThreads } from './service/file-io-threads';
+import { confirmFileIoThreads, type FileIoThreadsStart } from './service/file-io-threads';
 import { BUNDLED_LOG_WORKER } from './logs/log-store';
 import { BUNDLED_CODEC_WORKER } from './codec/thread';
 import { BUNDLED_STORE_HOST } from './store/host/script';
@@ -39,7 +39,7 @@ async function prepare(
   }
 }
 
-export async function startService(): Promise<void> {
+export async function startService(applied: FileIoThreadsStart | null): Promise<void> {
   if (argv[2] === PREPARE_DATA_ARGUMENT && argv.length === 4) {
     const root = argv[3];
     if (root === undefined) throw new Error('The data preparation root is missing.');
@@ -50,9 +50,7 @@ export async function startService(): Promise<void> {
     throw new Error('Use --prepare-data <absolute data root> or no service arguments.');
   const location = resolveHubRootSync(env);
   const layout = configuredLayout(layoutForLocation(location, env));
-  const fileIoThreads = await confirmFileIoThreads(
-    location.state === 'pending-v1' ? null : layout.system.database.file,
-  );
+  const fileIoThreads = await confirmFileIoThreads(applied);
   await prepare(layout, location);
   await runService({
     layout,

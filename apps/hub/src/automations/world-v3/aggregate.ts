@@ -6,9 +6,22 @@ import {
   type JsonValue,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { controlKey, controlValue, hasReadableControl, lastChange } from './device-reads';
+import {
+  controlKey,
+  controlValue,
+  hasReadableControl,
+  lastChange,
+  recentChanges,
+  rowsOf,
+} from './device-reads';
 import { parseInputs } from './inputs';
-import { ReadFailure, outputsOf, type ReadHandlers, type ReadResult } from './read-port';
+import {
+  ReadFailure,
+  outputsOf,
+  type ReadHandlers,
+  type ReadResult,
+  type ReadScope,
+} from './read-port';
 import { TARGET_VALUE, deviceRefs } from './refs';
 import { devicesOf } from './targets';
 import type { WorldReadDeps } from './deps';
@@ -105,13 +118,15 @@ function matchResult(fn: string, readings: readonly Reading[], matches: JsonValu
   });
 }
 
-function latestResult(
-  deps: WorldReadDeps,
-  control: string,
-  readings: readonly Reading[],
-): ReadResult {
-  const changed = readings.flatMap(({ device, value }) => {
-    const change = lastChange(deps, device.id, control, value);
+function latestResult(scope: ReadScope, control: string, readings: readonly Reading[]): ReadResult {
+  const present = readings.filter((reading) => reading.value !== undefined);
+  const recent = recentChanges(
+    scope,
+    present.map(({ device }) => device.id),
+    control,
+  );
+  const changed = present.flatMap(({ device, value }) => {
+    const change = lastChange(rowsOf(recent, device.id), value);
     return value === undefined || change === undefined
       ? []
       : [{ device, value, at: change.changedAt }];
@@ -132,13 +147,13 @@ function matchesOf(fn: string, matches: JsonValue | undefined): JsonValue {
 }
 
 function combined(
-  deps: WorldReadDeps,
+  scope: ReadScope,
   request: z.infer<typeof AGGREGATE>,
   readings: readonly Reading[],
 ): ReadResult {
   switch (request.fn) {
     case 'latest':
-      return latestResult(deps, request.control, readings);
+      return latestResult(scope, request.control, readings);
     case 'average':
     case 'min':
     case 'max':
@@ -154,11 +169,11 @@ function combined(
 
 export function aggregateHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
-    'device.aggregate': (inputs): ReadResult => {
+    'device.aggregate': (inputs, scope): ReadResult => {
       const request = parseInputs('device.aggregate', AGGREGATE, inputs);
       const key = controlKey(request.control);
       const { online, offline } = controlReadings(deps, devicesOf(deps.world, request.target), key);
-      const result = combined(deps, request, online);
+      const result = combined(scope, request, online);
       return {
         ...result,
         outputs: { ...result.outputs, offline: deviceRefs(offline.map((device) => device.id)) },

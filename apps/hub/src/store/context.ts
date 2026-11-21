@@ -125,6 +125,10 @@ export class StoreContext {
     this.feed.afterCommit(work);
   }
 
+  accessChanged(): void {
+    this.feed.accessChanged();
+  }
+
   notice(notice: CommittedNotice): void {
     this.feed.notice(notice);
   }

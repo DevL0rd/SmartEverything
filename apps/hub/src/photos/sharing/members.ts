@@ -9,12 +9,12 @@ import {
 import { z } from 'zod';
 import type { DriveActor } from '../../drive/access';
 import type { PhotoAlbumMemberRow } from '../../store/repositories/photo-album-members';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { requireAccess, requireOwner } from './access';
 import type { AlbumSeen } from './seen';
 
 export type MembersStore = Pick<
-  Store,
+  HostStore,
   'context' | 'write' | 'driveAlbums' | 'photoAlbumMembers' | 'photoAlbumActivity' | 'profiles'
 >;
 

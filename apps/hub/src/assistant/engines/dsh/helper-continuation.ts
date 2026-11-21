@@ -15,8 +15,8 @@ import type {
 } from '@smarteverything/domain';
 import { messageOf } from '@smarteverything/logging';
 import { sessionAttached } from '../../../harness/attach';
-import { assertModelAllowed } from '../../../server/person-scope';
-import { assertHelperDelivery } from '../../delegation/helper-dialogue';
+import { assertModelAllowedOf } from '../../model-scope';
+import { assertHelperDelivery } from '../../delegation/helper-delivery';
 import type { HarnessGrant } from '../../../harness/grant';
 import type { HarnessService } from '../../../harness/service';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
@@ -32,10 +32,15 @@ export interface Continuation {
 const UNAVAILABLE =
   'This helper needs its original execution host and an open parent conversation.';
 
-function writerFor(service: HarnessService, chat: AiChatRow): DshWriterClaim {
+async function writerFor(service: HarnessService, chat: AiChatRow): Promise<DshWriterClaim> {
   if (chat.engine.kind !== 'dsh' || chat.engine.session_id === null)
     throw new ApiError('conflict', UNAVAILABLE);
-  const claim = service.store.dshSessions.attached(chat.engine.session_id, chat.profile_id);
+  const claim = await service.store.host.call(
+    'dshSessions',
+    'attached',
+    chat.engine.session_id,
+    chat.profile_id,
+  );
   if (
     claim === null ||
     harnessTargetKey(claim.target) !== harnessTargetKey(chat.engine.execution_target)
@@ -44,10 +49,10 @@ function writerFor(service: HarnessService, chat: AiChatRow): DshWriterClaim {
   return claim;
 }
 
-function parentFor(service: HarnessService, chat: AiChatRow): AiChatRow {
+async function parentFor(service: HarnessService, chat: AiChatRow): Promise<AiChatRow> {
   if (chat.kind !== 'subagent' || chat.parent_id === null)
     throw new ApiError('forbidden', 'Only a direct native helper can continue here.');
-  const parent = service.store.aiChats.chat(chat.parent_id);
+  const parent = await service.store.host.call('aiChats', 'chat', chat.parent_id);
   if (parent.profile_id !== chat.profile_id)
     throw new ApiError('forbidden', 'The helper does not belong to this conversation profile.');
   return parent;
@@ -63,49 +68,54 @@ interface HelperBinding extends Continuation {
 type PendingInput = (history: NativeInputHistory) => readonly string[];
 type ClaimRequest = Extract<HarnessRuntimeRequest, { kind: 'open' }>;
 
-function retainedHelper(
+async function retainedHelper(
   service: HarnessService,
   chat: AiChatRow,
   role: ChatOwner['role'],
   attachments: boolean,
-): HelperBinding {
-  const child = writerFor(service, chat);
-  const parent = writerFor(service, parentFor(service, chat));
-  const metadata = service.store.dshSessions.stat(child.session_id, chat.profile_id);
+): Promise<HelperBinding> {
+  const child = await writerFor(service, chat);
+  const parent = await writerFor(service, await parentFor(service, chat));
+  const metadata = await service.store.host.call(
+    'dshSessions',
+    'stat',
+    child.session_id,
+    chat.profile_id,
+  );
   const host = service.directory.get(child.target).host;
   if (metadata?.header.parentSession !== parent.session_id || metadata.header.origin !== 'subagent')
     throw new ApiError('conflict', UNAVAILABLE);
   if (
     harnessTargetKey(child.target) !== harnessTargetKey(parent.target) ||
-    !sessionAttached(service, parent.session_id, chat.profile_id)
+    !(await sessionAttached(service, parent.session_id, chat.profile_id))
   )
     throw new ApiError('conflict', UNAVAILABLE);
   if (host.manifest?.features.includes('subagent-send') !== true)
     throw new ApiError('conflict', 'Update the helper execution host to address it here.');
-  const grant = service.storage.grant(child.session_id);
-  const adoptionEpoch = retainedAdoptionEpoch(service, child.session_id, grant, role);
-  if (attachments) assertAttachmentRoute(service, host, grant);
+  const grant = await service.storage.grant(child.session_id);
+  const adoptionEpoch = await retainedAdoptionEpoch(service, child.session_id, grant, role);
+  if (attachments) await assertAttachmentRoute(service, host, grant);
   return { child, parent, metadata, grant, host, adoptionEpoch };
 }
 
-function assertAttachmentRoute(
+async function assertAttachmentRoute(
   service: HarnessService,
   host: AiHarnessHost,
   grant: HarnessGrant,
-): void {
+): Promise<void> {
   if (host.manifest?.features.includes('subagent-attachments') !== true)
     throw new ApiError('conflict', 'Update the helper execution host to send it attachments.');
-  assertModelAllowed(service.store, grant.profile_id, grant.route.model);
+  await assertModelAllowedOf(service.store, grant.profile_id, grant.route.model);
   service.routes.selected(grant.profile_id, grant.route, grant.authority.kind === 'trigger');
 }
 
-function retainedAdoptionEpoch(
+async function retainedAdoptionEpoch(
   service: HarnessService,
   sessionId: string,
   grant: HarnessGrant,
   role: ChatOwner['role'],
-): number {
-  const adoption = service.store.aiAgentRuns.currentOfSession(sessionId);
+): Promise<number> {
+  const adoption = await service.store.host.call('aiAgentRuns', 'currentOfSession', sessionId);
   if (adoption?.harness === undefined || grant.event_id !== adoption.source_id)
     throw new ApiError('conflict', 'The original helper continuation is no longer available.');
   if (grant.role === 'owner' && role !== 'owner')
@@ -120,28 +130,29 @@ function current(binding: HelperBinding): boolean {
   );
 }
 
-export function helperContinuation(
+export async function helperContinuation(
   service: HarnessService,
   chat: AiChatRow,
   role: ChatOwner['role'],
   attachments = false,
-): Continuation {
-  const binding = retainedHelper(service, chat, role, attachments);
+): Promise<Continuation> {
+  const binding = await retainedHelper(service, chat, role, attachments);
   if (!current(binding)) throw new ApiError('conflict', UNAVAILABLE);
   return { child: binding.child, parent: binding.parent };
 }
 
-function assertColdHelper(
+async function assertColdHelper(
   service: HarnessService,
   binding: HelperBinding,
   pendingInput: PendingInput | undefined,
-): HelperSettlement {
+): Promise<HelperSettlement> {
   if (binding.host.manifest?.features.includes('subagent-resume') !== true)
     throw new ApiError('conflict', 'Update the helper execution host to resume this helper.');
   if (pendingInput === undefined)
     throw new ApiError('conflict', 'The stored helper inbox cannot be checked here.');
   const { metadata, grant } = binding;
-  const events = service.store.dshSessions.readAll(metadata.header.id, metadata.profile_id);
+  const { host } = service.store;
+  const events = await host.call('dshSessions', 'readAll', metadata.header.id, metadata.profile_id);
   const boundary = events.findLast(
     (event) =>
       event.seq >= metadata.inherited_event_count &&
@@ -149,10 +160,10 @@ function assertColdHelper(
   );
   if (
     boundary?.type !== 'turn/end' ||
-    service.store.harnessDeliveries.pending(metadata.header.id).length > 0
+    (await host.call('harnessDeliveries', 'pending', metadata.header.id)).length > 0
   )
     throw new ApiError('conflict', 'The helper’s previous turn has no confirmed settlement.');
-  const settlement = settlementProof(service, binding);
+  const settlement = await settlementProof(service, binding);
   if (settlement === undefined)
     throw new ApiError('conflict', 'The helper’s previous activation has no confirmed settlement.');
   if (pendingInput({ metadata, events }).length > 0)
@@ -161,16 +172,20 @@ function assertColdHelper(
   return settlement;
 }
 
-function settlementProof(
+async function settlementProof(
   service: HarnessService,
   binding: HelperBinding,
-): HelperSettlement | undefined {
+): Promise<HelperSettlement | undefined> {
   const { child, parent, metadata } = binding;
-  const retained = retainedHelperSettlement(service.store, child, parent, metadata.next_seq);
+  const retained = await retainedHelperSettlement(service.store, child, parent, metadata.next_seq);
   const expectedEpoch = retained?.writerEpoch ?? child.epoch;
-  for (const event of service.store.dshSessions
-    .readAll(parent.session_id, metadata.profile_id)
-    .toReversed()) {
+  const events = await service.store.host.call(
+    'dshSessions',
+    'readAll',
+    parent.session_id,
+    metadata.profile_id,
+  );
+  for (const event of events.toReversed()) {
     if (event.type !== HELPER_SETTLEMENT_PROOF) continue;
     const proof = HELPER_SETTLEMENT_PROOF_DATA.safeParse(event.data);
     if (
@@ -184,15 +199,15 @@ function settlementProof(
   return undefined;
 }
 
-export function helperContinuationReady(
+export async function helperContinuationReady(
   service: HarnessService,
   chat: AiChatRow,
   role: ChatOwner['role'],
   options?: { readonly pendingInput: PendingInput; readonly attachments?: boolean },
-): string | null {
+): Promise<string | null> {
   try {
-    const binding = retainedHelper(service, chat, role, options?.attachments === true);
-    if (!current(binding)) assertColdHelper(service, binding, options?.pendingInput);
+    const binding = await retainedHelper(service, chat, role, options?.attachments === true);
+    if (!current(binding)) await assertColdHelper(service, binding, options?.pendingInput);
     return null;
   } catch (cause) {
     return messageOf(cause);
@@ -205,7 +220,7 @@ export async function prepareDirectedHelper(
   event: StoredEvent,
   { role, pendingInput }: { readonly role: ChatOwner['role']; readonly pendingInput: PendingInput },
 ): Promise<{ readonly id: string; readonly helper: Continuation }> {
-  const attachments = assertHelperDelivery(service.store, chat, event);
+  const attachments = await assertHelperDelivery(service.store, chat, event);
   const helper = await prepareHelperContinuation(service, chat, role, {
     pendingInput,
     attachments: attachments.length > 0,
@@ -225,18 +240,22 @@ export async function prepareHelperContinuation(
     readonly attachments?: boolean;
   },
 ): Promise<Continuation> {
-  const binding = retainedHelper(service, chat, role, attachments);
+  const binding = await retainedHelper(service, chat, role, attachments);
   const wasCurrent = current(binding);
   const child = wasCurrent
     ? binding.child
-    : await renewHelperWriter(service, binding, assertColdHelper(service, binding, pendingInput));
+    : await renewHelperWriter(
+        service,
+        binding,
+        await assertColdHelper(service, binding, pendingInput),
+      );
   if (
     child.epoch !== binding.adoptionEpoch &&
-    !sessionAttached(service, child.session_id, chat.profile_id)
+    !(await sessionAttached(service, child.session_id, chat.profile_id))
   )
     await sendClaim(service, child, binding);
   const expected = { child, parent: binding.parent };
-  assertSameContinuation(helperContinuation(service, chat, role, attachments), expected);
+  assertSameContinuation(await helperContinuation(service, chat, role, attachments), expected);
   return expected;
 }
 
@@ -296,14 +315,18 @@ export async function submitHelperContinuation(
   event: StoredEvent,
   { role, expected }: { readonly role: ChatOwner['role']; readonly expected: Continuation },
 ): Promise<void> {
-  const attachments = assertHelperDelivery(service.store, chat, event);
-  assertSameContinuation(helperContinuation(service, chat, role, attachments.length > 0), expected);
+  const attachments = await assertHelperDelivery(service.store, chat, event);
+  assertSameContinuation(
+    await helperContinuation(service, chat, role, attachments.length > 0),
+    expected,
+  );
   const { child, parent } = expected;
-  const metadata = service.store.dshSessions.stat(child.session_id, event.profile_id);
+  const { host } = service.store;
+  const metadata = await host.call('dshSessions', 'stat', child.session_id, event.profile_id);
   if (metadata?.chat_id !== chat.id)
     throw new ApiError('forbidden', 'Helper input cannot reuse another conversation session.');
-  service.store.harnessDeliveries.cut(event.id, metadata.next_seq);
-  const startSeq = service.store.harnessDeliveries.find(event.id)?.start_seq ?? null;
+  await host.call('harnessDeliveries', 'cut', event.id, metadata.next_seq);
+  const startSeq = (await host.call('harnessDeliveries', 'find', event.id))?.start_seq ?? null;
   if (startSeq === null)
     throw new ApiError('conflict', 'The helper delivery is missing its native history boundary.');
   await service.directory.execute(child.target, event.id, {

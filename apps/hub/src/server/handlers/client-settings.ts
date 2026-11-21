@@ -35,9 +35,17 @@ export const clientRoutes = (store: Store, phones: Pick<PhoneNodes, 'registerHar
       layout:
         (await store.host.call('personal', 'layout', ownerOf(caller), params.page))?.layout ?? null,
     })),
-    saveLayout: bound(E.saveLayout, ({ params, body, caller }) => {
+    saveLayout: bound(E.saveLayout, async ({ params, body, caller }) => {
       requireDeveloperOwner(caller, params.page);
-      return store.personal.saveLayout(ownerOf(caller), params.page, body.layout, requestSequence);
+      const saved = await store.host.call(
+        'personal',
+        'saveLayout',
+        ownerOf(caller),
+        params.page,
+        body.layout,
+      );
+      requestSequence(store.feed.seq);
+      return saved;
     }),
     listPushTargets: bound(E.listPushTargets, () => store.host.call('personal', 'pushTargets')),
     savePushTarget: bound(E.savePushTarget, async ({ body, caller }) => {

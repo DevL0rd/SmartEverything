@@ -2,9 +2,9 @@ import type { API_ENDPOINTS as E } from '@smarteverything/domain';
 import { type RecordingRow } from '@smarteverything/domain';
 import type { z } from 'zod';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
-function requireIrRemote(store: Store, remoteId: string): void {
+function requireIrRemote(store: HostStore, remoteId: string): void {
   if (store.devices.find(remoteId)?.kind === 'ir_remote') return;
   if (store.irAppliances.find(remoteId) !== undefined) return;
   store.infrared.remote(remoteId);

@@ -38,7 +38,7 @@ export async function providerInput(
   sessionId: string | null,
 ): Promise<{ readonly input: ComputerRuntimeProviderTurn; readonly engine: ComputerEngine }> {
   const { chat, event } = turn;
-  const frame = frameOf(deps, { ...turn, sessionId });
+  const frame = await frameOf(deps, { ...turn, sessionId });
   const messages = await providerMessages(
     { store: deps.store, files: deps.files, runtime: chat.engine.kind },
     chat,
@@ -56,26 +56,26 @@ export async function preflightProviderInput(
   const engine = computerEngine(input.target.engine);
   if (engine === null) throw new ApiError('conflict', 'The helper’s provider binding changed.');
   const chat = { ...input.target, engine };
-  const frame = frameOf(deps, {
+  const frame = await frameOf(deps, {
     jobId: randomUUID(),
     chat,
     event: { client_id: input.clientId, text: input.text },
-    grant: grantOf(deps, chat),
+    grant: await grantOf(deps, chat),
     sessionId,
   });
   const message = await helperProviderMessage(deps, input, engine);
   assertProviderTurnSize(assembleInput(frame, [message]).turn);
 }
 
-function frameOf(deps: ComputerRunnerDeps, input: InputBinding): InputFrame {
+async function frameOf(deps: ComputerRunnerDeps, input: InputBinding): Promise<InputFrame> {
   const { chat, event, sessionId } = input;
   const settings = deps.directory.runtimeStatus({
     device_id: chat.engine.device_id,
     runtime: chat.engine.kind,
   }).settings;
   const engine = effectiveProviderEngine(chat.engine, settings);
-  const project = managedProviderProject(deps, chat, sessionId, engine.settings.cwd);
-  const prompt = providerPrompt(deps, input, project);
+  const project = await managedProviderProject(deps, chat, sessionId, engine.settings.cwd);
+  const prompt = await providerPrompt(deps, input, project);
   return {
     engine,
     context: prompt.context,

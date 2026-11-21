@@ -10,6 +10,9 @@ import { DRIVE_SHARING_READ_UNITS, DRIVE_SHARING_WRITE_UNITS } from './registry-
 import { LOCAL_READ_UNITS, LOCAL_WRITE_UNITS } from './registry-local';
 import { PLANNER_READ_UNITS, PLANNER_WRITE_UNITS } from './registry-planner';
 import { SYSTEM_READ_UNITS, SYSTEM_WRITE_UNITS } from './registry-system';
+import { REST_READ_UNITS, REST_WRITE_UNITS } from './registry-rest';
+import { FINAL_READ_UNITS, FINAL_WRITE_UNITS } from './registry-final';
+import { CLOSING_READ_UNITS, CLOSING_WRITE_UNITS } from './registry-closing';
 import {
   AUTOMATION_PROGRAM_READ_UNITS,
   AUTOMATION_PROGRAM_WRITE_UNITS,
@@ -29,6 +32,9 @@ export const READ_UNITS = {
   ...PLANNER_READ_UNITS,
   ...SYSTEM_READ_UNITS,
   ...AUTOMATION_PROGRAM_READ_UNITS,
+  ...REST_READ_UNITS,
+  ...FINAL_READ_UNITS,
+  ...CLOSING_READ_UNITS,
 } as const;
 
 export const WRITE_UNITS = {
@@ -42,6 +48,9 @@ export const WRITE_UNITS = {
   ...PLANNER_WRITE_UNITS,
   ...SYSTEM_WRITE_UNITS,
   ...AUTOMATION_PROGRAM_WRITE_UNITS,
+  ...REST_WRITE_UNITS,
+  ...FINAL_WRITE_UNITS,
+  ...CLOSING_WRITE_UNITS,
 } as const;
 
 export type ReadUnits = typeof READ_UNITS;

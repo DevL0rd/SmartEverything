@@ -17,7 +17,7 @@ import {
 } from '../../src/drive/units/hash';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
-import { updateDriveSettings } from '../../src/drive/settings';
+import { saveDriveSettings } from '../../src/drive/units/settings';
 import { testLogger } from '../support/logs';
 import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
 import { localScans } from './local-ports';
@@ -265,13 +265,13 @@ describe('the hash job', () => {
     useRoot(false);
     put('a.txt', 'hello');
     await scan();
-    updateDriveSettings(
+    saveDriveSettings(
       { settingsKv: settings, write: (work) => context.write(work) },
       { duplicatesHashing: false },
     );
     await hash();
     expect(items.byPath(ROOT, 'a.txt', null)).toMatchObject({ sha256: null });
-    updateDriveSettings(
+    saveDriveSettings(
       { settingsKv: settings, write: (work) => context.write(work) },
       { duplicatesHashing: true },
     );
@@ -285,7 +285,7 @@ describe('the hash job', () => {
     useRoot(true);
     put('a.txt', 'hello');
     await scan();
-    updateDriveSettings(
+    saveDriveSettings(
       { settingsKv: settings, write: (work) => context.write(work) },
       { indexingPaused: true },
     );

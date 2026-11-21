@@ -18,20 +18,20 @@ import {
   requireHubBuild,
   HubBuildRefusedError,
 } from '../../src/self-update/command';
-import { openStore, type Store } from '../../src/store/store';
+import { openSeededStore, type SeededStore } from '../support/store';
 import { testLogger } from '../support/logs';
 import { testLayout } from '../support/test-layout';
 import { testStoreHost } from '../support/store-host';
 
 let scratch: string;
 let layout: HubLayout;
-let store: Store;
+let store: SeededStore;
 
 beforeEach(async () => {
   scratch = await mkdtemp(join(tmpdir(), 'build-source-'));
   layout = await testLayout(scratch);
   await mkdir(dirname(layout.system.database.file), { recursive: true });
-  store = openStore({
+  store = await openSeededStore({
     host: testStoreHost(),
     path: layout.system.database.file,
     log: testLogger('store'),
@@ -42,7 +42,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  store.close();
+  await store.close();
   await rm(scratch, { recursive: true, force: true });
 });
 
@@ -83,36 +83,34 @@ describe('the build source setting', () => {
     expect(API_ENDPOINTS.updateBuildSources.access).toBe('owner');
   });
 
-  it('reports a missing row instead of guessing', () => {
+  it('reports a missing row instead of guessing', async () => {
     const database = new DatabaseSync(layout.system.database.file);
     database.exec("delete from ai_settings where key = 'updates.buildSource.desktop'");
     database.close();
-    expect(() => buildSourceOf(layout, 'desktop')).toThrow(BuildSourceMissingError);
+    await expect(buildSourceOf(layout, 'desktop')).rejects.toThrow(BuildSourceMissingError);
   });
 });
 
 describe('the Hub build gate reading the setting', () => {
-  it.each(PIPELINE_COMPONENTS)('refuses %s while it is provided', (component) => {
-    expect(buildSourceOf(layout, component)).toBe('provided');
-    expect(hubBuildRefusal(layout, component)).toMatch(/build source is provided, not hub/u);
-    expect(() => {
-      requireHubBuild(layout, component);
-    }).toThrow(HubBuildRefusedError);
+  it.each(PIPELINE_COMPONENTS)('refuses %s while it is provided', async (component) => {
+    expect(await buildSourceOf(layout, component)).toBe('provided');
+    expect(await hubBuildRefusal(layout, component)).toMatch(/build source is provided, not hub/u);
+    await expect(requireHubBuild(layout, component)).rejects.toThrow(HubBuildRefusedError);
   });
 
   it('points a github artifact at its release', async () => {
     await store.host.write('buildSourcesUpdate', { apk: 'github' });
-    expect(hubBuildRefusal(layout, 'app')).toMatch(
+    expect(await hubBuildRefusal(layout, 'app')).toMatch(
       /build source is github, not hub\. Publish it as a GitHub release/u,
     );
   });
 
   it('lets only the artifact set to hub build, mapping app to apk', async () => {
     await store.host.write('buildSourcesUpdate', { apk: 'hub' });
-    expect(buildSourceOf(layout, 'app')).toBe('hub');
-    expect(hubBuildRefusal(layout, 'app')).toBeNull();
-    expect(hubBuildRefusal(layout, 'hub')).not.toBeNull();
-    expect(hubBuildRefusal(layout, 'ui')).not.toBeNull();
-    expect(hubBuildRefusal(layout, 'desktop')).not.toBeNull();
+    expect(await buildSourceOf(layout, 'app')).toBe('hub');
+    expect(await hubBuildRefusal(layout, 'app')).toBeNull();
+    expect(await hubBuildRefusal(layout, 'hub')).not.toBeNull();
+    expect(await hubBuildRefusal(layout, 'ui')).not.toBeNull();
+    expect(await hubBuildRefusal(layout, 'desktop')).not.toBeNull();
   });
 });

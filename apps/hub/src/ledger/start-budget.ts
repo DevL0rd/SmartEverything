@@ -27,13 +27,13 @@ export function startBudget(parts: BudgetParts): Budget {
     log,
   );
   const budget = new Budget({
-    ledger: store.ledger,
-    settings: store.settingsKv,
+    ledger: store.live.usage,
+    settings: store.live.home.saved,
     credits,
     people: {
-      budget: (profileId): PersonBudget | null | undefined => store.personAccess.budget(profileId),
-      budgeted: (): readonly string[] => store.personAccess.budgetedIds(),
-      name: (profileId): string => store.profiles.byId(profileId).name,
+      budget: (profileId): PersonBudget | null | undefined => store.live.access.budget(profileId),
+      budgeted: (): readonly string[] => store.live.access.budgetedIds(),
+      name: (profileId): string => store.live.access.name(profileId),
     },
     alerts: parts.alerts,
     note: parts.note,

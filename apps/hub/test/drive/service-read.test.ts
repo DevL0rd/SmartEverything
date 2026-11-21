@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
 import { DriveReadService } from '../../src/drive/service-read';
 import { DRIVE_PAGE_SIZE } from '../../src/drive/page-size';
-import { readDriveSettings, updateDriveSettings } from '../../src/drive/settings';
+import { loadDriveSettings, updateDriveSettings } from '../../src/drive/settings';
 import { captureLogs } from '../support/logs';
 import type { TestStore } from '../support/store';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
@@ -380,14 +380,16 @@ describe('recent files', () => {
 });
 
 describe('drive settings', () => {
-  it('reads the seeded settings and changes only what the update names', () => {
-    const before = readDriveSettings(opened.store);
-    const after = updateDriveSettings(opened.store, { membersMayShare: !before.membersMayShare });
+  it('reads the seeded settings and changes only what the update names', async () => {
+    const before = await loadDriveSettings(opened.store);
+    const after = await updateDriveSettings(opened.store, {
+      membersMayShare: !before.membersMayShare,
+    });
     expect(after).toEqual({ ...before, membersMayShare: !before.membersMayShare });
-    expect(readDriveSettings(opened.store)).toEqual(after);
+    expect(await loadDriveSettings(opened.store)).toEqual(after);
   });
 
-  it('refuses a value the schema does not allow', () => {
-    expect(() => updateDriveSettings(opened.store, { uploadExpiryDays: 0 })).toThrow();
+  it('refuses a value the schema does not allow', async () => {
+    await expect(updateDriveSettings(opened.store, { uploadExpiryDays: 0 })).rejects.toThrow();
   });
 });

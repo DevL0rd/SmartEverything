@@ -1,7 +1,7 @@
 import { posix } from 'node:path';
 import { ApiError, type DriveItem } from '@smarteverything/domain';
 import { locate, versionRelPath, type DriveWriteRoot } from '../../drive/intents';
-import { canWrite, itemAccess } from '../../drive/access';
+import { canWrite } from '../../drive/access';
 import { writableItemRoot, type DriveCaller } from '../../drive/service-write-support';
 import { storeUnit } from '../../store/host/unit';
 import { DriveMediaRepository } from '../../store/repositories/drive-media';
@@ -69,8 +69,7 @@ export async function canEditItem(
   caller: DriveCaller,
   item: ImageItem,
 ): Promise<boolean> {
-  const drive = await deps.store.host.call('driveRoots', 'byId', item.rootId);
-  return canWrite(itemAccess(deps.store, caller, drive, item));
+  return canWrite(await deps.store.host.read('driveItemAccess', { actor: caller, item }));
 }
 
 export async function imageTarget(

@@ -1,6 +1,5 @@
 import {
   HELPER_DIALOGUE_KIND,
-  assistantLabel,
   helperDialogueOf,
   type AiChatRow,
   type AssistantMessageRow,
@@ -8,7 +7,6 @@ import {
   type MessageOrigin,
   type PluginOrigin,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
 
 interface RelaySpeaker {
   readonly author: string;
@@ -41,16 +39,14 @@ export function directHelperDialogue(
   };
 }
 
-export function relaySpeaker(
-  store: Store,
-  { from, to }: { readonly from: AiChatRow; readonly to: AiChatRow },
+export function relayAuthor(
+  assistantName: string,
+  from: AiChatRow,
   hops: number | undefined,
   plugin: PluginOrigin | null,
 ): RelaySpeaker {
-  const helperDialogue = directHelperDialogue(to, from, 'from_helper');
-  const author = from.helper_name ?? assistantLabel(store.assistantChat.settings());
   return {
-    author,
+    author: from.helper_name ?? assistantName,
     origin: {
       source: from.kind === 'subagent' ? 'subagent' : 'chat',
       plugin_id: null,
@@ -60,6 +56,18 @@ export function relaySpeaker(
       ...(hops === undefined ? {} : { hops }),
       ...(plugin ?? {}),
     },
+  };
+}
+
+export function relaySpeaker(
+  assistantName: string,
+  { from, to }: { readonly from: AiChatRow; readonly to: AiChatRow },
+  hops: number | undefined,
+  plugin: PluginOrigin | null,
+): RelaySpeaker {
+  const helperDialogue = directHelperDialogue(to, from, 'from_helper');
+  return {
+    ...relayAuthor(assistantName, from, hops, plugin),
     ...(helperDialogue === undefined ? {} : { helperDialogue }),
   };
 }

@@ -1,7 +1,8 @@
 import type { ImageOperationReceipt } from '@smarteverything/domain';
 import type { ImageProviderResult } from '../../openrouter/image-provider';
 import type { ImageServiceOptions } from './contract';
-import type { ResolvedImage, readInputs } from './inputs';
+import type { readInputs } from './inputs';
+import type { ResolvedImage } from './reserve-unit';
 
 type Images = Awaited<ReturnType<typeof readInputs>>;
 export interface GenerationWork {
@@ -31,8 +32,8 @@ export class Generation {
       submitted: () => {
         this.submitted = true;
       },
-      usage: (usage, source) => {
-        this.receipt = this.options.repository.update({
+      usage: async (usage, source) => {
+        this.receipt = await this.options.store.host.call('imageOperations', 'update', {
           ...this.receipt,
           usage,
           usage_source: source,

@@ -48,6 +48,7 @@ it('persists Codex context from the latest request and retains cumulative usage 
   });
   try {
     const events: CodexProviderEvent[] = [];
+    const notes: Promise<void>[] = [];
     const job = new CodexJob({
       turn: CODEX_PROVIDER_TURN.parse({
         device_id: engine.device_id,
@@ -71,7 +72,7 @@ it('persists Codex context from the latest request and retains cumulative usage 
       cleanup: (): void => undefined,
       publish: (event): void => {
         events.push(event);
-        noteContext(store, chat, event);
+        notes.push(noteContext(store, chat, event));
       },
     });
     job.started(TURN);
@@ -83,6 +84,7 @@ it('persists Codex context from the latest request and retains cumulative usage 
       { ...notification, tokenUsage: { total, last } },
       null,
     );
+    await Promise.all(notes);
     expect(store.aiChats.chat(chat.id).context_percent).toBeNull();
 
     job.receive(
@@ -101,6 +103,7 @@ it('persists Codex context from the latest request and retains cumulative usage 
       { ...notification, tokenUsage: { total, last, modelContextWindow: null } },
       null,
     );
+    await Promise.all(notes);
     expect(store.aiChats.chat(chat.id).context_percent).toBe(12);
     expect(store.aiChats.meterHistory(chat.id)).toStrictEqual([
       { at: AT, kind: 'context', percent: 12 },

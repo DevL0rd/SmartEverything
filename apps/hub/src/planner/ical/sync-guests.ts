@@ -1,9 +1,9 @@
 import type { PlannerGuestRow } from '@smarteverything/domain';
 import { hashPublicToken, newPublicToken } from '../../store/repositories/public-token';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { IcalGuest } from './model';
 
-type GuestStore = Pick<Store, 'plannerGuests'>;
+type GuestStore = Pick<HostStore, 'plannerGuests'>;
 
 function emailOf(row: PlannerGuestRow): string | null {
   return row.email === null ? null : row.email.toLowerCase();

@@ -1,3 +1,4 @@
+import { hostMemoryChats, hostMemoryRows } from '../../src/store/host/hosted';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MEMORY_MODEL_DEFAULT } from '@smarteverything/domain';
 import type { MemoryEmbedder } from '../../src/memory/embedder';
@@ -41,8 +42,10 @@ function vectorOf(text: string): Float32Array {
 class ScriptedEmbedder implements MemoryEmbedder {
   readonly model = 'scripted';
   failing = false;
+  calls = 0;
 
   embed(texts: readonly string[]): Promise<Float32Array[]> {
+    this.calls += 1;
     if (this.failing) return Promise.reject(new Error('no embeddings'));
     return Promise.resolve(texts.map((text) => vectorOf(text)));
   }
@@ -94,11 +97,16 @@ beforeEach(async () => {
       return Promise.resolve();
     },
   });
-  service = new MemoryService(opened.store.aiMemories, opened.store.aiChats, embedder, {
-    judge: model,
-    zone: (): string => zone,
-    now: (): Date => new Date(),
-  });
+  service = new MemoryService(
+    hostMemoryRows(opened.store.host),
+    hostMemoryChats(opened.store.host),
+    embedder,
+    {
+      judge: model,
+      zone: (): string => zone,
+      now: (): Date => new Date(),
+    },
+  );
   manager = new MemoryManager(model, service.writer, service);
   const first = opened.store.profiles.first().id;
   owner = { profileId: first, role: 'owner', chatId: chatOf(first), messageId: null };
@@ -124,8 +132,8 @@ function chatOf(profileId: string): string {
   }).id;
 }
 
-function texts(who: MemoryPrincipal): string[] {
-  return service.list(who).memories.map((memory) => memory.text);
+async function texts(who: MemoryPrincipal): Promise<string[]> {
+  return (await service.list(who)).memories.map((memory) => memory.text);
 }
 
 describe('the one write path', () => {
@@ -138,7 +146,7 @@ describe('the one write path', () => {
     });
 
     expect(again.outcome).toBe('unchanged');
-    expect(texts(ida)).toHaveLength(1);
+    expect(await texts(ida)).toHaveLength(1);
     expect(asked).toHaveLength(0);
   });
 
@@ -153,7 +161,7 @@ describe('the one write path', () => {
 
     expect(again.outcome).toBe('unchanged');
     expect(again.memory.importance).toBe(75);
-    expect(texts(ida)).toStrictEqual(['Ida takes the bus to work']);
+    expect(await texts(ida)).toStrictEqual(['Ida takes the bus to work']);
     expect(asked).toHaveLength(0);
   });
 
@@ -172,7 +180,7 @@ describe('the one write path', () => {
     });
 
     expect(result.outcome).toBe('merged');
-    expect(texts(ida)).toStrictEqual(['Ida takes the bus to work on weekdays']);
+    expect(await texts(ida)).toStrictEqual(['Ida takes the bus to work on weekdays']);
     expect(asked[0]?.input).toContain(old.id);
     expect(asked[0]?.input).toContain(
       'New note the AI wants to keep:\nIda commutes by bus on weekdays',
@@ -189,7 +197,7 @@ describe('the one write path', () => {
     });
 
     expect(result.outcome).toBe('unchanged');
-    expect(texts(ida)).toStrictEqual(['Ida takes the bus to work']);
+    expect(await texts(ida)).toStrictEqual(['Ida takes the bus to work']);
   });
 
   it('adds the note when the manager answer is unreadable', async () => {
@@ -246,11 +254,11 @@ describe('the memory manager', () => {
     const result = await manager.exchange(ida, ida.chatId ?? '', 'time for my girl juice', 'ok');
 
     expect(result.applied).toHaveLength(1);
-    const [stored] = service.list(ida).memories;
+    const [stored] = (await service.list(ida)).memories;
     expect(stored?.scope).toBe('person');
     expect(stored?.kind).toBe('vocabulary');
     expect(stored?.source_chat_id).toBe(ida.chatId);
-    expect(texts(owner)).toStrictEqual([]);
+    expect(await texts(owner)).toStrictEqual([]);
   });
 
   it('hands the model the similar notes with ids and applies updates and deletes of those only', async () => {
@@ -268,8 +276,8 @@ describe('the memory manager', () => {
 
     expect(asked[0]?.input).toContain(bus.id);
     expect(asked[0]?.input).not.toContain(stranger.id);
-    expect(texts(ida)).toStrictEqual([dog.text]);
-    expect(texts(owner)).toStrictEqual(['Owner secret']);
+    expect(await texts(ida)).toStrictEqual([dog.text]);
+    expect(await texts(owner)).toStrictEqual(['Owner secret']);
   });
 
   it('changes nothing and fails after three unreadable answers, each retry carrying the error', async () => {
@@ -290,7 +298,7 @@ describe('the memory manager', () => {
       MANAGER_SYSTEM,
       MANAGER_SYSTEM,
     ]);
-    expect(texts(ida)).toStrictEqual(['Rex is the dog']);
+    expect(await texts(ida)).toStrictEqual(['Rex is the dog']);
     expect(events().filter((event) => event === 'memory.manager_failed')).toHaveLength(1);
   });
 
@@ -450,7 +458,7 @@ describe('the recall windows', () => {
   it('puts each memory in its most specific window once, newest first as recent', async () => {
     const ids = await seeded();
 
-    const recall = service.recall(ida);
+    const recall = await service.recall(ida);
 
     expect(recall.recent).toHaveLength(5);
     expect(recall.today.map((m) => m.id)).toStrictEqual([ids['today']]);
@@ -466,7 +474,7 @@ describe('the recall windows', () => {
     const ids = await seeded();
     zone = 'Pacific/Auckland';
 
-    const recall = service.recall(ida);
+    const recall = await service.recall(ida);
 
     expect(recall.today.map((m) => m.id)).not.toContain(ids['today']);
     expect(recall.week.map((m) => m.id)).toContain(ids['today']);
@@ -480,6 +488,9 @@ describe('the recall block and the per-turn prepare', () => {
       const saved = 'Ida takes the bus to work';
       embedder.failing = true;
       await remember(service, ida, { scope: 'person', text: saved });
+      await vi.waitFor(() => {
+        expect(embedder.calls).toBe(2);
+      });
       embedder.failing = false;
       let release: () => void = () => undefined;
       const backlog = new Promise<Float32Array[]>((resolve) => {
@@ -493,9 +504,11 @@ describe('the recall block and the per-turn prepare', () => {
         path === 'recall'
           ? service.prepare(ida, { id: 'm1', text: current })
           : manager.exchange(ida, ida.chatId ?? '', current, 'Good to know.');
-      expect(embed.mock.calls).toStrictEqual([[[saved]]]);
+      await vi.waitFor(() => {
+        expect(embed.mock.calls).toStrictEqual([[[saved]]]);
+      });
 
-      service.changeSettings(ida, { enabled: false });
+      await service.changeSettings(ida, { enabled: false });
       release();
       await work;
 
@@ -530,7 +543,7 @@ describe('the recall block and the per-turn prepare', () => {
 
     await service.prepare(ida, { id: 'm1', text: 'holiday' });
 
-    expect(everyone(service.recall(ida)).map((m) => m.id)).toStrictEqual([current.id]);
+    expect(everyone(await service.recall(ida)).map((m) => m.id)).toStrictEqual([current.id]);
     expect(opened.store.aiMemories.find(expired.id, ida.profileId)?.recall_count).toBe(0);
     expect(opened.store.aiMemories.find(vocabulary.id, ida.profileId)?.recall_count).toBe(0);
     expect((await service.search(ida, 'booking', undefined)).map((m) => m.id)).toContain(
@@ -546,7 +559,7 @@ describe('the recall block and the per-turn prepare', () => {
     });
     await service.prepare(ida, { id: 'm1', text: 'holiday' });
 
-    const recall = service.recall(ida);
+    const recall = await service.recall(ida);
 
     expect(recall.core.map((m) => m.id)).toStrictEqual([saved.id]);
     expect(recall.relevant).toStrictEqual([]);
@@ -578,7 +591,7 @@ describe('the recall block and the per-turn prepare', () => {
     vi.setSystemTime(new Date('2026-12-08T10:00:00.000Z'));
 
     await service.prepare(ida, { id: 'm1', text: 'The bus again today' });
-    const recall = service.recall(ida);
+    const recall = await service.recall(ida);
 
     expect(recall.core.map((m) => m.text)).toStrictEqual(['Ida is vegetarian']);
     expect(recall.vocabulary).toHaveLength(1);
@@ -613,8 +626,12 @@ describe('the recall block and the per-turn prepare', () => {
 
     await service.prepare(ida, { id: 'm1', text: 'dog' });
 
-    expect(everyone(service.recall(ida)).map((m) => m.text)).toStrictEqual(['Rex is the dog']);
-    expect(service.recall(ida).relevant.map((m) => m.text)).toStrictEqual(['Rex is the dog']);
+    expect(everyone(await service.recall(ida)).map((m) => m.text)).toStrictEqual([
+      'Rex is the dog',
+    ]);
+    expect((await service.recall(ida)).relevant.map((m) => m.text)).toStrictEqual([
+      'Rex is the dog',
+    ]);
     expect(events()).toContain('memory.relevance_failed');
   });
 });

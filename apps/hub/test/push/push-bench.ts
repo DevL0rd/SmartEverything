@@ -1,5 +1,5 @@
 import { API_ENDPOINTS, type DeviceEvent, type PushStatus } from '@smarteverything/domain';
-import { afterEach, beforeEach, expect } from 'vitest';
+import { afterEach, beforeEach, expect, vi } from 'vitest';
 import {
   bootServer,
   linkFakeProvider,
@@ -10,6 +10,8 @@ import {
 import { captureLogs, type CapturedLogs } from '../support/logs';
 import { call, temporaryDirectory } from '../support/server';
 import { FakeGoogle, SERVICE_ACCOUNT } from './fake-google';
+
+const BOOT_WORK_TIMEOUT_MS = 20_000;
 
 function urlOf(input: string | URL | Request): string {
   if (typeof input === 'string') {
@@ -46,6 +48,12 @@ class PushBench {
     this.running = server;
     await linkFakeProvider(server);
     await verifiedPublicUrl(server);
+    await vi.waitFor(
+      () => {
+        expect(this.logs.events()).toContain('photos.places_loading.succeeded');
+      },
+      { timeout: BOOT_WORK_TIMEOUT_MS },
+    );
   }
 
   async stop(): Promise<void> {

@@ -12,7 +12,7 @@ import { withExecutionAuthority } from '../assistant/turn-authority';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import { profileIdOf, type Caller } from '../server/auth';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { ProgramData } from './program-data';
 import { analyse, analysisEnv, planValue, type AnalysisEnv } from './service-programs-analysis';
 import { authorOf, reached, type Reached } from './service-reach';
@@ -63,7 +63,7 @@ export interface Asked {
   readonly id: string;
 }
 
-function list(store: Store, caller: Caller): AutomationFunctionSummary[] {
+function list(store: HostStore, caller: Caller): AutomationFunctionSummary[] {
   const env = { store };
   const functions = store.automationFunctions;
   return functions
@@ -72,7 +72,7 @@ function list(store: Store, caller: Caller): AutomationFunctionSummary[] {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function get(store: Store, { caller, id }: Asked): AutomationFunctionDetail {
+function get(store: HostStore, { caller, id }: Asked): AutomationFunctionDetail {
   const env = { store };
   const row = store.automationFunctions.byId(id);
   const latest = store.automationFunctions.latest(id);
@@ -198,7 +198,7 @@ function save(
   );
 }
 
-function remove(store: Store, { caller, id }: Asked): void {
+function remove(store: HostStore, { caller, id }: Asked): void {
   requireEditable(caller, store.automationFunctions.byId(id));
   store.automationFunctions.remove(id);
 }

@@ -18,7 +18,7 @@ export function minuteSpan(context: ToolContext, start: Date): EntrySpan {
   return {
     startTime: start.toISOString(),
     endTime: new Date(start.getTime() + MINUTE_MS).toISOString(),
-    zoneOffsetSeconds: zoneOffsetSeconds(context.store.settings.read().time_zone, start),
+    zoneOffsetSeconds: zoneOffsetSeconds(context.store.live.home.settings.read().time_zone, start),
   };
 }
 

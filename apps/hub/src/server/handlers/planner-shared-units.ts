@@ -15,7 +15,7 @@ import { requireSharee, requireShareable } from '../../planner/sharing/shares';
 import { resolveItem } from '../../planner/sharing/visibility';
 import { storeUnit } from '../../store/host/unit';
 import type { PlannerAlarmPatch } from '../../store/repositories/planner-alarms';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { invalid } from '../invalid';
 import type { Refusal } from '../person-access';
 import {
@@ -24,7 +24,8 @@ import {
   requireTargets,
   sunriseRefusal,
 } from './planner-alarm-checks';
-import { plannerProfileOf, type PlannerAsk } from './planner-profile';
+import type { PlannerAsk } from './planner-profile';
+import { plannerProfileOf } from './planner-profile-units';
 
 export type Checked<T> =
   | { readonly kind: 'done'; readonly value: T }
@@ -52,7 +53,7 @@ type AlarmCreate = PlannerAsk<'createPlannerAlarm'> & {
 };
 
 function createAlarm(
-  store: Store,
+  store: HostStore,
   { caller, query, body, clock }: AlarmCreate,
 ): Checked<PlannerAlarmRow> {
   const profileId = plannerProfileOf({ store }, caller, query.personId);
@@ -96,7 +97,7 @@ function createAlarm(
 }
 
 function updateAlarm(
-  store: Store,
+  store: HostStore,
   { caller, query, body, params }: PlannerAsk<'updatePlannerAlarm'>,
 ): Checked<PlannerAlarmRow> {
   const profileId = plannerProfileOf({ store }, caller, query.personId);

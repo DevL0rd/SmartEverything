@@ -14,6 +14,7 @@ import { assertOwnerRoute } from './owner-route';
 import { assertScopeRoute } from './person-scope';
 import { issuesOf } from './issues';
 import type { Bound } from './router';
+import { apartFromResponse } from './request-signal';
 import type { ResponseEncoder } from './responses/encoder';
 import { messageOf } from '@smarteverything/logging';
 
@@ -94,7 +95,7 @@ export class Operations {
   private async admit(name: EndpointName, caller: Caller, input: OperationInput): Promise<void> {
     const authority = caller.kind === 'service' ? caller.authority : currentExecutionAuthority();
     if (hubOriginated(authority)) {
-      const refusal = withExecutionAuthority(authority, () =>
+      const refusal = await withExecutionAuthority(authority, () =>
         this.boundary.refusal('operation_call', {
           operation: name,
           arguments: {
@@ -108,7 +109,7 @@ export class Operations {
     }
     assertOwnerRoute(this.store, caller, this.bound(name).endpoint);
     await assertScopeRoute(this.store, caller, this.bound(name).endpoint, input.params ?? {});
-    admitConfined(this.store, name, caller, input);
+    await admitConfined(this.store, name, caller, input);
     const refusal =
       (caller.kind === 'client' || caller.kind === 'service') &&
       caller.pluginRequester !== undefined
@@ -123,16 +124,18 @@ export class Operations {
     caller: Caller,
     input: OperationInput,
   ): Promise<unknown> {
-    const served = await this.bound(name).serve(
-      caller,
-      {
-        params: input.params ?? {},
-        query: queryOf(input.query ?? {}),
-        body: input.body === undefined ? undefined : Buffer.from(JSON.stringify(input.body)),
-        remote: 'mcp',
-        headers: {},
-      },
-      this.encoder,
+    const served = await apartFromResponse(() =>
+      this.bound(name).serve(
+        caller,
+        {
+          params: input.params ?? {},
+          query: queryOf(input.query ?? {}),
+          body: input.body === undefined ? undefined : Buffer.from(JSON.stringify(input.body)),
+          remote: 'mcp',
+          headers: {},
+        },
+        this.encoder,
+      ),
     );
     const value: unknown = JSON.parse(served.text);
     return value;

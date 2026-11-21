@@ -176,6 +176,14 @@ describe('the readings of a Windows or Mac computer', () => {
       swapTotalBytes: 4e9,
     });
     expect(computer.readers.disks(tick(0))?.disks[1]).toMatchObject({ label: null, device: 'D:' });
+    expect(computer.readers.disk_usage(tick(0))?.disks[1]).toEqual({
+      mount: 'D:\\',
+      device: 'D:',
+      label: null,
+      filesystem: 'NTFS',
+      usedBytes: 10e9,
+      totalBytes: 100e9,
+    });
     expect(computer.readers.cpu(tick(0))?.cores.length).toBeGreaterThan(0);
   });
 

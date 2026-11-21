@@ -1,3 +1,4 @@
+import { hostMemoryChats, hostMemoryRows } from '../../src/store/host/hosted';
 import { remember, everyone } from '../support/memory-service';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ApiError } from '@smarteverything/domain';
@@ -23,8 +24,8 @@ const SESSIONS = new Map<string, MemoryPrincipal>();
 const sessions: MemorySessions = {
   principal: (sessionId) => {
     const principal = SESSIONS.get(sessionId);
-    if (principal === undefined) throw new ApiError('forbidden', 'No grant.');
-    return principal;
+    if (principal === undefined) return Promise.reject(new ApiError('forbidden', 'No grant.'));
+    return Promise.resolve(principal);
   },
   latest: () => Promise.resolve(null),
 };
@@ -37,11 +38,16 @@ beforeEach(async () => {
   captureLogs();
   opened = await testStore();
   embedder = new FakeMemoryEmbedder();
-  service = new MemoryService(opened.store.aiMemories, opened.store.aiChats, embedder, {
-    judge: null,
-    zone: (): string => 'UTC',
-    now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
-  });
+  service = new MemoryService(
+    hostMemoryRows(opened.store.host),
+    hostMemoryChats(opened.store.host),
+    embedder,
+    {
+      judge: null,
+      zone: (): string => 'UTC',
+      now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
+    },
+  );
   owner = person(opened.store.profiles.first().id, 'owner');
   ida = person(opened.store.profiles.create({ name: 'Ida' }).id, 'member');
   kid = person(opened.store.profiles.create({ name: 'Kid' }).id, 'member');
@@ -68,8 +74,8 @@ function chatOf(profileId: string): string {
   }).id;
 }
 
-function texts(who: MemoryPrincipal): string[] {
-  return service.list(who).memories.map((memory) => memory.text);
+async function texts(who: MemoryPrincipal): Promise<string[]> {
+  return (await service.list(who)).memories.map((memory) => memory.text);
 }
 
 function firstId(result: AiMemoryToolResult): string {
@@ -100,26 +106,26 @@ describe('what a person asks the AI to remember', () => {
       text: 'Ida is saving for a surprise',
     });
 
-    expect(texts(ida)).toStrictEqual(['Ida is saving for a surprise']);
-    expect(texts(owner)).toStrictEqual([]);
-    expect(texts(kid)).toStrictEqual([]);
-    expect(everyone(service.recall(owner))).toStrictEqual([]);
-    expect(everyone(service.recall(kid))).toStrictEqual([]);
+    expect(await texts(ida)).toStrictEqual(['Ida is saving for a surprise']);
+    expect(await texts(owner)).toStrictEqual([]);
+    expect(await texts(kid)).toStrictEqual([]);
+    expect(everyone(await service.recall(owner))).toStrictEqual([]);
+    expect(everyone(await service.recall(kid))).toStrictEqual([]);
     expect(await refusal(() => service.change(owner, secret.id, { text: 'seen' }))).toBe(
       'not_found',
     );
     expect(
-      await refusal(() => {
-        service.remove(owner, secret.id);
+      await refusal(async () => {
+        await service.remove(owner, secret.id);
       }),
     ).toBe('not_found');
     expect(await refusal(() => service.change(kid, secret.id, { text: 'seen' }))).toBe('not_found');
     expect(
-      await refusal(() => {
-        service.remove(kid, secret.id);
+      await refusal(async () => {
+        await service.remove(kid, secret.id);
       }),
     ).toBe('not_found');
-    expect(texts(ida)).toStrictEqual(['Ida is saving for a surprise']);
+    expect(await texts(ida)).toStrictEqual(['Ida is saving for a surprise']);
   });
 
   it('is never read through the tool of another person, owner included', async () => {
@@ -135,35 +141,35 @@ describe('what a person asks the AI to remember', () => {
 
     expect(asOwner).toStrictEqual({ memories: [] });
     expect(asKid).toStrictEqual({ memories: [] });
-    expect(JSON.stringify(access.recall('owner-chat'))).not.toContain('7:40');
-    expect(JSON.stringify(access.recall('kid-chat'))).not.toContain('7:40');
-    expect(JSON.stringify(access.recall('ida-chat'))).toContain('7:40');
+    expect(JSON.stringify(await access.recall('owner-chat'))).not.toContain('7:40');
+    expect(JSON.stringify(await access.recall('kid-chat'))).not.toContain('7:40');
+    expect(JSON.stringify(await access.recall('ida-chat'))).toContain('7:40');
   });
 
   it('is recalled in every chat of its person and in no chat of another', async () => {
     await remember(service, ida, { scope: 'person', text: 'Ida likes oat milk' });
     await remember(service, kid, { scope: 'person', text: 'Kid hates peas' });
 
-    const recalled = (who: MemoryPrincipal): readonly string[] =>
-      everyone(service.recall(who)).map((memory) => memory.text);
+    const recalled = async (who: MemoryPrincipal): Promise<readonly string[]> =>
+      everyone(await service.recall(who)).map((memory) => memory.text);
 
-    expect(recalled(ida)).toStrictEqual(['Ida likes oat milk']);
-    expect(recalled(kid)).toStrictEqual(['Kid hates peas']);
-    expect(recalled(owner)).toStrictEqual([]);
+    expect(await recalled(ida)).toStrictEqual(['Ida likes oat milk']);
+    expect(await recalled(kid)).toStrictEqual(['Kid hates peas']);
+    expect(await recalled(owner)).toStrictEqual([]);
   });
 
   it('can be reworded and deleted by its person, which moves it to the newest', async () => {
     const first = await remember(service, ida, { scope: 'person', text: 'one' });
     await remember(service, ida, { scope: 'person', text: 'two' });
 
-    const changed = service.change(ida, first.id, { text: 'one reworded' });
+    const changed = await service.change(ida, first.id, { text: 'one reworded' });
     expect(changed.memory.text).toBe('one reworded');
-    service.remove(ida, first.id);
+    await service.remove(ida, first.id);
 
-    expect(texts(ida)).toStrictEqual(['two']);
+    expect(await texts(ida)).toStrictEqual(['two']);
     expect(
-      await refusal(() => {
-        service.remove(ida, first.id);
+      await refusal(async () => {
+        await service.remove(ida, first.id);
       }),
     ).toBe('not_found');
   });
@@ -178,8 +184,8 @@ describe('what a person asks the AI to remember', () => {
 
     expect(note.source_chat_id).toBe(chat);
     opened.store.aiChats.remove(chat);
-    expect(service.list(ida).memories[0]?.source_chat_id).toBeNull();
-    expect(texts(ida)).toStrictEqual(['from a chat']);
+    expect((await service.list(ida)).memories[0]?.source_chat_id).toBeNull();
+    expect(await texts(ida)).toStrictEqual(['from a chat']);
   });
 });
 
@@ -195,17 +201,17 @@ describe('what the whole home remembers', () => {
     );
     expect(await refusal(() => service.change(ida, note.id, { text: 'x' }))).toBe('forbidden');
     expect(
-      await refusal(() => {
-        service.remove(ida, note.id);
+      await refusal(async () => {
+        await service.remove(ida, note.id);
       }),
     ).toBe('forbidden');
     expect(await refusal(() => service.forget(ida, 'home'))).toBe('forbidden');
-    expect(texts(ida)).toStrictEqual(['The wifi is on the fridge']);
-    expect(service.change(owner, note.id, { text: 'The wifi is in the hall' }).memory.text).toBe(
-      'The wifi is in the hall',
-    );
-    service.remove(owner, note.id);
-    expect(texts(ida)).toStrictEqual([]);
+    expect(await texts(ida)).toStrictEqual(['The wifi is on the fridge']);
+    expect(
+      (await service.change(owner, note.id, { text: 'The wifi is in the hall' })).memory.text,
+    ).toBe('The wifi is in the hall');
+    await service.remove(owner, note.id);
+    expect(await texts(ida)).toStrictEqual([]);
   });
 
   it('is recalled in the chats of every person and keeps its source from members', async () => {
@@ -217,12 +223,12 @@ describe('what the whole home remembers', () => {
     );
 
     for (const who of [owner, ida, kid])
-      expect(everyone(service.recall(who)).map((memory) => memory.text)).toStrictEqual([
+      expect(everyone(await service.recall(who)).map((memory) => memory.text)).toStrictEqual([
         'Bins go out on Tuesday',
       ]);
-    expect(service.list(owner).memories[0]?.source_chat_id).toBe(chat);
-    expect(service.list(ida).memories[0]?.source_chat_id).toBeNull();
-    expect(service.list(kid).memories[0]?.source_message_id).toBeNull();
+    expect((await service.list(owner)).memories[0]?.source_chat_id).toBe(chat);
+    expect((await service.list(ida)).memories[0]?.source_chat_id).toBeNull();
+    expect((await service.list(kid)).memories[0]?.source_message_id).toBeNull();
   });
 
   it('is written through the tool only when the chat runs as an owner', async () => {
@@ -244,7 +250,7 @@ describe('what the whole home remembers', () => {
         access.call('owner-as-member', { action: 'add', scope: 'home', text: 'x' }),
       ),
     ).toBe('forbidden');
-    expect(texts(ida)).toStrictEqual(['Pets: Rex']);
+    expect(await texts(ida)).toStrictEqual(['Pets: Rex']);
   });
 });
 
@@ -255,10 +261,10 @@ describe('forgetting everything', () => {
     await remember(service, kid, { scope: 'person', text: 'kid note' });
     await remember(service, owner, { scope: 'home', text: 'home note' });
 
-    expect(service.forget(ida, 'person')).toBe(2);
+    expect(await service.forget(ida, 'person')).toBe(2);
 
-    expect(texts(ida)).toStrictEqual(['home note']);
-    expect(texts(kid).sort()).toStrictEqual(['home note', 'kid note']);
+    expect(await texts(ida)).toStrictEqual(['home note']);
+    expect((await texts(kid)).sort()).toStrictEqual(['home note', 'kid note']);
   });
 
   it('removes every home memory for an owner and no person memory', async () => {
@@ -266,9 +272,9 @@ describe('forgetting everything', () => {
     await remember(service, owner, { scope: 'home', text: 'one' });
     await remember(service, owner, { scope: 'home', text: 'two' });
 
-    expect(service.forget(owner, 'home')).toBe(2);
+    expect(await service.forget(owner, 'home')).toBe(2);
 
-    expect(texts(ida)).toStrictEqual(['ida note']);
+    expect(await texts(ida)).toStrictEqual(['ida note']);
   });
 
   it('follows the person: deleting a profile deletes its memories', async () => {
@@ -291,34 +297,34 @@ describe('the per-person off switch', () => {
     await remember(service, kid, { scope: 'person', text: 'Kid note' });
     await remember(service, owner, { scope: 'home', text: 'Home note' });
 
-    service.changeSettings(ida, { enabled: false });
+    await service.changeSettings(ida, { enabled: false });
 
-    expect(access.offered('ida-chat')).toBe(false);
-    expect(everyone(access.recall('ida-chat'))).toStrictEqual([]);
+    expect(await access.offered('ida-chat')).toBe(false);
+    expect(everyone(await access.recall('ida-chat'))).toStrictEqual([]);
     expect(await refusal(() => access.call('ida-chat', { action: 'view' }))).toBe('forbidden');
-    expect(access.offered('kid-chat')).toBe(true);
+    expect(await access.offered('kid-chat')).toBe(true);
     expect(
-      everyone(access.recall('kid-chat'))
+      everyone(await access.recall('kid-chat'))
         .map((memory) => memory.text)
         .sort(),
     ).toStrictEqual(['Home note', 'Kid note']);
-    expect(texts(ida).sort()).toStrictEqual(['Home note', 'Ida note']);
+    expect((await texts(ida)).sort()).toStrictEqual(['Home note', 'Ida note']);
   });
 
   it('brings the notes back when turned on again and keeps the character setting', async () => {
     await remember(service, ida, { scope: 'person', text: 'Ida note' });
-    service.changeSettings(ida, { enabled: false, prompt_chars: 400 });
-    service.changeSettings(ida, { enabled: true });
+    await service.changeSettings(ida, { enabled: false, prompt_chars: 400 });
+    await service.changeSettings(ida, { enabled: true });
 
-    expect(service.settings(ida)).toStrictEqual({ enabled: true, prompt_chars: 400 });
-    expect(service.recall(ida)).toMatchObject({ prompt_chars: 400, time_zone: 'UTC' });
-    expect(everyone(service.recall(ida))).toHaveLength(1);
-    service.changeSettings(ida, { prompt_chars: null });
-    expect(service.settings(ida).prompt_chars).toBeNull();
+    expect(await service.settings(ida)).toStrictEqual({ enabled: true, prompt_chars: 400 });
+    expect(await service.recall(ida)).toMatchObject({ prompt_chars: 400, time_zone: 'UTC' });
+    expect(everyone(await service.recall(ida))).toHaveLength(1);
+    await service.changeSettings(ida, { prompt_chars: null });
+    expect((await service.settings(ida)).prompt_chars).toBeNull();
   });
 
-  it('starts on with every memory shown', () => {
-    expect(service.settings(ida)).toStrictEqual({ enabled: true, prompt_chars: null });
+  it('starts on with every memory shown', async () => {
+    expect(await service.settings(ida)).toStrictEqual({ enabled: true, prompt_chars: null });
   });
 });
 
@@ -376,7 +382,7 @@ describe('the memory tool', () => {
       'not_found',
     );
     expect(await refusal(() => run('kid-chat', { action: 'delete', id }))).toBe('not_found');
-    expect(texts(ida)).toStrictEqual(['Private']);
+    expect(await texts(ida)).toStrictEqual(['Private']);
   });
 
   it('refuses a session without an execution grant', async () => {

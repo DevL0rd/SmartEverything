@@ -79,9 +79,9 @@ export function attachAssistant(
 
 export function aiTurnsOf(context: ServerContext): AiTurns {
   return {
-    run: (input): Promise<{ readonly chatId: string }> =>
-      Promise.resolve({
-        chatId: context.assistant.runTurn({
+    run: async (input): Promise<{ readonly chatId: string }> => ({
+      chatId: (
+        await context.assistant.runTurn({
           profileId: input.profileId,
           ...(input.chatId === null ? {} : { chatId: input.chatId }),
           title: input.title,
@@ -93,7 +93,8 @@ export function aiTurnsOf(context: ServerContext): AiTurns {
             name: input.title,
             ...(input.plugin ?? {}),
           },
-        }).chatId,
-      }),
+        })
+      ).chatId,
+    }),
   };
 }

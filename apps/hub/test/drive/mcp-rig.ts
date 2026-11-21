@@ -10,7 +10,7 @@ import type {
   SelectedToolDefinition,
 } from '../../src/extensions/mcp/tools/selected-tool';
 import type { Caller } from '../../src/server/auth';
-import type { Store } from '../../src/store/store';
+import type { SeededStore } from '../support/store';
 
 export interface Call {
   readonly name: EndpointName;
@@ -23,7 +23,7 @@ export interface Call {
 export type Answers = Partial<Record<EndpointName, (call: Call) => unknown>>;
 
 export interface RigSources {
-  readonly store: () => Store;
+  readonly store: () => SeededStore;
   readonly record: (call: Call) => void;
   readonly answers: () => Answers;
 }

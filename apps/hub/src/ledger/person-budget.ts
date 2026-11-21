@@ -13,7 +13,6 @@ import {
   type BudgetAlert,
   type Spend,
 } from './budget-rules';
-import type { Ledger } from './ledger';
 
 export interface PersonBudgetSource {
   readonly budget: (profileId: string) => PersonBudget | null | undefined;
@@ -21,8 +20,15 @@ export interface PersonBudgetSource {
   readonly name: (profileId: string) => string;
 }
 
+export interface SpendSource {
+  readonly zone: () => string;
+  readonly spentSince: (from: string) => number;
+  readonly unknownSince: (from: string) => number;
+  readonly spentByProfile: (from: string, profileId: string) => number;
+}
+
 export interface PersonBudgetOptions {
-  readonly ledger: Ledger;
+  readonly ledger: SpendSource;
   readonly people: PersonBudgetSource;
   readonly now: () => Date;
 }

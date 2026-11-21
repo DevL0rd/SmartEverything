@@ -29,11 +29,9 @@ import {
   type HarnessExtensionKind,
 } from '@smarteverything/harness';
 import { Logger } from '@smarteverything/logging';
-import type {
-  HarnessExtensionsRepository,
-  StoredExtension,
-} from '../store/repositories/harness-extensions';
+import type { StoredExtension } from '../store/repositories/harness-extensions';
 import type { HarnessConfigurationService } from './configuration';
+import type { HarnessExtensionRows } from './extension-rows';
 import type { InstalledVersion } from './discovery';
 import {
   candidateTree,
@@ -73,7 +71,7 @@ export class HarnessExtensions {
   private readonly tmp: string;
 
   constructor(
-    private readonly repository: HarnessExtensionsRepository,
+    private readonly rows: HarnessExtensionRows,
     private readonly configuration: HarnessConfigurationService,
     directories: { readonly state: string; readonly tmp: string },
     private readonly now: () => Date,
@@ -87,13 +85,13 @@ export class HarnessExtensions {
   }
 
   catalogue(): AiHarnessExtensions {
-    const builtins = this.repository.builtins();
+    const builtins = this.rows.builtins();
     return {
       items: [
         ...HARNESS_BUILTIN_IDS.map((id) =>
           includedHarnessExtension(id, builtinSelection(builtins, id)),
         ),
-        ...this.repository.list().map(extensionItem),
+        ...this.rows.list().map(extensionItem),
       ],
       bundled_skills: bundledHarnessSkills(),
     };
@@ -101,7 +99,7 @@ export class HarnessExtensions {
 
   installed(): ReadonlyMap<string, InstalledVersion> {
     return new Map(
-      this.repository
+      this.rows
         .list()
         .map((row) => [
           row.id,
@@ -144,18 +142,18 @@ export class HarnessExtensions {
         (located) => this.installCandidate(located, request.confirm_executes),
         this.log,
       );
-      this.configuration.refresh();
+      await this.configuration.refresh();
       return { results: settled.map(installedOne) };
     });
   }
 
   change(id: string, input: unknown): Promise<HarnessExtensionItem> {
     const patch = HARNESS_EXTENSION_PATCH.parse(input);
-    return this.serial(() => {
+    return this.serial(async () => {
       const item = HARNESS_BUILTIN_IDS.includes(id)
-        ? this.changeBuiltin(id, patch)
-        : this.changeStored(id, patch);
-      this.configuration.refresh();
+        ? await this.changeBuiltin(id, patch)
+        : await this.changeStored(id, patch);
+      await this.configuration.refresh();
       return item;
     });
   }
@@ -169,8 +167,8 @@ export class HarnessExtensions {
         );
       const row = this.stored(id);
       await rm(this.folderOf(row.kind, row.name), { recursive: true, force: true });
-      this.repository.remove(id);
-      this.configuration.refresh();
+      await this.rows.remove(id);
+      await this.configuration.refresh();
     });
   }
 
@@ -190,7 +188,7 @@ export class HarnessExtensions {
           base64: Buffer.from(file.content).toString('base64'),
         })),
       };
-      const previous = this.repository.find(`skill:${name}`);
+      const previous = this.rows.find(`skill:${name}`);
       const row = this.row(
         {
           kind: 'skill',
@@ -203,7 +201,7 @@ export class HarnessExtensions {
         { source: { kind: 'editor' }, publisher: 'You', version: harnessTreeHash(tree), previous },
       );
       await this.commit({ row, tree });
-      this.configuration.refresh();
+      await this.configuration.refresh();
       return extensionItem(row);
     });
   }
@@ -213,7 +211,7 @@ export class HarnessExtensions {
     id: string,
     version: string,
   ): Promise<HarnessExtensionTree> {
-    const row = this.repository.find(id);
+    const row = this.rows.find(id);
     if (row?.kind !== kind || row.version !== version)
       throw new ApiError('conflict', `${id} changed on the Home Hub; it will sync again.`);
     return readHarnessTree(this.folderOf(kind, row.name));
@@ -222,12 +220,12 @@ export class HarnessExtensions {
   update(only: 'missing' | 'all'): Promise<ExtensionUpdateCounts> {
     return this.serial(async () => {
       const counts = { updated: 0, unchanged: 0, skipped: 0 };
-      for (const row of this.repository.list()) {
+      for (const row of this.rows.list()) {
         if (only === 'missing' && row.version !== null) continue;
         if (row.source.kind !== 'git') counts.skipped += 1;
         else counts[await this.refetch(row, row.source)] += 1;
       }
-      this.configuration.refresh();
+      await this.configuration.refresh();
       return counts;
     });
   }
@@ -277,7 +275,7 @@ export class HarnessExtensions {
     from: { checkout: CheckedOutSource; source: GitSource; confirm: boolean },
   ): Promise<Staged> {
     const origin = gitFolder(from.source, candidate.path);
-    const previous = this.repository.find(`${candidate.kind}:${candidate.name}`);
+    const previous = this.rows.find(`${candidate.kind}:${candidate.name}`);
     if (
       previous !== undefined &&
       (previous.source.kind !== 'git' || !sameHarnessGitOrigin(previous.source, origin))
@@ -339,25 +337,31 @@ export class HarnessExtensions {
     await rm(target, { recursive: true, force: true });
     await mkdir(dirname(target), { recursive: true });
     await rename(incoming, target);
-    this.repository.keep(staged.row);
+    await this.rows.keep(staged.row);
   }
 
-  private changeBuiltin(id: string, patch: HarnessExtensionPatch): HarnessExtensionItem {
+  private async changeBuiltin(
+    id: string,
+    patch: HarnessExtensionPatch,
+  ): Promise<HarnessExtensionItem> {
     if (patch.confirm_executes !== undefined)
       throw new ApiError(
         'invalid_request',
         'Only plugins that run hooks or MCP servers need confirming.',
       );
-    const current = builtinSelection(this.repository.builtins(), id);
+    const current = builtinSelection(this.rows.builtins(), id);
     const next = {
       enabled: patch.enabled ?? current.enabled,
       config: patch.config ?? current.config,
     };
-    this.repository.keepBuiltin(id, next);
+    await this.rows.keepBuiltin(id, next);
     return includedHarnessExtension(id, next);
   }
 
-  private changeStored(id: string, patch: HarnessExtensionPatch): HarnessExtensionItem {
+  private async changeStored(
+    id: string,
+    patch: HarnessExtensionPatch,
+  ): Promise<HarnessExtensionItem> {
     const row = this.stored(id);
     if (patch.config !== undefined)
       throw new ApiError('invalid_request', 'Only built-in extensions have settings.');
@@ -368,12 +372,12 @@ export class HarnessExtensions {
       enabled: patch.enabled ?? row.enabled,
       confirmed: row.executes && (patch.confirm_executes ?? row.confirmed),
     };
-    this.repository.keep(next);
+    await this.rows.keep(next);
     return extensionItem(next);
   }
 
   private stored(id: string): StoredExtension {
-    const row = this.repository.find(id);
+    const row = this.rows.find(id);
     if (row === undefined)
       throw new ApiError('not_found', `There is no installed skill or plugin ${id}.`);
     return row;

@@ -1,8 +1,7 @@
+import { openSeededStore, testStore, type TestStore, closedStore } from '../support/store';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 import { testStoreHost } from '../support/store-host';
 
 let opened: TestStore;
@@ -21,9 +20,9 @@ describe('openStore', () => {
     expect(opened.store.exchangeRates.read().id).toBe('usd');
   });
 
-  it('keeps those rows when the same database is opened again', () => {
+  it('keeps those rows when the same database is opened again', async () => {
     const before = opened.store.weather.read();
-    const again = openStore({
+    const again = await openSeededStore({
       host: testStoreHost(),
       path: join(opened.directory, 'test.db'),
       log: testLogger('store'),
@@ -32,6 +31,6 @@ describe('openStore', () => {
       driveFolders: null,
     });
     expect(again.weather.read()).toStrictEqual(before);
-    again.close();
+    await closedStore(again);
   });
 });

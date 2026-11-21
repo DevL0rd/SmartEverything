@@ -24,7 +24,7 @@ const commandRoutes = ({ store, hub }: Pick<ServerContext, 'store' | 'hub'>) =>
       store.host.call('commands', 'byId', params.commandId),
     ),
     sendCommand: bound(E.sendCommand, async ({ body, caller }) => {
-      const [row] = hub.submit(
+      const [row] = await hub.submit(
         await checkedCommands(
           store,
           sourcedBy(caller, [body]),

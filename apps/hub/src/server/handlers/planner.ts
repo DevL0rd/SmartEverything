@@ -12,12 +12,12 @@ import { isoOf } from '../../planner/instants';
 import { suggestCompletions } from '../../planner/suggest-completion';
 import type { Caller } from '../auth';
 import { DONE_REPLY, bound, type RouteOf } from '../router';
-import { plannerProfileOf, type PlannerContext } from './planner-profile';
-import { personHour24 } from '../../clock/person-clock';
+import { plannerProfileFor, type PlannerContext } from './planner-profile';
+import { personHour24Of } from '../../clock/person-clock';
 
 export interface PlannerCoreDependencies {
   readonly now: () => Date;
-  readonly preferencesOf: (profileId: string) => PlannerPreferences;
+  readonly preferencesOf: (profileId: string) => Promise<PlannerPreferences>;
   readonly catalogueOf: (caller: Caller) => TriggerCatalogue;
   readonly feeds: Pick<FeedService, 'registry'>;
 }
@@ -27,7 +27,7 @@ export type PlannerCoreContext = PlannerContext;
 const PREVIEW_COUNT = 5;
 
 function zoneOf(context: PlannerCoreContext): string {
-  return context.store.settings.read().time_zone;
+  return context.store.live.home.settings.read().time_zone;
 }
 
 function dayRoute(
@@ -35,9 +35,9 @@ function dayRoute(
   deps: PlannerCoreDependencies,
 ): RouteOf<'readPlannerDay'> {
   return bound(E.readPlannerDay, async ({ query, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
+    const profileId = await plannerProfileFor(context, caller, query.personId);
     const now = deps.now().getTime();
-    const preferences = deps.preferencesOf(profileId);
+    const preferences = await deps.preferencesOf(profileId);
     const timeZone = zoneOf(context);
     const frame = frameOf({
       date: query.date,
@@ -66,7 +66,7 @@ function rangeRoute(
   deps: PlannerCoreDependencies,
 ): RouteOf<'readPlannerRange'> {
   return bound(E.readPlannerRange, async ({ query, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
+    const profileId = await plannerProfileFor(context, caller, query.personId);
     const { host } = context.store;
     await deps.feeds.registry.prepare(await host.read('plannerVisibleCollections', { profileId }), {
       from: query.from,
@@ -87,9 +87,9 @@ function statsRoute(
   context: PlannerCoreContext,
   deps: PlannerCoreDependencies,
 ): RouteOf<'readPlannerStats'> {
-  return bound(E.readPlannerStats, ({ query, caller }) =>
+  return bound(E.readPlannerStats, async ({ query, caller }) =>
     context.store.host.read('plannerStatsView', {
-      profileId: plannerProfileOf(context, caller, query.personId),
+      profileId: await plannerProfileFor(context, caller, query.personId),
       range: query.range,
       nowMs: deps.now().getTime(),
       timeZone: zoneOf(context),
@@ -126,12 +126,12 @@ function parseRoute(
   deps: PlannerCoreDependencies,
 ): RouteOf<'parsePlannerText'> {
   return bound(E.parsePlannerText, async ({ query, body, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
+    const profileId = await plannerProfileFor(context, caller, query.personId);
     const collections = await context.store.host.read('plannerWritableCollections', { profileId });
     const target = targetCollection(
       collections,
       body.collection_id,
-      deps.preferencesOf(profileId).tasks.default_collection_id,
+      (await deps.preferencesOf(profileId)).tasks.default_collection_id,
     );
     return parsePlannerText({
       text: body.text,
@@ -140,7 +140,7 @@ function parseRoute(
       timeZone: body.time_zone ?? zoneOf(context),
       now: deps.now(),
       previewCount: PREVIEW_COUNT,
-      hour24: personHour24(context.store, profileId),
+      hour24: await personHour24Of(context.store.host, profileId),
     });
   });
 }
@@ -149,8 +149,8 @@ function suggestRoute(
   context: PlannerCoreContext,
   deps: PlannerCoreDependencies,
 ): RouteOf<'suggestPlannerCompletion'> {
-  return bound(E.suggestPlannerCompletion, ({ query, body, caller }) => {
-    plannerProfileOf(context, caller, query.personId);
+  return bound(E.suggestPlannerCompletion, async ({ query, body, caller }) => {
+    await plannerProfileFor(context, caller, query.personId);
     return suggestCompletions({ ...body, catalogue: deps.catalogueOf(caller) });
   });
 }
@@ -159,9 +159,9 @@ function freeSlotsRoute(
   context: PlannerCoreContext,
   deps: PlannerCoreDependencies,
 ): RouteOf<'plannerFreeSlots'> {
-  return bound(E.plannerFreeSlots, ({ query, body, caller }) =>
+  return bound(E.plannerFreeSlots, async ({ query, body, caller }) =>
     context.store.host.read('plannerFreeSlotsView', {
-      profileId: plannerProfileOf(context, caller, query.personId),
+      profileId: await plannerProfileFor(context, caller, query.personId),
       from: body.from,
       to: body.to,
       minutes: body.minutes,
@@ -176,15 +176,15 @@ function proposalRoutes(context: PlannerCoreContext): {
   readonly rejectPlannerProposal: RouteOf<'rejectPlannerProposal'>;
 } {
   return {
-    acceptPlannerProposal: bound(E.acceptPlannerProposal, ({ params, query, caller }) =>
+    acceptPlannerProposal: bound(E.acceptPlannerProposal, async ({ params, query, caller }) =>
       context.store.host.write('plannerProposalAccept', {
-        profileId: plannerProfileOf(context, caller, query.personId),
+        profileId: await plannerProfileFor(context, caller, query.personId),
         id: params.id,
       }),
     ),
     rejectPlannerProposal: bound(E.rejectPlannerProposal, async ({ params, query, caller }) => {
       await context.store.host.write('plannerProposalReject', {
-        profileId: plannerProfileOf(context, caller, query.personId),
+        profileId: await plannerProfileFor(context, caller, query.personId),
         id: params.id,
       });
       return DONE_REPLY;

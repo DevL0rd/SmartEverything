@@ -8,8 +8,7 @@ import {
   type PluginPersonStatus,
 } from '@smarteverything/domain';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
-import { ownerProfileOf } from '../transcripts/owner';
+import type { HostStore } from '../store/host/host-store';
 import { searchHitsOf } from './search-hits';
 
 const OWNER_NEEDS_OWNER_PERSON = 'The owner of a plugin must be one of the home’s owner people.';
@@ -23,7 +22,7 @@ export interface PluginPersonSave {
   readonly change: PluginPersonChange;
 }
 
-type PeopleStore = Pick<Store, 'plugins' | 'pluginPeople' | 'personAccess'>;
+type PeopleStore = Pick<HostStore, 'plugins' | 'pluginPeople' | 'personAccess'>;
 
 function assertMayBe(store: PeopleStore, profileId: string, status: PluginPersonStatus): void {
   const standing = store.personAccess.standing(profileId);
@@ -44,7 +43,7 @@ function keptProfile(
   known: PluginPerson | undefined,
 ): string | null {
   const kept = known?.status === status ? known.profile_id : null;
-  return kept ?? (status === 'owner' ? ownerProfileOf(store) : null);
+  return kept ?? (status === 'owner' ? store.personAccess.homeOwner() : null);
 }
 
 function mappedProfile(

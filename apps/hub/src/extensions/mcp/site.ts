@@ -8,7 +8,7 @@ export interface Site {
 }
 
 export function siteOf(store: Store): Site {
-  const settings = store.settings.read();
+  const settings = store.live.home.settings.read();
   if (settings.public_url === null || settings.public_url_verified_at === null) {
     throw new ApiError(
       'public_url_not_verified',

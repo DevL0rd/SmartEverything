@@ -111,7 +111,7 @@ export function deviceRows(sources: ListeningRowSources, kind: 'phone' | 'comput
 }
 
 export function personOfDevice(
-  nodes: { readonly computerNodes: Pick<Store['computerNodes'], 'personOf'> },
+  nodes: { readonly computerNodes: Pick<HomeMirror['computerNodes'], 'personOf'> },
   device: Pick<DeviceRow, 'id' | 'kind' | 'details'>,
 ): string | null {
   if (device.kind === 'computer') return nodes.computerNodes.personOf(device.id);

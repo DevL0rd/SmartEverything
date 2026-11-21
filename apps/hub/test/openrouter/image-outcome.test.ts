@@ -14,12 +14,14 @@ describe('waiting for an image outcome', () => {
   it('returns the finished receipt with the saved images only once the provider answered', async () => {
     const good = (await png()).toString('base64');
     let answer: () => void = () => undefined;
+    let asked = false;
     const rig = imageRig(
       test,
       fakeOpenRouter(
         ['vendor/m1'],
         () =>
           new Promise((resolve) => {
+            asked = true;
             answer = (): void => {
               resolve(new Response(JSON.stringify({ data: [{ b64_json: good }] })));
             };
@@ -35,6 +37,7 @@ describe('waiting for an image outcome', () => {
     await Promise.resolve();
     expect(state).toBe('waiting');
     await expect.poll(() => rig.service.availability().active).toBe(1);
+    await expect.poll(() => asked).toBe(true);
     answer();
     const receipt = await outcome;
     expect(receipt.state).toBe('completed');
@@ -59,9 +62,14 @@ describe('waiting for an image outcome', () => {
   it('stops waiting when the caller goes away and leaves the operation running', async () => {
     const rig = imageRig(
       test,
-      fakeOpenRouter(['vendor/m1'], (_body, signal) => hanging(signal)),
+      fakeOpenRouter(['vendor/m1'], (_body, signal) => {
+        asked = true;
+        return hanging(signal);
+      }),
     );
+    let asked = false;
     const started = await rig.start({});
+    await expect.poll(() => asked).toBe(true);
     const caller = new AbortController();
     const outcome = rig.outcome(started.id, caller.signal);
     caller.abort();

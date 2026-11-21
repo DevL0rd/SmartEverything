@@ -1,13 +1,13 @@
 import type { DriveItem } from '@smarteverything/domain';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import type { BlockHashes } from '../blocks';
 import { isFileItem, type FileItem } from '../file-item';
-import { readDriveSettings } from '../settings';
+import { readDriveSettings } from './settings';
 
 export type HashStore = Pick<
-  Store,
+  HostStore,
   'driveRoots' | 'driveItems' | 'driveBlocks' | 'drivePlacements' | 'settingsKv'
 >;
 
@@ -56,12 +56,12 @@ export function modifiedIso(modifiedMs: number): string {
   return new Date(modifiedMs).toISOString();
 }
 
-export function syncsBlocks(store: Pick<Store, 'drivePlacements'>, rootId: string): boolean {
+export function syncsBlocks(store: Pick<HostStore, 'drivePlacements'>, rootId: string): boolean {
   return store.drivePlacements.forRoot(rootId).some((placement) => placement.mode === 'synced');
 }
 
 export function collectBacklog(
-  store: Pick<Store, 'driveItems' | 'drivePlacements'>,
+  store: Pick<HostStore, 'driveItems' | 'drivePlacements'>,
   rootId: string,
 ): HashBacklog {
   const synced = syncsBlocks(store, rootId);

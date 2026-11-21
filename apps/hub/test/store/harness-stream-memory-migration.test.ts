@@ -1,3 +1,4 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,13 +7,22 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
+import { meteredRouteId } from '../../src/openrouter/metered-engine';
 import { Sql } from '../../src/store/sql';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import { testStoreHost } from '../support/store-host';
 
 const NOW = '2026-10-17T09:00:00.000Z';
 const PROFILE = '0e000000-0000-4000-8000-0000000000f1';
+const ENGINE = JSON.stringify({
+  kind: 'dsh',
+  execution_target: { kind: 'server' },
+  session_id: null,
+  model_route_id: meteredRouteId(PROFILE),
+  model: 'openai/gpt-6-luna',
+  effort: null,
+  permission: { sandbox: 'read-only', approval: 'on-request' },
+});
 const CHAT = '0e000000-0000-4000-8000-0000000000c1';
 const SESSION = '0e000000-0000-4000-8000-000000000001';
 const DELIVERY = '0e000000-0000-4000-8000-0000000000d1';
@@ -51,15 +61,16 @@ function seedBefore(): void {
     database.prepare(sql).run(...values);
   };
   run(
-    "insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at) values (?, 'Ann', 'amber', '{}', 0, ?, ?)",
+    "insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at) values (?, 'Ann', 'amber', json_object('steps', null, 'move_kcal', null, 'active_minutes', null, 'sleep_minutes', null, 'hydration_ml', null), 0, ?, ?)",
     PROFILE,
     NOW,
     NOW,
   );
   run(
-    "insert into ai_chats (id, profile_id, kind, title, engine, pinned, created_at, updated_at) values (?, ?, 'chat', 'Home', '{}', 0, ?, ?)",
+    "insert into ai_chats (id, profile_id, kind, title, engine, pinned, created_at, updated_at) values (?, ?, 'chat', 'Home', ?, 0, ?, ?)",
     CHAT,
     PROFILE,
+    ENGINE,
     NOW,
     NOW,
   );
@@ -111,17 +122,19 @@ function tables(database: DatabaseSync): string[] {
 }
 
 describe('migrating a schema-86 database to in-memory streaming', () => {
-  it('keeps every delivery with its boundaries and drops the streamed text, outbox and consumers', () => {
+  it('keeps every delivery with its boundaries and drops the streamed text, outbox and consumers', async () => {
     seedBefore();
 
-    openStore({
-      host: testStoreHost(),
-      path,
-      log: testLogger(),
-      now: () => new Date(NOW),
-      systemTimeZone: 'UTC',
-      driveFolders: null,
-    }).close();
+    await closedStore(
+      await openSeededStore({
+        host: testStoreHost(),
+        path,
+        log: testLogger(),
+        now: () => new Date(NOW),
+        systemTimeZone: 'UTC',
+        driveFolders: null,
+      }),
+    );
 
     const migrated = new DatabaseSync(path);
     expect(tables(migrated)).not.toContain('harness_outbox');

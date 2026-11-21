@@ -14,7 +14,7 @@ const CYCLE_KINDS: readonly EventKind[] = ['activity', 'cycle_finished'];
 const CYCLE_HISTORY_ROWS = 200;
 
 export interface CycleTrackerParts {
-  readonly store: Pick<Store, 'devices' | 'events'>;
+  readonly store: Pick<Store, 'live' | 'host'>;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -32,7 +32,7 @@ export function cycleTrackerOf(
   writers: () => CycleTrackerWriters,
 ): CycleTracker {
   return new CycleTracker({
-    device: (id): DeviceRow | undefined => parts.store.devices.find(id),
+    device: (id): DeviceRow | undefined => parts.store.live.home.devices.find(id),
     value: (deviceId, key) => writers().state.valueOf(deviceId, key),
     record: (provider, event): void => {
       writers().events.fromProvider(provider, event);
@@ -40,10 +40,14 @@ export function cycleTrackerOf(
     push: (provider, update): void => {
       writers().state.push(provider, update);
     },
-    history: (deviceId) =>
-      parts.store.events
-        .list({ deviceIds: [deviceId], kinds: CYCLE_KINDS, limit: CYCLE_HISTORY_ROWS })
-        .map((row) => ({ kind: row.kind, occurredAt: row.occurred_at, details: row.details })),
+    history: async (deviceId) =>
+      (
+        await parts.store.host.call('events', 'list', {
+          deviceIds: [deviceId],
+          kinds: CYCLE_KINDS,
+          limit: CYCLE_HISTORY_ROWS,
+        })
+      ).map((row) => ({ kind: row.kind, occurredAt: row.occurred_at, details: row.details })),
     now: parts.now,
     log: parts.log,
   });

@@ -6,7 +6,7 @@ import {
   type HistoryBucket,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { controlKey, controlValue, readableControl } from './device-reads';
+import { controlKey, controlValue, readableControl, rowsOf } from './device-reads';
 import { parseInputs } from './inputs';
 import {
   ReadFailure,
@@ -14,13 +14,13 @@ import {
   type ReadHandlers,
   type ReadInputs,
   type ReadResult,
+  type ReadScope,
 } from './read-port';
 import { DEVICE_REF } from './refs';
 import { deviceById } from './targets';
 import { homeZone } from './zone';
 import type { WorldReadDeps } from './deps';
 
-const EPOCH = '1970-01-01T00:00:00.000Z';
 const BUCKET_SECONDS = 60;
 const HOUR_MS = 3_600_000;
 const DAY_DAYS = 1;
@@ -67,12 +67,12 @@ function earlierInstant(request: z.output<typeof COMPARE_PAST>, now: Date, zone:
   return zonedInstant(shiftedDate(clock, -days), clock.minuteOfDay, zone).getTime();
 }
 
-function windowStats(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
+function windowStats(deps: WorldReadDeps, inputs: ReadInputs, scope: ReadScope): ReadResult {
   const request = parseInputs('state.window_stats', WINDOW_STATS, inputs);
   const device = deviceById(deps.world, request.device);
   readableControl(device, request.control);
-  const to = deps.clock.now().getTime();
-  const buckets = deps.store.state.buckets({
+  const to = scope.now().getTime();
+  const buckets = scope.fetch('worldStateBuckets', {
     capabilities: [controlKey(request.control)],
     deviceIds: [device.id],
     from: new Date(to - request.window).toISOString(),
@@ -85,7 +85,7 @@ function windowStats(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
   });
 }
 
-function comparePast(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
+function comparePast(deps: WorldReadDeps, inputs: ReadInputs, scope: ReadScope): ReadResult {
   const request = parseInputs('state.compare_past', COMPARE_PAST, inputs);
   const device = deviceById(deps.world, request.device);
   readableControl(device, request.control);
@@ -97,15 +97,16 @@ function comparePast(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
   if (typeof current !== 'number') {
     throw new ReadFailure('TypeError', `${request.control} of ${device.name} is not a number`);
   }
-  const moment = earlierInstant(request, deps.clock.now(), homeZone(deps.world));
-  const [row] = deps.store.state.history({
-    capabilities: [key],
-    deviceIds: [device.id],
-    from: EPOCH,
-    to: new Date(moment).toISOString(),
-    order: 'desc',
-    limit: 1,
-  });
+  const moment = earlierInstant(request, scope.now(), homeZone(deps.world));
+  const [row] = rowsOf(
+    scope.fetch('worldLatest', {
+      capability: key,
+      deviceIds: [device.id],
+      to: new Date(moment).toISOString(),
+      limit: 1,
+    }),
+    device.id,
+  );
   const earlier = typeof row?.value === 'number' ? row.value : undefined;
   return outputsOf({
     current,
@@ -116,7 +117,7 @@ function comparePast(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
 
 export function historyStatsHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
-    'state.window_stats': (inputs) => windowStats(deps, inputs),
-    'state.compare_past': (inputs) => comparePast(deps, inputs),
+    'state.window_stats': (inputs, scope) => windowStats(deps, inputs, scope),
+    'state.compare_past': (inputs, scope) => comparePast(deps, inputs, scope),
   };
 }

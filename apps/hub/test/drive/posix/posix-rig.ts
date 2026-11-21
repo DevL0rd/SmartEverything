@@ -6,10 +6,12 @@ import type { DriveItem } from '@smarteverything/domain';
 import { commitContent } from '../../../src/drive/changes';
 import { DriveReadService } from '../../../src/drive/service-read';
 import { PosixError } from '../../../src/drive/posix/errors';
+import { hostQuotaSource } from '../../../src/drive/quotas';
 import { PosixScope, type PosixEnv } from '../../../src/drive/posix/env';
 import { DrivePosix } from '../../../src/drive/posix/service';
 import { DriveRootLanes } from '../../../src/drive/root-lanes';
-import { ensureDrives, personalDrive, sharedDrive } from '../../../src/drive/spaces';
+import { ensureDrives } from '../../../src/drive/spaces';
+import { personalDrive, sharedDrive } from '../../../src/drive/units/spaces';
 import { fileEnv, stageBytes } from '../../../src/drive/versions';
 import type { StoredDrive } from '../../../src/store/repositories/drive-roots';
 import { testLogger } from '../../support/logs';
@@ -71,10 +73,10 @@ function envOf(store: TestStore['store'], controls: Controls): PosixEnv {
       store,
       purge: { rearm: (): void => undefined },
     },
-    guard: { status: (profileId) => store.driveQuotas.status(profileId), space },
+    guard: { status: hostQuotaSource(store), space },
     space: {
       read: new DriveReadService(store),
-      quota: (profileId) => store.driveQuotas.status(profileId),
+      quota: hostQuotaSource(store),
       probe: { space },
       inodes: () => Promise.resolve({ files: 1000, free: 900 }),
     },

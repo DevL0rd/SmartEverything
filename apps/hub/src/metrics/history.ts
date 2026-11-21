@@ -4,11 +4,9 @@ import {
   type MetricRange,
   type MetricSeries,
 } from '@smarteverything/domain';
-import { background, type Logger } from '@smarteverything/logging';
-import type {
-  DeviceMetricsRepository,
-  MetricRowInsert,
-} from '../store/repositories/device-metrics';
+import type { Logger } from '@smarteverything/logging';
+import type { HostedRepository } from '../store/host/hosted';
+import type { MetricRowInsert } from '../store/repositories/device-metrics';
 import { HOUR_MS, MinuteAccumulator, startOf, type MinuteSummary } from './minute';
 import { MetricRing } from './ring';
 
@@ -26,7 +24,10 @@ const RANGE_MS: Readonly<Record<MetricRange, number>> = {
 };
 
 export interface MetricHistoryOptions {
-  readonly store: Pick<DeviceMetricsRepository, 'saveMinutes' | 'rollHours' | 'prune' | 'series'>;
+  readonly store: HostedRepository<
+    'deviceMetrics',
+    'saveMinutes' | 'rollHours' | 'prune' | 'series'
+  >;
   readonly log: Logger;
   readonly now: () => Date;
 }
@@ -47,6 +48,7 @@ function iso(at: number): string {
 export class MetricHistory {
   private readonly series = new Map<string, Series>();
   private rolledHour: number;
+  private writes: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: MetricHistoryOptions) {
     this.rolledHour = startOf(options.now().getTime(), HOUR_MS);
@@ -63,19 +65,26 @@ export class MetricHistory {
     this.rollIfNewHour(time);
   }
 
-  read(deviceId: string, capability: string, range: MetricRange): MetricSeries {
+  recent(deviceId: string, capability: string): MetricSeries {
+    const from = this.options.now().getTime() - RANGE_MS['10m'];
+    return { resolution: 'second', points: this.ringSince(deviceId, capability, from) };
+  }
+
+  async read(deviceId: string, capability: string, range: MetricRange): Promise<MetricSeries> {
     const resolution = METRIC_RANGE_RESOLUTION[range];
+    if (resolution === 'second') return this.recent(deviceId, capability);
     const from = this.options.now().getTime() - RANGE_MS[range];
-    if (resolution === 'second') {
-      return { resolution, points: this.recent(deviceId, capability, from) };
-    }
     return {
       resolution,
-      points: this.options.store.series(deviceId, capability, resolution, iso(from)),
+      points: await this.options.store.series(deviceId, capability, resolution, iso(from)),
     };
   }
 
-  private recent(deviceId: string, capability: string, from: number): MetricPoint[] {
+  settled(): Promise<void> {
+    return this.writes;
+  }
+
+  private ringSince(deviceId: string, capability: string, from: number): MetricPoint[] {
     const series = this.series.get(seriesKey(deviceId, capability));
     if (series === undefined) {
       return [];
@@ -109,11 +118,24 @@ export class MetricHistory {
       maximum: minute.maximum,
       count: minute.count,
     };
-    try {
-      this.options.store.saveMinutes([row]);
-    } catch (cause) {
-      this.options.log.error('metrics.minute_not_saved', cause, { deviceId, capability });
-    }
+    this.queued(() => this.options.store.saveMinutes([row]), 'metrics.minute_not_saved', {
+      deviceId,
+      capability,
+    });
+  }
+
+  private queued(
+    work: () => Promise<unknown>,
+    failure: string,
+    fields: Readonly<Record<string, string>>,
+  ): void {
+    this.writes = this.writes
+      .then(async () => {
+        await work();
+      })
+      .catch((cause: unknown) => {
+        this.options.log.error(failure, cause, fields);
+      });
   }
 
   private rollIfNewHour(at: number): void {
@@ -122,12 +144,12 @@ export class MetricHistory {
       return;
     }
     this.rolledHour = hour;
-    try {
-      this.options.store.rollHours(iso(hour - ROLLED_WINDOW_MS), iso(hour));
-    } catch (cause) {
-      this.options.log.error('metrics.hours_not_rolled', cause, { hour: iso(hour) });
-    }
-    background(this.prune(at), 'metrics.prune_failed', { hour: iso(hour) });
+    this.queued(
+      () => this.options.store.rollHours(iso(hour - ROLLED_WINDOW_MS), iso(hour)),
+      'metrics.hours_not_rolled',
+      { hour: iso(hour) },
+    );
+    this.queued(() => this.prune(at), 'metrics.prune_failed', { hour: iso(hour) });
   }
 
   private async prune(at: number): Promise<void> {
@@ -135,10 +157,9 @@ export class MetricHistory {
       ['minute', iso(at - MINUTE_RETENTION_MS)],
       ['hour', iso(at - HOUR_RETENTION_MS)],
     ] as const) {
-      while (this.options.store.prune(resolution, before, PRUNE_SLICE_ROWS) === PRUNE_SLICE_ROWS)
-        await new Promise<void>((resolve) => {
-          setImmediate(resolve);
-        });
+      let removed = PRUNE_SLICE_ROWS;
+      while (removed === PRUNE_SLICE_ROWS)
+        removed = await this.options.store.prune(resolution, before, PRUNE_SLICE_ROWS);
     }
   }
 }

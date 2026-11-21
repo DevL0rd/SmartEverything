@@ -39,9 +39,9 @@ beforeEach(async () => {
     views: {
       store: rig.test.store,
       fleet: rig.fleet,
-      clock: homeClock(rig.test.store),
+      clock: homeClock(rig.test.store.live.home.settings),
       holder: (device) => bridges.holderOf(device),
-      series: () => ({ resolution: 'hour', points: [] }),
+      series: () => Promise.resolve({ resolution: 'hour', points: [] }),
       now: rig.clock.now,
     },
     acts: { ...rig.acts(), bridges },

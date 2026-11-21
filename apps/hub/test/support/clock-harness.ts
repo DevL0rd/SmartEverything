@@ -70,7 +70,7 @@ function alarmScheduler(test: TestStore, clock: SimulatedClock): AlarmScheduler 
   const sunrise = new SunriseRamp({
     store: test.store,
     clock,
-    submit: (): never[] => [],
+    submit: (): Promise<never[]> => Promise.resolve([]),
     log: testLogger(),
   });
   return new AlarmScheduler({

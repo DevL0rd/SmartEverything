@@ -104,7 +104,7 @@ describe('server protocol', () => {
     expect(allowed.headers.get('access-control-allow-origin')).toBe('app://smarteverything');
   });
 
-  it('opens /live only with its subprotocol and a valid token, and closes on an invalid message', async () => {
+  it('opens /live only with its subprotocol and a valid token, refuses an invalid watch without closing, and closes on an invalid message', async () => {
     expect(await refusedUpgrade(['other'])).toBe(400);
     expect(await refusedUpgrade([...liveProtocols(`set_${'ab'.repeat(32)}`)])).toBe(401);
     expect(
@@ -116,6 +116,11 @@ describe('server protocol', () => {
       }),
     ).toBe(404);
     const live = await openLive(suite.current.base, suite.current.owner);
+    live.socket.send('{"type":"watch","demands":[{"deviceId":"x","topics":["nothing"]}]}');
+    expect(await live.next((message) => message.type === 'refused')).toMatchObject({
+      error: { code: 'invalid_request', reason: 'watch' },
+    });
+    expect(live.socket.readyState).toBe(WebSocket.OPEN);
     live.socket.send('{"type":"listen"}');
     expect(await live.next((message) => message.type === 'refused')).toMatchObject({
       error: { code: 'invalid_request' },

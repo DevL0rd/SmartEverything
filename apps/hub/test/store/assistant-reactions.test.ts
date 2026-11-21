@@ -1,3 +1,4 @@
+import { testStore, type SeededStore } from '../support/store';
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -6,12 +7,10 @@ import { setMessageReaction } from '../../src/assistant/message-reactions';
 import { ChatDirectory } from '../../src/assistant/chat-directory';
 import { EngineRegistry } from '../../src/assistant/engines/registry';
 import { AssistantFiles } from '../../src/assistant/files';
-import type { Store } from '../../src/store/store';
 import { CLAUDE_TEST_ENGINE, TEST_ENGINE } from '../support/engine';
-import { testStore } from '../support/store';
 import { hubLayout } from '../../src/data-layout';
 
-function createChat(store: Store, profileId: string): string {
+function createChat(store: SeededStore, profileId: string): string {
   return store.aiChats.create({
     profileId,
     kind: 'chat',
@@ -23,7 +22,7 @@ function createChat(store: Store, profileId: string): string {
   }).id;
 }
 
-function createMessage(store: Store, chatId: string, profileId: string): string {
+function createMessage(store: SeededStore, chatId: string, profileId: string): string {
   return store.assistantChat.addMessage({
     profile_id: profileId,
     client_id: null,
@@ -106,26 +105,31 @@ describe('assistant message reactions', () => {
       const unrelatedChat = createChat(store, profile.id);
       const messageId = createMessage(store, chatId, profile.id);
       const change = { emoji: '👍', present: true };
-      setMessageReaction(admission, { kind: 'client', client }, { chatId, messageId }, change);
+      await setMessageReaction(
+        admission,
+        { kind: 'client', client },
+        { chatId, messageId },
+        change,
+      );
       expect(store.assistantChat.message(messageId).reactions).toEqual([
         { emoji: '👍', actor: { kind: 'person', id: profile.id, label: profile.name } },
       ]);
-      expect(() =>
+      await expect(
         setMessageReaction(
           admission,
           { kind: 'client', client },
           { chatId: unrelatedChat, messageId },
           change,
         ),
-      ).toThrow(/no longer available/u);
-      expect(() =>
+      ).rejects.toThrow(/no longer available/u);
+      await expect(
         setMessageReaction(
           admission,
           { kind: 'client', client, via: 'assistant' },
           { chatId, messageId },
           change,
         ),
-      ).toThrow(/admitted chat/u);
+      ).rejects.toThrow(/admitted chat/u);
     } finally {
       await close();
     }
@@ -133,12 +137,12 @@ describe('assistant message reactions', () => {
 });
 
 function fixtureAdmission(
-  store: Store,
+  store: SeededStore,
   directory: string,
 ): Parameters<typeof setMessageReaction>[0] {
   const files = new AssistantFiles({
     layout: hubLayout(directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: store.now,
   });
@@ -181,14 +185,14 @@ it('refuses retired history and member mutations of computer chats', async () =>
         nativeAdmission: status,
       });
       const messageId = createMessage(store, chat.id, profile.id);
-      expect(() =>
+      await expect(
         setMessageReaction(
           admission,
           { kind: 'client', client },
           { chatId: chat.id, messageId },
           { emoji: '👍', present: true },
         ),
-      ).toThrow(status === 'retired' ? /read-only/u : /Only the home owner/u);
+      ).rejects.toThrow(status === 'retired' ? /read-only/u : /Only the home owner/u);
       expect(store.assistantChat.message(messageId).reactions).toEqual([]);
     }
   } finally {

@@ -30,13 +30,13 @@ function matchesRetainedParent(
   );
 }
 
-export function retainedHelperSettlement(
-  store: Store,
+export async function retainedHelperSettlement(
+  store: Pick<Store, 'host'>,
   child: DshWriterClaim,
   parent: DshWriterClaim,
   nextSeq: number,
-): HelperSettlement | undefined {
-  const receipt = store.harnessSessions.operation(renewalId(child));
+): Promise<HelperSettlement | undefined> {
+  const receipt = await store.host.call('harnessSessions', 'operation', renewalId(child));
   if (receipt?.state !== 'completed' || receipt.session_id !== child.session_id) return undefined;
   const parsed = RENEWAL.parse(JSON.parse(receipt.request));
   if (!isDeepStrictEqual(parsed.child, child) || parsed.previousEpoch + 1 !== child.epoch)

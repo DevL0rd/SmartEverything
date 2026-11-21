@@ -15,7 +15,7 @@ let caller: Caller;
 
 beforeEach(async () => {
   rig = await harnessRig();
-  projects = new ProjectFilesService(rig.opened.layout, rig.opened.store.aiChats);
+  projects = new ProjectFilesService(rig.opened.layout, rig.opened.store.live.chats);
   references = new ReferenceService(rig.opened.store, projects);
   chat = titled('Planning the garden');
   caller = { kind: 'client', client: rig.opened.store.clients.byId(rig.clientId), chatId: chat.id };

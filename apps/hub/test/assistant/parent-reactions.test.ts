@@ -1,3 +1,4 @@
+import { testStore, type TestStore, type SeededStore } from '../support/store';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type {
@@ -13,14 +14,13 @@ import { activeHelperInput } from '../../src/assistant/engines/dsh/helper-reacti
 import { EngineRegistry } from '../../src/assistant/engines/registry';
 import { AssistantFiles } from '../../src/assistant/files';
 import { setMessageReaction } from '../../src/assistant/message-reactions';
-import { eventAuthority } from '../../src/assistant/turn-authority';
+import { authorityScope } from '../../src/assistant/turn-authority';
+import { issueEventAuthority } from '../../src/assistant/event-authority-issue';
 import type { StoredEvent } from '../../src/store/repositories/assistant-events';
-import type { Store } from '../../src/store/store';
 import { CLAUDE_TEST_ENGINE, TEST_ENGINE } from '../support/engine';
-import { testStore, type TestStore } from '../support/store';
 import { hubLayout } from '../../src/data-layout';
 
-function enginesFor(store: Store): EngineRegistry {
+function enginesFor(store: SeededStore): EngineRegistry {
   const engines = new EngineRegistry(store);
   engines.attach({
     kind: 'claude',
@@ -36,16 +36,16 @@ function enginesFor(store: Store): EngineRegistry {
 }
 
 interface ReactionFixture {
-  readonly store: Store;
+  readonly store: SeededStore;
   readonly client: ClientRow;
   readonly parent: AiChatRow;
-  readonly helper: (name: string) => AiChatRow;
+  readonly helper: (name: string) => Promise<AiChatRow>;
   readonly send: (target: AiChatRow) => Promise<AssistantMessageRow>;
   readonly notices: () => number;
   readonly ports: Parameters<typeof setMessageReaction>[0];
 }
 
-function fixture({ store, directory }: TestStore): ReactionFixture {
+async function fixture({ store, directory }: TestStore): Promise<ReactionFixture> {
   const client = store.clients.create(
     { name: 'Desktop', platform: 'desktop', role: 'owner', tokenHash: 'parent-reaction-test' },
     true,
@@ -54,7 +54,7 @@ function fixture({ store, directory }: TestStore): ReactionFixture {
   const owner = { profileId: profile.id, role: 'owner' } as const;
   const files = new AssistantFiles({
     layout: hubLayout(directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: store.now,
   });
@@ -71,8 +71,8 @@ function fixture({ store, directory }: TestStore): ReactionFixture {
       notices += 1;
     },
   });
-  const parent = chats.create(owner, { title: 'Planner', engine: TEST_ENGINE });
-  const helper = (name: string): AiChatRow =>
+  const parent = await chats.create(owner, { title: 'Planner', engine: TEST_ENGINE });
+  const helper = (name: string): Promise<AiChatRow> =>
     chats.create(owner, { title: name, engine: CLAUDE_TEST_ENGINE, parent_id: parent.id });
   const send = (target: AiChatRow): Promise<AssistantMessageRow> =>
     delegation.sendToHelper(
@@ -98,7 +98,7 @@ function fixture({ store, directory }: TestStore): ReactionFixture {
 }
 
 function expectInput(
-  store: Store,
+  store: SeededStore,
   chatId: string,
 ): { readonly event: StoredEvent; readonly target: Parameters<typeof setMessageReaction>[2] } {
   const event = store.assistantEvents.pending().find((row) => row.chat_id === chatId);
@@ -111,12 +111,12 @@ describe('delivery-bound parent reactions', () => {
   it('reacts as the helper to the exact parent projection without disclosing memberships or starting work', async () => {
     const opened = await testStore();
     try {
-      const setup = fixture(opened);
+      const setup = await fixture(opened);
       const { store, parent, ports, client } = setup;
-      const child = setup.helper('Keyboard review');
+      const child = await setup.helper('Keyboard review');
       const parentRow = await setup.send(child);
       const { event, target } = expectInput(store, child.id);
-      const authority = eventAuthority(store, event);
+      const authority = issueEventAuthority(store, event, authorityScope());
       const actor = {
         kind: 'client',
         client,
@@ -125,39 +125,41 @@ describe('delivery-bound parent reactions', () => {
         authority,
       } as const;
       const change = { emoji: '👍', present: true, in_parent: true };
-      expect(() => setMessageReaction(ports, actor, target, change)).toThrow(
+      await expect(setMessageReaction(ports, actor, target, change)).rejects.toThrow(
         /currently delivered/u,
       );
       store.assistantEvents.mark(event.id, 'delivered_at');
 
       const humanTarget = { chatId: parent.id, messageId: parentRow.id };
-      setMessageReaction(ports, { kind: 'client', client }, humanTarget, {
+      await setMessageReaction(ports, { kind: 'client', client }, humanTarget, {
         emoji: '👍',
         present: true,
       });
-      expect(() =>
+      await expect(
         setMessageReaction(ports, actor, { chatId: child.id, messageId: parentRow.id }, change),
-      ).toThrow(/currently delivered/u);
-      expect(() => setMessageReaction(ports, { kind: 'client', client }, target, change)).toThrow(
-        /currently delivered/u,
-      );
+      ).rejects.toThrow(/currently delivered/u);
+      await expect(
+        setMessageReaction(ports, { kind: 'client', client }, target, change),
+      ).rejects.toThrow(/currently delivered/u);
       const expected = [
         { emoji: '👍', actor: { kind: 'assistant', id: child.id, label: child.helper_name } },
       ];
-      expect(setMessageReaction(ports, actor, target, change)).toEqual(expected);
-      expect(setMessageReaction(ports, actor, target, change)).toEqual(expected);
+      expect(await setMessageReaction(ports, actor, target, change)).toEqual(expected);
+      expect(await setMessageReaction(ports, actor, target, change)).toEqual(expected);
       expect(store.assistantChat.message(parentRow.id).reactions).toHaveLength(2);
       expect(store.assistantChat.message(target.messageId).reactions).toEqual([]);
-      expect(setMessageReaction(ports, actor, target, { emoji: '👍', present: true })).toEqual(
-        expected,
+      expect(
+        await setMessageReaction(ports, actor, target, { emoji: '👍', present: true }),
+      ).toEqual(expected);
+      expect(await setMessageReaction(ports, actor, target, { ...change, present: false })).toEqual(
+        [],
       );
-      expect(setMessageReaction(ports, actor, target, { ...change, present: false })).toEqual([]);
       expect(store.assistantChat.message(parentRow.id).reactions).toHaveLength(1);
       expect(setup.notices()).toBe(1);
       expect(store.assistantEvents.pending()).toEqual([]);
 
       store.assistantEvents.mark(event.id, 'answered_at');
-      expect(() => setMessageReaction(ports, actor, target, change)).toThrow(
+      await expect(setMessageReaction(ports, actor, target, change)).rejects.toThrow(
         /currently delivered/u,
       );
     } finally {
@@ -168,10 +170,10 @@ describe('delivery-bound parent reactions', () => {
   it('refuses a sibling input and a different delivery addressed to the same helper', async () => {
     const opened = await testStore();
     try {
-      const setup = fixture(opened);
+      const setup = await fixture(opened);
       const { store, client, ports } = setup;
-      const child = setup.helper('First');
-      const sibling = setup.helper('Second');
+      const child = await setup.helper('First');
+      const sibling = await setup.helper('Second');
       await setup.send(child);
       const first = expectInput(store, child.id);
       store.assistantEvents.mark(first.event.id, 'delivered_at');
@@ -182,7 +184,7 @@ describe('delivery-bound parent reactions', () => {
       const foreign = expectInput(store, sibling.id);
       store.assistantEvents.mark(foreign.event.id, 'delivered_at');
 
-      const authority = eventAuthority(store, next.event);
+      const authority = issueEventAuthority(store, next.event, authorityScope());
       const actor = {
         kind: 'client',
         client,
@@ -191,12 +193,12 @@ describe('delivery-bound parent reactions', () => {
         authority,
       } as const;
       const change = { emoji: '👍', present: true, in_parent: true };
-      expect(() => setMessageReaction(ports, actor, first.target, change)).toThrow(
+      await expect(setMessageReaction(ports, actor, first.target, change)).rejects.toThrow(
         /currently delivered/u,
       );
-      expect(() =>
+      await expect(
         setMessageReaction(ports, actor, { ...foreign.target, chatId: child.id }, change),
-      ).toThrow(/currently delivered/u);
+      ).rejects.toThrow(/currently delivered/u);
     } finally {
       await opened.close();
     }

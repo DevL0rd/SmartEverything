@@ -10,18 +10,18 @@ import type { Caller } from '../server/auth';
 import { chatCaller } from './chat-caller';
 export class EmbeddedBrowserAuthority {
   constructor(private readonly store: Store) {}
-  caller(caller: Caller, chat: string): string {
+  caller(caller: Caller, chat: string): Promise<string> {
     return chatCaller(this.store, caller, chat, 'Browser control');
   }
   initiatingClient(caller: Caller): string | undefined {
     if (currentProviderToolAuthority() === undefined || caller.kind !== 'client') return undefined;
     return caller.authority?.client_id ?? undefined;
   }
-  validate(scope: EmbeddedBrowserScope): void {
-    this.store.aiChats.chat(scope.chatId);
+  async validate(scope: EmbeddedBrowserScope): Promise<void> {
+    await this.store.host.call('aiChats', 'chat', scope.chatId);
   }
-  action(scope: EmbeddedBrowserScope, action: EmbeddedBrowserAction): void {
-    this.validate(scope);
+  async action(scope: EmbeddedBrowserScope, action: EmbeddedBrowserAction): Promise<void> {
+    await this.validate(scope);
     if (
       action.kind === 'open' &&
       action.source.kind === 'public' &&

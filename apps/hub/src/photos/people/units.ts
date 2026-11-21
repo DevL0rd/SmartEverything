@@ -9,7 +9,7 @@ import {
 import { Logger } from '@smarteverything/logging';
 import type { DriveActor } from '../../drive/access';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { PhotoConsent } from '../ai/consent';
 import { mergeSuggestionsFor } from './merge-suggestions';
 import { PeopleRecords, type GroupPlacement } from './records';
@@ -27,7 +27,7 @@ export interface Regrouped {
   readonly kind: PhotoGroupKind;
 }
 
-function recordsOf(store: Store): PeopleRecords {
+function recordsOf(store: HostStore): PeopleRecords {
   return new PeopleRecords({
     context: store.context,
     groups: store.photoGroups,

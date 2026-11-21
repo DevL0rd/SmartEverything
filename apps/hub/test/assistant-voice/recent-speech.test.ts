@@ -78,16 +78,16 @@ async function makeListener(
   return device.id;
 }
 
-function sayOn(source: 'phone' | 'computer', sourceId: string, text: string): void {
-  const id = transcripts.open({
+async function sayOn(source: 'phone' | 'computer', sourceId: string, text: string): Promise<void> {
+  const { id } = await transcripts.open({
     source,
     sourceId,
     pluginId: null,
     title: source,
     retentionDays: null,
     startedAt: new Date(Date.parse(NOW) - 3_600_000).toISOString(),
-  }).id;
-  transcripts.add(id, {
+  });
+  await transcripts.add(id, {
     at: new Date(Date.parse(NOW) - 60_000).toISOString(),
     speaker_id: null,
     speaker: 'Pat',
@@ -96,8 +96,12 @@ function sayOn(source: 'phone' | 'computer', sourceId: string, text: string): vo
   });
 }
 
-function say(secondsAgo: number, text: string, extra: Partial<TranscriptLineInput> = {}): void {
-  transcripts.add(sessionId, {
+async function say(
+  secondsAgo: number,
+  text: string,
+  extra: Partial<TranscriptLineInput> = {},
+): Promise<void> {
+  await transcripts.add(sessionId, {
     at: new Date(Date.parse(NOW) - secondsAgo * 1000).toISOString(),
     speaker_id: null,
     speaker: 'Kitchen',
@@ -128,14 +132,14 @@ beforeEach(async () => {
     log: testLogger('transcripts'),
   });
   cameraId = makeCamera('Kitchen', true);
-  sessionId = transcripts.open({
+  ({ id: sessionId } = await transcripts.open({
     source: 'camera',
     sourceId: cameraId,
     pluginId: null,
     title: 'Kitchen',
     retentionDays: null,
     startedAt: new Date(Date.parse(NOW) - 3_600_000).toISOString(),
-  }).id;
+  }));
 });
 
 afterEach(async () => {
@@ -144,9 +148,9 @@ afterEach(async () => {
 
 describe('recentSpeechOf', () => {
   it('lists the last five minutes oldest first with relative times and drops older speech', async () => {
-    say(400, 'too old');
-    say(240, 'dinner is ready');
-    say(30, 'I will set the table');
+    await say(400, 'too old');
+    await say(240, 'dinner is ready');
+    await say(30, 'I will set the table');
     const text = (await recall()) ?? '';
     expect(text).toContain('Recent speech heard on Kitchen (last 5 minutes)');
     expect(text).not.toContain('too old');
@@ -158,7 +162,7 @@ describe('recentSpeechOf', () => {
 
   it('keeps the newest speech within the character budget', async () => {
     for (let index = 0; index < 100; index += 1) {
-      say(280 - index, `line ${String(index).padStart(3, '0')} ${'x'.repeat(60)}`);
+      await say(280 - index, `line ${String(index).padStart(3, '0')} ${'x'.repeat(60)}`);
     }
     const text = (await recall()) ?? '';
     expect(text.length).toBeLessThan(4400);
@@ -167,9 +171,9 @@ describe('recentSpeechOf', () => {
   });
 
   it('names a speaker who differs from the camera and leaves out the AI and the wake phrase', async () => {
-    say(120, 'Sam says hello', { speaker: 'Sam' });
-    say(100, 'the assistant answered', { bot: true });
-    say(5, 'hey Coordinator turn on the lamp');
+    await say(120, 'Sam says hello', { speaker: 'Sam' });
+    await say(100, 'the assistant answered', { bot: true });
+    await say(5, 'hey Coordinator turn on the lamp');
     const text = (await recall()) ?? '';
     expect(text).toContain('Sam: Sam says hello');
     expect(text).not.toContain('answered');
@@ -177,7 +181,7 @@ describe('recentSpeechOf', () => {
   });
 
   it('gives a member nothing, and nothing when transcription is off, the window is 0 or nothing was heard', async () => {
-    say(60, 'private talk');
+    await say(60, 'private talk');
     expect(await recall('member')).toBeNull();
     const quiet = makeCamera('Porch', false);
     expect(await recall('owner', quiet)).toBeNull();
@@ -197,22 +201,22 @@ describe('recentSpeechOf', () => {
 
   it('reads only the called camera and logs counts without the text', async () => {
     const other = makeCamera('Garage', true);
-    const garage = transcripts.open({
+    const { id: garage } = await transcripts.open({
       source: 'camera',
       sourceId: other,
       pluginId: null,
       title: 'Garage',
       retentionDays: null,
       startedAt: new Date(Date.parse(NOW) - 3_600_000).toISOString(),
-    }).id;
-    transcripts.add(garage, {
+    });
+    await transcripts.add(garage, {
       at: new Date(Date.parse(NOW) - 10_000).toISOString(),
       speaker_id: null,
       speaker: 'Garage',
       text: 'engine noise',
       bot: false,
     });
-    say(60, 'cooking');
+    await say(60, 'cooking');
     const text = (await recall()) ?? '';
     expect(text).toContain('cooking');
     expect(text).not.toContain('engine');
@@ -224,9 +228,9 @@ describe('recentSpeechOf', () => {
   it('gives the winning phone or computer its own last five minutes', async () => {
     const phone = await makeListener('phone', 'Pat phone', 'pat', true);
     const computer = await makeListener('computer', 'Pat desk', 'pat', true);
-    sayOn('phone', phone, 'call me back');
-    sayOn('computer', computer, 'compile finished');
-    say(30, 'kitchen noise');
+    await sayOn('phone', phone, 'call me back');
+    await sayOn('computer', computer, 'compile finished');
+    await say(30, 'kitchen noise');
     const heardOnPhone = (await recall('owner', phone)) ?? '';
     expect(heardOnPhone).toContain('Recent speech heard on Pat phone');
     expect(heardOnPhone).toContain('call me back');
@@ -238,12 +242,12 @@ describe('recentSpeechOf', () => {
   it('keeps a phone or computer private unless transcribing, and gives a member only their own', async () => {
     const own = await makeListener('phone', 'Pat phone', 'pat', true);
     const off = await makeListener('computer', 'Pat desk', 'pat', false);
-    sayOn('phone', own, 'my errands');
-    sayOn('computer', off, 'not written down');
+    await sayOn('phone', own, 'my errands');
+    await sayOn('computer', off, 'not written down');
     expect(await recall('owner', off)).toBeNull();
     expect(await recall('member', own, 'pat')).toContain('my errands');
     expect(await recall('member', own, 'sam')).toBeNull();
-    say(30, 'camera talk');
+    await say(30, 'camera talk');
     expect(await recall('member', cameraId, 'pat')).toBeNull();
   });
 });

@@ -13,25 +13,23 @@ afterEach(async () => {
 });
 
 describe('managed project access follows the chat, not the phone profile', () => {
-  it('keeps reading a project after the phone switched to another person', () => {
+  it('keeps reading a project after the phone switched to another person', async () => {
     const { store } = rig.opened;
     const chat = rig.newChat({ kind: 'server' });
-    const authority = projectCallerAuthority(
+    const authority = await projectCallerAuthority(
       store,
       { kind: 'client', client: store.clients.byId(rig.clientId), chatId: chat.id },
       chat.id,
     );
     store.clients.useProfile(rig.clientId, store.profiles.create({ name: 'Guest' }).id);
-    expect(() => {
-      authority.validate(false);
-    }).not.toThrow();
+    await expect(authority.validate(false)).resolves.toBeUndefined();
   });
 
-  it('refuses a project of a chat that belongs to another profile', () => {
+  it('refuses a project of a chat that belongs to another profile', async () => {
     const { store } = rig.opened;
     const chat = rig.newChat({ kind: 'server' });
     const guest = store.profiles.create({ name: 'Guest' });
-    expect(() =>
+    await expect(
       projectCallerAuthority(
         store,
         {
@@ -42,6 +40,6 @@ describe('managed project access follows the chat, not the phone profile', () =>
         },
         chat.id,
       ),
-    ).toThrow('different profile');
+    ).rejects.toThrow('different profile');
   });
 });

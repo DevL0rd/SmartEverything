@@ -232,7 +232,10 @@ describe('the board types of the AI', () => {
       trusted: true,
     });
     opened.store.plugins.update('router', { enabled: true });
-    expect(boardTypes(opened.store)).toStrictEqual(['garden.level', 'router-internet']);
+    expect(boardTypes(opened.store.plugins.list())).toStrictEqual([
+      'garden.level',
+      'router-internet',
+    ]);
   });
 });
 

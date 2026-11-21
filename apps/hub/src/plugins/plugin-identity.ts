@@ -4,9 +4,10 @@ import {
   type PluginPerson,
   type PluginRequester,
 } from '@smarteverything/domain';
-import { ownerProfileOf } from '../transcripts/owner';
-import { refusal, standingRefusal, type Refusal } from '../server/person-access';
+import { refusal, type Refusal } from '../server/person-access';
+import { standingRefusal } from '../server/person-access-units';
 import { storeUnit } from '../store/host/unit';
+import type { HostStore } from '../store/host/host-store';
 import type { Store } from '../store/store';
 
 export interface PluginIdentity {
@@ -16,7 +17,7 @@ export interface PluginIdentity {
   readonly refusal: Refusal | null;
 }
 
-type IdentityStore = Pick<Store, 'personAccess' | 'now' | 'settings' | 'pluginPeople'>;
+type IdentityStore = Pick<HostStore, 'personAccess' | 'now' | 'settings' | 'pluginPeople'>;
 
 export type PluginIdentityStore = Pick<Store, 'host'>;
 
@@ -27,7 +28,7 @@ const CHAT_ROUTE = { home: false, statusOnly: false } as const;
 function strangerOf(store: IdentityStore, externalId: string | null | undefined): PluginIdentity {
   return {
     requester: 'unlisted',
-    profileId: ownerProfileOf(store),
+    profileId: store.personAccess.homeOwner(),
     guest: externalId ?? UNKNOWN_SENDER,
     refusal: null,
   };

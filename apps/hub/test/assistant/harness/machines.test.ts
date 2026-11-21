@@ -40,7 +40,7 @@ describe('machine_read', () => {
   it('names every machine with its system, whether it is online and which one the chat is on', async () => {
     const chat = await openChat();
 
-    const { machines } = listMachines(rig.service, rig.owner, chat.id);
+    const { machines } = await listMachines(rig.service, rig.owner, chat.id);
 
     expect(machines).toStrictEqual([
       { id: 'hub', name: 'Hub', os: 'Linux', online: true, current: true },
@@ -57,7 +57,7 @@ describe('machine_read', () => {
   it('shows a member only the home’s own machine', async () => {
     const chat = await openChat();
 
-    const { machines } = listMachines(rig.service, { ...rig.owner, role: 'member' }, chat.id);
+    const { machines } = await listMachines(rig.service, { ...rig.owner, role: 'member' }, chat.id);
 
     expect(machines.map((machine) => machine.name)).toStrictEqual(['Hub']);
   });
@@ -70,14 +70,14 @@ describe('machine_switch', () => {
     const result = await switchMachine(rig.service, rig.owner, chat.id, 'dEsK');
 
     expect(result).toStrictEqual({ state: 'applied', machine: 'Desk' });
-    expect(harnessTargetKey(rig.service.state(rig.owner, chat.id).target)).toBe(
+    expect(harnessTargetKey((await rig.service.state(rig.owner, chat.id)).target)).toBe(
       harnessTargetKey(rig.desk.target),
     );
   });
 
   it('accepts the machine id from machine_read', async () => {
     const chat = await openChat();
-    const { machines } = listMachines(rig.service, rig.owner, chat.id);
+    const { machines } = await listMachines(rig.service, rig.owner, chat.id);
     const desk = machines.find((machine) => machine.name === 'Desk');
 
     const result = await switchMachine(rig.service, rig.owner, chat.id, desk?.id ?? '');

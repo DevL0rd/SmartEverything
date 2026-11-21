@@ -99,7 +99,7 @@ beforeEach(async () => {
     store,
     new AssistantFiles({
       layout: hubLayout(opened.directory, {}),
-      chat: store.assistantChat,
+      store: store,
       attachments: store.live.attachments,
       now,
     }),
@@ -111,10 +111,10 @@ afterEach(async () => {
   await opened.close();
 });
 
-function exchange(chatId: string, person: string): StoredEvent {
+async function exchange(chatId: string, person: string): Promise<StoredEvent> {
   const conversation = new ConversationLog(opened.store);
   const chat = opened.store.aiChats.chat(chatId);
-  const row = conversation.person({
+  const row = await conversation.person({
     chat,
     clientId: null,
     author: 'Sam',
@@ -140,16 +140,14 @@ function exchange(chatId: string, person: string): StoredEvent {
 }
 
 async function settled(): Promise<void> {
-  for (let round = 0; round < 10; round += 1) {
-    await Promise.resolve();
-  }
+  await titles.settled();
 }
 
 describe('chat titles', () => {
   it('names a new chat from its first exchange', async () => {
-    const chat = chats.create(owner, { engine: TEST_ENGINE });
+    const chat = await chats.create(owner, { engine: TEST_ENGINE });
     replies.push('"Planning the garden lights 🌙."');
-    titles.afterReply(exchange(chat.id, 'Turn on the garden lights at dusk'), 'Done.', true);
+    titles.afterReply(await exchange(chat.id, 'Turn on the garden lights at dusk'), 'Done.', true);
     await settled();
     expect(opened.store.aiChats.chat(chat.id).title).toBe('Planning the garden lights');
     expect(opened.store.aiChats.titleAuto(chat.id)).toBe(false);
@@ -158,9 +156,9 @@ describe('chat titles', () => {
   });
 
   it('asks the small model for the title of this chat and records nothing itself', async () => {
-    const chat = chats.create(owner, { engine: TEST_ENGINE });
+    const chat = await chats.create(owner, { engine: TEST_ENGINE });
     replies.push('Garden lights');
-    titles.afterReply(exchange(chat.id, 'Turn on the garden lights'), 'Done.', true);
+    titles.afterReply(await exchange(chat.id, 'Turn on the garden lights'), 'Done.', true);
     await settled();
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
@@ -173,26 +171,26 @@ describe('chat titles', () => {
   });
 
   it('never renames a chat the person named or renamed', async () => {
-    const named = chats.create(owner, {
+    const named = await chats.create(owner, {
       title: 'Holiday',
       engine: TEST_ENGINE,
     });
-    const renamed = chats.create(owner, { engine: TEST_ENGINE });
-    chats.update(owner, renamed.id, { title: 'My list' });
-    titles.afterReply(exchange(named.id, 'Hi'), 'Hello', true);
-    titles.afterReply(exchange(renamed.id, 'Hi'), 'Hello', true);
+    const renamed = await chats.create(owner, { engine: TEST_ENGINE });
+    await chats.update(owner, renamed.id, { title: 'My list' });
+    titles.afterReply(await exchange(named.id, 'Hi'), 'Hello', true);
+    titles.afterReply(await exchange(renamed.id, 'Hi'), 'Hello', true);
     await settled();
     expect(requests).toHaveLength(0);
     expect(opened.store.aiChats.chat(renamed.id).title).toBe('My list');
   });
 
   it('keeps the default title when the answer is unusable or there is no small model yet', async () => {
-    const chat = chats.create(owner, { engine: TEST_ENGINE });
+    const chat = await chats.create(owner, { engine: TEST_ENGINE });
     replies.push('  🌙 ');
-    titles.afterReply(exchange(chat.id, 'Hi'), 'Hello', true);
+    titles.afterReply(await exchange(chat.id, 'Hi'), 'Hello', true);
     await settled();
     rows = [];
-    titles.afterReply(exchange(chat.id, 'Hi'), 'Hello', true);
+    titles.afterReply(await exchange(chat.id, 'Hi'), 'Hello', true);
     await settled();
     expect(opened.store.aiChats.chat(chat.id).title).toBe('New chat');
     expect(opened.store.aiChats.titleAuto(chat.id)).toBe(true);
@@ -201,18 +199,18 @@ describe('chat titles', () => {
   });
 
   it('keeps the default title and logs when the completion fails', async () => {
-    const chat = chats.create(owner, { engine: TEST_ENGINE });
+    const chat = await chats.create(owner, { engine: TEST_ENGINE });
     broken = true;
-    titles.afterReply(exchange(chat.id, 'Hi'), 'Hello', true);
+    titles.afterReply(await exchange(chat.id, 'Hi'), 'Hello', true);
     await settled();
     expect(opened.store.aiChats.titleAuto(chat.id)).toBe(true);
     expect(logs.events().filter((event) => event === 'assistant.title_failed')).toHaveLength(1);
   });
 
   it('skips failed replies and voice tasks, and names call chats from the transcript', async () => {
-    const chat = chats.create(owner, { engine: TEST_ENGINE });
-    titles.afterReply(exchange(chat.id, 'Hi'), 'Oops', false);
-    titles.afterReply({ ...exchange(chat.id, 'Hi'), kind: 'voice' }, 'Sure', true);
+    const chat = await chats.create(owner, { engine: TEST_ENGINE });
+    titles.afterReply(await exchange(chat.id, 'Hi'), 'Oops', false);
+    titles.afterReply({ ...(await exchange(chat.id, 'Hi')), kind: 'voice' }, 'Sure', true);
     await settled();
     expect(requests).toHaveLength(0);
     replies.push('Kitchen timer for pasta');
@@ -222,7 +220,7 @@ describe('chat titles', () => {
   });
 
   it('backfills the untitled chats once', async () => {
-    const chat = chats.create(owner, { engine: TEST_ENGINE });
+    const chat = await chats.create(owner, { engine: TEST_ENGINE });
     for (const [role, text] of [
       ['person', 'Water the plants'],
       ['responder', 'Will do'],
@@ -260,7 +258,7 @@ describe('chat titles', () => {
 
 describe('title backfill', () => {
   it('waits for the small model to appear in the model list before naming old chats', async () => {
-    const chat = chats.create(owner, { engine: TEST_ENGINE });
+    const chat = await chats.create(owner, { engine: TEST_ENGINE });
     for (const [role, text] of [
       ['person', 'Water the plants'],
       ['responder', 'Will do'],

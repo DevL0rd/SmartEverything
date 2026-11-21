@@ -67,15 +67,15 @@ export class RemoteHarness {
       readonly send: (frame: HubHarnessControl) => void;
       readonly terminate: () => void;
       readonly authenticate: () => void;
-      readonly admit?: (request: HarnessRuntimeRequest) => AiModelRoute | undefined;
+      readonly admit?: (
+        request: HarnessRuntimeRequest,
+      ) => AiModelRoute | undefined | Promise<AiModelRoute | undefined>;
     },
   ) {
     this.subscriptions = new RemoteHarnessSubscriptions(binding, ports);
     this.models = new RemoteHarnessModels(binding, {
       ...ports,
-      admit: (request): void => {
-        admitSupplierInference(service, binding, request);
-      },
+      admit: (request): Promise<void> => admitSupplierInference(service, binding, request),
     });
     this.unsubscribeModels = service.routes.onChange(() => {
       this.models.revalidate();
@@ -101,9 +101,9 @@ export class RemoteHarness {
   hasSession(id: string, epoch: number): boolean {
     return !this.stopped && this.sessions.get(id) === epoch;
   }
-  acceptedChildFrame(frame: HarnessNativeFrame): void {
+  async acceptedChildFrame(frame: HarnessNativeFrame): Promise<void> {
     if (this.stopped) return;
-    const child = this.service.store.dshSessions.ownerOf(frame.session_id);
+    const child = await this.service.store.host.call('dshSessions', 'ownerOf', frame.session_id);
     if (child?.header.origin !== 'subagent') return;
     if (frame.kind === 'open' && !this.openPending(frame.session_id, frame.epoch))
       this.sessions.set(frame.session_id, frame.epoch);
@@ -119,14 +119,14 @@ export class RemoteHarness {
         request.claim.epoch === epoch,
     );
   }
-  execute(id: string, request: HarnessRuntimeRequest): Promise<HarnessRuntimeReceipt> {
+  async execute(id: string, request: HarnessRuntimeRequest): Promise<HarnessRuntimeReceipt> {
     if (this.stopped)
       throw new ApiError(
         'conflict',
         'Computer execution channel disconnected; effects may be unknown.',
       );
     this.ports.authenticate();
-    const route = this.admit(request);
+    const route = await this.admit(request);
     if (this.pending.has(id))
       throw new ApiError('conflict', 'A computer operation with this identity is already pending.');
     return new Promise((resolve, reject) => {
@@ -204,7 +204,7 @@ export class RemoteHarness {
     if (request.kind === 'open' && request.mode !== 'continue') this.sessions.set(session, epoch);
     if (request.kind === 'close') this.sessions.delete(session);
   }
-  private admit(request: HarnessRuntimeRequest): AiModelRoute | undefined {
+  private async admit(request: HarnessRuntimeRequest): Promise<AiModelRoute | undefined> {
     return this.ports.admit === undefined
       ? admitComputerRequest(this.service, this.binding, request)
       : this.ports.admit(request);
@@ -216,13 +216,10 @@ export class RemoteHarness {
       if (pending.request.kind === 'open')
         owned.set(pending.request.claim.session_id, pending.request.claim.epoch);
     }
-    for (const [id, epoch] of owned) {
-      try {
-        this.service.storage.principal(id, this.binding);
-      } catch (cause) {
+    for (const [id, epoch] of owned)
+      void this.service.storage.principal(id, this.binding).catch((cause: unknown) => {
         this.lose(id, epoch, cause);
-      }
-    }
+      });
   }
   private lose(id: string, epoch: number, cause: unknown): void {
     this.sessions.delete(id);

@@ -1,4 +1,9 @@
-import type { NetworkClient, RouterSnapshot } from '@smarteverything/domain';
+import {
+  ROUTER_INVENTORY,
+  ROUTER_LIVE,
+  type NetworkClient,
+  type RouterSnapshot,
+} from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ClientRegistry } from '../../../src/plugins/builtin/router/client-registry';
@@ -79,26 +84,25 @@ describe('the router streams', () => {
   it('send the live part every time and the client list only when it changes', () => {
     const { streams, sent } = streamsRig();
     const clients = [client(PHONE, true)];
-    streams.publish(snapshot({ clients }), true, 'everyone');
+    streams.publish(snapshot({ clients }), 'everyone');
     for (let second = 1; second <= 9; second += 1) {
       streams.publish(
         snapshot({ at: new Date(T0 + second * 1000).toISOString(), clients }),
-        false,
         'everyone',
       );
     }
     expect(count(sent, LIVE_STREAM)).toBe(10);
     expect(count(sent, SNAPSHOT_STREAM)).toBe(1);
-    streams.publish(snapshot({ clients: [client(PHONE, false)] }), false, 'everyone');
+    streams.publish(snapshot({ clients: [client(PHONE, false)] }), 'everyone');
     expect(count(sent, SNAPSHOT_STREAM)).toBe(2);
-    streams.publish(snapshot({ clients: [client(PHONE, false)] }), true, 'everyone');
-    expect(count(sent, SNAPSHOT_STREAM)).toBe(3);
+    streams.publish(snapshot({ clients: [client(PHONE, false)] }), 'everyone');
+    expect(count(sent, SNAPSHOT_STREAM)).toBe(2);
   });
 
   it('send viewer-only live frames to viewers and keep the client list for everyone', () => {
     const { streams, sent } = streamsRig();
-    streams.publish(snapshot({ clients: [client(PHONE, true)] }), true, 'viewers');
-    streams.publish(snapshot({ clients: [client(PHONE, true)] }), false, 'viewers');
+    streams.publish(snapshot({ clients: [client(PHONE, true)] }), 'viewers');
+    streams.publish(snapshot({ clients: [client(PHONE, true)] }), 'viewers');
     expect(
       sent.filter((entry) => entry.stream === LIVE_STREAM).map((entry) => entry.viewers),
     ).toEqual([true, true]);
@@ -110,17 +114,92 @@ describe('the router streams', () => {
   it('ignore per-second traffic and uptime when deciding to resend the client list', () => {
     const { streams, sent } = streamsRig();
     const info = { model: null, firmware: null, lanIp: null, uptimeSeconds: 10 };
-    streams.publish(snapshot({ info, clients: [client(PHONE, true)] }), true, 'everyone');
+    streams.publish(snapshot({ info, clients: [client(PHONE, true)] }), 'everyone');
     streams.publish(
       snapshot({
         info: { ...info, uptimeSeconds: 11 },
         clients: [{ ...client(PHONE, true), trafficBytesPerSecond: 900 }],
       }),
-      false,
       'everyone',
     );
     expect(count(sent, SNAPSHOT_STREAM)).toBe(1);
     expect(count(sent, LIVE_STREAM)).toBe(2);
+  });
+});
+
+function radio(
+  band: string,
+  telemetry: Pick<
+    RouterSnapshot['radios'][number],
+    'noiseDbm' | 'temperatureCelsius' | 'airtimeBusyPercent'
+  >,
+): RouterSnapshot['radios'][number] {
+  return {
+    band,
+    ssid: 'Home',
+    enabled: true,
+    txPower: 20,
+    channel: 36,
+    width: '80 MHz',
+    dfs: null,
+    clients: 1,
+    ...telemetry,
+  };
+}
+
+describe('the router inventory', () => {
+  it('publishes once when only radio telemetry, uptime and client rates change', () => {
+    const { streams, sent } = streamsRig();
+    const info = { model: 'AX', firmware: '1', lanIp: null, uptimeSeconds: 100 };
+    streams.publish(
+      snapshot({
+        info,
+        radios: [radio('5 GHz', { noiseDbm: -92, temperatureCelsius: 50, airtimeBusyPercent: 10 })],
+        clients: [client(PHONE, true)],
+      }),
+      'everyone',
+    );
+    streams.publish(
+      snapshot({
+        at: new Date(T0 + 10_000).toISOString(),
+        info: { ...info, uptimeSeconds: 110 },
+        radios: [radio('5 GHz', { noiseDbm: -89, temperatureCelsius: 53, airtimeBusyPercent: 47 })],
+        clients: [{ ...client(PHONE, true), trafficBytesPerSecond: 12_000 }],
+      }),
+      'everyone',
+    );
+    expect(count(sent, SNAPSHOT_STREAM)).toBe(1);
+    expect(count(sent, LIVE_STREAM)).toBe(2);
+  });
+
+  it('carries the radio telemetry on the live part and leaves it out of the inventory', () => {
+    const values: { readonly stream: string; readonly value: unknown }[] = [];
+    const streams = new RouterStreams(
+      (stream, value) => {
+        values.push({ stream, value });
+      },
+      () => undefined,
+    );
+    const telemetry = { noiseDbm: -90, temperatureCelsius: 48, airtimeBusyPercent: 22 };
+    streams.publish(snapshot({ radios: [radio('2.4 GHz', telemetry)] }), 'everyone');
+    expect(
+      ROUTER_LIVE.parse(values.find((entry) => entry.stream === LIVE_STREAM)?.value).radios,
+    ).toEqual([{ band: '2.4 GHz', ...telemetry }]);
+    expect(
+      ROUTER_INVENTORY.parse(values.find((entry) => entry.stream === SNAPSHOT_STREAM)?.value)
+        .radios,
+    ).toEqual([
+      {
+        band: '2.4 GHz',
+        ssid: 'Home',
+        enabled: true,
+        txPower: 20,
+        channel: 36,
+        width: '80 MHz',
+        dfs: null,
+        clients: 1,
+      },
+    ]);
   });
 });
 
@@ -133,7 +212,7 @@ describe('the router stream while the page is watched', () => {
     vi.useRealTimers();
   });
 
-  it('sends the client list only on the full reads and keeps each live frame small', async () => {
+  it('sends the client list once while it does not change and keeps each live frame small', async () => {
     const { streams, sent } = streamsRig();
     const registry = new ClientRegistry(memoryRecords(), () => undefined, new Logger('hub.router'));
     let bytes = 0;
@@ -159,10 +238,9 @@ describe('the router stream while the page is watched', () => {
       pingTarget: '1.1.1.1',
       log: testLogger('router'),
       record: (): void => undefined,
-      publish: (frame, full, audience): void => {
+      publish: (frame, audience): void => {
         streams.publish(
           { ...frame, clients: registry.observe(frame.clients, new Date()) },
-          full,
           audience,
         );
       },
@@ -172,7 +250,7 @@ describe('the router stream while the page is watched', () => {
     collector.stop();
     const live = count(sent, LIVE_STREAM);
     expect(live).toBeGreaterThanOrEqual(19);
-    expect(count(sent, SNAPSHOT_STREAM)).toBeLessThanOrEqual(3);
+    expect(count(sent, SNAPSHOT_STREAM)).toBe(1);
     const liveBytes = sent.filter((entry) => entry.stream === LIVE_STREAM);
     const inventory = sent.find((entry) => entry.stream === SNAPSHOT_STREAM);
     expect(Math.max(...liveBytes.map((entry) => entry.bytes))).toBeLessThan(inventory?.bytes ?? 0);

@@ -16,6 +16,7 @@ import {
   DriveAlbumItemError,
 } from '../../drive/albums';
 import { DriveAlbumKindError } from '../repositories/drive-albums';
+import { HarnessConfigurationStorageError } from '../repositories/harness-configuration';
 import type { HostError } from './protocol';
 
 export class StoreHostError extends Error {
@@ -27,14 +28,6 @@ export class StoreHostError extends Error {
     readonly hostStack: string | null,
   ) {
     super(`${hostName}: ${message}`);
-  }
-}
-
-export class StoreHostOnlyMainError extends Error {
-  override readonly name = 'StoreHostOnlyMainError';
-
-  constructor(readonly member: string) {
-    super(`The store's ${member} exists only on the main thread, not inside a store host.`);
   }
 }
 
@@ -64,6 +57,8 @@ function storeFields(cause: unknown): Record<string, string> {
   if (cause instanceof DshSessionStorageError)
     return { sessionId: cause.sessionId, code: cause.code, reason: cause.reason };
   if (cause instanceof DshSessionDurabilityError) return { reason: cause.reason };
+  if (cause instanceof HarnessConfigurationStorageError)
+    return { revision: cause.revision, code: cause.code, reason: cause.reason };
   return albumFields(cause);
 }
 
@@ -117,6 +112,8 @@ function apiErrorOf(error: HostError): ApiError {
 
 const POSIX_CODE = z.enum(DRIVE_MOUNT_ERROR_NAMES);
 
+const HARNESS_STORAGE_CODE = z.enum(['host-mismatch', 'invalid-report']);
+
 const ALBUM_ITEM_REFUSAL = z.enum(['missing', 'folder', 'out-of-reach']);
 
 const ALBUM_KIND = z.enum(['manual', 'smart']);
@@ -158,6 +155,12 @@ export function errorOfHost(error: HostError): Error {
     );
   if (error.name === 'DshSessionDurabilityError')
     return new DshSessionDurabilityError(field(error, 'reason'));
+  if (error.name === 'HarnessConfigurationStorageError')
+    return new HarnessConfigurationStorageError(
+      field(error, 'revision'),
+      HARNESS_STORAGE_CODE.parse(field(error, 'code')),
+      field(error, 'reason'),
+    );
   const album = albumErrorOf(error);
   if (album !== null) return album;
   if (error.name === 'StoreNotFoundError')

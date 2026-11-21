@@ -240,6 +240,7 @@ export class PersonAccessRepository {
         `update person_access set ${set.text} where profile_id = $profileId`,
         { ...set.parameters, profileId },
       );
+      this.context.accessChanged();
       return this.byProfile(profileId);
     });
   }

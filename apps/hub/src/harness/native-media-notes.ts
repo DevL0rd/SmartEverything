@@ -1,9 +1,10 @@
-import { nativeMediaAuthority } from './native-media-authority';
+import { withNativeMediaAuthority } from './native-media-authority';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
   ApiError,
   HARNESS_NATIVE_MEDIA_NOTE_INPUT,
+  type DshSessionEvent,
   type DshWriterClaim,
 } from '@smarteverything/domain';
 import type { AssistantFiles } from '../assistant/files';
@@ -26,7 +27,7 @@ const CONTENT = z.object({ content: z.array(z.unknown()) });
 type Input = z.infer<typeof HARNESS_NATIVE_MEDIA_NOTE_INPUT>;
 interface RetainedImage {
   readonly image: z.infer<typeof IMAGE>;
-  readonly event: ReturnType<HarnessService['store']['dshSessions']['read']>['events'][number];
+  readonly event: DshSessionEvent;
 }
 
 export async function nativeMediaNote(
@@ -36,8 +37,29 @@ export async function nativeMediaNote(
   raw: unknown,
 ): Promise<string> {
   const input = HARNESS_NATIVE_MEDIA_NOTE_INPUT.parse(raw);
-  const scope = nativeMediaAuthority(service, claim);
-  const retained = retainedImage(service, claim.session_id, scope.profileId, input);
+  return withNativeMediaAuthority(service, claim, (scope) =>
+    scopedMediaNote(service, files, { claim, input, scope }),
+  );
+}
+
+async function scopedMediaNote(
+  service: HarnessService,
+  files: AssistantFiles,
+  {
+    claim,
+    input,
+    scope,
+  }: {
+    readonly claim: DshWriterClaim;
+    readonly input: Input;
+    readonly scope: {
+      readonly profileId: string;
+      readonly chatId: string;
+      readonly authorize: () => void;
+    };
+  },
+): Promise<string> {
+  const retained = await retainedImage(service, claim.session_id, scope.profileId, input);
   const image = retained.image.attachment;
   const data = Buffer.from(input.data, 'base64');
   if (
@@ -49,7 +71,7 @@ export async function nativeMediaNote(
       'conflict',
       'Native media bytes differ from their exact admitted image reference.',
     );
-  const original = originalImage(service, retained, {
+  const original = await originalImage(service, retained, {
     sessionId: claim.session_id,
     profileId: scope.profileId,
     chatId: scope.chatId,
@@ -65,44 +87,46 @@ export async function nativeMediaNote(
       data,
     }));
   scope.authorize();
-  const line = files.noteLine(cached);
+  const line = await files.noteLine(cached);
   scope.authorize();
   return line;
 }
 
-function originalImage(
+async function originalImage(
   service: HarnessService,
   retained: RetainedImage,
   input: { readonly sessionId: string; readonly profileId: string; readonly chatId: string },
-): StoredAttachment | undefined {
+): Promise<StoredAttachment | undefined> {
   const image = retained.image.attachment;
   return (
-    explicitNativeOriginal(service, {
+    (await explicitNativeOriginal(service, {
       ...input,
       event: retained.event,
       originalId: retained.image.original_attachment_id,
-    }) ??
-    service.store.assistantChat
-      .attachmentsOfChat(input.chatId)
-      .find(
-        (file) =>
-          file.profile_id === input.profileId &&
-          file.sha256 === image.attachmentId.slice(7) &&
-          file.bytes === image.bytes &&
-          file.mime === image.mediaType,
-      )
+    })) ??
+    (await service.store.host.call('assistantChat', 'attachmentsOfChat', input.chatId)).find(
+      (file) =>
+        file.profile_id === input.profileId &&
+        file.sha256 === image.attachmentId.slice(7) &&
+        file.bytes === image.bytes &&
+        file.mime === image.mediaType,
+    )
   );
 }
 
-function retainedImage(
+async function retainedImage(
   service: HarnessService,
   session: string,
   profile: string,
   input: Input,
-): RetainedImage {
-  const event = service.store.dshSessions.read(
-    { session_id: session, offset: input.seq, limit: 1 },
-    profile,
+): Promise<RetainedImage> {
+  const event = (
+    await service.store.host.call(
+      'dshSessions',
+      'read',
+      { session_id: session, offset: input.seq, limit: 1 },
+      profile,
+    )
   ).events[0];
   if (event?.seq !== input.seq || (event.type !== 'user/message' && event.type !== 'tool/result'))
     throw new ApiError(
@@ -143,7 +167,7 @@ async function nativeNoteFile(
     .digest('hex');
   const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
   try {
-    const file = service.store.assistantChat.attachment(id);
+    const file = await service.store.host.call('assistantChat', 'attachment', id);
     if (file.profile_id !== input.profileId || file.sha256 !== input.image.attachmentId.slice(7))
       throw new ApiError(
         'conflict',

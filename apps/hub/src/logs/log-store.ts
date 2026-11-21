@@ -11,14 +11,13 @@ import type {
   StoredLogRecord,
 } from '../store/repositories/runtime-log-types';
 import { LOG_REPLY, type LogRead, type LogReply, type LogRequestInput } from './messages';
-import { openLogWriter } from './schema';
 import { checkIngestAccess, HUB_CLIENT, type IngestRequest, type RepairEvidence } from './writes';
 
 export const BUNDLED_LOG_WORKER = fileURLToPath(new URL('./log-worker.mjs', import.meta.url));
 
 export interface RepairGroups {
-  readonly observe: (evidence: RepairEvidence) => void;
-  readonly mayAutoAdmit: (fingerprint: string) => boolean;
+  readonly observe: (evidence: RepairEvidence) => Promise<void>;
+  readonly mayAutoAdmit: (fingerprint: string) => Promise<boolean>;
 }
 
 export interface LogStoreOptions {
@@ -51,8 +50,10 @@ class LogWriterStoppedError extends Error {
 }
 
 export class LogStore {
-  private readonly worker: Worker;
-  private readonly reader: Worker;
+  private worker: Worker | null = null;
+  private reader: Worker | null = null;
+  private ready: (() => void) | null = null;
+  private failedStart: ((cause: Error) => void) | null = null;
   private readonly pending = new Map<number, Pending>();
   private next = 0;
   private stopped: Error | null = null;
@@ -60,13 +61,31 @@ export class LogStore {
   private closing = false;
   private readonly inflight = new Set<Promise<unknown>>();
 
-  static open(options: LogStoreOptions): LogStore {
-    openLogWriter(options.path).close();
-    return new LogStore(options);
+  static async open(options: LogStoreOptions): Promise<LogStore> {
+    const store = new LogStore(options);
+    await store.start();
+    return store;
   }
 
-  private constructor(private readonly options: LogStoreOptions) {
-    this.worker = this.started('write', 'writer');
+  private constructor(private readonly options: LogStoreOptions) {}
+
+  private async start(): Promise<void> {
+    const migrated = new Promise<void>((resolve) => {
+      this.ready = resolve;
+    });
+    const failed = new Promise<never>((_resolve, reject) => {
+      this.failedStart = reject;
+    });
+    const writer = this.started('write', 'writer');
+    this.worker = writer;
+    try {
+      await Promise.race([migrated, failed]);
+    } catch (cause) {
+      await writer.terminate();
+      throw cause;
+    } finally {
+      this.failedStart = null;
+    }
     this.reader = this.started('read', 'reader');
   }
 
@@ -171,7 +190,9 @@ export class LogStore {
     this.closing = true;
     await this.settled();
     this.halt(new LogWriterStoppedError('The runtime log writer was closed.'));
-    await Promise.all([this.worker.terminate(), this.reader.terminate()]);
+    await Promise.all(
+      [this.worker, this.reader].flatMap((worker) => (worker === null ? [] : [worker.terminate()])),
+    );
   }
 
   private started(mode: 'write' | 'read', role: string): Worker {
@@ -202,8 +223,10 @@ export class LogStore {
   ): Promise<ReadResult<M>>;
   private async read(read: LogRead): Promise<unknown> {
     if (read.method !== 'clientOf') readFilter(read.access);
+    const reader = this.reader;
+    if (reader === null) throw new LogWriterStoppedError('The runtime log reader has not started.');
     const answer = await this.posted((id) => {
-      this.reader.postMessage({ id, read });
+      reader.postMessage({ id, read });
     });
     if (!('value' in answer)) throw new Error('The runtime log reader answered a read as a write.');
     return answer.value;
@@ -226,7 +249,7 @@ export class LogStore {
     const answer = await this.request(request);
     if (!('kept' in answer))
       throw new Error('The runtime log writer answered a write as a change.');
-    for (const evidence of answer.evidence) this.observed(evidence);
+    for (const evidence of answer.evidence) await this.observed(evidence);
     return answer;
   }
 
@@ -242,8 +265,11 @@ export class LogStore {
   }
 
   private request(request: Unsent): Promise<Answer> {
+    const writer = this.worker;
+    if (writer === null)
+      return Promise.reject(new LogWriterStoppedError('The runtime log writer has not started.'));
     return this.posted((id) => {
-      this.worker.postMessage({ ...request, id, clock: this.options.now().toISOString() });
+      writer.postMessage({ ...request, id, clock: this.options.now().toISOString() });
     });
   }
 
@@ -257,15 +283,20 @@ export class LogStore {
     });
   }
 
-  private observed(evidence: RepairEvidence): void {
+  private async observed(evidence: RepairEvidence): Promise<void> {
     const { repairs } = this.options;
-    repairs.observe(evidence);
+    await repairs.observe(evidence);
     const listener = this.listener;
-    if (listener !== null && repairs.mayAutoAdmit(evidence.fingerprint))
+    if (listener !== null && (await repairs.mayAutoAdmit(evidence.fingerprint)))
       listener(evidence.record, evidence.fingerprint);
   }
 
   private answered(reply: LogReply): void {
+    if ('ready' in reply) {
+      this.ready?.();
+      this.ready = null;
+      return;
+    }
     if ('swept' in reply) {
       const level = reply.durationMs >= SLOW_SWEEP_MS ? 'info' : 'debug';
       this.options.log[level]('logs.retention_swept', {
@@ -291,6 +322,11 @@ export class LogStore {
     this.stopped = cause;
     for (const pending of this.pending.values()) pending.reject(cause);
     this.pending.clear();
+    const starting = this.failedStart;
+    if (starting !== null) {
+      starting(cause);
+      return;
+    }
     if (!this.closing) this.options.fatal(cause);
   }
 }

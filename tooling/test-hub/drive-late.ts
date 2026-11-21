@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID, scrypt } from 'node:crypto';
 import { buildPath, MEDIA_PATHS } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { Store } from '../../apps/hub/src/store/store.ts';
+import type { Seeded } from './store.ts';
 import { DAY_MS } from './clock.ts';
 import type { Counted, FilesContext } from './context.ts';
 
@@ -17,7 +17,7 @@ export interface DriveLinks {
   readonly paths: readonly string[];
 }
 
-function itemId(store: Store, relPath: string, scope: 'home' | 'person'): string {
+function itemId(store: Seeded, relPath: string, scope: 'home' | 'person'): string {
   const row = store.database
     .prepare(
       `select i.id as id from drive_items i join drive_roots r on r.id = i.root_id
@@ -43,7 +43,7 @@ function passwordHash(password: string): Promise<string> {
   });
 }
 
-export async function seedDriveShares(store: Store, context: FilesContext): Promise<DriveLinks> {
+export async function seedDriveShares(store: Seeded, context: FilesContext): Promise<DriveLinks> {
   const owner = context.people[0];
   if (owner === undefined) throw new Error('The household has no owner.');
   const now = context.anchor.now;

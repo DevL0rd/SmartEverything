@@ -12,21 +12,21 @@ function local(caller: Caller): boolean {
 const chatRoutes = ({ store, assistant }: ServerContext) =>
   ({
     readAssistant: bound(E.readAssistant, () => assistant.status()),
-    listAssistantMessages: bound(E.listAssistantMessages, ({ query, caller }) =>
+    listAssistantMessages: bound(E.listAssistantMessages, async ({ query, caller }) =>
       wireMessages(
-        assistant.messages(
-          assistant.chats.chatOf(chatOwnerOf(caller)).id,
+        await assistant.messages(
+          (await assistant.chats.chatOf(chatOwnerOf(caller))).id,
           query.before,
           query.limit,
         ),
       ),
     ),
-    sendAssistantMessage: bound(E.sendAssistantMessage, ({ body, caller }) =>
+    sendAssistantMessage: bound(E.sendAssistantMessage, async ({ body, caller }) =>
       assistant.submissions.send(
         caller,
         { clientId: clientOf(caller).id, profileId: profileIdOf(caller) },
         body,
-        assistant.chats.chatOf(chatOwnerOf(caller)).id,
+        (await assistant.chats.chatOf(chatOwnerOf(caller))).id,
       ),
     ),
     removeAssistantMessage: bound(E.removeAssistantMessage, async ({ params, caller }) => {
@@ -37,7 +37,11 @@ const chatRoutes = ({ store, assistant }: ServerContext) =>
       const owner = chatOwnerOf(caller);
       await assistant.remove(
         owner,
-        store.assistantChat.messageIdsOf(assistant.chats.chatOf(owner).id),
+        await store.host.call(
+          'assistantChat',
+          'messageIdsOf',
+          (await assistant.chats.chatOf(owner)).id,
+        ),
       );
       return DONE_REPLY;
     }),
@@ -71,12 +75,14 @@ const fileRoutes = ({ assistant, links }: ServerContext) =>
         levels: file.levels,
       };
     }),
-    assistantAttachmentLinks: bound(E.assistantAttachmentLinks, ({ body, caller }) => {
+    assistantAttachmentLinks: bound(E.assistantAttachmentLinks, async ({ body, caller }) => {
       const owner = chatOwnerOf(caller);
-      return body.ids.map((id) => {
-        assistant.chats.attachment(owner, id);
-        return { id, ...links.assistantAttachment(id) };
-      });
+      return await Promise.all(
+        body.ids.map(async (id) => {
+          await assistant.chats.attachment(owner, id);
+          return { id, ...links.assistantAttachment(id) };
+        }),
+      );
     }),
   }) as const;
 

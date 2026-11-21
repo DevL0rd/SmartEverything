@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { MessageOrigin } from '@smarteverything/domain';
-import { eventAuthority } from '../../../src/assistant/turn-authority';
+import { authorityScope } from '../../../src/assistant/turn-authority';
+import { issueEventAuthority } from '../../../src/assistant/event-authority-issue';
 import { ToolHub } from '../../../src/ai-tools/tool-hub';
 import { HarnessHubTools } from '../../../src/harness/tools';
 import { useRig, type Rig } from './support/rig';
@@ -34,12 +35,13 @@ async function sessionStartedByPlugin(requester: MessageOrigin['requester']): Pr
     client_id: null,
     text: 'upload my global claude.md',
   });
-  eventAuthority(store, event);
+  issueEventAuthority(store, event, authorityScope());
   const open = await rig.service.prepare(rig.owner, chat.id, {
     kind: 'trigger',
     profileId: rig.owner.profileId,
     grantId: event.id,
   });
+  await rig.service.sessions.load(open.claim.session_id);
   return open.claim.session_id;
 }
 
@@ -85,6 +87,7 @@ describe('machine tools on the home computer for a chat that runs on the hub', (
   it('are open to the owner in the app', async () => {
     const chat = rig.newChat(rig.hub.target);
     const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    await rig.service.sessions.load(open.claim.session_id);
 
     expect(access().nativeAccess(open.claim.session_id)).toBe(true);
   });

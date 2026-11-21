@@ -1,3 +1,4 @@
+import { openSeededStore, closedStore } from '../support/store';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,7 +8,6 @@ import { z } from 'zod';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
-import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import { testStoreHost } from '../support/store-host';
 
@@ -68,7 +68,7 @@ function seedBefore(): void {
   );
   database
     .prepare(
-      "insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at) values (?, 'Ann', 'amber', '{}', 0, ?, ?)",
+      "insert into profiles (id, name, colour, fitness_goals, position, created_at, updated_at) values (?, 'Ann', 'amber', json_object('steps', null, 'move_kcal', null, 'active_minutes', null, 'sleep_minutes', null, 'hydration_ml', null), 0, ?, ?)",
     )
     .run(PROFILE, NOW, NOW);
   seedSession(database, {
@@ -123,32 +123,36 @@ function rows(metric: string): Record<string, number> {
 }
 
 describe('migrating daily sleep from time in bed to time asleep', () => {
-  it('recomputes each stored sleep day from its sessions, awake stages left out', () => {
+  it('recomputes each stored sleep day from its sessions, awake stages left out', async () => {
     seedBefore();
 
-    openStore({
-      host: testStoreHost(),
-      path,
-      log: testLogger(),
-      now: () => new Date(NOW),
-      systemTimeZone: 'UTC',
-      driveFolders: null,
-    }).close();
+    await closedStore(
+      await openSeededStore({
+        host: testStoreHost(),
+        path,
+        log: testLogger(),
+        now: () => new Date(NOW),
+        systemTimeZone: 'UTC',
+        driveFolders: null,
+      }),
+    );
 
     expect(rows('sleep')).toEqual({ '2026-10-08': 120 + 270 + 30, '2026-10-09': 360 });
   });
 
-  it('leaves every other metric alone', () => {
+  it('leaves every other metric alone', async () => {
     seedBefore();
 
-    openStore({
-      host: testStoreHost(),
-      path,
-      log: testLogger(),
-      now: () => new Date(NOW),
-      systemTimeZone: 'UTC',
-      driveFolders: null,
-    }).close();
+    await closedStore(
+      await openSeededStore({
+        host: testStoreHost(),
+        path,
+        log: testLogger(),
+        now: () => new Date(NOW),
+        systemTimeZone: 'UTC',
+        driveFolders: null,
+      }),
+    );
 
     expect(rows('steps')).toEqual({ '2026-10-08': 4000 });
   });

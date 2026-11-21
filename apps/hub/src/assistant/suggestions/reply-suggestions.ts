@@ -17,27 +17,44 @@ function withoutSuggestions(row: AssistantMessageRow): AssistantMessageRow['embe
 
 export class ReplySuggestions {
   private readonly side: SideCompletion;
+  private readonly running = new Set<Promise<void>>();
 
   constructor(private readonly deps: ReplySuggestionsDeps) {
     this.side = new SideCompletion(deps);
   }
 
   readonly afterReply = (event: StoredEvent, text: string, ok: boolean): void => {
-    if (ok && event.kind === 'chat' && this.deps.store.assistantChat.settings().reply_suggestions) {
-      this.suggest(event, text).catch((cause: unknown) => {
-        this.deps.log.warn('assistant.suggestions_failed', {
-          chatId: event.chat_id,
-          reason: messageOf(cause),
+    if (
+      ok &&
+      event.kind === 'chat' &&
+      this.deps.store.live.home.assistant.read().reply_suggestions
+    ) {
+      const work = this.suggest(event, text)
+        .catch((cause: unknown) => {
+          this.deps.log.warn('assistant.suggestions_failed', {
+            chatId: event.chat_id,
+            reason: messageOf(cause),
+          });
+        })
+        .finally(() => {
+          this.running.delete(work);
         });
-      });
+      this.running.add(work);
     }
   };
 
+  async settled(): Promise<void> {
+    while (this.running.size > 0) await Promise.allSettled([...this.running]);
+  }
+
   private async suggest(event: StoredEvent, text: string): Promise<void> {
+    const { host } = this.deps.store;
     const model = this.side.model();
-    const reply = this.latestReply(event);
+    const reply = await this.latestReply(event);
     const person =
-      event.message_id === null ? null : this.deps.store.assistantChat.message(event.message_id);
+      event.message_id === null
+        ? null
+        : await host.call('assistantChat', 'message', event.message_id);
     if (model === null || reply === null || person?.origin?.source !== 'app') {
       return;
     }
@@ -46,22 +63,24 @@ export class ReplySuggestions {
       ...suggestionPrompt(person.text, text),
     });
     const embed = cleanSuggestions(raw);
-    if (embed !== null && this.isLatest(reply)) {
-      this.deps.store.assistantChat.updateMessage(reply.id, {
+    if (embed !== null && (await this.isLatest(reply))) {
+      await host.call('assistantChat', 'updateMessage', reply.id, {
         embeds: [...withoutSuggestions(reply), embed],
       });
     }
   }
 
-  private latestReply(event: StoredEvent): AssistantMessageRow | null {
-    const { assistantChat } = this.deps.store;
-    return event.message_id === null
-      ? null
-      : (assistantChat.repliesTo(event.message_id).at(-1) ?? null);
+  private async latestReply(event: StoredEvent): Promise<AssistantMessageRow | null> {
+    if (event.message_id === null) return null;
+    const replies = await this.deps.store.host.call('assistantChat', 'repliesTo', event.message_id);
+    return replies.at(-1) ?? null;
   }
 
-  private isLatest(reply: AssistantMessageRow): boolean {
-    const [newest] = this.deps.store.assistantChat.messages({ chatId: reply.chat_id, limit: 1 });
+  private async isLatest(reply: AssistantMessageRow): Promise<boolean> {
+    const [newest] = await this.deps.store.host.call('assistantChat', 'messages', {
+      chatId: reply.chat_id,
+      limit: 1,
+    });
     return newest?.id === reply.id;
   }
 }

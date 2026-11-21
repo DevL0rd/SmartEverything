@@ -130,7 +130,7 @@ export class DriveMountSocket {
       );
     }
     const node = await this.authenticated(request);
-    const caller = this.callerOf(node);
+    const caller = await this.callerOf(node);
     this.server.handleUpgrade(request, socket, head, (ws) => {
       this.accept(ws, caller);
     });
@@ -145,9 +145,9 @@ export class DriveMountSocket {
     }
   }
 
-  private callerOf(node: ComputerNodeRow): PosixCaller {
+  private async callerOf(node: ComputerNodeRow): Promise<PosixCaller> {
     return {
-      profileId: profileIdOf(nodeCaller(this.store, node)),
+      profileId: profileIdOf(await nodeCaller(this.store, node)),
       nodeId: node.device_id,
     };
   }

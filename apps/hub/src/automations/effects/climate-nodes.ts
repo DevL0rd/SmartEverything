@@ -264,7 +264,7 @@ async function setClimate(
   ask: Ask,
   sending: Sending,
 ): Promise<{ readonly sent: readonly string[]; readonly skipped: readonly Skipped[] }> {
-  const devices = resolveTarget(ports.store, ask.target);
+  const devices = resolveTarget(ports.store.live.home, ask.target);
   if (devices.length === 0) throw new ApiError('not_found', 'This target has no devices.');
   const plans: DevicePlan[] = [];
   const skipped: Skipped[] = [];

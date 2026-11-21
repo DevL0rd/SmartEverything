@@ -108,7 +108,7 @@ async function rig(): Promise<Rig> {
   const owner = store.profiles.first().id;
   const files = new AssistantFiles({
     layout: hubLayout(db.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: clock.now,
   });
@@ -154,7 +154,7 @@ async function rig(): Promise<Rig> {
     },
     handlers: conversationEffects({
       store,
-      integration: { tools, pictures, ownerProfileId: () => owner },
+      integration: { tools, pictures, ownerProfileId: () => Promise.resolve(owner) },
       images,
       clock,
     }),
@@ -278,7 +278,7 @@ describe('chat.post', () => {
     const target = home.db.store.profiles.create({ name: 'Robin' }).id;
     const files = new AssistantFiles({
       layout: hubLayout(home.db.directory, {}),
-      chat: home.db.store.assistantChat,
+      store: home.db.store,
       attachments: home.db.store.live.attachments,
       now: (): Date => new Date(NOW),
     });

@@ -58,7 +58,7 @@ export function effectMembers(
 ): { readonly members: readonly Member[]; readonly skipped: GroupCommandPlan['skipped'] } {
   const members: Member[] = [];
   const skipped: SkippedGroupDevice[] = [];
-  for (const device of resolveTarget(store, change.target)) {
+  for (const device of resolveTarget(store.live.home, change.target)) {
     const presented = targetCapability(device, change.control);
     try {
       if (presented === undefined)
@@ -103,7 +103,7 @@ export class TemporaryDeviceChanges {
       throw failure instanceof Error
         ? failure
         : new ApiError('upstream_failed', 'The temporary change could not finish.');
-    return skippedMembersNote(this.store, skipped);
+    return skippedMembersNote(this.store.live.home, skipped);
   }
 
   private requiredMembers(change: TemporaryChange): ReturnType<typeof effectMembers> {
@@ -111,7 +111,8 @@ export class TemporaryDeviceChanges {
     if (plan.members.length === 0)
       throw new ApiError(
         'command_refused',
-        skippedMembersNote(this.store, plan.skipped) ?? 'This target has no supported controls.',
+        skippedMembersNote(this.store.live.home, plan.skipped) ??
+          'This target has no supported controls.',
       );
     return plan;
   }
@@ -177,7 +178,7 @@ export class TemporaryDeviceChanges {
 
   private nextBoundary(clockMinutes: readonly number[], deadline: number): number {
     const now = this.clock.now();
-    const zone = this.store.settings.read().time_zone;
+    const zone = this.store.live.home.settings.read().time_zone;
     const local = localClock(now, zone);
     const times = [0, 1]
       .flatMap((day) =>
@@ -190,29 +191,31 @@ export class TemporaryDeviceChanges {
   private wait(lifetime: Lifetime): Promise<void> {
     return new Promise((resolve, reject) => {
       let cancelTimer = (): void => undefined;
+      let settled = false;
+      const done = (): boolean => settled;
+      let checking: Promise<void> = Promise.resolve();
       const finish = (cause?: unknown): void => {
+        if (done()) return;
+        settled = true;
         cancelTimer();
         stopFeed();
         lifetime.run.signal.removeEventListener('abort', abort);
         if (cause === undefined) resolve();
-        else
-          reject(
-            cause instanceof Error
-              ? cause
-              : new ApiError('upstream_failed', 'The temporary change could not finish.'),
-          );
+        else reject(failureOf(cause));
       };
       const abort = (): void => {
         finish(new AutomationRunCancelledError(lifetime.run.runId));
       };
-      const evaluate = (): void => {
+      const check = async (): Promise<void> => {
+        if (done()) return;
         cancelTimer();
         try {
           admitRun(lifetime.run);
-          if (this.finished(lifetime)) {
+          if (await this.finished(lifetime)) {
             finish();
             return;
           }
+          if (done()) return;
           cancelTimer = this.clock.at(
             new Date(this.nextBoundary(lifetime.change.clockMinutes, lifetime.expires)),
             evaluate,
@@ -220,6 +223,9 @@ export class TemporaryDeviceChanges {
         } catch (cause) {
           finish(cause);
         }
+      };
+      const evaluate = (): void => {
+        checking = checking.then(check);
       };
       lifetime.run.signal.addEventListener('abort', abort, { once: true });
       const stopFeed = this.store.feed.subscribe((change) => {
@@ -229,14 +235,20 @@ export class TemporaryDeviceChanges {
     });
   }
 
-  private finished(lifetime: Lifetime): boolean {
-    const active = this.store.deviceEffects
-      .list()
-      .flatMap((target) => target.effects.map((effect) => effect.id));
+  private async finished(lifetime: Lifetime): Promise<boolean> {
+    const active = (await this.store.host.call('deviceEffects', 'list')).flatMap((target) =>
+      target.effects.map((effect) => effect.id),
+    );
     return (
       this.clock.now().getTime() >= lifetime.expires ||
       !lifetime.change.holds() ||
       lifetime.ids.every((id) => !active.includes(id))
     );
   }
+}
+
+function failureOf(cause: unknown): Error {
+  return cause instanceof Error
+    ? cause
+    : new ApiError('upstream_failed', 'The temporary change could not finish.');
 }

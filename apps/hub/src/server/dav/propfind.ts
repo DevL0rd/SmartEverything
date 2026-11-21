@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { DriveItem } from '@smarteverything/domain';
+import type { DriveItemWindow } from '../../store/repositories/drive-items';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import { isFileItem } from '../../drive/file-item';
 import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
@@ -237,11 +238,11 @@ function describe(resource: Resource, selection: Selection): string {
   return `<D:response><D:href>${href}</D:href>${propstat(found, '200 OK')}${propstat(missing, '404 Not Found')}</D:response>`;
 }
 
-function* multistatus(
+async function* multistatus(
   deps: DavDeps,
   target: DavTarget,
   view: { readonly selection: Selection; readonly depth: 0 | 1; readonly viewer: string },
-): Generator<string> {
+): AsyncGenerator<string> {
   const { selection, depth, viewer } = view;
   yield '<?xml version="1.0" encoding="utf-8"?><D:multistatus xmlns:D="DAV:">';
   const parent = target.item;
@@ -252,7 +253,7 @@ function* multistatus(
   if (depth === 1 && (parent === undefined || parent.kind === 'folder')) {
     let after: string | null = null;
     do {
-      const window = deps.store.driveItems.children({
+      const window: DriveItemWindow = await deps.store.host.call('driveItems', 'children', {
         rootId: target.root.id,
         parentId: parent?.id ?? null,
         after,

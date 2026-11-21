@@ -122,7 +122,7 @@ export class OralbRuntime implements BrandRuntime {
     return oralbHandleView(context, this.snapshot);
   }
 
-  headTimeline(context: ViewContext): HeadTimeline {
+  headTimeline(context: ViewContext): Promise<HeadTimeline> {
     return oralbHeadTimeline(context);
   }
 

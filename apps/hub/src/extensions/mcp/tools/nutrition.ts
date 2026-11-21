@@ -135,7 +135,7 @@ async function chosen(context: ToolContext, input: LogFood): Promise<Chosen> {
 }
 
 function mealAt(context: ToolContext, at: Date): (typeof MEALS)[number] {
-  const hour = localClock(at, context.store.settings.read().time_zone).minuteOfDay / 60;
+  const hour = localClock(at, context.store.live.home.settings.read().time_zone).minuteOfDay / 60;
   if (hour < 10.5) return 'breakfast';
   if (hour < 14.5) return 'lunch';
   if (hour < 17) return 'snack';

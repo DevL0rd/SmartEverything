@@ -1,13 +1,11 @@
 import {
-  AI_REPAIR_SETTINGS,
   API_ENDPOINTS as E,
   ApiError,
   type AiRepairPage,
   type AiRepairAdmission,
   type AiRepairPatchRequest,
-  type AiRepairSettings,
 } from '@smarteverything/domain';
-import { z } from 'zod';
+import type { z } from 'zod';
 import {
   repairEventId,
   repairEvidenceOf,
@@ -21,11 +19,7 @@ import type { HubLayout } from '../../data-layout';
 import type { Store } from '../../store/store';
 import { directClient, profileIdOf, type Caller } from '../auth';
 import { bound, type Routes } from '../router';
-
-const SETTING = 'ai-repair';
-const ENABLED_AT = 'ai-repair-enabled-at';
-const START = z.strictObject({ at: z.iso.datetime() });
-const OFF: AiRepairSettings = { enabled: false };
+import type { AiRepairState } from './ai-repair-units';
 
 type AiRepairQuery = z.output<(typeof E)['listAiRepairGroups']['query']>;
 
@@ -35,14 +29,8 @@ function requireOwnerApp(caller: Caller): void {
   }
 }
 
-export function readAiRepairSettings(store: Pick<Store, 'settingsKv'>): AiRepairSettings {
-  const saved = store.settingsKv.read(SETTING);
-  return saved === null ? OFF : AI_REPAIR_SETTINGS.parse(saved);
-}
-
-export function repairEnabledAt(store: Pick<Store, 'settingsKv'>): string | null {
-  const saved = store.settingsKv.read(ENABLED_AT);
-  return saved === null ? null : START.parse(saved).at;
+export async function readAiRepairState(store: Pick<Store, 'host'>): Promise<AiRepairState> {
+  return store.host.read('aiRepairState', null);
 }
 
 type RepairRoute =
@@ -97,13 +85,13 @@ async function proposePatch(
   if (repair?.existingPatch === undefined) throw new ApiError('conflict', 'AI repair is starting.');
   const profileId = profileIdOf(caller);
   const id = repairEventId(`patch:${fingerprint}`, request.requestId);
-  const existing = repair.existingPatch(id, profileId, request);
+  const existing = await repair.existingPatch(id, profileId, request);
   if (existing !== undefined) return existing;
   const error = await retainedError(store, logs, fingerprint, profileId);
   const patch = await sealRepairSource(layout, request);
   return (
-    repair.existingPatch(id, profileId, request) ??
-    repair.admit({
+    (await repair.existingPatch(id, profileId, request)) ??
+    (await repair.admit({
       id,
       fingerprint,
       profileId,
@@ -112,17 +100,8 @@ async function proposePatch(
       origin: 'ordinary',
       recipient: { active: null, previousChatId: null },
       patch,
-    })
+    }))
   );
-}
-
-function saveRepairSettings<T extends { readonly enabled: boolean }>(store: Store, body: T): T {
-  store.write(() => {
-    if (body.enabled && !readAiRepairSettings(store).enabled)
-      store.settingsKv.save(ENABLED_AT, { at: store.now().toISOString() });
-    store.settingsKv.save(SETTING, body);
-  });
-  return body;
 }
 
 async function repairPage(
@@ -132,8 +111,9 @@ async function repairPage(
   caller: Caller,
 ): Promise<AiRepairPage> {
   const page = await store.host.call('aiRepairInbox', 'list', query);
-  if (!readAiRepairSettings(store).enabled) return { ...page, automaticHold: 'disabled' };
-  return repair?.available(profileIdOf(caller)) === true
+  if (!(await readAiRepairState(store)).settings.enabled)
+    return { ...page, automaticHold: 'disabled' };
+  return (await repair?.available(profileIdOf(caller))) === true
     ? page
     : { ...page, automaticHold: 'unavailable' };
 }
@@ -145,10 +125,13 @@ export function aiRepairRoutes(
   repair?: RepairPort,
 ): Routes<RepairRoute> {
   return {
-    readAiRepairSettings: bound(E.readAiRepairSettings, () => readAiRepairSettings(store)),
+    readAiRepairSettings: bound(
+      E.readAiRepairSettings,
+      async () => (await readAiRepairState(store)).settings,
+    ),
     updateAiRepairSettings: bound(E.updateAiRepairSettings, ({ body, caller }) => {
       requireOwnerApp(caller);
-      return saveRepairSettings(store, body);
+      return store.host.write('aiRepairSettingsSave', body);
     }),
     listAiRepairGroups: bound(E.listAiRepairGroups, ({ query, caller }) =>
       repairPage(store, repair, query, caller),
@@ -161,7 +144,7 @@ export function aiRepairRoutes(
       if (repair === undefined) throw new ApiError('conflict', 'AI repair is starting.');
       const profileId = profileIdOf(caller);
       const eventId = repairEventId(params.fingerprint, body.requestId);
-      const existing = repair.existing(eventId, profileId);
+      const existing = await repair.existing(eventId, profileId);
       if (existing !== undefined) return existing;
       return repair.admit({
         id: eventId,

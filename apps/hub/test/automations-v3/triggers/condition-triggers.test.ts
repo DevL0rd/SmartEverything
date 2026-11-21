@@ -50,22 +50,27 @@ class Rig {
           this.watching -= 1;
         };
       },
-      evaluate: (): Checked<boolean> =>
-        typeof this.verdict === 'string'
-          ? { ok: false, class: 'TypeError', message: this.verdict }
-          : { ok: true, value: this.verdict },
+      evaluate: (): Promise<Checked<boolean>> =>
+        Promise.resolve(
+          typeof this.verdict === 'string'
+            ? { ok: false, class: 'TypeError', message: this.verdict }
+            : { ok: true, value: this.verdict },
+        ),
       fire: (fire) => this.fires.push(fire),
       problem: (problem) => this.problems.push(problem),
     };
   }
 
-  arm(entry: ConditionEntry = this.entry): () => void {
-    return armConditionTriggers([entry], this.host());
+  async arm(entry: ConditionEntry = this.entry): Promise<() => void> {
+    const disarm = armConditionTriggers([entry], this.host());
+    await settled();
+    return disarm;
   }
 
-  change(verdict: Verdict): void {
+  async change(verdict: Verdict): Promise<void> {
     this.verdict = verdict;
     for (const changed of [...this.changes]) changed();
+    await settled();
   }
 
   advance(milliseconds: number): void {
@@ -73,16 +78,20 @@ class Rig {
   }
 }
 
+async function settled(): Promise<void> {
+  for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
+}
+
 describe('trigger.becomes_true edge detection', () => {
-  it('fires on the change from false to true and never when it was already true at arming', () => {
+  it('fires on the change from false to true and never when it was already true at arming', async () => {
     const rig = new Rig();
     rig.verdict = true;
-    rig.arm();
+    await rig.arm();
     expect(rig.fires).toEqual([]);
-    rig.change(true);
+    await rig.change(true);
     expect(rig.fires).toEqual([]);
-    rig.change(false);
-    rig.change(true);
+    await rig.change(false);
+    await rig.change(true);
     expect(rig.fires).toHaveLength(1);
     expect(rig.fires[0]).toEqual({
       automationId: 'auto',
@@ -94,30 +103,30 @@ describe('trigger.becomes_true edge detection', () => {
     });
   });
 
-  it('fires once while the condition stays true and again after it fell and rose', () => {
+  it('fires once while the condition stays true and again after it fell and rose', async () => {
     const rig = new Rig();
-    rig.arm();
-    rig.change(true);
-    rig.change(true);
-    rig.change(true);
+    await rig.arm();
+    await rig.change(true);
+    await rig.change(true);
+    await rig.change(true);
     expect(rig.fires).toHaveLength(1);
-    rig.change(false);
-    rig.change(true);
+    await rig.change(false);
+    await rig.change(true);
     expect(rig.fires).toHaveLength(2);
   });
 
-  it('is evaluated only when a dependency changes, with no timer of its own', () => {
+  it('is evaluated only when a dependency changes, with no timer of its own', async () => {
     const rig = new Rig();
-    rig.arm();
+    await rig.arm();
     expect(rig.clock.pending()).toEqual([]);
     rig.advance(3_600_000);
     expect(rig.fires).toEqual([]);
   });
 
-  it('reports a condition that reads nothing that can change', () => {
+  it('reports a condition that reads nothing that can change', async () => {
     const rig = new Rig();
     rig.keys = [];
-    rig.arm();
+    await rig.arm();
     expect(rig.problems).toEqual([
       {
         automationId: 'auto',
@@ -127,10 +136,10 @@ describe('trigger.becomes_true edge detection', () => {
     ]);
   });
 
-  it('stops watching and drops a pending hold when disarmed', () => {
+  it('stops watching and drops a pending hold when disarmed', async () => {
     const rig = new Rig();
-    const disarm = rig.arm({ ...rig.entry, holdMs: 60_000 });
-    rig.change(true);
+    const disarm = await rig.arm({ ...rig.entry, holdMs: 60_000 });
+    await rig.change(true);
     expect(rig.clock.pending()).toHaveLength(1);
     disarm();
     expect(rig.watching).toBe(0);
@@ -143,10 +152,10 @@ describe('trigger.becomes_true edge detection', () => {
 describe('trigger.becomes_true hold', () => {
   const held = (rig: Rig): ConditionEntry => ({ ...rig.entry, holdMs: 300_000 });
 
-  it('fires only after the condition stayed true for the hold, stamped with that moment', () => {
+  it('fires only after the condition stayed true for the hold, stamped with that moment', async () => {
     const rig = new Rig();
-    rig.arm(held(rig));
-    rig.change(true);
+    await rig.arm(held(rig));
+    await rig.change(true);
     rig.advance(299_000);
     expect(rig.fires).toEqual([]);
     rig.advance(1000);
@@ -155,56 +164,56 @@ describe('trigger.becomes_true hold', () => {
     expect(rig.fires[0]?.payload).toEqual({ at: '2026-10-19T08:05:00.000Z' });
   });
 
-  it('forgets a hold when the condition falls first and starts a full one when it rises again', () => {
+  it('forgets a hold when the condition falls first and starts a full one when it rises again', async () => {
     const rig = new Rig();
-    rig.arm(held(rig));
-    rig.change(true);
+    await rig.arm(held(rig));
+    await rig.change(true);
     rig.advance(200_000);
-    rig.change(false);
+    await rig.change(false);
     rig.advance(200_000);
     expect(rig.fires).toEqual([]);
-    rig.change(true);
+    await rig.change(true);
     rig.advance(299_000);
     expect(rig.fires).toEqual([]);
     rig.advance(1000);
     expect(rig.fires).toHaveLength(1);
   });
 
-  it('does not restart the hold when another dependency changes while it is still true', () => {
+  it('does not restart the hold when another dependency changes while it is still true', async () => {
     const rig = new Rig();
-    rig.arm(held(rig));
-    rig.change(true);
+    await rig.arm(held(rig));
+    await rig.change(true);
     rig.advance(100_000);
-    rig.change(true);
+    await rig.change(true);
     rig.advance(200_000);
     expect(rig.fires).toHaveLength(1);
   });
 });
 
 describe('trigger.becomes_true failures', () => {
-  it('treats a failing condition as not true, tells why once, and fires when it later rises', () => {
+  it('treats a failing condition as not true, tells why once, and fires when it later rises', async () => {
     const rig = new Rig();
-    rig.arm();
-    rig.change('the left value of the comparison is absent');
-    rig.change('the left value of the comparison is absent');
+    await rig.arm();
+    await rig.change('the left value of the comparison is absent');
+    await rig.change('the left value of the comparison is absent');
     expect(rig.fires).toEqual([]);
     expect(rig.problems.map((problem) => problem.message)).toEqual([
       'the left value of the comparison is absent',
     ]);
-    rig.change(true);
+    await rig.change(true);
     expect(rig.fires).toHaveLength(1);
-    rig.change('another failure');
+    await rig.change('another failure');
     expect(rig.problems.map((problem) => problem.message)).toEqual([
       'the left value of the comparison is absent',
       'another failure',
     ]);
   });
 
-  it('starts from false when the first evaluation already fails', () => {
+  it('starts from false when the first evaluation already fails', async () => {
     const rig = new Rig();
     rig.verdict = 'no reading yet';
-    rig.arm();
-    rig.change(true);
+    await rig.arm();
+    await rig.change(true);
     expect(rig.fires).toHaveLength(1);
   });
 });

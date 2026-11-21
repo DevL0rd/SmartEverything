@@ -89,18 +89,20 @@ afterEach(async () => {
   await opened.close();
 });
 
-function chatOf(profileId: string): string {
+async function chatOf(profileId: string): Promise<string> {
   const { store } = opened;
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
-    chat: store.assistantChat,
+    store: store,
     attachments: store.live.attachments,
     now: (): Date => NOW,
   });
-  return new ChatDirectory(store, files).chatForPlugin(
-    profileId,
-    pluginChatKey('discord', KEY),
-    '#general',
+  return (
+    await new ChatDirectory(store, files).chatForPlugin(
+      profileId,
+      pluginChatKey('discord', KEY),
+      '#general',
+    )
   ).id;
 }
 
@@ -109,8 +111,8 @@ describe('plugin conversation commands', () => {
     const { store } = opened;
     const sam = store.profiles.create({ name: 'Sam' });
     await people.set('discord', FRIEND, { name: 'Sam', status: 'approved', profile_id: sam.id });
-    const owners = chatOf(store.personAccess.homeOwner());
-    const mine = chatOf(sam.id);
+    const owners = await chatOf(store.personAccess.homeOwner());
+    const mine = await chatOf(sam.id);
     await conversations.startOver(KEY, FRIEND);
     await conversations.compact(KEY, FRIEND);
     await conversations.stop(KEY, FRIEND);
@@ -123,7 +125,7 @@ describe('plugin conversation commands', () => {
   });
 
   it('refuse a stranger every command and never touch the owner’s chat', async () => {
-    chatOf(opened.store.personAccess.homeOwner());
+    await chatOf(opened.store.personAccess.homeOwner());
     await expect(conversations.compact(KEY, STRANGER)).rejects.toBeInstanceOf(ApiError);
     await expect(conversations.startOver(KEY, STRANGER)).rejects.toBeInstanceOf(ApiError);
     await expect(conversations.stop(KEY, STRANGER)).rejects.toBeInstanceOf(ApiError);
@@ -132,7 +134,7 @@ describe('plugin conversation commands', () => {
   });
 
   it('do not show a stranger the owner’s conversation in the same channel', async () => {
-    chatOf(opened.store.personAccess.homeOwner());
+    await chatOf(opened.store.personAccess.homeOwner());
     expect(await conversations.conversation(KEY, STRANGER)).toBeNull();
   });
 
@@ -153,7 +155,7 @@ describe('plugin conversation commands', () => {
 
   it('act as the home owner when the plugin runs its own conversation', async () => {
     const home = opened.store.personAccess.homeOwner();
-    const chat = chatOf(home);
+    const chat = await chatOf(home);
     await conversations.compact(KEY);
     expect(calls).toStrictEqual([{ profileId: home, role: 'owner', chatId: chat }]);
   });
@@ -162,7 +164,7 @@ describe('plugin conversation commands', () => {
     const { store } = opened;
     const sam = store.profiles.create({ name: 'Sam' });
     await people.set('discord', FRIEND, { name: 'Sam', status: 'approved', profile_id: sam.id });
-    chatOf(store.personAccess.homeOwner());
+    await chatOf(store.personAccess.homeOwner());
     expect(await conversations.conversation(KEY, FRIEND)).toBeNull();
     await expect(conversations.compact(KEY, FRIEND)).rejects.toBeInstanceOf(ApiError);
   });

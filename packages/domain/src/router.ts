@@ -42,18 +42,33 @@ const ROUTER_NETWORK = z.strictObject({
 
 const WIFI_BAND = z.string().min(1);
 
-const WIFI_RADIO = z.strictObject({
+const WIFI_RADIO_SETUP_FIELDS = {
   band: WIFI_BAND,
   ssid: z.string().nullable(),
   enabled: z.boolean().nullable(),
   txPower: z.number().nullable(),
   channel: z.number().int().nullable(),
   width: z.string().nullable(),
+  dfs: z.string().nullable(),
+  clients: z.number().int().nonnegative(),
+};
+
+const WIFI_RADIO_TELEMETRY_FIELDS = {
   noiseDbm: z.number().nullable(),
   temperatureCelsius: z.number().nullable(),
   airtimeBusyPercent: z.number().nullable(),
-  dfs: z.string().nullable(),
-  clients: z.number().int().nonnegative(),
+};
+
+const WIFI_RADIO_SETUP = z.strictObject(WIFI_RADIO_SETUP_FIELDS);
+
+const WIFI_RADIO_TELEMETRY = z.strictObject({
+  band: WIFI_BAND,
+  ...WIFI_RADIO_TELEMETRY_FIELDS,
+});
+
+const WIFI_RADIO = z.strictObject({
+  ...WIFI_RADIO_SETUP_FIELDS,
+  ...WIFI_RADIO_TELEMETRY_FIELDS,
 });
 
 const WIFI_STATION = z.strictObject({
@@ -121,18 +136,21 @@ const ROUTER_LIVE_FIELDS = {
 
 const ROUTER_INVENTORY_FIELDS = {
   info: ROUTER_INFO.nullable(),
-  radios: z.array(WIFI_RADIO),
   clients: z.array(NETWORK_CLIENT),
   people: z.array(PRESENCE_PERSON).default([]),
 };
 
-export const ROUTER_LIVE = z.strictObject(ROUTER_LIVE_FIELDS);
+export const ROUTER_LIVE = z.strictObject({
+  ...ROUTER_LIVE_FIELDS,
+  radios: z.array(WIFI_RADIO_TELEMETRY),
+});
 
 export type RouterLive = z.output<typeof ROUTER_LIVE>;
 
 export const ROUTER_INVENTORY = z.strictObject({
   at: z.iso.datetime({ offset: true }),
   ...ROUTER_INVENTORY_FIELDS,
+  radios: z.array(WIFI_RADIO_SETUP),
 });
 
 export type RouterInventory = z.output<typeof ROUTER_INVENTORY>;
@@ -140,6 +158,7 @@ export type RouterInventory = z.output<typeof ROUTER_INVENTORY>;
 export const ROUTER_SNAPSHOT = z.strictObject({
   ...ROUTER_LIVE_FIELDS,
   ...ROUTER_INVENTORY_FIELDS,
+  radios: z.array(WIFI_RADIO),
 });
 
 export type RouterSnapshot = z.output<typeof ROUTER_SNAPSHOT>;

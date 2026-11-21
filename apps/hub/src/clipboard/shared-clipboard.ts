@@ -1,9 +1,4 @@
-import {
-  ApiError,
-  CLIENT_PREFS,
-  type ClipboardClip,
-  type ClipboardNotice,
-} from '@smarteverything/domain';
+import { ApiError, type ClipboardClip, type ClipboardNotice } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 
@@ -24,13 +19,13 @@ export class SharedClipboard {
 
   constructor(private readonly deps: ClipboardDeps) {}
 
-  read(caller: ClipboardCaller): ClipboardClip | null {
-    this.assertEnabled(caller);
+  async read(caller: ClipboardCaller): Promise<ClipboardClip | null> {
+    await this.assertEnabled(caller);
     return this.clips.get(caller.profileId) ?? null;
   }
 
-  write(caller: ClipboardCaller, text: string): ClipboardClip {
-    this.assertEnabled(caller);
+  async write(caller: ClipboardCaller, text: string): Promise<ClipboardClip> {
+    await this.assertEnabled(caller);
     const clip: ClipboardClip = {
       text,
       from: caller.clientId,
@@ -46,8 +41,11 @@ export class SharedClipboard {
     return clip;
   }
 
-  private assertEnabled(caller: ClipboardCaller): void {
-    const read = this.deps.store.personal.pref(CLIENT_PREFS.shared_clipboard, caller);
+  private async assertEnabled(caller: ClipboardCaller): Promise<void> {
+    const read = await this.deps.store.host.read('sharedClipboardPref', {
+      clientId: caller.clientId,
+      profileId: caller.profileId,
+    });
     if (read.status === 'invalid') {
       throw new ApiError('conflict', read.reason);
     }

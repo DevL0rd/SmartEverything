@@ -4,7 +4,7 @@ import type { Store } from '../store/store';
 import type { Transcripts } from './transcript-service';
 
 export interface ListeningBudgetOptions {
-  readonly store: Pick<Store, 'settings' | 'transcripts'>;
+  readonly store: Pick<Store, 'live' | 'host'>;
   readonly transcripts: Pick<Transcripts, 'settings'>;
   readonly clock: Pick<Clock, 'now'>;
 }
@@ -12,14 +12,18 @@ export interface ListeningBudgetOptions {
 export class ListeningBudget {
   constructor(private readonly options: ListeningBudgetOptions) {}
 
-  spentToday(): number {
-    const timeZone = this.options.store.settings.read().time_zone;
+  spentToday(): Promise<number> {
+    const timeZone = this.options.store.live.home.settings.read().time_zone;
     const now = this.options.clock.now();
     const start = zonedInstant(localClock(now, timeZone), 0, timeZone);
-    return this.options.store.transcripts.listeningSpent(start.toISOString());
+    return this.options.store.host.call('transcripts', 'listeningSpent', start.toISOString());
   }
 
-  capReached(): boolean {
-    return this.spentToday() >= this.options.transcripts.settings().daily_cap_usd * MICROS_PER_USD;
+  async capReached(): Promise<boolean> {
+    const [spent, settings] = await Promise.all([
+      this.spentToday(),
+      this.options.transcripts.settings(),
+    ]);
+    return spent >= settings.daily_cap_usd * MICROS_PER_USD;
   }
 }

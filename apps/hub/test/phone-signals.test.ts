@@ -5,10 +5,11 @@ import {
   SIGNAL_SOURCES,
   kindSpecOf,
   type RowChange,
+  type SignalInput,
 } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { feedContextOf } from '../src/signals/sources/feed-context';
-import { healthSignals } from '../src/signals/sources/health';
+import { sleepEndAsk, sleepEndedSignal } from '../src/signals/sources/health';
 
 const PROFILE = '2d000000-0000-4000-8000-000000000001';
 const NOW = new Date('2026-10-11T07:30:00.000Z');
@@ -32,15 +33,10 @@ function sleepChange(value: number, previous: number | null): RowChange {
   });
 }
 
-function sleepSignals(change: RowChange, end: string | null): ReturnType<typeof healthSignals> {
-  return healthSignals(
-    change,
-    feedContextOf(
-      NOW,
-      () => 'UTC',
-      () => end,
-    ),
-  ).filter((signal) => signal.kind === 'sleep_ended');
+function sleepSignals(change: RowChange, end: string | null): readonly SignalInput[] {
+  const context = feedContextOf(NOW, () => 'UTC');
+  const ask = sleepEndAsk(change, context);
+  return ask === null || end === null ? [] : [sleepEndedSignal(context, ask, end)];
 }
 
 describe('sleep ended signal', () => {

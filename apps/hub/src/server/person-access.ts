@@ -1,23 +1,17 @@
 import {
   ApiError,
   effectiveRoleOf,
-  isExpired,
-  localClock,
   type AccessAuditKind,
   type ClientRow,
   type PersonRole,
-  type QuietHours,
   type Role,
 } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
 import type { IncomingMessage } from 'node:http';
 import type { Store } from '../store/store';
-import { insideQuiet } from '../reach/reach-rules';
-import type { KnownStanding, PersonStanding } from '../store/repositories/person-access';
-import { storeUnit } from '../store/host/unit';
+import type { PersonStanding } from '../store/repositories/person-access';
 import { remoteOf } from './http';
 import { RepeatGate } from './repeat-gate';
-import { remoteKind } from './request-trace';
 
 const log = new Logger('hub.person-access');
 
@@ -45,10 +39,6 @@ const FORWARDING_HEADERS = [
   'forwarded',
 ] as const;
 
-function hostnameOf(host: string): string | null {
-  return URL.canParse(`http://${host}`) ? new URL(`http://${host}`).hostname : null;
-}
-
 export function accessEntryOf(request: IncomingMessage, statusOnly: boolean): AccessEntry {
   return {
     remote: remoteOf(request),
@@ -56,20 +46,6 @@ export function accessEntryOf(request: IncomingMessage, statusOnly: boolean): Ac
     host: request.headers.host ?? null,
     statusOnly,
   };
-}
-
-function onHomeHost(store: Store, host: string | null): boolean {
-  if (host === null) return true;
-  const hostname = hostnameOf(host);
-  if (hostname === null) return false;
-  const publicUrl = store.settings.read().public_url;
-  return publicUrl === null || hostname !== new URL(publicUrl).hostname;
-}
-
-function onHomeRoute(store: Store, entry: AccessEntry): boolean {
-  const kind = remoteKind(entry.remote);
-  if (kind !== 'loopback' && kind !== 'private') return false;
-  return !entry.forwarded && onHomeHost(store, entry.host);
 }
 
 export interface Refusal {
@@ -109,47 +85,11 @@ export interface Route {
   readonly statusOnly: boolean;
 }
 
-export function standingRefusal(
-  store: Pick<Store, 'now' | 'settings'>,
-  standing: KnownStanding,
-  route: Route,
-): Refusal | null {
-  if (isExpired(standing, store.now().toISOString())) {
-    return {
-      kind: 'refused_expired',
-      detail: 'the access of the person has ended',
-      message: 'This access has ended; ask the owner for more time.',
-    };
-  }
-  if (standing.role === 'owner' || route.statusOnly) return null;
-  if (standing.home_only && !route.home) {
-    return {
-      kind: 'refused_condition',
-      detail: 'the person may use the home only from the home network',
-      message: 'This person can use the home only from the home network.',
-    };
-  }
-  if (standing.schedule !== null && insideSchedule(store, standing.schedule)) {
-    return {
-      kind: 'refused_condition',
-      detail: 'the person is outside the hours they may use the home',
-      message: 'This person is paused at this hour; ask the owner.',
-    };
-  }
-  return null;
-}
-
-function insideSchedule(store: Pick<Store, 'now' | 'settings'>, schedule: QuietHours): boolean {
-  const zone = store.settings.read().time_zone;
-  return insideQuiet(schedule, localClock(store.now(), zone).minuteOfDay);
-}
-
-function standingOfClient(
-  store: Pick<Store, 'profiles' | 'personAccess'>,
-  client: ClientRow,
+export function readableStanding(
+  client: Pick<ClientRow, 'id' | 'role'>,
+  profileId: string,
+  standing: PersonStanding,
 ): PersonStanding {
-  const profileId = store.profiles.activeOf(client.id).id;
-  const standing = store.personAccess.standing(profileId);
   if (!standing.known && unreadable.pass(profileId) !== null) {
     log.error('access.person_unreadable', new Error(standing.reason), {
       clientId: client.id,
@@ -160,7 +100,12 @@ function standingOfClient(
   return standing;
 }
 
-function withRole(client: ClientRow, ceilingRole: Role, personRole: PersonRole): ClientRow {
+export function standingOfClient(store: Pick<Store, 'live'>, client: ClientRow): PersonStanding {
+  const profileId = store.live.access.activeProfileOf(client.id);
+  return readableStanding(client, profileId, store.live.access.standing(profileId));
+}
+
+export function withRole(client: ClientRow, ceilingRole: Role, personRole: PersonRole): ClientRow {
   const role = effectiveRoleOf(ceilingRole, personRole);
   return role === client.role ? client : { ...client, role };
 }
@@ -169,65 +114,14 @@ export type Admission =
   | { readonly kind: 'admitted'; readonly client: ClientRow }
   | { readonly kind: 'refused'; readonly subject: Subject; readonly why: Refusal };
 
-export function admissionOf(store: Store, client: ClientRow, entry: AccessEntry): Admission {
-  const standing = standingOfClient(store, client);
-  if (!standing.known) {
-    if (client.role === 'owner') return { kind: 'admitted', client };
-    return {
-      kind: 'refused',
-      subject: client,
-      why: {
-        kind: 'refused_scope',
-        detail: 'the access of the person cannot be read',
-        message: 'This person’s access cannot be read; ask the owner to check it.',
-      },
-    };
-  }
-  if (client.role === 'member' && standing.role !== 'owner') {
-    const why = standingRefusal(store, standing, {
-      home: onHomeRoute(store, entry),
-      statusOnly: entry.statusOnly,
-    });
-    if (why !== null) {
-      return {
-        kind: 'refused',
-        subject: { id: client.id, profile_id: store.profiles.activeOf(client.id).id },
-        why,
-      };
-    }
-  }
-  return { kind: 'admitted', client: withRole(client, client.role, standing.role) };
-}
-
 export function admitted(store: Pick<Store, 'host'>, admission: Admission): ClientRow {
   if (admission.kind === 'refused') throw refusal(store, admission.subject, admission.why);
   return admission.client;
 }
 
-export const CLIENT_ADMISSION_UNIT = storeUnit(
-  (store, { client, entry }: { readonly client: ClientRow; readonly entry: AccessEntry }) =>
-    admissionOf(store, client, entry),
-);
-
 export type TokenAdmission =
   | { readonly kind: 'unknown' }
   | { readonly kind: 'known'; readonly client: ClientRow; readonly admission: Admission };
-
-export const TOKEN_ADMISSION_UNIT = storeUnit(
-  (
-    store,
-    { tokenHash, entry }: { readonly tokenHash: string; readonly entry: AccessEntry },
-  ): TokenAdmission => {
-    const client = store.clients.byTokenHash(tokenHash);
-    return client === undefined
-      ? { kind: 'unknown' }
-      : { kind: 'known', client, admission: admissionOf(store, client, entry) };
-  },
-);
-
-export const EFFECTIVE_ROW_UNIT = storeUnit((store, { client }: { readonly client: ClientRow }) =>
-  effectiveRow(store, client),
-);
 
 export async function effectiveClient(
   store: Pick<Store, 'host'>,
@@ -237,27 +131,36 @@ export async function effectiveClient(
   return admitted(store, await store.host.read('clientAdmission', { client, entry }));
 }
 
-export function effectiveRow(
-  store: Pick<Store, 'profiles' | 'personAccess'>,
-  client: ClientRow,
-): ClientRow {
+export function effectiveRow(store: Pick<Store, 'live'>, client: ClientRow): ClientRow {
   const standing = standingOfClient(store, client);
   return standing.known ? withRole(client, client.role, standing.role) : client;
 }
 
-export function hasOwnerDevice(
-  store: Pick<Store, 'clients' | 'profiles' | 'personAccess'>,
-  profileId: string,
-): boolean {
-  return store.clients
-    .list()
+export function hasOwnerDevice(store: Pick<Store, 'live'>, profileId: string): boolean {
+  return store.live.access
+    .clients()
     .some(
       (client) => client.profile_id === profileId && effectiveRow(store, client).role === 'owner',
     );
 }
 
-export function effectiveClientById(store: Store, clientId: string): ClientRow {
-  return effectiveRow(store, store.clients.byId(clientId));
+export function effectiveClientById(store: Pick<Store, 'live'>, clientId: string): ClientRow {
+  return effectiveRow(store, store.live.access.client(clientId));
+}
+
+export function effectiveRowOf(store: Pick<Store, 'host'>, client: ClientRow): Promise<ClientRow> {
+  return store.host.read('effectiveRow', { client });
+}
+
+export function effectiveClientOf(
+  store: Pick<Store, 'host'>,
+  clientId: string,
+): Promise<ClientRow> {
+  return store.host.read('effectiveClientById', { clientId });
+}
+
+export function ownerDeviceOf(store: Pick<Store, 'host'>, profileId: string): Promise<boolean> {
+  return store.host.read('hasOwnerDevice', { profileId });
 }
 
 export async function assertMemberPerson(

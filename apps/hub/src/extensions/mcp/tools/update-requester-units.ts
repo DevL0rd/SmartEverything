@@ -1,7 +1,7 @@
 import { REPAIR_CHAT_SOURCE } from '../../../assistant/chat-directory';
 import type { ConversationAuthority } from '../../../harness/authority-contract';
 import { storeUnit } from '../../../store/host/unit';
-import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 import type { AcceptedCaller } from '../bearer';
 import type { ToolActor } from './registry';
 
@@ -21,7 +21,7 @@ export interface RequesterFound {
 }
 
 interface Caller extends RequesterAsk {
-  readonly store: Store;
+  readonly store: HostStore;
 }
 
 function directOwner(actor: ToolActor): boolean {
@@ -55,7 +55,7 @@ function retainedRepair(
 }
 
 function repairEventChat(
-  store: Store,
+  store: HostStore,
   eventId: string,
   chatId: string,
   profileId: string,

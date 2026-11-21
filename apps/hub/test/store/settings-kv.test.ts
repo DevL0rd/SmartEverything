@@ -33,9 +33,9 @@ describe('settings key/value store', () => {
     });
   });
 
-  it('keeps transcript settings under their unchanged key', () => {
+  it('keeps transcript settings under their unchanged key', async () => {
     const { store } = opened;
-    const saved = new TranscriptSettingsStore(store).save({});
+    const saved = await new TranscriptSettingsStore(store.host).save({});
     expect(store.settingsKv.read('transcripts.settings')).toEqual(saved);
   });
 });

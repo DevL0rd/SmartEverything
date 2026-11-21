@@ -24,7 +24,7 @@ export class WatchDataService {
       weather:
         row.forecast === null || row.fetched_at === null
           ? null
-          : watchWeatherOf(row.forecast, store.settings.read().home_name, row.fetched_at),
+          : watchWeatherOf(row.forecast, store.live.home.settings.read().home_name, row.fetched_at),
       user: watchUserOf(profile, weight, this.options.now()),
     };
   }

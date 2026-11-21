@@ -16,7 +16,6 @@ export type LiveFrameOut = FrameHead &
         readonly operation: 'UPDATE';
         readonly key: Columns;
         readonly set: Columns;
-        readonly previous: Columns;
         readonly cleared?: readonly string[];
       }
     | { readonly operation: 'DELETE'; readonly key: Columns; readonly oldRecord: Columns }
@@ -63,38 +62,32 @@ function keyOf(table: LiveTable, row: Columns): Columns {
 
 interface Diff {
   readonly set: Columns;
-  readonly previous: Columns;
   readonly cleared: readonly string[];
 }
 
 function diffOf(before: Columns, after: Columns): Diff {
   const set: Record<string, unknown> = {};
-  const previous: Record<string, unknown> = {};
   const cleared: string[] = [];
   for (const [column, value] of Object.entries(after)) {
-    const old = before[column];
-    if (sameValue(old, value)) continue;
+    if (sameValue(before[column], value)) continue;
     if (value === undefined) cleared.push(column);
     else set[column] = value;
-    if (old !== undefined) previous[column] = old;
   }
   for (const [column, old] of Object.entries(before)) {
     if (old === undefined || Object.hasOwn(after, column)) continue;
     cleared.push(column);
-    previous[column] = old;
   }
-  return { set, previous, cleared };
+  return { set, cleared };
 }
 
 function updateFrame(table: LiveTable, before: Columns, after: Columns): LiveFrameOut {
-  const { set, previous, cleared } = diffOf(before, after);
+  const { set, cleared } = diffOf(before, after);
   const head = {
     type: 'change',
     table,
     operation: 'UPDATE',
     key: keyOf(table, before),
     set,
-    previous,
   } as const;
   return cleared.length === 0 ? head : { ...head, cleared };
 }

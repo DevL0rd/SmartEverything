@@ -71,6 +71,7 @@ function serviceFiles(migration: string): Record<string, string> {
     'update/watchdog.mjs': 'export {};\n',
     'update/step.mjs': 'export {};\n',
     'update/migration-check.mjs': migration,
+    'update/store-host.mjs': 'export {};\n',
   };
 }
 

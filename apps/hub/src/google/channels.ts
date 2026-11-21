@@ -40,7 +40,7 @@ export function pushPath(channelId: string): string {
 }
 
 export interface GoogleChannelsOptions {
-  readonly store: Pick<Store, 'host' | 'settings'>;
+  readonly store: Pick<Store, 'host' | 'live'>;
   readonly tokens: Pick<GoogleTokens, 'accessToken' | 'invalidate'>;
   readonly runner: Pick<GoogleSyncRunner, 'sync' | 'onSynced'>;
   readonly fetch: FetchLike;
@@ -127,7 +127,7 @@ export class GoogleChannels {
   }
 
   private base(): string | null {
-    const { public_url, public_url_verified_at } = this.options.store.settings.read();
+    const { public_url, public_url_verified_at } = this.options.store.live.home.settings.read();
     if (public_url === null || public_url_verified_at === null) return null;
     return public_url.replace(/\/+$/, '');
   }

@@ -3,12 +3,12 @@ import type {
   PlannerItemRow,
   PlannerOccurrenceView,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { isoOf } from './instants';
 import { expandOccurrences } from './occurrences';
 import { loadWindow, type PlannerReader } from './range';
 
-export type BusyReader = PlannerReader & Pick<Store, 'plannerGuests'>;
+export type BusyReader = PlannerReader & Pick<HostStore, 'plannerGuests'>;
 
 const MINUTE_MS = 60_000;
 

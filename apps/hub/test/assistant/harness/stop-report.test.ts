@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AiChatRow } from '@smarteverything/domain';
 import { ChatDirectory } from '../../../src/assistant/chat-directory';
 import { ConversationLog } from '../../../src/assistant/conversation-log';
@@ -35,7 +35,10 @@ interface Launched {
   readonly sender: AskSender;
 }
 
-function launch(made: Rig, wait: boolean): Launched & { readonly answer: Promise<unknown> } {
+async function launch(
+  made: Rig,
+  wait: boolean,
+): Promise<Launched & { readonly answer: Promise<unknown> }> {
   const { store } = made.opened;
   const now = (): Date => new Date();
   const conversation = new ConversationLog(store);
@@ -43,7 +46,7 @@ function launch(made: Rig, wait: boolean): Launched & { readonly answer: Promise
     store,
     new AssistantFiles({
       layout: hubLayout(made.opened.directory, {}),
-      chat: store.assistantChat,
+      store: store,
       attachments: store.live.attachments,
       now,
     }),
@@ -55,7 +58,7 @@ function launch(made: Rig, wait: boolean): Launched & { readonly answer: Promise
     added: (): void => undefined,
     now,
   });
-  const parent = chats.create(made.owner, {
+  const parent = await chats.create(made.owner, {
     title: 'Planner',
     engine: CLAUDE_TEST_ENGINE,
     parent_id: made.newChat(made.hub.target).id,
@@ -71,10 +74,13 @@ function launch(made: Rig, wait: boolean): Launched & { readonly answer: Promise
     wait,
     timeoutSeconds: 60,
   });
+  await vi.waitFor(() => {
+    expect(store.assistantEvents.pending().some((row) => row.chat_id !== parent.id)).toBe(true);
+  });
   const [event] = store.assistantEvents.pending().filter((row) => row.chat_id !== parent.id);
   if (event === undefined) throw new Error('The helper task was not queued.');
   const child = store.aiChats.chat(event.chat_id);
-  delegation.admit(event);
+  await delegation.admit(event);
   const settle = async (completion: NativeCompletion, spoken: string): Promise<void> => {
     const reply = await conversation.startReply({
       chat: child,
@@ -91,7 +97,7 @@ function launch(made: Rig, wait: boolean): Launched & { readonly answer: Promise
       conversation,
       turn: { event, chat: child, replyId: reply.id, stream },
       event: completion,
-      finished: delegation.finished.bind(delegation),
+      finished: delegation.ended.bind(delegation),
       retire: (): void => undefined,
     });
   };
@@ -108,13 +114,16 @@ function reportText(made: Rig, parent: AiChatRow): string | undefined {
 
 describe('a helper that the user stopped', () => {
   it('tells its parent why it did not finish and is recorded as interrupted', async () => {
-    rig = await harnessRig();
-    const { parent, event, settle } = launch(rig, false);
+    const made = await harnessRig();
+    rig = made;
+    const { parent, event, settle } = await launch(made, false);
 
     await settle({ kind: 'completed', interrupted: true }, 'Half an answer');
 
-    expect(reportText(rig, parent)).toBe(`It could not finish: ${STOPPED_BY_USER}`);
-    expect(rig.opened.store.aiAgentRuns.read(event.id)).toMatchObject({
+    await vi.waitFor(() => {
+      expect(reportText(made, parent)).toBe(`It could not finish: ${STOPPED_BY_USER}`);
+    });
+    expect(made.opened.store.aiAgentRuns.read(event.id)).toMatchObject({
       state: 'interrupted',
       supported_actions: ['open_chat', 'delete'],
     });
@@ -122,7 +131,7 @@ describe('a helper that the user stopped', () => {
 
   it('hands a waiting parent the stop reason instead of the partial answer', async () => {
     rig = await harnessRig();
-    const { settle, answer, parent } = launch(rig, true);
+    const { settle, answer, parent } = await launch(rig, true);
 
     await settle({ kind: 'completed', interrupted: true }, 'Half an answer');
 
@@ -131,8 +140,9 @@ describe('a helper that the user stopped', () => {
   });
 
   it('tells its parent the failure reason of a helper that errored with no output', async () => {
-    rig = await harnessRig();
-    const { parent, event, settle } = launch(rig, false);
+    const made = await harnessRig();
+    rig = made;
+    const { parent, event, settle } = await launch(made, false);
 
     await settle(
       {
@@ -142,8 +152,10 @@ describe('a helper that the user stopped', () => {
       '',
     );
 
-    expect(reportText(rig, parent)).toBe('It could not finish: Model refused.');
-    expect(rig.opened.store.aiAgentRuns.read(event.id)).toMatchObject({
+    await vi.waitFor(() => {
+      expect(reportText(made, parent)).toBe('It could not finish: Model refused.');
+    });
+    expect(made.opened.store.aiAgentRuns.read(event.id)).toMatchObject({
       state: 'failed',
       error: 'Model refused.',
     });

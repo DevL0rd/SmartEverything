@@ -14,7 +14,7 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 const log = new Logger('hub.access-requests');
 
@@ -33,7 +33,7 @@ function areaOf(target: string): AccessGrant {
   return { kind: 'area', area };
 }
 
-function placeOf(store: Store, target: string): AccessGrant {
+function placeOf(store: HostStore, target: string): AccessGrant {
   const device = store.devices.find(target);
   if (device !== undefined) return { kind: 'device', deviceId: device.id, roomId: device.room_id };
   if (store.rooms.list().some((room) => room.id === target)) {
@@ -50,7 +50,10 @@ function amountOf(target: string): AccessGrant {
   return { kind: 'budget', usd };
 }
 
-function grantOf(store: Store, request: Pick<NewAccessRequest, 'kind' | 'target'>): AccessGrant {
+function grantOf(
+  store: HostStore,
+  request: Pick<NewAccessRequest, 'kind' | 'target'>,
+): AccessGrant {
   const { kind, target } = request;
   if (target === null) {
     throw new ApiError(
@@ -77,7 +80,7 @@ function targetOf(before: AccessRequestRow, decision: AccessRequestDecision): st
   return decision.target ?? before.target;
 }
 
-function describe(store: Store, grant: AccessGrant): string {
+function describe(store: HostStore, grant: AccessGrant): string {
   switch (grant.kind) {
     case 'area':
       return MCP_TOOL_AREA_LABELS[grant.area];
@@ -96,7 +99,7 @@ function sameThing(left: Pick<AccessRequestRow, 'kind' | 'target'>, right: typeo
   return left.kind === right.kind && left.target === right.target;
 }
 
-function wording(store: Store, request: Pick<NewAccessRequest, 'kind' | 'target'>): string {
+function wording(store: HostStore, request: Pick<NewAccessRequest, 'kind' | 'target'>): string {
   if (request.target === null) return `Asked for more: ${request.kind}.`;
   try {
     return `Asked for ${describe(store, grantOf(store, request))}.`;
@@ -106,7 +109,7 @@ function wording(store: Store, request: Pick<NewAccessRequest, 'kind' | 'target'
   }
 }
 
-function record(store: Store, profileId: string, by: string | null, detail: string): void {
+function record(store: HostStore, profileId: string, by: string | null, detail: string): void {
   store.accessAudit.record({
     profile_id: profileId,
     client_id: by,
@@ -115,7 +118,7 @@ function record(store: Store, profileId: string, by: string | null, detail: stri
   });
 }
 
-function endedGrantOf(store: Store, row: AccessRequestRow): AccessGrant | undefined {
+function endedGrantOf(store: HostStore, row: AccessRequestRow): AccessGrant | undefined {
   try {
     return grantOf(store, row);
   } catch (cause) {
@@ -125,7 +128,7 @@ function endedGrantOf(store: Store, row: AccessRequestRow): AccessGrant | undefi
   }
 }
 
-function stillGranted(store: Store, row: AccessRequestRow, now: string): boolean {
+function stillGranted(store: HostStore, row: AccessRequestRow, now: string): boolean {
   if (row.kind === 'budget') return false;
   return store.accessRequests
     .list('approved', row.profile_id)
@@ -138,7 +141,7 @@ function stillGranted(store: Store, row: AccessRequestRow, now: string): boolean
     );
 }
 
-function assertWorthAsking(store: Store, profileId: string, request: NewAccessRequest): void {
+function assertWorthAsking(store: HostStore, profileId: string, request: NewAccessRequest): void {
   const outcome = grantAccess(store.personAccess.byProfile(profileId), grantOf(store, request));
   if (outcome.kind === 'unchanged') throw refusal('You already have that.');
   if (outcome.kind === 'refused') throw refusal(outcome.reason);
@@ -151,7 +154,7 @@ export interface Decision {
   readonly now: string;
 }
 
-function approve(store: Store, { requestId, by, decision, now }: Decision): AccessRequestRow {
+function approve(store: HostStore, { requestId, by, decision, now }: Decision): AccessRequestRow {
   const before = store.accessRequests.byId(requestId);
   const target = targetOf(before, decision);
   const grant = grantOf(store, { kind: before.kind, target });
@@ -176,12 +179,12 @@ function approve(store: Store, { requestId, by, decision, now }: Decision): Acce
   });
 }
 
-function deny(store: Store, { requestId, by, decision }: Decision): AccessRequestRow {
+function deny(store: HostStore, { requestId, by, decision }: Decision): AccessRequestRow {
   const target = targetOf(store.accessRequests.byId(requestId), decision);
   return store.accessRequests.decide(requestId, by, { ...decision, target });
 }
 
-function lapseOne(store: Store, row: AccessRequestRow, now: string): readonly string[] {
+function lapseOne(store: HostStore, row: AccessRequestRow, now: string): readonly string[] {
   store.accessRequests.markLapsed(row.id);
   if (stillGranted(store, row, now)) return [];
   const grant = endedGrantOf(store, row);
@@ -196,7 +199,11 @@ function sameLimits(before: PersonAccess['budget'], after: PersonAccess['budget'
   return before?.daily_usd === after?.daily_usd && before?.monthly_usd === after?.monthly_usd;
 }
 
-function budgetSetByOwner(store: Store, profileId: string, before: PersonAccess['budget']): void {
+function budgetSetByOwner(
+  store: HostStore,
+  profileId: string,
+  before: PersonAccess['budget'],
+): void {
   if (sameLimits(before, store.personAccess.byProfile(profileId).budget)) return;
   for (const row of store.accessRequests.list('approved', profileId)) {
     if (row.kind !== 'budget' || row.until === null || row.lapsed_at !== null) continue;
@@ -212,7 +219,7 @@ function budgetSetByOwner(store: Store, profileId: string, before: PersonAccess[
   }
 }
 
-function keepWhatOwnerSet(store: Store, profileId: string): void {
+function keepWhatOwnerSet(store: HostStore, profileId: string): void {
   for (const row of store.accessRequests.list('approved', profileId)) {
     if (row.until === null || row.lapsed_at !== null || row.kind === 'budget') continue;
     const grant = endedGrantOf(store, row);

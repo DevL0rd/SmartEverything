@@ -1,10 +1,9 @@
 import { ApiError, type DriveVersion, type MediaLink } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { inLockedFolder, type DriveActor } from '../drive/access';
+import type { DriveActor } from '../drive/access';
 import { isFileItem, type FileItem } from '../drive/file-item';
 import { versionRelPath } from '../drive/intents';
 import { DrivePathError, openResolved, resolveInRoot } from '../drive/paths';
-import type { Store } from '../store/store';
 import { readableItem, type DriveExchange, type DriveFiles } from './drive-files';
 import { serveBytes } from './file-serve';
 
@@ -12,7 +11,6 @@ const log = new Logger('hub.drive');
 
 export interface DriveVersionFiles {
   readonly files: DriveFiles;
-  readonly versions: Pick<Store['driveVersions'], 'find'>;
 }
 
 interface Located {
@@ -25,30 +23,39 @@ function hidden(): ApiError {
   return new ApiError('not_found', 'There is no such version for this caller.');
 }
 
-function versionOf(deps: DriveVersionFiles, itemId: string, versionId: string): DriveVersion {
-  const entry = deps.versions.find(versionId);
+async function versionOf(
+  deps: DriveVersionFiles,
+  itemId: string,
+  versionId: string,
+): Promise<DriveVersion> {
+  const entry = await deps.files.store.host.call('driveVersions', 'find', versionId);
   if (entry?.version.itemId !== itemId) throw hidden();
   return entry.version;
 }
 
-export function driveVersionLink(
+export async function driveVersionLink(
   deps: DriveVersionFiles,
   actor: DriveActor,
   target: { readonly itemId: string; readonly versionId: string },
-): MediaLink {
-  const { item } = readableItem(deps.files, actor, target.itemId);
+): Promise<MediaLink> {
+  const { item } = await readableItem(deps.files, actor, target.itemId);
   if (!isFileItem(item)) throw hidden();
-  versionOf(deps, item.id, target.versionId);
+  await versionOf(deps, item.id, target.versionId);
   return deps.files.links.driveVersion(item.id, target.versionId);
 }
 
-function locate(deps: DriveVersionFiles, itemId: string, versionId: string): Located {
-  const item = deps.files.store.driveItems.find(itemId, null);
-  const root = item === undefined ? undefined : deps.files.store.driveRoots.find(item.rootId);
-  if (item === undefined || root === undefined || inLockedFolder(item) || !isFileItem(item)) {
-    throw hidden();
-  }
-  return { item, version: versionOf(deps, itemId, versionId), rootPath: root.path };
+async function locate(
+  deps: DriveVersionFiles,
+  itemId: string,
+  versionId: string,
+): Promise<Located> {
+  const found = await deps.files.store.host.read('driveReadable', { itemId, actor: null });
+  if (found === null || !isFileItem(found.item)) throw hidden();
+  return {
+    item: found.item,
+    version: await versionOf(deps, itemId, versionId),
+    rootPath: found.rootPath,
+  };
 }
 
 function pathFailure(cause: unknown): never {
@@ -65,7 +72,7 @@ export async function serveDriveVersion(
   target: { readonly itemId: string; readonly versionId: string },
 ): Promise<void> {
   deps.files.links.verify(exchange.url);
-  const { item, version, rootPath } = locate(deps, target.itemId, target.versionId);
+  const { item, version, rootPath } = await locate(deps, target.itemId, target.versionId);
   const resolved = await resolveInRoot(rootPath, versionRelPath(version.sha256)).catch(pathFailure);
   const handle = await openResolved(resolved, 'read').catch(pathFailure);
   try {

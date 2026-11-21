@@ -4,7 +4,7 @@ import type { MemoryPrincipal } from './principal';
 import { MANAGER_NEIGHBOURS } from './search';
 import type { MemoryService } from './service';
 import { Logger } from '@smarteverything/logging';
-import type { AppliedOperation, MemoryWriter } from './writer';
+import type { AppliedOperation, MemoryWriter, Permitted } from './writer';
 
 const log = new Logger('hub.memory');
 
@@ -25,8 +25,8 @@ export class MemoryManager {
     person: string,
     reply: string,
   ): Promise<ManagerResult> {
-    const permitted = (): boolean => this.memory.offered(who);
-    if (!permitted()) return { applied: [] };
+    const permitted = (): Promise<boolean> => this.memory.offered(who);
+    if (!(await permitted())) return { applied: [] };
     const memories = await this.neighbours(who, `${person}\n${reply}`, permitted);
     return this.run(
       { who, chatId, memories, subject: { kind: 'exchange', person, reply } },
@@ -42,14 +42,14 @@ export class MemoryManager {
         memories: [memory],
         subject: { kind: 'expired', validUntil: memory.valid_until ?? '' },
       },
-      () => this.memory.settings(who).enabled,
+      async () => (await this.memory.settings(who)).enabled,
     );
   }
 
   private async neighbours(
     who: MemoryPrincipal,
     text: string,
-    permitted: () => boolean,
+    permitted: Permitted,
   ): Promise<readonly StoredMemory[]> {
     try {
       const found = await this.writer.similar(who, text, MANAGER_NEIGHBOURS, permitted);
@@ -60,8 +60,8 @@ export class MemoryManager {
     }
   }
 
-  private async run(request: ManagerRequest, permitted: () => boolean): Promise<ManagerResult> {
-    if (!permitted()) return { applied: [] };
+  private async run(request: ManagerRequest, permitted: Permitted): Promise<ManagerResult> {
+    if (!(await permitted())) return { applied: [] };
     const operations = await this.model.propose(request, permitted);
     const applied = await this.writer.apply(
       request.who,

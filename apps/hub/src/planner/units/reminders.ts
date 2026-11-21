@@ -5,7 +5,7 @@ import type {
   PlannerRingRow,
 } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { isoOf } from '../instants';
 import { expandOccurrences } from '../occurrences';
 import { loadWindow } from '../range';
@@ -45,7 +45,7 @@ function instant(milliseconds: number): Temporal.Instant {
 }
 
 function duesIn(
-  store: Store,
+  store: HostStore,
   profileId: string,
   from: Temporal.Instant,
   to: Temporal.Instant,
@@ -83,7 +83,7 @@ function duesIn(
 }
 
 function nextDue(
-  store: Store,
+  store: HostStore,
   { profileId, afterMs }: { readonly profileId: string; readonly afterMs: number },
 ): PlainDue | null {
   const reach = reachOf(store.plannerItems.list(profileId, { scope: 'involved' }));
@@ -97,7 +97,7 @@ function nextDue(
   }
 }
 
-function rung(store: Store, due: PlainDue): boolean {
+function rung(store: HostStore, due: PlainDue): boolean {
   const at = new Date(due.atMs).toISOString();
   return store.plannerRings
     .forRef('reminder', due.item.id)
@@ -105,7 +105,7 @@ function rung(store: Store, due: PlainDue): boolean {
 }
 
 function ringDues(
-  store: Store,
+  store: HostStore,
   {
     profileId,
     atMs,
@@ -139,7 +139,7 @@ function ringDues(
   return announced;
 }
 
-function handledUntil(store: Store, profileId: string): Map<string, number> {
+function handledUntil(store: HostStore, profileId: string): Map<string, number> {
   const lower = new Map<string, number>();
   for (const item of store.plannerItems.list(profileId, { scope: 'involved' })) {
     if (item.reminders.length === 0) continue;
@@ -156,7 +156,7 @@ function handledUntil(store: Store, profileId: string): Map<string, number> {
 }
 
 function settleOverdue(
-  store: Store,
+  store: HostStore,
   profileId: string,
   now: Temporal.Instant,
   reason: PlannerMissedReason,
@@ -192,7 +192,7 @@ export interface OverdueReminders {
 }
 
 function overdueReminders(
-  store: Store,
+  store: HostStore,
   { nowMs, reason }: { readonly nowMs: number; readonly reason: PlannerMissedReason },
 ): OverdueReminders {
   const now = instant(nowMs);

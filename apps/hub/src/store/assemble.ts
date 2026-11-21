@@ -1,5 +1,5 @@
 import type { Logger } from '@smarteverything/logging';
-import { costRolledUp } from '../assistant/cost-rollup';
+import { costRolledUp } from './cost-rollup';
 import { Ledger } from '../ledger/ledger';
 import { StoreContext } from './context';
 import type { ChangeFeed } from './feed';

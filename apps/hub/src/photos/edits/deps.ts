@@ -7,10 +7,7 @@ import type { ColourRunner } from './colour-runner';
 import type { Eraser } from './eraser';
 import type { PreviewDecoders } from '../pipeline/preview';
 
-export type EditStore = Pick<
-  Store,
-  'driveRoots' | 'driveItems' | 'driveGrants' | 'context' | 'host'
->;
+export type EditStore = Pick<Store, 'feed' | 'host'>;
 
 export interface EditDeps {
   readonly env: ChangeEnv;

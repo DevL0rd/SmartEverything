@@ -106,7 +106,7 @@ async function commit(
   ready: ReadyProgram,
 ): Promise<AutomationProgramReply> {
   const origin = originOf(env.tools, caller, ready.program);
-  const speech = speechPlan(env.store, caller, ready.program, ready.prior);
+  const speech = await speechPlan(env.store, caller, ready.program, ready.prior);
   const saved = await env.store.host.write('commitAutomationProgram', {
     kinds: pluginKindsOf(env.kinds),
     caller,

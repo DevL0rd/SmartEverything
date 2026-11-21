@@ -9,7 +9,7 @@ import {
 import type { BottleLogsRepository, StoredUv } from '../../store/repositories/bottle-logs';
 import type { BottleReadingsRepository } from '../../store/repositories/bottle-readings';
 import type { LocalDeviceEntry } from '../../store/repositories/local-devices';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { HomeClock } from './clock';
 import type { BottleEntryConfig } from './config';
 import type { DrinkItem } from './drinks';
@@ -19,7 +19,7 @@ import { batteryPointsOf } from './summary';
 import { dayTotalsOf, goalMlOf, hydrationRecords } from './water';
 
 interface EventContext {
-  readonly store: Store;
+  readonly store: HostStore;
   readonly readings: BottleReadingsRepository;
   readonly logs: BottleLogsRepository;
   readonly snapshots: Snapshots;

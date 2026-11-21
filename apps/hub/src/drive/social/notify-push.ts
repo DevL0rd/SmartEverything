@@ -5,7 +5,7 @@ import {
   type LiveChange,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import {
   NOTIFICATION_TARGET,
   notificationText,
@@ -61,7 +61,7 @@ export function driveAudience(
 }
 
 export function driveNotificationNames(
-  store: Pick<Store, 'driveItems' | 'profiles'>,
+  store: Pick<HostStore, 'driveItems' | 'profiles'>,
   notification: DriveNotification,
 ): NotificationNames {
   const item = store.driveItems.find(notification.itemId, notification.profileId);

@@ -33,7 +33,10 @@ const ENGINE_SELECTION = z.object({
 
 export class HubLocalBoundary {
   constructor(private readonly store: Store) {}
-  refusal(name: string, args: Readonly<Record<string, unknown>>): string | undefined {
+  async refusal(
+    name: string,
+    args: Readonly<Record<string, unknown>>,
+  ): Promise<string | undefined> {
     if (name === 'tool_call') {
       const call = CALL_TOOL_INPUT.parse(args);
       return this.refusal(call.name, call.arguments);
@@ -41,7 +44,7 @@ export class HubLocalBoundary {
     if (name === 'operation_call') {
       const operation = operationNamed(z.string().parse(args['operation']));
       if (nativeBridgeOperation(operation)) return NATIVE_BRIDGE_REFUSAL;
-      this.assistantTarget(
+      await this.assistantTarget(
         mcpOperationArea(API_ENDPOINTS[operation]),
         operation,
         RECORD.parse(args['arguments'] ?? {}),
@@ -49,31 +52,35 @@ export class HubLocalBoundary {
       return undefined;
     }
     if (reachesNativeBridge(name)) return NATIVE_BRIDGE_REFUSAL;
-    this.assistantTarget(MCP_TOOLS.find((tool) => tool.name === name)?.area, name, args);
+    await this.assistantTarget(MCP_TOOLS.find((tool) => tool.name === name)?.area, name, args);
     return undefined;
   }
-  private assistantTarget(
+  private async assistantTarget(
     area: string | undefined,
     name: string,
     args: Readonly<Record<string, unknown>>,
-  ): void {
+  ): Promise<void> {
     const authority = currentExecutionAuthority();
     if (area !== 'assistant' || authority === undefined) return;
     const operation = mcpToolOperation(name);
     if (MANAGED_RESOURCE_OPERATIONS.has(operation ?? name)) return;
     if (operation !== undefined && API_ENDPOINTS[operation].method === 'GET') return;
-    this.targets(args, authority);
+    await this.targets(args, authority);
   }
-  private targets(value: unknown, authority: ConversationAuthority): void {
+  private async targets(value: unknown, authority: ConversationAuthority): Promise<void> {
     const record = RECORD.safeParse(value);
     if (!record.success) return;
     for (const key of ['chatId', 'chat_id', 'parentId', 'parent_id']) {
       const id = record.data[key];
       if (typeof id === 'string')
-        admitExecutionTarget(this.store, this.store.aiChats.chat(id), authority);
+        admitExecutionTarget(
+          this.store,
+          await this.store.host.call('aiChats', 'chat', id),
+          authority,
+        );
     }
     if (record.data['engine'] !== undefined) this.engineTarget(record.data['engine']);
-    for (const item of Object.values(record.data)) this.targets(item, authority);
+    for (const item of Object.values(record.data)) await this.targets(item, authority);
   }
   private engineTarget(engine: unknown): void {
     const selection = ENGINE_SELECTION.parse(engine);

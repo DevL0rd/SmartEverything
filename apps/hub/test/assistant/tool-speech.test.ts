@@ -73,8 +73,8 @@ function ports(over: Partial<ToolProgressPorts> = {}): ToolProgressPorts {
 
 const responder = {
   ready: (): null => null,
-  chatForCall: (): string => chatId,
-  request: (): string => 'event-1',
+  chatForCall: (): Promise<string> => Promise.resolve(chatId),
+  request: (): Promise<string> => Promise.resolve('event-1'),
   callEnded: (): void => undefined,
 };
 
@@ -405,7 +405,7 @@ describe('progress during a call tool', () => {
         webSearch: (): boolean => false,
         window: (): null => null,
         record: (): void => undefined,
-        task: (): string => 'event',
+        task: (): Promise<string> => Promise.resolve('event'),
         run: (): Promise<ToolAnswer> =>
           new Promise((resolve) => {
             finish = (): void => {

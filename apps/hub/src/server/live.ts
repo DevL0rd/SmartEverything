@@ -1,4 +1,4 @@
-import { hears, readSubscribe } from './live-subscribe';
+import { hears, readSubscribe, watchMessageOf, liveRefused } from './live-subscribe';
 import { clientSocketsOf } from './client-sockets';
 import { LiveVoice } from './live-voice';
 import { LiveWatch } from './live-watch';
@@ -329,6 +329,9 @@ export class LiveHub {
     const text = Buffer.isBuffer(data) ? data.toString('utf8') : '';
     const read = readSubscribe(text);
     if (read instanceof z.ZodError) {
+      const watch = watchMessageOf(text);
+      this.send(connection, liveRefused(this.options.log, connection, watch, issuesOf(read)));
+      if (watch !== null) return;
       connection.stats.closedBy('hub:invalid_message');
       this.options.log.warn('live.message_invalid', {
         socketId: connection.id,
@@ -338,22 +341,15 @@ export class LiveHub {
         binary: !Buffer.isBuffer(data),
         closeCode: POLICY_VIOLATION,
       });
-      this.send(connection, {
-        type: 'refused',
-        error: {
-          code: 'invalid_request',
-          message: `The live message is not valid: ${issuesOf(read)}.`,
-        },
-      });
       connection.socket.close(POLICY_VIOLATION, 'invalid message');
       return;
     }
+    const socket = { socketId: connection.id };
     if (read.type === 'watch') this.watches.receive(connection, read);
-    else if (read.type === 'watch_automations') this.watches.receiveTrace(connection, read);
+    else if (read.type === 'watch_automations')
+      background(this.watches.receiveTrace(connection, read), 'live.trace_watch_failed', socket);
     else if (read.type === 'voice_levels_watch')
-      background(this.voice.watch(connection, read.call_id), 'live.voice_watch_failed', {
-        socketId: connection.id,
-      });
+      background(this.voice.watch(connection, read.call_id), 'live.voice_watch_failed', socket);
     else this.subscribe(connection, read);
   }
 

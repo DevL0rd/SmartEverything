@@ -23,7 +23,7 @@ import {
   phoneEventOf,
   valueHiddenByTier,
 } from '../phones/phone-visibility';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import {
   accessRequestSeenBy,
   driveChange,
@@ -193,13 +193,19 @@ function hiddenDevice(connection: Hearing, row: DeviceRow | null, store: LiveSto
 function hiddenValue(connection: Hearing, row: StateRow | HistoryRow, store: LiveStore): boolean {
   const device = store.devices.find(row.device_id);
   if (device === undefined) return false;
-  const tiers = otherPhoneTiers([device], phoneViewerOfClient(store, connection.client));
+  const tiers = otherPhoneTiers(
+    [device],
+    phoneViewerOfClient(store.profiles.activeOf(connection.client.id).id, connection.client),
+  );
   return valueHiddenByTier(tiers, row) || hiddenDevice(connection, device, store);
 }
 
 function eventShown(connection: Hearing, row: EventRow | null, store: LiveStore): EventRow | null {
   if (row === null) return row;
-  const viewer = phoneViewerOfClient(store, connection.client);
+  const viewer = phoneViewerOfClient(
+    store.profiles.activeOf(connection.client.id).id,
+    connection.client,
+  );
   if (!eventVisibleTo(viewer, row)) return null;
   const device = row.device_id === null ? undefined : store.devices.find(row.device_id);
   if (device === undefined) return row;
@@ -276,7 +282,7 @@ function hiddenChange(connection: Hearing, change: LiveChange, store: LiveStore)
 }
 
 export type LiveStore = Pick<
-  Store,
+  HostStore,
   | 'devices'
   | 'computerNodes'
   | 'profiles'

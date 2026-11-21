@@ -11,7 +11,9 @@ import type { LiveNotice } from './live';
 import type { LoggedConnection } from './live-log';
 import { allowedStreams, allowedTables } from './live-visibility';
 
-export type LivePrimer = (profileId: string) => readonly LiveNotice[];
+export type LivePrimer = (
+  profileId: string,
+) => readonly LiveNotice[] | Promise<readonly LiveNotice[]>;
 
 export type ClientPrimer = (client: ClientRow) => readonly LiveNotice[];
 
@@ -81,7 +83,7 @@ async function primeConnection(
   const profileId = await context.store.host.read('activeProfile', connection.client.id);
   for (const [stream, primer] of context.primers) {
     if (connection.streams.has(stream)) {
-      const notices = primer(profileId);
+      const notices = await primer(profileId);
       context.log.debug('live.primed', {
         socketId: connection.id,
         clientId: connection.client.id,

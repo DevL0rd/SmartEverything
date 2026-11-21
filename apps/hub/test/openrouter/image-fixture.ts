@@ -102,7 +102,7 @@ export class MemoryFiles extends AssistantFiles {
   ) {
     super({
       layout: rig.layout,
-      chat: rig.store.assistantChat,
+      store: rig.store,
       attachments: rig.store.live.attachments,
       now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
     });
@@ -177,7 +177,6 @@ function serviceOf(
   });
   const service = new ImageOperationService({
     store: rig.store,
-    repository: rig.store.imageOperations,
     files: parts.files,
     catalog,
     provider: new OpenRouterImageProvider(parts.client),
@@ -211,7 +210,7 @@ export function imageRig(
     failures,
   });
   const { profileId, chatId } = newChat(rig);
-  const actor = { profileId, key: 'actor', authorize: (): void => undefined };
+  const actor = { profileId, key: 'actor', authorize: (): Promise<void> => Promise.resolve() };
   return {
     service,
     catalog,

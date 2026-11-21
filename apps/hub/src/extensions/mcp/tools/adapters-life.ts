@@ -16,7 +16,7 @@ const DAY_MS = 86_400_000;
 const MOMENT_FIELDS = { from: true, to: true } as const;
 
 function dayText(context: ToolContext, at: Date): string {
-  const clock = localClock(at, context.store.settings.read().time_zone);
+  const clock = localClock(at, context.store.live.home.settings.read().time_zone);
   const two = (value: number): string => String(value).padStart(2, '0');
   return `${String(clock.year)}-${two(clock.month)}-${two(clock.day)}`;
 }

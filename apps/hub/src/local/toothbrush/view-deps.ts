@@ -14,7 +14,7 @@ export interface ViewDeps {
   readonly fleet: Fleet;
   readonly clock: HomeClock;
   readonly holder: (device: DeviceRow) => WatchBridge | null;
-  readonly series: (deviceId: string, capability: string) => MetricSeries;
+  readonly series: (deviceId: string, capability: string) => Promise<MetricSeries>;
   readonly now: () => Date;
 }
 

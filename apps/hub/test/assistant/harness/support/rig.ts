@@ -41,7 +41,9 @@ const HELLO: NodeHello = {
   permissions: [],
 };
 
-type HostScript = (request: HarnessRuntimeRequest) => HarnessRuntimeReceipt | undefined;
+type HostScript = (
+  request: HarnessRuntimeRequest,
+) => HarnessRuntimeReceipt | undefined | Promise<HarnessRuntimeReceipt | undefined>;
 
 export interface FakeHost {
   readonly target: AiHarnessTarget;
@@ -143,6 +145,7 @@ export async function harnessRig(options: RigOptions = {}): Promise<Rig> {
     layout: hubLayout(opened.directory, {}),
     clock: systemClock,
   });
+  await service.start();
   const device = computerDevice(store);
   const calls: string[] = [];
   const hub = register(service, { kind: 'server' }, 'hub', calls);
@@ -158,7 +161,7 @@ export async function harnessRig(options: RigOptions = {}): Promise<Rig> {
     hub,
     desk,
     calls,
-    newChat: (target) => newChat(service, profileId, selection(route), target),
+    newChat: (target) => newChat(store, profileId, selection(route), target),
     close: () => opened.close(),
   };
 }
@@ -239,27 +242,27 @@ function register(
     actor: { kind: target.kind === 'server' ? 'server' : 'node', id: randomUUID() },
     host,
     hasSession: (id, epoch) => fake.held.get(id) === epoch,
-    execute: (_id, request): Promise<HarnessRuntimeReceipt> => {
+    execute: async (_id, request): Promise<HarnessRuntimeReceipt> => {
       fake.requests.push(request);
       calls.push(`${label}:${request.kind}`);
-      const receipt = fake.script?.(request) ?? acknowledge(request);
+      const receipt = (await fake.script?.(request)) ?? acknowledge(request);
       if (request.kind === 'open' && receipt.state === 'ready')
         fake.held.set(request.claim.session_id, request.claim.epoch);
       if (request.kind === 'close' && receipt.state === 'closed')
         fake.held.delete(request.session_id);
-      return Promise.resolve(receipt);
+      return receipt;
     },
   });
   return fake;
 }
 
 function newChat(
-  service: HarnessService,
+  store: TestStore['store'],
   profileId: string,
   route: AiModelRouteSelection,
   target: AiHarnessTarget,
 ): AiChatRow {
-  return service.store.aiChats.create({
+  return store.aiChats.create({
     profileId,
     kind: 'chat',
     title: 'Switching chat',

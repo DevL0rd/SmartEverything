@@ -30,7 +30,7 @@ export async function visibleTools(
   tools: readonly Tool[],
   context: ToolContext,
 ): Promise<readonly Tool[]> {
-  const off = switchedOffTools(context.store.settings.read().mcp_disabled_tools);
+  const off = switchedOffTools(context.store.live.home.settings.read().mcp_disabled_tools);
   const readOnly = readOnlyCaller(context);
   const updates = (await ownerUpdateRequester(context)) !== null;
   return tools.filter(

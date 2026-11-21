@@ -157,7 +157,7 @@ describe('Conversation watchdog', () => {
           webSearch: (): boolean => false,
           window: (): null => null,
           record: (): void => undefined,
-          task: (): string => 'event',
+          task: (): Promise<string> => Promise.resolve('event'),
           run: (): Promise<never> => Promise.reject(new Error('no tools here')),
           ended: (reason, detail): void => {
             endings.push(`${reason}: ${String(detail)}`);
@@ -229,7 +229,7 @@ describe('Conversation idle timeout', () => {
         webSearch: (): boolean => false,
         window: (): null => null,
         record: (): void => undefined,
-        task: (): string => 'event',
+        task: (): Promise<string> => Promise.resolve('event'),
         run: (): Promise<never> =>
           new Promise((resolve) => {
             release = resolve;

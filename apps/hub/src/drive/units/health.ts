@@ -1,6 +1,6 @@
 import type { DriveBackupReport, DriveBackupReportInput, DriveRoot } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { inList } from '../../store/sql';
 import { driveAccess, type DriveActor } from '../access';
@@ -17,7 +17,10 @@ export interface DriveHealthFigures {
   readonly corrupt: number;
 }
 
-function counts(store: Pick<Store, 'context'>, ids: readonly string[]): z.output<typeof COUNTS> {
+function counts(
+  store: Pick<HostStore, 'context'>,
+  ids: readonly string[],
+): z.output<typeof COUNTS> {
   const filter = inList('root_id', 'roots', ids);
   return (
     store.context.sql.get(
@@ -30,7 +33,7 @@ function counts(store: Pick<Store, 'context'>, ids: readonly string[]): z.output
 }
 
 function verified(
-  store: Pick<Store, 'context'>,
+  store: Pick<HostStore, 'context'>,
   ids: readonly string[],
 ): z.output<typeof VERIFIED> {
   const filter = inList('s.root_id', 'roots', ids);
@@ -46,7 +49,7 @@ function verified(
 }
 
 export function healthFigures(
-  store: Pick<Store, 'context' | 'driveRoots'>,
+  store: Pick<HostStore, 'context' | 'driveRoots'>,
   input: { readonly actor: DriveActor },
 ): DriveHealthFigures {
   const roots = store.driveRoots
@@ -58,7 +61,7 @@ export function healthFigures(
 }
 
 export function backupReport(
-  store: Pick<Store, 'driveBackups' | 'driveRoots'>,
+  store: Pick<HostStore, 'driveBackups' | 'driveRoots'>,
   input: DriveBackupReportInput,
 ): DriveBackupReport {
   const report = store.driveBackups.record(input);

@@ -5,7 +5,7 @@ import {
   type HealthRecord,
   type ProfileRow,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 type HydrationRecord = Extract<HealthRecord, { type: 'Hydration' }>;
 
@@ -33,7 +33,7 @@ function waterSourceOf(record: Pick<HydrationRecord, 'sourceApp'>): WaterSource 
 }
 
 export function hydrationRecords(
-  store: Pick<Store, 'health'>,
+  store: Pick<HostStore, 'health'>,
   profileId: string,
   window: { readonly from: string; readonly to: string },
 ): HydrationRecord[] {

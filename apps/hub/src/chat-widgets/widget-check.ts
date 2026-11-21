@@ -1,6 +1,6 @@
 import { isCamera, type ChatWidget, type HealthMetric } from '@smarteverything/domain';
 import { StoreNotFoundError } from '../store/context';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { boardTypes } from './boards';
 import { DAY_MS } from '../metrics/minute';
 
@@ -22,7 +22,7 @@ function dayOf(at: number, timeZone: string): string {
 }
 
 function hasDaily(
-  store: Store,
+  store: HostStore,
   viewer: WidgetViewer,
   metrics: readonly HealthMetric[],
   days: number,
@@ -38,9 +38,9 @@ type IdWidget = Exclude<
   { readonly kind: 'page_link' | 'device' | 'camera' | 'photos' }
 >;
 
-type Exists = (store: Store, id: string) => boolean;
+type Exists = (store: HostStore, id: string) => boolean;
 
-function listed(rows: (store: Store) => readonly { readonly id: string }[]): Exists {
+function listed(rows: (store: HostStore) => readonly { readonly id: string }[]): Exists {
   return (store, id) => rows(store).some((row) => row.id === id);
 }
 
@@ -57,7 +57,7 @@ function isRowWidget(widget: ChatWidget): widget is IdWidget {
 }
 
 function deviceReason(
-  store: Store,
+  store: HostStore,
   widget: Extract<ChatWidget, { kind: 'device' | 'camera' }>,
 ): string | null {
   const device = store.devices.find(widget.id);
@@ -70,7 +70,7 @@ function deviceReason(
   return null;
 }
 
-function chatExists(store: Store, id: string): boolean {
+function chatExists(store: HostStore, id: string): boolean {
   try {
     return store.aiChats.chat(id).archived_at === null;
   } catch (cause) {
@@ -81,7 +81,7 @@ function chatExists(store: Store, id: string): boolean {
   }
 }
 
-function pageKnown(store: Store, link: Extract<ChatWidget, { kind: 'page_link' }>): boolean {
+function pageKnown(store: HostStore, link: Extract<ChatWidget, { kind: 'page_link' }>): boolean {
   const { id } = link;
   switch (link.page) {
     case 'costs':
@@ -95,14 +95,14 @@ function pageKnown(store: Store, link: Extract<ChatWidget, { kind: 'page_link' }
   }
 }
 
-function boardReason(store: Store, type: string): string | null {
-  const shown = boardTypes(store);
+function boardReason(store: HostStore, type: string): string | null {
+  const shown = boardTypes(store.plugins.list());
   return shown.includes(type)
     ? null
     : `There is no board ${type}; boards of enabled plugins: ${shown.join(', ') || 'none'}`;
 }
 
-function dataReason(store: Store, widget: ChatWidget, viewer: WidgetViewer): string | null {
+function dataReason(store: HostStore, widget: ChatWidget, viewer: WidgetViewer): string | null {
   if (widget.kind === 'health') {
     return hasDaily(store, viewer, [widget.metric], HEALTH_LOOKBACK_DAYS)
       ? null
@@ -118,7 +118,7 @@ function dataReason(store: Store, widget: ChatWidget, viewer: WidgetViewer): str
 
 const PHOTOS_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-function photosKnown(store: Store, widget: Extract<ChatWidget, { kind: 'photos' }>): boolean {
+function photosKnown(store: HostStore, widget: Extract<ChatWidget, { kind: 'photos' }>): boolean {
   switch (widget.view) {
     case 'item':
       return store.driveItems.find(widget.id, null) !== undefined;
@@ -130,13 +130,13 @@ function photosKnown(store: Store, widget: Extract<ChatWidget, { kind: 'photos' 
 }
 
 function photosReason(
-  store: Store,
+  store: HostStore,
   widget: Extract<ChatWidget, { kind: 'photos' }>,
 ): string | null {
   return photosKnown(store, widget) ? null : `There is no photos ${widget.view} ${widget.id}`;
 }
 
-function targetReason(store: Store, widget: ChatWidget): string | null {
+function targetReason(store: HostStore, widget: ChatWidget): string | null {
   if (widget.kind === 'photos') {
     return photosReason(store, widget);
   }
@@ -150,7 +150,7 @@ function targetReason(store: Store, widget: ChatWidget): string | null {
 }
 
 export function widgetRejection(
-  store: Store,
+  store: HostStore,
   widget: ChatWidget,
   viewer: WidgetViewer,
 ): string | null {

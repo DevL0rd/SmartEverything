@@ -14,7 +14,7 @@ let projects: ProjectFilesService;
 beforeEach(async () => {
   opened = await testStore();
   layout = layoutFromNames(opened.directory, V1_NAMES, {});
-  projects = new ProjectFilesService(layout, opened.store.aiChats);
+  projects = new ProjectFilesService(layout, opened.store.live.chats);
 });
 afterEach(async () => {
   await opened.close();

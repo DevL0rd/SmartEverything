@@ -20,9 +20,14 @@ afterEach(async () => {
 function pictures(snapshot: () => Promise<Uint8Array>): StoredPictures {
   return new StoredPictures({
     snapshot,
-    recordings: home.test.store.cameras,
+    recordings: {
+      addRecording: (input) => home.test.store.host.call('cameras', 'addRecording', input),
+      recording: (id) => home.test.store.host.call('cameras', 'recording', id),
+    },
     recordingPath: (path) => join(home.test.directory, 'recordings', path),
-    attachments: home.test.store.assistantChat,
+    attachments: {
+      attachment: (id) => home.test.store.host.call('assistantChat', 'attachment', id),
+    },
     attachmentPath: (file) =>
       home.test.layout.person(file.profile_id).attachment(file.id, file.name),
     now: () => home.clock.current,

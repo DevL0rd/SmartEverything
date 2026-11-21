@@ -102,7 +102,7 @@ function viewOf(
 ): ConsentView {
   return {
     requestId: pending.id,
-    homeName: options.store.settings.read().home_name,
+    homeName: options.store.live.home.settings.read().home_name,
     clientName: client.row.name,
     clientUri: client.row.uri,
     redirectUri: pending.redirectUri,

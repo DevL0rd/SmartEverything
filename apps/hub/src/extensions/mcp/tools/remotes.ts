@@ -128,7 +128,7 @@ export const REMOTE_TOOLS: readonly Tool[] = [
     annotations: READS,
     run: async (context, input) => {
       const { store } = context;
-      const states = store.settings.read().ir_remotes;
+      const states = store.live.home.settings.read().ir_remotes;
       return {
         structured: {
           remotes: (await remotes(store, deviceScopeOfActor(context)))

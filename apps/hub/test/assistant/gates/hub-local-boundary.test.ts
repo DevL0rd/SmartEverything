@@ -5,7 +5,8 @@ import { toolAdmission } from '../../../src/ai-tools/tool-admission';
 import { ToolHub } from '../../../src/ai-tools/tool-hub';
 import type { HubTool, HubToolResult, ToolSource } from '../../../src/ai-tools/hub-tool';
 import { HarnessHubTools } from '../../../src/harness/tools';
-import { eventAuthority, withExecutionAuthority } from '../../../src/assistant/turn-authority';
+import { withExecutionAuthority, authorityScope } from '../../../src/assistant/turn-authority';
+import { issueEventAuthority } from '../../../src/assistant/event-authority-issue';
 import { describeHub } from '../../../src/computers/computer-device';
 import type { ConversationAuthority } from '../../../src/harness/authority-contract';
 import { HubLocalBoundary } from '../../../src/harness/hub-local-boundary';
@@ -98,14 +99,16 @@ async function deskSession(): Promise<string> {
     client_id: rig.clientId,
     text: 'turn off the office',
   });
-  eventAuthority(store, event);
-  return (
+  issueEventAuthority(store, event, authorityScope());
+  const id = (
     await rig.service.prepare(rig.owner, chat.id, {
       kind: 'trigger',
       profileId: rig.owner.profileId,
       grantId: event.id,
     })
   ).claim.session_id;
+  await rig.service.sessions.load(id);
+  return id;
 }
 
 function hubChat(): ConversationAuthority {
@@ -120,7 +123,7 @@ function hubChat(): ConversationAuthority {
     client_id: rig.clientId,
     text: 'hello',
   });
-  return eventAuthority(store, event);
+  return issueEventAuthority(store, event, authorityScope());
 }
 
 function boundary(local?: string): HubLocalBoundary {
@@ -164,7 +167,8 @@ describe('a hub chat controlling devices that include a computer', () => {
   it('admits a tool call from a hub conversation through the boundary once', async () => {
     boundary(hubMachine);
     const refusal = vi.spyOn(HubLocalBoundary.prototype, 'refusal');
-    await hubTools(controlDevices([])).authorizeCall(await deskSession(), 'device_control', {});
+    const tools = hubTools(controlDevices([]));
+    await tools.authorizeCall(tools.session(await deskSession()), 'device_control', {});
     expect(refusal).toHaveBeenCalledTimes(1);
   });
 
@@ -190,45 +194,45 @@ describe('a hub chat controlling devices that include a computer', () => {
 });
 
 describe('the hub-local native bridge', () => {
-  it('is refused for hub conversations and hidden from their tool list', () => {
+  it('is refused for hub conversations and hidden from their tool list', async () => {
     const subject = boundary();
     expect(isMcpToolName('claude_read')).toBe(false);
     expect(isMcpToolName('claude_control')).toBe(false);
     expect(
-      subject.refusal('operation_call', { operation: 'readClaudeStatus', arguments: {} }),
+      await subject.refusal('operation_call', { operation: 'readClaudeStatus', arguments: {} }),
     ).toMatch(/native desktop session/);
   });
 
-  it('leaves Claude CLI tools on other computers available', () => {
+  it('leaves Claude CLI tools on other computers available', async () => {
     const subject = boundary();
     expect(reachesNativeBridge('read_claude_cli')).toBe(false);
     expect(reachesNativeBridge('claude_start')).toBe(false);
-    expect(subject.refusal('read_claude_cli', { view: 'sessions', deviceId: desk })).toBe(
+    expect(await subject.refusal('read_claude_cli', { view: 'sessions', deviceId: desk })).toBe(
       undefined,
     );
   });
 });
 
 describe('starting native work from a hub chat', () => {
-  it('names the problem as a forbidden error when it targets the hub machine', () => {
+  it('names the problem as a forbidden error when it targets the hub machine', async () => {
     const subject = boundary(desk);
     const create = {
       operation: 'createAiChat',
       arguments: { body: { engine: { kind: 'claude', device_id: desk } } },
     };
-    expect(() =>
+    await expect(
       withExecutionAuthority(hubChat(), () => subject.refusal('operation_call', create)),
-    ).toThrow(/pick another computer/);
+    ).rejects.toThrow(/pick another computer/);
   });
 
-  it('allows another computer', () => {
+  it('allows another computer', async () => {
     const subject = boundary(hubMachine);
     const create = {
       operation: 'createAiChat',
       arguments: { body: { engine: { kind: 'claude', device_id: desk } } },
     };
-    expect(withExecutionAuthority(hubChat(), () => subject.refusal('operation_call', create))).toBe(
-      undefined,
-    );
+    expect(
+      await withExecutionAuthority(hubChat(), () => subject.refusal('operation_call', create)),
+    ).toBe(undefined);
   });
 });

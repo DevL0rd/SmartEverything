@@ -74,13 +74,17 @@ export class DriveSyncRetention {
     });
   }
 
-  close(): void {
+  async close(): Promise<void> {
     this.closed = true;
     const worker = this.worker;
     this.worker = null;
-    worker?.terminate().catch((cause: unknown) => {
+    if (worker === null) return;
+    try {
+      await worker.terminate();
+    } catch (cause) {
       this.options.log.error('store.sync_op_retention_terminate_failed', cause);
-    });
+      throw cause;
+    }
   }
 
   private started(): Worker {

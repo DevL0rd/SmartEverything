@@ -40,7 +40,7 @@ export async function updateChat(
   change: AiChatChangeRequest,
 ): Promise<AiChatRow> {
   const { chats, engines, selections } = ports;
-  const before = chats.own(owner, chatId);
+  const before = await chats.own(owner, chatId);
   admitChatExecution(before);
   if (change.engine !== undefined) admitChatEngineFamily(before, change.engine.kind);
   const selected = selectChatEngineChange(
@@ -63,8 +63,8 @@ export async function updateChat(
     );
   await bindSelectedEngine(ports, owner, before, selected.engine);
   await closeReplacedHarness(engines, owner, before, selected);
-  ports.delegation.assertChange(before, selected);
-  const chat = chats.update(owner, chatId, selected);
+  await ports.delegation.assertChange(before, selected);
+  const chat = await chats.update(owner, chatId, selected);
   log.info('chat.updated', {
     chatId,
     profileId: owner.profileId,

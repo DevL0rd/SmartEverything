@@ -18,7 +18,6 @@ import {
   resolveConflict,
   type ConflictEnv,
 } from '../../src/drive/conflicts';
-import { itemFeed, rootFeed, staleCursor } from '../../src/drive/feed';
 import { refusalReason } from '../../src/drive/service-write-support';
 import { StoreConflictError } from '../../src/store/sql';
 import { recoverIntents, type DriveWriteRoot } from '../../src/drive/intents';
@@ -75,7 +74,6 @@ function env(now: () => Date = () => START): ChangeEnv {
 function conflictEnv(now: () => Date = () => START): ConflictEnv {
   return {
     ...env(now),
-    conflicts: opened.store.driveConflicts,
   };
 }
 
@@ -525,26 +523,6 @@ describe('conflicts', () => {
     await expect(
       resolveConflict(conflictEnv(), { conflictId: randomUUID(), resolution: 'keep_hub' }, actor()),
     ).rejects.toMatchObject({ failure: 'unknown' });
-  });
-});
-
-describe('the feed page', () => {
-  it('carries the root index id and a cursor, and spots a stale index id', async () => {
-    const first = await write('a', 'a.txt');
-    await write('b', 'b.txt');
-    const page = rootFeed(opened.store, root.id, 0, 10);
-    expect(page.indexId).toBe(`index-${root.id}`);
-    expect(page.rows).toHaveLength(2);
-    expect(page.cursor).toBe(page.rows[1]?.seq);
-    expect(rootFeed(opened.store, root.id, page.cursor, 10)).toMatchObject({
-      rows: [],
-      cursor: page.cursor,
-    });
-    expect(
-      itemFeed(opened.store, { rootId: root.id, itemId: first.item.id }, 0, 10).rows,
-    ).toHaveLength(1);
-    expect(staleCursor(opened.store, root.id, 'old-index')).toBe(true);
-    expect(staleCursor(opened.store, root.id, page.indexId)).toBe(false);
   });
 });
 

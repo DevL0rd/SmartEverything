@@ -18,6 +18,7 @@ import {
   type Parsed,
 } from './manager-schema';
 import type { MemoryPrincipal } from './principal';
+import type { Permitted } from './writer';
 
 const log = new Logger('hub.memory');
 
@@ -65,7 +66,7 @@ export class ManagerModel {
 
   async propose(
     request: ManagerRequest,
-    permitted: () => boolean = () => true,
+    permitted: Permitted = () => true,
   ): Promise<readonly MemoryOperation[]> {
     const operations = await this.converse(
       { chatId: request.chatId, system: MANAGER_SYSTEM, input: await this.inputOf(request) },
@@ -82,7 +83,7 @@ export class ManagerModel {
     chatId: string,
     spread: ReviewSpread,
     memories: readonly StoredMemory[],
-    permitted: () => boolean = () => true,
+    permitted: Permitted = () => true,
   ): Promise<MemoryReviewAnswer> {
     const answer = await this.converse(
       { chatId, system: REVIEW_SYSTEM, input: reviewInput(this.parts.now(), spread, memories) },
@@ -95,13 +96,13 @@ export class ManagerModel {
   private async converse<T>(
     request: { readonly chatId: string; readonly system: string; readonly input: string },
     read: (raw: string) => Parsed<T>,
-    permitted: () => boolean,
+    permitted: Permitted,
   ): Promise<T | null> {
     const model = this.modelId();
     let invalid: string | null = null;
     let failure: unknown = null;
     for (let attempt = 0; attempt < MANAGER_ATTEMPTS; attempt += 1) {
-      if (!permitted()) return null;
+      if (!(await permitted())) return null;
       try {
         const raw = await this.parts.complete({
           chatId: request.chatId,
@@ -118,10 +119,10 @@ export class ManagerModel {
       } catch (cause) {
         failure = cause;
       }
-      if (!permitted()) return null;
+      if (!(await permitted())) return null;
       if (attempt < MANAGER_ATTEMPTS - 1) await this.parts.sleep(this.wait(attempt, failure));
     }
-    if (!permitted()) return null;
+    if (!(await permitted())) return null;
     log.error('memory.manager_failed', failure, { attempts: MANAGER_ATTEMPTS });
     throw new ManagerFailedError(`The memory manager failed: ${messageOf(failure)}`);
   }

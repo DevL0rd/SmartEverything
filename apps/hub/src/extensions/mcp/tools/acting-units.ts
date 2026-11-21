@@ -1,7 +1,7 @@
 import type { ClientRow, McpToolName, SettingsRow } from '@smarteverything/domain';
-import { ownedAttachment } from '../../../assistant/chat-directory';
+import { ownedAttachment } from '../../../assistant/chat-ownership';
 import type { ChatOwner } from '../../../assistant/chat-directory';
-import { effectiveClientById } from '../../../server/person-access';
+import { effectiveClientById } from '../../../server/person-access-units';
 import type { StoredAttachment } from '../../../store/repositories/assistant-chat';
 import { storeUnit } from '../../../store/host/unit';
 

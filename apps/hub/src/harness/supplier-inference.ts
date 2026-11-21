@@ -10,7 +10,7 @@ import type { LocalHarnessPersistence } from './local-persistence';
 import type { HarnessConnection } from './directory';
 import type { HarnessGrant } from './grant';
 
-export function admitSupplierInference(
+export async function admitSupplierInference(
   service: HarnessService,
   binding: {
     readonly device_id: string;
@@ -18,7 +18,7 @@ export function admitSupplierInference(
     readonly runtime_instance: string;
   },
   request: SubscriptionInferenceRequest,
-): void {
+): Promise<void> {
   const supplier = service.directory.bound(
     binding.device_id,
     binding.generation,
@@ -37,9 +37,9 @@ export function admitSupplierInference(
     return;
   }
   admitConsumerBinding(service, request);
-  admitExecutionWriter(service, request.claim, current, request.options);
+  await admitExecutionWriter(service, request.claim, current, request.options);
 }
-export function authorizeHubSupplier(
+export async function authorizeHubSupplier(
   service: HarnessService,
   persistence: LocalHarnessPersistence,
   route: AiModelRoute,
@@ -53,21 +53,21 @@ export function authorizeHubSupplier(
       'forbidden',
       'Hub subscription inference requires its canonical server writer.',
     );
-  admitExecutionWriter(service, claim, route, {
+  await admitExecutionWriter(service, claim, route, {
     provider: options.provider,
     model: options.model,
     sessionId: options.sessionId,
   });
-  return Promise.resolve(claim);
+  return claim;
 }
-function admitExecutionWriter(
+async function admitExecutionWriter(
   service: HarnessService,
   claim: DshWriterClaim,
   route: AiModelRoute,
   options: { readonly provider: string; readonly model: string; readonly sessionId: string },
-): void {
+): Promise<void> {
   const { provider, model, sessionId } = options;
-  const grant = service.storage.grant(sessionId);
+  const grant = await service.storage.grant(sessionId);
   const connection = service.directory.get(grant.target);
   const execution = connection.host;
   admitExecutionConnection(service, connection, grant);
@@ -89,7 +89,12 @@ function admitExecutionWriter(
     );
   if (selected.id !== route.id)
     throw new ApiError('forbidden', 'This selected route differs from the executing route.');
-  service.store.dshSessions.verifyWriter(claim, service.hostPrincipal(grant.profile_id, execution));
+  await service.store.host.call(
+    'dshSessions',
+    'verifyWriter',
+    claim,
+    service.hostPrincipal(grant.profile_id, execution),
+  );
 }
 export function subscriptionInferenceConnection(
   service: HarnessService,
@@ -150,7 +155,7 @@ function admitComputerConsumer(
     connection.actor.id !== deviceId ||
     (host.platform !== 'linux' && host.platform !== 'macos') ||
     connection.execute === undefined ||
-    service.store.devices.byId(deviceId).kind !== 'computer'
+    service.store.live.home.devices.byId(deviceId).kind !== 'computer'
   )
     throw new ApiError(
       'forbidden',

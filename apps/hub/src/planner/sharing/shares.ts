@@ -1,8 +1,8 @@
 import { ApiError, type PlannerCollectionRow } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export function requireShareable(
-  store: Pick<Store, 'plannerCollections'>,
+  store: Pick<HostStore, 'plannerCollections'>,
   profileId: string,
   collectionId: string,
 ): PlannerCollectionRow {
@@ -14,7 +14,7 @@ export function requireShareable(
 }
 
 export function requireSharee(
-  store: Pick<Store, 'profiles' | 'personAccess'>,
+  store: Pick<HostStore, 'profiles' | 'personAccess'>,
   collection: PlannerCollectionRow,
   personId: string,
 ): void {

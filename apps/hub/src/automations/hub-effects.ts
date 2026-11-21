@@ -107,7 +107,7 @@ function reachTargets(store: Store, request: z.infer<typeof SPEAK>): ReachTarget
   const devices: ReachTarget[] =
     request.target === null || request.target === undefined
       ? []
-      : resolveTarget(store, request.target).map((device) => ({
+      : resolveTarget(store.live.home, request.target).map((device) => ({
           kind: 'device',
           deviceId: device.id,
         }));

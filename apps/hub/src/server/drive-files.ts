@@ -3,31 +3,24 @@ import { ApiError, type ComputerNodeRow, type DriveItem } from '@smarteverything
 import { Logger } from '@smarteverything/logging';
 import { DrivePathError, openResolved, resolveInRoot } from '../drive/paths';
 import { isFileItem, type FileItem } from '../drive/file-item';
-import {
-  canRead,
-  inLockedFolder,
-  itemAccess,
-  type DriveActor,
-  type ItemAccess,
-} from '../drive/access';
+import type { DriveActor, ItemAccess } from '../drive/access';
 import { mayExportItem, requireExport } from '../drive/sharing/export-guard';
 import { isLockedLink, verifyLockedLink } from '../photos/organise/locked-links';
-import { PHOTO_VISIBLE } from '../photos/membership';
 import type { Store } from '../store/store';
-import { z } from 'zod';
 import { serveBytes } from './file-serve';
 import { bearerOf } from './http';
 import type { MediaLinks, VerifiedDriveLink } from './media-links';
+import type { ReadableItem } from './drive-serving-units';
 
 const log = new Logger('hub.drive');
 
 export interface DriveFileNodes {
   readonly authenticate: (token: string | null) => Promise<ComputerNodeRow>;
-  readonly actorOf: (node: ComputerNodeRow) => DriveActor;
+  readonly actorOf: (node: ComputerNodeRow) => Promise<DriveActor>;
 }
 
 export interface DriveFiles {
-  readonly store: Pick<Store, 'context' | 'driveRoots' | 'driveItems' | 'driveGrants' | 'host'>;
+  readonly store: Pick<Store, 'host'>;
   readonly links: MediaLinks;
   readonly nodes: DriveFileNodes;
   readonly now: () => Date;
@@ -58,39 +51,20 @@ function noBytes(item: DriveItem): ApiError {
   );
 }
 
-const SHOWN = z.strictObject({ id: z.string() });
-
-function reach(
-  files: DriveFiles,
-  actor: DriveActor,
-  root: Parameters<typeof itemAccess>[2],
-  item: DriveItem,
-): ItemAccess {
-  const access = itemAccess(files.store, actor, root, item);
-  if (canRead(access)) return access;
-  const shown = files.store.context.sql.get(
-    SHOWN,
-    `select i.id from drive_items i join drive_roots r on r.id = i.root_id
-      where i.id = $itemId and ${PHOTO_VISIBLE}`,
-    { itemId: item.id, profile: actor.profileId },
-  );
-  return shown === undefined ? access : 'view';
-}
-
-function readable(
+async function readable(
   files: DriveFiles,
   itemId: string,
   actor: DriveActor | null,
-): (Omit<Located, 'item'> & { readonly item: DriveItem }) | null {
-  const item = files.store.driveItems.find(itemId, actor?.profileId ?? null);
-  const root = item === undefined ? undefined : files.store.driveRoots.find(item.rootId);
-  if (item === undefined || root === undefined || inLockedFolder(item)) return null;
-  const access = actor === null ? null : reach(files, actor, root, item);
-  return access !== null && !canRead(access) ? null : { item, rootPath: root.path, access };
+): Promise<ReadableItem | null> {
+  return files.store.host.read('driveReadable', { itemId, actor });
 }
 
-function locate(files: DriveFiles, itemId: string, actor: DriveActor | null): Located {
-  const located = readable(files, itemId, actor);
+async function locate(
+  files: DriveFiles,
+  itemId: string,
+  actor: DriveActor | null,
+): Promise<Located> {
+  const located = await readable(files, itemId, actor);
   if (located === null) throw hidden();
   if (!isFileItem(located.item)) throw noBytes(located.item);
   return { ...located, item: located.item };
@@ -147,8 +121,8 @@ async function serveByNode(
   token: string,
   exchange: DriveExchange,
 ): Promise<void> {
-  const actor = files.nodes.actorOf(await files.nodes.authenticate(token));
-  const located = locate(files, itemId, actor);
+  const actor = await files.nodes.actorOf(await files.nodes.authenticate(token));
+  const located = await locate(files, itemId, actor);
   if (located.access !== null) requireExport(located.access, located.item);
   await serveLocated(located, { cacheControl: 'private, no-cache', download: false }, exchange);
 }
@@ -161,14 +135,14 @@ interface Signed {
 async function lockedSigned(files: DriveFiles, itemId: string, url: URL): Promise<Signed> {
   const { item, link } = await verifyLockedLink(files.store.host, files.links, url, itemId);
   if (!isFileItem(item)) throw noBytes(item);
-  const root = files.store.driveRoots.byId(item.rootId);
+  const root = await files.store.host.call('driveRoots', 'byId', item.rootId);
   return { link, located: { item, rootPath: root.path, access: null } };
 }
 
 async function signed(files: DriveFiles, itemId: string, url: URL): Promise<Signed> {
   if (isLockedLink(url)) return await lockedSigned(files, itemId, url);
   const link = files.links.verifyDrive(url);
-  return { link, located: locate(files, itemId, null) };
+  return { link, located: await locate(files, itemId, null) };
 }
 
 async function serveBySignature(
@@ -202,32 +176,32 @@ export async function serveDriveFile(
     : serveByNode(files, itemId, token, exchange));
 }
 
-export function readableItem(
+export async function readableItem(
   files: DriveFiles,
   actor: DriveActor,
   itemId: string,
-): { readonly item: DriveItem; readonly access: ItemAccess } {
-  const located = readable(files, itemId, actor);
+): Promise<{ readonly item: DriveItem; readonly access: ItemAccess }> {
+  const located = await readable(files, itemId, actor);
   const access = located?.access ?? null;
   if (located === null || access === null) throw hidden();
   return { item: located.item, access };
 }
 
-export function driveFileLink(
+export async function driveFileLink(
   files: DriveFiles,
   actor: DriveActor,
   itemId: string,
-): ReturnType<MediaLinks['driveFile']> {
-  const { item } = locate(files, itemId, actor);
+): Promise<ReturnType<MediaLinks['driveFile']>> {
+  const { item } = await locate(files, itemId, actor);
   return files.links.driveFile(item.id, item.rev);
 }
 
-export function driveDownloadLink(
+export async function driveDownloadLink(
   files: DriveFiles,
   actor: DriveActor,
   itemId: string,
-): ReturnType<MediaLinks['driveDownload']> | null {
-  const { item, access } = locate(files, itemId, actor);
+): Promise<ReturnType<MediaLinks['driveDownload']> | null> {
+  const { item, access } = await locate(files, itemId, actor);
   return access !== null && !mayExportItem(access, item)
     ? null
     : files.links.driveDownload(item.id, item.rev);

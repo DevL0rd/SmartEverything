@@ -14,20 +14,12 @@ import { sendError } from '../../server/http';
 import type { DriveBlocks } from '../../store/repositories/drive-blocks';
 import { sha256Hex } from '../digest';
 import { FileHashSkippedError, type ContentHash } from '../hasher';
-import { canRead, itemAccess } from '../access';
-import { requireExport } from '../sharing/export-guard';
 import { locate, type DriveWriteRoot } from '../intents';
 import { DriveWriteError } from '../write-error';
 import { openResolved, resolveInRoot } from '../paths';
 import { blocksHashOf } from './server-index';
-import {
-  apiErrorOf,
-  fileOf,
-  type SyncEnv,
-  type SyncNode,
-  type SyncTxn,
-  type SyncTxns,
-} from './server-ops';
+import { fileOf } from './file-of';
+import { apiErrorOf, type SyncEnv, type SyncNode, type SyncTxn, type SyncTxns } from './server-ops';
 
 type FileItem = Exclude<DriveItem, { readonly kind: 'folder' }>;
 
@@ -68,7 +60,7 @@ async function hashedBlocks(
   root: DriveWriteRoot,
   item: FileItem,
 ): Promise<ContentHash> {
-  const identity = env.store.driveItems.identityOf(item.id);
+  const identity = await env.store.host.call('driveItems', 'identityOf', item.id);
   if (identity === null) throw changedOutsideSync();
   const { dev, ino } = identity;
   try {
@@ -91,11 +83,15 @@ export async function blocksOf(
   root: DriveWriteRoot,
   item: FileItem,
 ): Promise<DriveBlocks> {
-  const stored = env.store.driveBlocks.find(item.id, item.rev);
+  const stored = await env.store.host.call('driveBlocks', 'find', item.id, item.rev);
   if (stored !== undefined && blocksFit(item, stored)) return stored;
   const hashed = await hashedBlocks(env, root, item);
   if (hashed.bytes !== item.bytes || hashed.blocks === null) throw changedOutsideSync();
-  return env.store.driveBlocks.put({ itemId: item.id, rev: item.rev, ...hashed.blocks });
+  return env.store.host.call('driveBlocks', 'put', {
+    itemId: item.id,
+    rev: item.rev,
+    ...hashed.blocks,
+  });
 }
 
 export function hexHashesOf(blocks: DriveBlocks): readonly string[] {
@@ -281,7 +277,7 @@ export class SyncBlockRoutes {
   ): Promise<void> {
     return guarded(response, async () => {
       const node = await nodeOf(this.env, request);
-      const { root, item } = this.located(node, params);
+      const { root, item } = await this.located(node, params);
       const blocks = await blocksOf(this.env, root, item);
       const index = indexOf(params);
       if (index >= blockCount(item.bytes, blocks.blockSize)) {
@@ -336,7 +332,7 @@ export class SyncBlockRoutes {
     if ((await sha256Hex(block)) !== hashes[index]) {
       throw new ApiError('invalid_request', 'The block does not match its announced checksum.');
     }
-    const root = this.env.store.driveRoots.byId(txn.spec.rootId);
+    const root = await this.env.store.host.call('driveRoots', 'byId', txn.spec.rootId);
     const handle = await open(await locate(root, txn.spec.tmpRel), 'r+');
     try {
       await handle.write(block, 0, block.length, range.start);
@@ -350,21 +346,11 @@ export class SyncBlockRoutes {
   private located(
     node: SyncNode,
     params: Readonly<Record<string, string>>,
-  ): { readonly root: DriveWriteRoot; readonly item: FileItem } {
-    const rootId = ID.safeParse(params['rootId']).data;
-    const itemId = ID.safeParse(params['itemId']).data;
-    const drive = rootId === undefined ? undefined : this.env.store.driveRoots.find(rootId);
-    const found = itemId === undefined ? undefined : this.env.store.driveItems.find(itemId, null);
-    if (drive === undefined || found?.rootId !== drive.id) {
-      throw new ApiError('not_found', 'There is no such file for this person.');
-    }
-    const access = itemAccess(this.env.store, node.actor, drive, found);
-    if (!canRead(access)) {
-      throw new ApiError('not_found', 'There is no such file for this person.');
-    }
-    requireExport(access, found);
-    const item = fileOf(found);
-    if (item === null) throw new ApiError('invalid_request', 'A folder has no blocks.');
-    return { root: drive, item };
+  ): Promise<{ readonly root: DriveWriteRoot; readonly item: FileItem }> {
+    return this.env.store.host.read('driveSyncBlockTarget', {
+      actor: node.actor,
+      rootId: ID.safeParse(params['rootId']).data ?? null,
+      itemId: ID.safeParse(params['itemId']).data ?? null,
+    });
   }
 }

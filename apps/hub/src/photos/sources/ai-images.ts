@@ -1,5 +1,5 @@
 import type { PhotoSource } from '@smarteverything/domain';
-import { DriveSpaceMissingError } from '../../drive/spaces';
+import { DriveSpaceMissingError } from '../../drive/space-missing-error';
 import { Keeper, safeName } from './keeper';
 import { keptFileName } from './reads';
 import type { SourcePage, SourceQuery, SourceService, SourceViewer, SourcesEnv } from './shapes';

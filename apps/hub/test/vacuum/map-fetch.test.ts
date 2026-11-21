@@ -146,7 +146,16 @@ beforeEach(() => {
   repository = new VacuumScenesRepository(
     new StoreContext(sql, new ChangeFeed(testLogger('store')), () => new Date(NOW)),
   );
-  cache = new MapCache(repository);
+  const scenes = repository;
+  cache = new MapCache({
+    save: (deviceId, scene): Promise<void> => {
+      scenes.save(deviceId, scene);
+      return Promise.resolve();
+    },
+    at: (deviceId, slot, index): Promise<VacuumScene | undefined> =>
+      Promise.resolve(scenes.at(deviceId, slot, index)),
+  });
+  cache.hold(ROBOT, []);
   published = [];
   unreadable = [];
   summaries = [];

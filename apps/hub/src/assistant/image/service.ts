@@ -1,7 +1,6 @@
 import {
   ApiError,
   IMAGE_OPERATION_REQUEST,
-  IMAGE_OPERATION_RECEIPT,
   type ImageOperationRequest,
   type ImageOperationReceipt,
   type ImageEndpoint,
@@ -11,11 +10,11 @@ import pLimit from 'p-limit';
 import type { ImageActor, ImageFailure, ImageServiceOptions } from './contract';
 import { ImageOperationError } from './errors';
 import { Generation } from './generation';
-import { ownedChat, readInputs, resolveInputs, type ResolvedImage } from './inputs';
+import { ownedChat, readInputs } from './inputs';
+import type { ResolvedImage } from './reserve-unit';
 import { keepResults } from './results';
 import { imagePreview } from './preview';
 import { withDefaults } from '../../openrouter/image-defaults';
-import { admitOptions } from '../../openrouter/image-options';
 
 const log = new Logger('hub.assistant');
 const PROVIDER_CONCURRENCY = 4;
@@ -38,14 +37,14 @@ export class ImageOperationService {
   availability(): { readonly accepting: boolean; readonly active: number } {
     return { accepting: this.accepting, active: this.running.size };
   }
-  read(actor: ImageActor, id: string): ImageOperationReceipt {
-    const receipt = this.options.repository.read(id);
-    ownedChat(this.options, actor, receipt.chat_id);
+  async read(actor: ImageActor, id: string): Promise<ImageOperationReceipt> {
+    const receipt = await this.options.store.host.call('imageOperations', 'read', id);
+    await ownedChat(this.options, actor, receipt.chat_id);
     return receipt;
   }
-  list(actor: ImageActor, chatId: string): ImageOperationReceipt[] {
-    ownedChat(this.options, actor, chatId);
-    return this.options.repository.list(chatId);
+  async list(actor: ImageActor, chatId: string): Promise<ImageOperationReceipt[]> {
+    await ownedChat(this.options, actor, chatId);
+    return await this.options.store.host.call('imageOperations', 'list', chatId);
   }
   private publish(receipt: ImageOperationReceipt): void {
     this.options.publish(receipt);
@@ -53,22 +52,34 @@ export class ImageOperationService {
   async start(actor: ImageActor, value: unknown): Promise<ImageOperationReceipt> {
     await this.recovered;
     const asked = IMAGE_OPERATION_REQUEST.parse(value);
-    ownedChat(this.options, actor, asked.chat_id);
+    await ownedChat(this.options, actor, asked.chat_id);
     const endpoint = await this.options.catalog.endpointFor(asked);
     const request = withDefaults(endpoint, asked, this.options.imageDefaults());
-    const replay = this.options.repository.replay(actor.key, request);
+    const replay = await this.options.store.host.call(
+      'imageOperations',
+      'replay',
+      actor.key,
+      request,
+    );
     if (replay !== undefined) return replay;
     actor.signal?.throwIfAborted();
-    actor.authorize('provider', request.chat_id);
-    return this.begin(actor, request, endpoint);
+    await actor.authorize('provider', request.chat_id);
+    return await this.begin(actor, request, endpoint);
   }
-  private begin(
+  private async begin(
     actor: ImageActor,
     request: ImageOperationRequest,
     endpoint: ImageEndpoint,
-  ): ImageOperationReceipt {
+  ): Promise<ImageOperationReceipt> {
     if (!this.accepting) throw new ApiError('conflict', 'The image service is stopping.');
-    const { receipt, inputs } = this.reserve(actor, request, endpoint);
+    const { receipt, inputs } = await this.options.store.host.write('imageReserve', {
+      key: actor.key,
+      profileId: actor.profileId,
+      origin: actor.origin ?? null,
+      request,
+      endpoint,
+      now: this.options.now().toISOString(),
+    });
     const controller = new AbortController();
     const signal =
       actor.signal === undefined
@@ -124,13 +135,18 @@ export class ImageOperationService {
     });
   }
   private async cancelQueued(id: string, signal: AbortSignal): Promise<ImageOperationReceipt> {
-    const next = await this.failure(this.options.repository.read(id), signal.reason, signal, false);
+    const next = await this.failure(
+      await this.options.store.host.call('imageOperations', 'read', id),
+      signal.reason,
+      signal,
+      false,
+    );
     this.publish(next);
     return next;
   }
   async settled(actor: ImageActor, id: string): Promise<ImageOperationReceipt> {
-    const receipt = this.read(actor, id);
     const running = this.running.get(id);
+    const receipt = await this.read(actor, id);
     return running === undefined ? receipt : running.settled;
   }
   async run(
@@ -147,16 +163,21 @@ export class ImageOperationService {
     signal?: AbortSignal,
   ): Promise<ImageOperationReceipt> {
     await untilSettled(this.settled(actor, id), signal);
-    return this.read(actor, id);
+    return await this.read(actor, id);
   }
   async cancel(actor: ImageActor, id: string): Promise<ImageOperationReceipt> {
-    const receipt = this.read(actor, id);
     const running = this.running.get(id);
+    const receipt = await this.read(actor, id);
     if (running === undefined) return receipt;
-    this.publish(this.options.repository.update({ ...receipt, cancellation_requested: true }));
+    this.publish(
+      await this.options.store.host.call('imageOperations', 'update', {
+        ...receipt,
+        cancellation_requested: true,
+      }),
+    );
     running.controller.abort();
     await this.cancelling.get(id);
-    return this.options.repository.read(id);
+    return this.options.store.host.call('imageOperations', 'read', id);
   }
   async stop(): Promise<void> {
     this.accepting = false;
@@ -168,35 +189,6 @@ export class ImageOperationService {
     const settled = await Promise.allSettled(active.map((task) => task.settled));
     if (settled.some((result) => result.status === 'rejected'))
       throw new ImageOperationError('unknown', 'Image receipts did not settle during shutdown.');
-  }
-  private reserve(
-    actor: ImageActor,
-    request: ImageOperationRequest,
-    endpoint: ImageEndpoint,
-  ): { readonly receipt: ImageOperationReceipt; readonly inputs: ResolvedImage[] } {
-    return this.options.store.write(() => {
-      const inputs = resolveInputs(this.options, actor, request);
-      admitOptions(endpoint, request, inputs.length);
-      const now = this.options.now().toISOString();
-      const receipt = IMAGE_OPERATION_RECEIPT.parse({
-        id: request.operation_id,
-        profile_id: actor.profileId,
-        chat_id: request.chat_id,
-        request,
-        endpoint,
-        origin: actor.origin ?? null,
-        inputs: inputs.map((input) => input.identity),
-        state: 'reserved',
-        progress: 0,
-        results: [],
-        message_id: null,
-        created_at: now,
-        updated_at: now,
-        reason: null,
-        usage: null,
-      });
-      return { receipt: this.options.repository.reserve(actor.key, receipt), inputs };
-    });
   }
   private async execute(
     initial: ImageOperationReceipt,
@@ -215,8 +207,12 @@ export class ImageOperationService {
     try {
       signal.throwIfAborted();
       const images = await readInputs(this.options, inputs, signal);
-      run.receipt = this.options.repository.update({ ...run.receipt, state: 'running' });
+      run.receipt = await this.options.store.host.call('imageOperations', 'update', {
+        ...run.receipt,
+        state: 'running',
+      });
       this.publish(run.receipt);
+      signal.throwIfAborted();
       const result = await run.produce(images, signal);
       run.receipt = await keepResults(this.options, run.receipt, { result, signal });
     } catch (cause) {
@@ -231,7 +227,10 @@ export class ImageOperationService {
     signal: AbortSignal,
   ): Promise<ImageOperationReceipt> {
     signal.throwIfAborted();
-    const next = this.options.repository.update({ ...receipt, progress: receipt.progress + 1 });
+    const next = await this.options.store.host.call('imageOperations', 'update', {
+      ...receipt,
+      progress: receipt.progress + 1,
+    });
     this.publish(next);
     try {
       this.options.preview?.(await imagePreview(next, content));

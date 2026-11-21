@@ -4,7 +4,6 @@ import { basename } from 'node:path';
 import { ApiError } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { isMissing } from '../../fs-util';
-import type { Store } from '../../store/store';
 import { commitContent, type ChangeActor, type ChangeEnv } from '../changes';
 import type { DataSpaceProbe } from '../data-space';
 import { loadDriveSettings } from '../settings';
@@ -29,11 +28,7 @@ interface OpenPartial {
   readonly written: number;
 }
 
-export type IntakeStore = ChangeEnv['store'] &
-  Pick<
-    Store,
-    'driveQuotas' | 'driveFileRequests' | 'driveNotifications' | 'context' | 'settingsKv' | 'write'
-  >;
+export type IntakeStore = ChangeEnv['store'];
 
 export interface IntakeEnv {
   readonly env: ChangeEnv;

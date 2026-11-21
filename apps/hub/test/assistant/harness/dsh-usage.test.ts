@@ -26,7 +26,7 @@ async function open(): Promise<Opened> {
     rig.owner.profileId,
     rig.service.directory.get(rig.hub.target).host,
   );
-  rig.service.native(
+  await rig.service.native(
     HARNESS_NATIVE_FRAME.parse({
       session_id: request.claim.session_id,
       epoch: request.claim.epoch,
@@ -51,6 +51,7 @@ async function open(): Promise<Opened> {
         { claim: request.claim, expected_next_seq: appended.next_seq },
         principal,
       );
+      await rig.service.ingested();
     },
   };
 }
@@ -210,7 +211,7 @@ describe('context pressure of a chat', () => {
 
     await opened.log([requestContext(1000), reply({ inputTokens: 90, outputTokens: 3 })]);
 
-    expect(rig.service.state(rig.owner, opened.chatId).context).toMatchObject({
+    expect((await rig.service.state(rig.owner, opened.chatId)).context).toMatchObject({
       capacity_tokens: 1000,
       input_tokens: 90,
       state: 'measured',
@@ -238,9 +239,7 @@ describe('context pressure of a chat', () => {
       context_percent: 90,
     });
 
-    expect(() => {
-      rig.service.publish(stale);
-    }).toThrow('stale chat or native epoch');
+    await expect(rig.service.publish(stale)).rejects.toThrow('stale chat or native epoch');
     expect(rig.opened.store.aiChats.chat(opened.chatId).context_percent).toBe(9);
   });
 });

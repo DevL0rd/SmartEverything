@@ -27,14 +27,14 @@ interface MessageTarget {
 export class MessageEdits {
   constructor(private readonly ports: MessageEditPorts) {}
 
-  retry(
+  async retry(
     owner: ChatOwner,
     target: MessageTarget,
     from: AiRetryFrom,
     actor?: ReplayActor,
   ): Promise<AssistantMessageRow> {
-    const chat = mutableChat(this.ports.chats, this.ports.engines, owner, target.chatId);
-    return this.ports.requests.retry(chat, target.messageId, from, replayClient(actor));
+    const chat = await mutableChat(this.ports.chats, this.ports.engines, owner, target.chatId);
+    return await this.ports.requests.retry(chat, target.messageId, from, replayClient(actor));
   }
 
   async edit(
@@ -44,8 +44,8 @@ export class MessageEdits {
     actor?: ReplayActor,
   ): Promise<AssistantMessageRow> {
     const { requests, submissions, store } = this.ports;
-    const chat = mutableChat(this.ports.chats, this.ports.engines, owner, target.chatId);
-    const message = store.assistantChat.message(target.messageId);
+    const chat = await mutableChat(this.ports.chats, this.ports.engines, owner, target.chatId);
+    const message = await store.host.call('assistantChat', 'message', target.messageId);
     const changed = await submissions.edit(actor, chat, message, body);
     if (message.chat_id === chat.id && (message.state === 'answered' || message.state === 'failed'))
       await this.rewriteAsked(owner, chat, message, changed);
@@ -58,12 +58,12 @@ export class MessageEdits {
     message: AssistantMessageRow,
     edit: AiEdit,
   ): Promise<void> {
-    this.ports.requests.assertReplay(chat, message.id, edit);
+    await this.ports.requests.assertReplay(chat, message.id, edit);
     const engine = this.ports.engines.forMutation(chat, owner.role);
     await engine?.historyChanged(chat, owner);
     await engine?.historyRemoved?.(chat, [
       message,
-      ...this.ports.store.assistantChat.repliesTo(message.id),
+      ...(await this.ports.store.host.call('assistantChat', 'repliesTo', message.id)),
     ]);
   }
 }

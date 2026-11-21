@@ -9,7 +9,7 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { canRead, itemAccess, albumVisibleTo } from '../drive/access';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 const PAGE = 500;
 
@@ -17,7 +17,10 @@ const DAY_MS = 86_400_000;
 
 export const DEFAULT_TONE: PlannerResolvedSound = { kind: 'tone', id: 'default' };
 
-export type SoundStore = Pick<Store, 'driveItems' | 'driveAlbums' | 'driveGrants' | 'driveRoots'>;
+export type SoundStore = Pick<
+  HostStore,
+  'driveItems' | 'driveAlbums' | 'driveGrants' | 'driveRoots'
+>;
 
 type AudioItem = Extract<DriveItem, { readonly kind: 'audio' }>;
 

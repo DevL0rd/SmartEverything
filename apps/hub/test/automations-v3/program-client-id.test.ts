@@ -5,13 +5,13 @@ import { automationOf, logLine, programRig, type ProgramRig } from './support/pr
 
 let rig: ProgramRig;
 
-beforeEach(() => {
+beforeEach(async () => {
   captureLogs();
-  rig = programRig();
+  rig = await programRig();
 });
 
-afterEach(() => {
-  rig.close();
+afterEach(async () => {
+  await rig.close();
 });
 
 function body(id: string): {

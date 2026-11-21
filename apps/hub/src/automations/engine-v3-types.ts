@@ -26,7 +26,7 @@ export interface EngineV3Ports {
   readonly zone: () => string;
   readonly repositories: EngineRepositories;
   readonly memory: AutomationMemory;
-  readonly world: Pick<ContextPorts, 'reads' | 'persistent' | 'stateMemory'>;
+  readonly world: Pick<ContextPorts, 'reads' | 'persistent' | 'stateMemory' | 'host'>;
   readonly ready: () => Promise<void>;
   readonly kinds: KindCatalog;
   readonly effects: Performer;

@@ -1,6 +1,6 @@
 import type { DriveFeedOp, DriveFeedRow } from '@smarteverything/domain';
 import type { DriveItemSpot } from '../../store/repositories/drive-item-lookups';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { itemAccess, type DriveActor } from '../access';
 
@@ -16,7 +16,7 @@ export interface ElsewhereInput {
 }
 
 export function changedElsewhereIn(
-  store: { readonly driveFeed: Pick<Store['driveFeed'], 'recentOfItem'> },
+  store: { readonly driveFeed: Pick<HostStore['driveFeed'], 'recentOfItem'> },
   input: ElsewhereInput,
 ): boolean {
   if (input.rev === input.baseRev) return false;
@@ -43,7 +43,7 @@ export interface MountPathInput {
   readonly name: string | null;
 }
 
-export function mountPathIn(store: Store, input: MountPathInput): string | null {
+export function mountPathIn(store: HostStore, input: MountPathInput): string | null {
   const inode = store.driveInodes.find(input.ino);
   if (inode?.rootId !== input.driveId) return null;
   if (inode.isRoot) return input.name ?? '';
@@ -77,7 +77,7 @@ export interface PushWindow {
   readonly rows: readonly PushRow[];
 }
 
-export function pushWindowIn(store: Store, input: PushWindowInput): PushWindow {
+export function pushWindowIn(store: HostStore, input: PushWindowInput): PushWindow {
   const latest = store.driveFeed.latestSeqInRoot(input.rootId);
   const base =
     input.baseId === null ? null : (store.driveItems.find(input.baseId, null)?.relPath ?? null);
@@ -111,7 +111,7 @@ export interface NotedSpot {
   readonly relPath: string;
 }
 
-export function spotIn(store: Store, input: SpotInput): NotedSpot | null {
+export function spotIn(store: HostStore, input: SpotInput): NotedSpot | null {
   const item = store.driveItems.byPath(input.rootId, input.relPath, null);
   if (item === undefined) return null;
   const inode = store.driveInodes.ofItem(item.id);

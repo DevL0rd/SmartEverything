@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { ApiError } from '@smarteverything/domain';
 import type { StoredAutomationRow, JsonValue, SignalInput } from '@smarteverything/domain';
-import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
+import type { Checked, EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
 import { RUN_AUTOMATION_KIND } from '@smarteverything/flow/interpret/run-automation';
 import { resolveBudgets } from '@smarteverything/flow/state/budgets';
 import type { CancelReason, RunState } from '@smarteverything/flow/state/run-state';
@@ -17,7 +17,7 @@ import { RunParkStore } from './driver/park-store';
 import type { DriverPorts, FinishedRun, RunScope, RunSink, RunStart } from './driver/ports';
 import { calledFire, childCall, childOutcome, effectRun, Finishes } from './engine-v3-children';
 import type { RunOutputs } from './engine-v3-children';
-import { admissionParts } from './engine-v3-admission';
+import { Fires, UNMANUAL, admissionOf } from './engine-v3-admission';
 import { structuredAutomation } from '../store/repositories/automation-trees';
 import { armTriggers, listensOnWebhook } from './engine-v3-triggers';
 import { PlanBook } from './engine-v3-plans';
@@ -39,7 +39,6 @@ import {
 } from './engine-v3-start';
 import type { StartRequest, Subject } from './engine-v3-start';
 import type { EngineV3Ports, Loaded, SyncReport } from './engine-v3-types';
-import { admissionCheck } from './triggers-v3/admit';
 import { compileTriggers, signalFire, watchedOf } from './triggers-v3/armers';
 import type { CompiledTriggers } from './triggers-v3/armers';
 import { calledRun } from './triggers-v3/called';
@@ -50,6 +49,7 @@ export type { EngineV3Ports, SyncReport } from './engine-v3-types';
 export class EngineV3 {
   readonly driver: RunDriver;
   readonly parks: RunParkStore;
+  readonly firing = new Fires();
   private readonly loaded = new Map<string, Loaded>();
   private readonly book: PlanBook;
   private readonly triggers = new Map<string, SignalInput | null>();
@@ -272,21 +272,20 @@ export class EngineV3 {
     this.fire(fire, signal);
   }
 
-  private fire(fire: TriggerFire, signal: SignalInput | null): Submission | undefined {
-    const held = this.loaded.get(fire.automationId);
-    if (held === undefined) return undefined;
-    return this.submit(held, {
-      fire,
-      signal,
-      inputs: {},
-      causeChain: this.chains.chainOf(signal),
-      manual: false,
-      startedBy: null,
-      parentRunId: null,
-    });
+  private fire(fire: TriggerFire, signal: SignalInput | null): void {
+    const request = { fire, signal, inputs: {}, causeChain: this.chains.chainOf(signal) };
+    const submitted = this.submitFired(fire.automationId, { ...request, ...UNMANUAL });
+    this.firing.track(fire.automationId, submitted);
   }
 
-  private submit(held: Loaded, request: StartRequest): Submission {
+  private async submitFired(id: string, request: StartRequest): Promise<Submission | undefined> {
+    const verdict = await admissionOf(this.ports, this.loaded.get(id)?.subject, request.fire);
+    const held = this.loaded.get(id);
+    if (held === undefined || verdict === undefined) return undefined;
+    return this.submit(held, request, () => verdict);
+  }
+
+  private submit(held: Loaded, request: StartRequest, admit?: () => Checked<boolean>): Submission {
     const { subject } = held;
     const { program } = subject;
     const limits = resolveBudgets(program.budgets);
@@ -300,9 +299,7 @@ export class EngineV3 {
       manual: request.manual,
       urgent: false,
       startedBy: request.startedBy,
-      admit: request.manual
-        ? undefined
-        : admissionCheck(admissionParts(this.ports, subject, request.fire), request.fire),
+      admit,
       start: (runId) => {
         this.ports.started?.({ signal: request.signal, runId, automationId: subject.id });
         return this.begin(subject, request, runId);
@@ -338,7 +335,7 @@ export class EngineV3 {
   private runStart(subject: Subject, state: RunState, startedBy: string | null): RunStart {
     return {
       state,
-      context: contextOf(subject, triggerKeyOf(state), {
+      ...contextOf(subject, triggerKeyOf(state), {
         ...this.ports.world,
         kinds: this.ports.kinds,
         clock: this.ports.clock,
@@ -413,7 +410,7 @@ export class EngineV3 {
     if (call === undefined || target === undefined) {
       return { ok: false, class: 'NotFound', message: 'The automation to run is not enabled' };
     }
-    const submission = this.submit(target, {
+    const submission = await this.submitFired(call.automation, {
       fire: calledFire(target, call.automation, this.ports.clock),
       signal: null,
       inputs: call.inputs,
@@ -422,6 +419,9 @@ export class EngineV3 {
       startedBy: null,
       parentRunId: call.parentRunId,
     });
+    if (submission === undefined) {
+      return { ok: false, class: 'NotFound', message: 'The automation to run is not enabled' };
+    }
     if (submission.kind === 'refused') {
       return { ok: false, class: 'Refused', message: failureLine(submission.error) };
     }

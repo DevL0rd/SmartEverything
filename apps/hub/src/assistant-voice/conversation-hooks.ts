@@ -19,7 +19,7 @@ export interface ConversationHooks {
   readonly webSearch: () => boolean;
   readonly window: () => LiveWindow | null;
   readonly record: (turn: RecordedTurn) => void;
-  readonly task: (task: string, said: string | null) => string;
+  readonly task: (task: string, said: string | null) => Promise<string>;
   readonly run: (name: string, args: Readonly<Record<string, unknown>>) => Promise<ToolAnswer>;
   readonly ended: (reason: CallEnding, detail: string | null, cause?: string) => void;
   readonly usage: (usage: UsageMetadata, model: string) => void;

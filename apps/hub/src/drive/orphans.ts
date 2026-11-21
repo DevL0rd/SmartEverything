@@ -32,11 +32,6 @@ export async function sweepOrphansAtStart(env: FileEnv, root: DriveWriteRoot): P
   for (const name of names) {
     await env.files.remove(join(directory, name));
   }
-  const held = env.store.driveInodes.orphans(root.id);
-  env.store.write(() => {
-    for (const inode of held) {
-      env.store.driveInodes.remove(inode.id);
-    }
-  });
+  await env.store.host.write('driveOrphansSweep', root.id);
   return names.length;
 }

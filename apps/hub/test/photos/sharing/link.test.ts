@@ -144,7 +144,11 @@ beforeEach(async () => {
     now: (): Date => NOW,
   });
   server = dispatch(
-    shareRoutes({ shares, layout: opened.layout, removeLocationOutside: (): boolean => false }),
+    shareRoutes({
+      shares,
+      layout: opened.layout,
+      removeLocationOutside: (): Promise<boolean> => Promise.resolve(false),
+    }),
   );
   await new Promise<void>((done) => {
     server.listen(0, '127.0.0.1', done);

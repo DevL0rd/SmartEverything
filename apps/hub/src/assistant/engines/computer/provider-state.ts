@@ -18,13 +18,13 @@ import {
   type ProviderEvent,
   type CodexProviderEvent,
   type JsonValue,
+  type ProviderMetadata,
 } from '@smarteverything/domain';
 import type { ComputerAiDirectory } from '../../../computers/ai-directory';
 import type { Store } from '../../../store/store';
 import { ProviderState as ClaudeState } from '../claude/provider-state';
 import { runtimeValue } from './request';
-import { metadataSubscriptionUsage, observeNativeSubscription } from './subscription-usage';
-import { updatedCodexProvider } from '../codex/provider-state';
+import { metadataSubscriptionUsage } from '../../native-subscription';
 
 export type ComputerEvent = ProviderEvent | CodexProviderEvent;
 export type ComputerControl = ProviderControl | z.infer<typeof CODEX_PROVIDER_CONTROL>;
@@ -39,13 +39,14 @@ export class ProviderState {
   ) {
     this.claude = new ClaudeState(store, directory);
   }
-  read(chat: AiChatRow): AiChatRuntimeProvider {
+  async read(chat: AiChatRow): Promise<AiChatRuntimeProvider> {
     if (chat.engine.kind !== this.runtime)
       throw new ApiError('invalid_request', 'This chat has a different runtime binding.');
     if (this.runtime === 'claude') {
-      const retained = this.store.aiRuntimeProvider.read(chat.id, false);
+      const claude = await this.claude.read(chat);
+      const retained = await this.store.host.call('aiRuntimeProvider', 'read', chat.id, false);
       return {
-        ...this.claude.read(chat),
+        ...claude,
         runtime: 'claude',
         context: retained?.context ?? null,
         ...(retained?.managed_project === undefined
@@ -53,7 +54,7 @@ export class ProviderState {
           : { managed_project: retained.managed_project }),
       };
     }
-    const saved = this.store.aiRuntimeProvider.read(chat.id);
+    const saved = await this.store.host.call('aiRuntimeProvider', 'read', chat.id);
     if (saved?.runtime === 'codex' && saved.device_id === chat.engine.device_id) return saved;
     return {
       runtime: 'codex',
@@ -68,11 +69,11 @@ export class ProviderState {
       context: null,
     };
   }
-  save(chat: AiChatRow, state: AiChatRuntimeProvider): void {
-    this.store.aiRuntimeProvider.save(chat.id, state);
+  save(chat: AiChatRow, state: AiChatRuntimeProvider): Promise<void> {
+    return this.store.host.call('aiRuntimeProvider', 'save', chat.id, state);
   }
-  bound(chat: AiChatRow): AiChatRuntimeProvider & { readonly job_id: string } {
-    const state = this.read(chat);
+  async bound(chat: AiChatRow): Promise<AiChatRuntimeProvider & { readonly job_id: string }> {
+    const state = await this.read(chat);
     if (state.job_id === null)
       throw new ApiError(
         'conflict',
@@ -83,9 +84,9 @@ export class ProviderState {
   async metadata(chat: AiChatRow): Promise<AiChatRuntimeProvider> {
     if (this.runtime === 'claude') {
       const provider = await this.claude.metadata(chat);
-      return { ...provider, runtime: 'claude', context: this.read(chat).context };
+      return { ...provider, runtime: 'claude', context: (await this.read(chat)).context };
     }
-    const state = this.read(chat);
+    const state = await this.read(chat);
     const target = { device_id: state.device_id, runtime: this.runtime };
     const status = this.directory.runtimeStatus(target);
     if (
@@ -106,7 +107,14 @@ export class ProviderState {
       },
       PROVIDER_METADATA,
     );
-    const current = this.read(chat);
+    return this.savedMetadata(chat, state, metadata);
+  }
+  private async savedMetadata(
+    chat: AiChatRow,
+    state: AiChatRuntimeProvider,
+    metadata: ProviderMetadata,
+  ): Promise<AiChatRuntimeProvider> {
+    const current = await this.read(chat);
     if (current.job_id !== state.job_id || current.device_id !== state.device_id)
       throw new ApiError('conflict', 'The provider binding changed during metadata discovery.');
     const usage = metadataSubscriptionUsage(metadata);
@@ -115,17 +123,25 @@ export class ProviderState {
       metadata,
       ...(usage?.runtime === 'codex' ? { subscription_usage: usage } : {}),
     };
-    this.store.write(() => {
-      this.save(chat, updated);
-      if (usage !== undefined) observeNativeSubscription(this.store, chat, usage);
+    await this.store.host.write('computerProviderMetadataSave', {
+      chat,
+      state: updated,
+      usage: usage ?? null,
     });
     return updated;
   }
-  assertSession(chat: AiChatRow, sessionId: string | undefined): void {
-    const state = this.read(chat);
+  async assertSession(chat: AiChatRow, sessionId: string | undefined): Promise<void> {
+    const state = await this.read(chat);
     if (
       sessionId !== undefined &&
-      !this.store.aiProvider.ownsSession(chat.id, state.device_id, sessionId, this.runtime)
+      !(await this.store.host.call(
+        'aiProvider',
+        'ownsSession',
+        chat.id,
+        state.device_id,
+        sessionId,
+        this.runtime,
+      ))
     )
       throw new ApiError(
         'forbidden',
@@ -135,7 +151,7 @@ export class ProviderState {
   async answer(chat: AiChatRow, promptId: string, answer: ComputerAnswer): Promise<void> {
     if (this.runtime === 'claude')
       return this.claude.answer(chat, promptId, PROVIDER_ANSWER.parse(answer));
-    const state = this.bound(chat);
+    const state = await this.bound(chat);
     if (
       state.runtime !== 'codex' ||
       !state.prompts.some((prompt) => prompt.id === promptId && prompt.status === 'pending')
@@ -157,10 +173,10 @@ export class ProviderState {
     );
     if (!result.answered)
       throw new ApiError('conflict', 'The provider rejected this stale prompt.');
-    const current = this.bound(chat);
+    const current = await this.bound(chat);
     if (current.runtime !== 'codex' || current.job_id !== state.job_id)
       throw new ApiError('conflict', 'The provider job changed before acknowledgement.');
-    this.save(chat, {
+    await this.save(chat, {
       ...current,
       prompts: current.prompts.map((prompt) =>
         prompt.id === promptId ? { ...prompt, status: 'answered' } : prompt,
@@ -170,9 +186,9 @@ export class ProviderState {
   async control(chat: AiChatRow, control: ComputerControl): Promise<JsonValue> {
     if (this.runtime === 'claude')
       return this.claude.control(chat, PROVIDER_CONTROL.parse(control));
-    const state = this.bound(chat);
+    const state = await this.bound(chat);
     const parsed = CODEX_PROVIDER_CONTROL.parse(control);
-    this.assertSession(chat, 'session_id' in parsed ? parsed.session_id : undefined);
+    await this.assertSession(chat, 'session_id' in parsed ? parsed.session_id : undefined);
     const result = await runtimeValue(
       this.directory,
       { device_id: state.device_id, runtime: 'codex' },
@@ -184,31 +200,48 @@ export class ProviderState {
     );
     if (parsed.action === 'fork_session') {
       const fork = z.object({ session_id: z.string().min(1) }).parse(result);
-      this.store.aiProvider.associate(chat.id, state.device_id, fork.session_id, 'codex');
+      await this.store.host.call(
+        'aiProvider',
+        'associate',
+        chat.id,
+        state.device_id,
+        fork.session_id,
+        'codex',
+      );
     }
     if (parsed.action === 'delete_session')
-      this.store.aiProvider.forgetSession(chat.id, state.device_id, parsed.session_id, 'codex');
+      await this.store.host.call(
+        'aiProvider',
+        'forgetSession',
+        chat.id,
+        state.device_id,
+        parsed.session_id,
+        'codex',
+      );
     if (
       parsed.action === 'close' ||
       (parsed.action === 'delete_session' && parsed.session_id === state.session_id)
     )
-      this.save(chat, { ...this.read(chat), job_id: null, state: 'idle', prompts: [] });
+      await this.save(chat, {
+        ...(await this.read(chat)),
+        job_id: null,
+        state: 'idle',
+        prompts: [],
+      });
     return result;
   }
-  received(chat: AiChatRow, event: ComputerEvent): boolean {
+  async received(chat: AiChatRow, event: ComputerEvent): Promise<boolean> {
     if (this.runtime === 'claude') {
-      const accepted = this.claude.received(chat, PROVIDER_EVENT.parse(event));
-      if (accepted) this.captureClaudeContext(chat, event);
+      const accepted = await this.claude.received(chat, PROVIDER_EVENT.parse(event));
+      if (accepted) await this.captureClaudeContext(chat, event);
       return accepted;
     }
-    const parsed = CODEX_PROVIDER_EVENT.parse(event);
-    if (!this.store.aiRuntimeProvider.append(chat.id, { runtime: 'codex', event: parsed }))
-      return false;
-    const state = this.store.aiRuntimeProvider.read(chat.id, false);
-    if (state?.runtime === 'codex') this.save(chat, updatedCodexProvider(state, parsed));
-    return true;
+    return this.store.host.write('codexProviderReceive', {
+      chatId: chat.id,
+      event: CODEX_PROVIDER_EVENT.parse(event),
+    });
   }
-  private captureClaudeContext(chat: AiChatRow, event: ComputerEvent): void {
+  private async captureClaudeContext(chat: AiChatRow, event: ComputerEvent): Promise<void> {
     if (event.kind !== 'runtime') return;
     const source = z
       .object({
@@ -219,9 +252,9 @@ export class ProviderState {
       })
       .safeParse(event.payload);
     if (!source.success) return;
-    const state = this.read(chat);
+    const state = await this.read(chat);
     if (state.runtime !== 'claude') return;
-    this.store.aiRuntimeProvider.save(chat.id, {
+    await this.save(chat, {
       ...state,
       context: {
         device_id: state.device_id,

@@ -21,7 +21,7 @@ export interface HostingOptions {
   readonly computer: ComputerParts;
   readonly framing: CameraFraming;
   readonly openLive: OpenLive;
-  readonly chatFor: (asker: Asker) => string;
+  readonly chatFor: (asker: Asker) => Promise<string>;
   readonly aiName: () => string;
   readonly liveVideo: () => boolean;
   readonly muteMic: () => boolean;
@@ -165,10 +165,10 @@ export class Hosting {
     });
   }
 
-  private live(asker: Asker, spec: LiveSpec): Promise<AiOutreachRow> {
-    return this.options.store.host.call('aiOutreach', 'add', {
+  private async live(asker: Asker, spec: LiveSpec): Promise<AiOutreachRow> {
+    return await this.options.store.host.call('aiOutreach', 'add', {
       profile_id: asker.profileId,
-      chat_id: this.options.chatFor(asker),
+      chat_id: await this.options.chatFor(asker),
       from_chat_id: asker.chatId,
       how: spec.how,
       target: spec.target,

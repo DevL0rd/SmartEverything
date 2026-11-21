@@ -23,7 +23,7 @@ interface Opened {
   readonly epoch: number;
   readonly seen: AiHarnessEvent[];
   readonly claimed: DshWriterClaim;
-  readonly send: (body: Record<string, unknown>) => void;
+  readonly send: (body: Record<string, unknown>) => Promise<void>;
   readonly log: (events: readonly DshSessionEvent[]) => Promise<void>;
 }
 
@@ -44,11 +44,10 @@ async function open(target: AiHarnessTarget = rig.hub.target): Promise<Opened> {
     epoch: request.claim.epoch,
     seen,
     claimed: request.claim,
-    send: (body): void => {
+    send: (body): Promise<void> =>
       rig.service.native(
         HARNESS_NATIVE_FRAME.parse({ session_id: sessionId, epoch: request.claim.epoch, ...body }),
-      );
-    },
+      ),
     log: async (events): Promise<void> => {
       const stat = rig.opened.store.dshSessions.stat(sessionId, rig.owner.profileId);
       const appended = await rig.opened.store.live.dshSessions.append(
@@ -63,6 +62,7 @@ async function open(target: AiHarnessTarget = rig.hub.target): Promise<Opened> {
         { claim: request.claim, expected_next_seq: appended.next_seq },
         principal,
       );
+      await rig.service.ingested();
     },
   };
 }
@@ -115,12 +115,12 @@ describe('native frames reaching the hub', () => {
   it('announce an opened chat as idle', async () => {
     const opened = await open();
 
-    opened.send({ kind: 'open' });
+    await opened.send({ kind: 'open' });
 
     expect(opened.seen).toMatchObject([
       { kind: 'state', seq: 0, context_update: 'restored', session: { state: 'idle' } },
     ]);
-    expect(rig.service.state(rig.owner, opened.chat.id).state).toBe('idle');
+    expect((await rig.service.state(rig.owner, opened.chat.id)).state).toBe('idle');
   });
 
   it('measure the context from the log the hub stored', async () => {
@@ -136,9 +136,9 @@ describe('native frames reaching the hub', () => {
       assistantReply(),
     ]);
 
-    opened.send({ kind: 'open' });
+    await opened.send({ kind: 'open' });
 
-    expect(rig.service.state(rig.owner, opened.chat.id).context).toMatchObject({
+    expect((await rig.service.state(rig.owner, opened.chat.id)).context).toMatchObject({
       model: 'model-a',
       input_tokens: 90,
       state: 'measured',
@@ -147,14 +147,14 @@ describe('native frames reaching the hub', () => {
 
   it('move the stored state with the machine status', async () => {
     const opened = await open();
-    opened.send({ kind: 'open' });
+    await opened.send({ kind: 'open' });
 
-    opened.send({ kind: 'status', status: 'running', work: [] });
-    expect(rig.service.state(rig.owner, opened.chat.id).state).toBe('working');
+    await opened.send({ kind: 'status', status: 'running', work: [] });
+    expect((await rig.service.state(rig.owner, opened.chat.id)).state).toBe('working');
 
     const work = [{ kind: 'shell', id: 's1', reason: 'A shell is open.' }];
-    opened.send({ kind: 'status', status: 'idle', work });
-    const waiting = rig.service.state(rig.owner, opened.chat.id);
+    await opened.send({ kind: 'status', status: 'idle', work });
+    const waiting = await rig.service.state(rig.owner, opened.chat.id);
 
     expect(waiting.state).toBe('waiting');
     expect(waiting.work).toStrictEqual(work);
@@ -162,11 +162,11 @@ describe('native frames reaching the hub', () => {
 
   it('complete a claimed delivery with the position the hub stored', async () => {
     const opened = await open();
-    opened.send({ kind: 'open' });
+    await opened.send({ kind: 'open' });
     const delivery = randomUUID();
 
     await opened.log([claim(delivery), turnStart(1)]);
-    opened.send({ kind: 'input', message_id: delivery, turn: 1 });
+    await opened.send({ kind: 'input', message_id: delivery, turn: 1 });
     await opened.log([turnEnd(1, 'completed')]);
 
     const stored = rig.opened.store.dshSessions.stat(opened.sessionId, rig.owner.profileId);
@@ -183,18 +183,18 @@ describe('native frames reaching the hub', () => {
   it('replay a whole turn into the stored state and the events the chat follows', async () => {
     const opened = await open();
     const delivery = randomUUID();
-    opened.send({ kind: 'open' });
+    await opened.send({ kind: 'open' });
 
     await opened.log([claim(delivery), turnStart(1)]);
-    opened.send({ kind: 'input', message_id: delivery, turn: 1 });
-    opened.send({ kind: 'status', status: 'running', work: [] });
-    opened.send({ kind: 'attempt', id: 'a:1', state: 'started' });
-    opened.send({ kind: 'text', delta: 'Hel' });
-    opened.send({ kind: 'text', delta: 'lo' });
-    opened.send({ kind: 'usage', usage: { inputTokens: 12, outputTokens: 2 } });
-    opened.send({ kind: 'attempt', id: 'a:1', state: 'committed' });
+    await opened.send({ kind: 'input', message_id: delivery, turn: 1 });
+    await opened.send({ kind: 'status', status: 'running', work: [] });
+    await opened.send({ kind: 'attempt', id: 'a:1', state: 'started' });
+    await opened.send({ kind: 'text', delta: 'Hel' });
+    await opened.send({ kind: 'text', delta: 'lo' });
+    await opened.send({ kind: 'usage', usage: { inputTokens: 12, outputTokens: 2 } });
+    await opened.send({ kind: 'attempt', id: 'a:1', state: 'committed' });
     await opened.log([turnEnd(1, 'completed')]);
-    opened.send({ kind: 'status', status: 'idle', work: [] });
+    await opened.send({ kind: 'status', status: 'idle', work: [] });
 
     const delivered = opened.seen.filter((event) => event.delivery_id === delivery);
     expect(opened.seen.map((event) => event.seq)).toStrictEqual(
@@ -217,30 +217,30 @@ describe('native frames reaching the hub', () => {
     expect(
       opened.seen.filter((event) => event.kind === 'text').map((event) => event.delta),
     ).toStrictEqual(['Hel', 'lo']);
-    const final = rig.service.state(rig.owner, opened.chat.id);
+    const final = await rig.service.state(rig.owner, opened.chat.id);
     expect(final).toMatchObject({ state: 'idle', context: { input_tokens: 12 } });
   });
 
   it('end a turn from the log alone when no frame follows it', async () => {
     const opened = await open();
     const delivery = randomUUID();
-    opened.send({ kind: 'open' });
+    await opened.send({ kind: 'open' });
     await opened.log([claim(delivery), turnStart(1)]);
-    opened.send({ kind: 'input', message_id: delivery, turn: 1 });
-    opened.send({ kind: 'status', status: 'running', work: [] });
+    await opened.send({ kind: 'input', message_id: delivery, turn: 1 });
+    await opened.send({ kind: 'status', status: 'running', work: [] });
 
     await opened.log([turnEnd(1, 'completed')]);
 
     expect(opened.seen.at(-1)).toMatchObject({ kind: 'completed', delivery_id: delivery });
-    expect(rig.service.state(rig.owner, opened.chat.id).state).toBe('idle');
+    expect((await rig.service.state(rig.owner, opened.chat.id)).state).toBe('idle');
   });
 
   it('fail a turn the log says was blocked', async () => {
     const opened = await open();
     const delivery = randomUUID();
-    opened.send({ kind: 'open' });
+    await opened.send({ kind: 'open' });
     await opened.log([claim(delivery), turnStart(1)]);
-    opened.send({ kind: 'input', message_id: delivery, turn: 1 });
+    await opened.send({ kind: 'input', message_id: delivery, turn: 1 });
 
     await opened.log([turnEnd(1, 'blocked')]);
 
@@ -253,9 +253,9 @@ describe('native frames reaching the hub', () => {
   it('reduce an event once however often its append is repeated', async () => {
     const opened = await open();
     const delivery = randomUUID();
-    opened.send({ kind: 'open' });
+    await opened.send({ kind: 'open' });
     await opened.log([claim(delivery), turnStart(1)]);
-    opened.send({ kind: 'input', message_id: delivery, turn: 1 });
+    await opened.send({ kind: 'input', message_id: delivery, turn: 1 });
     const stat = rig.opened.store.dshSessions.stat(opened.sessionId, rig.owner.profileId);
     const append = {
       claim: opened.claimed,
@@ -269,6 +269,7 @@ describe('native frames reaching the hub', () => {
 
     await rig.opened.store.live.dshSessions.append(append, principal);
     await rig.opened.store.live.dshSessions.append(append, principal);
+    await rig.service.ingested();
 
     expect(opened.seen.filter((event) => event.kind === 'completed')).toHaveLength(1);
   });
@@ -276,16 +277,16 @@ describe('native frames reaching the hub', () => {
   it('are ignored for a chat that was never opened', async () => {
     const opened = await open();
 
-    opened.send({ kind: 'text', delta: 'early' });
+    await opened.send({ kind: 'text', delta: 'early' });
 
     expect(opened.seen).toStrictEqual([]);
   });
 
   it('carry streamed text to every listener', async () => {
     const opened = await open();
-    opened.send({ kind: 'open' });
+    await opened.send({ kind: 'open' });
 
-    opened.send({ kind: 'text', delta: 'chunk' });
+    await opened.send({ kind: 'text', delta: 'chunk' });
 
     expect(opened.seen.at(-1)).toMatchObject({ kind: 'text', delta: 'chunk' });
   });
@@ -317,7 +318,7 @@ describe('a publication from a machine', () => {
   it('is reduced when it belongs to the granted host and the current writer epoch', async () => {
     const request = await publication({ kind: 'open' });
 
-    expect(acceptPublication(rig.service, request)).toStrictEqual({ ok: true });
+    expect(await acceptPublication(rig.service, request)).toStrictEqual({ ok: true });
   });
 
   it('is refused when it names another writer epoch', async () => {
@@ -325,7 +326,7 @@ describe('a publication from a machine', () => {
     const frame = request.request.operation === 'publish' ? request.request.frame : undefined;
     if (frame?.type !== 'harness_native') throw new Error('Expected a native publication.');
 
-    expect(() =>
+    await expect(
       acceptPublication(rig.service, {
         ...request,
         request: {
@@ -333,25 +334,25 @@ describe('a publication from a machine', () => {
           frame: { ...frame, frame: { ...frame.frame, epoch: frame.frame.epoch + 1 } },
         },
       }),
-    ).toThrow(/writer epoch/u);
+    ).rejects.toThrow(/writer epoch/u);
   });
 
   it('is refused from a runtime that is not the granted host', async () => {
     const request = await publication({ kind: 'open' });
 
-    expect(() => acceptPublication(rig.service, { ...request, generation: randomUUID() })).toThrow(
-      /replaced|granted/u,
-    );
+    await expect(
+      acceptPublication(rig.service, { ...request, generation: randomUUID() }),
+    ).rejects.toThrow(/replaced|granted/u);
   });
 
-  it('refuses a request that is not a publication', () => {
-    expect(() =>
+  it('refuses a request that is not a publication', async () => {
+    await expect(
       acceptPublication(rig.service, {
         device_id: randomUUID(),
         generation: randomUUID(),
         runtime_instance: randomUUID(),
         request: { operation: 'tools' },
       }),
-    ).toThrow(/native publication/u);
+    ).rejects.toThrow(/native publication/u);
   });
 });

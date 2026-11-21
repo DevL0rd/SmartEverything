@@ -27,16 +27,18 @@ function contextOver(store: TestStore['store']): NoticeContext {
     assistant: {
       chats: {
         defaultChat: (profileId) =>
-          store.aiChats.latest(profileId) ??
-          store.aiChats.create({
-            profileId,
-            kind: 'chat',
-            title: 'Home',
-            icon: null,
-            parentId: null,
-            sourceKey: null,
-            engine: TEST_ENGINE,
-          }),
+          Promise.resolve(
+            store.aiChats.latest(profileId) ??
+              store.aiChats.create({
+                profileId,
+                kind: 'chat',
+                title: 'Home',
+                icon: null,
+                parentId: null,
+                sourceKey: null,
+                engine: TEST_ENGINE,
+              }),
+          ),
       },
       files: {
         pathOf: (file) => join(directory, 'files', file.name),

@@ -1,5 +1,4 @@
 import { randomBytes } from 'node:crypto';
-import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 import { hashClientToken, type ClientRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -14,9 +13,6 @@ import { MediaLinks } from '../../src/server/media-links';
 import { Operations } from '../../src/server/operations';
 import { ResponseEncoder } from '../../src/server/responses/encoder';
 import { bundledCodecWorker } from '../support/codec-worker';
-import { StoreContext } from '../../src/store/context';
-import { ChangeFeed } from '../../src/store/feed';
-import { Sql } from '../../src/store/sql';
 import { captureLogs, testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
@@ -25,7 +21,6 @@ const log = testLogger('drive-backup');
 const REPORT = { reporter: 'borg', bytes: 4096, ok: true };
 
 let opened: TestStore;
-let second: DatabaseSync;
 let runtime: DriveRuntime;
 let operations: Operations;
 let encoder: ResponseEncoder;
@@ -54,23 +49,17 @@ beforeEach(async () => {
   captureLogs();
   opened = await testStore(() => NOW);
   const { store } = opened;
-  second = new DatabaseSync(join(opened.directory, 'test.db'));
   ownerId = store.profiles.first().id;
   memberId = store.profiles.create({ name: 'Sam' }).id;
   runtime = createDrive({
     store,
     parts: {
-      context: new StoreContext(new Sql(second), new ChangeFeed(log), () => NOW),
-      database: second,
-      conflicts: {
-        find: (): undefined => undefined,
-      },
       listings: {
         shares: () => Promise.resolve({ items: [], next: null }),
         duplicates: () => Promise.resolve({ items: [], next: null }),
         conflicts: () => Promise.resolve({ items: [], next: null }),
       },
-      removeLocationOutside: () => true,
+      removeLocationOutside: () => Promise.resolve(true),
       notifyCorruption: (): void => undefined,
     },
     layout: opened.layout,
@@ -94,7 +83,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await encoder.close();
   await runtime.queue.stop();
-  second.close();
   await opened.close();
 });
 

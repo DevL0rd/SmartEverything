@@ -33,6 +33,7 @@ interface Engine {
   readonly outcome: (runId: string) => Promise<FinishedRun>;
   readonly driver: Pick<RunDriver, 'firstHold'>;
   readonly listensTo: (path: string) => boolean;
+  readonly firing: { readonly settled: () => Promise<void> };
 }
 
 interface Started {
@@ -104,6 +105,7 @@ export class WebhookGateway {
     this.calls.set(token, open);
     try {
       this.ports.signals.emit(this.signalOf(call, token));
+      await engine.firing.settled();
     } finally {
       this.calls.delete(token);
     }

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Logger, background } from '@smarteverything/logging';
 import {
   ApiError,
+  assistantLabel,
   type AiAsk,
   type AiAskResult,
   type AiChatChange,
@@ -20,10 +21,9 @@ import type { EngineRegistry } from '../engines/registry';
 import type { AssistantFiles } from '../files';
 import type { Sender } from '../requests';
 import type { ConversationLog, PersonMessage } from '../conversation-log';
-import { admitExecutionTarget, currentExecutionAuthority, eventAuthority } from '../turn-authority';
+import { admitExecutionTarget, authorityScope, currentExecutionAuthority } from '../turn-authority';
 import { HUB_RESTARTED } from '../interruption';
 import { admitChatExecution } from '../native-helpers';
-import { quoteForChat } from '../message-quote';
 import { SubagentAdmission } from './admission';
 import { assertChildChange, childTools, selectedHelper } from './child-tools';
 import {
@@ -32,7 +32,7 @@ import {
   settleHelperDialogue,
 } from './helper-dialogue';
 import { Replies } from './replies';
-import { directHelperDialogue, relaySpeaker } from './relay-speaker';
+import { directHelperDialogue, relayAuthor, relaySpeaker } from './relay-speaker';
 import { RunRows } from '../agent-runs/run-rows';
 
 export const NATIVE_DELEGATION =
@@ -104,23 +104,28 @@ export class Delegation {
     this.gate = gate;
   }
 
-  admit(event: StoredEvent): boolean {
-    if (!this.admission.enter(event)) return false;
-    this.rows.started(event);
+  async admit(event: StoredEvent): Promise<boolean> {
+    if (!(await this.admission.enter(event))) return false;
+    await this.rows.started(event);
     return true;
   }
 
-  finished(event: StoredEvent, text: string, ok: boolean): void {
-    this.rows.finished(event, text, ok);
+  ended(event: StoredEvent, text: string, ok: boolean): void {
+    background(this.finished(event, text, ok), 'delegation.finish_failed', { eventId: event.id });
+  }
+
+  async finished(event: StoredEvent, text: string, ok: boolean): Promise<void> {
     this.admission.release(event.id);
-    if (!this.settleDialogue(event, text, ok)) this.replies.finished(event, text, ok);
+    await this.rows.finished(event, text, ok);
+    if (!this.settleDialogue(event, text, ok)) await this.replies.finished(event, text, ok);
   }
 
   async restart(): Promise<void> {
+    const { host } = this.deps.store;
     await reconcileHelperDialogue(this.deps.store, this.finished.bind(this));
-    this.rows.restart();
-    for (const event of this.deps.store.assistantEvents.abandoned())
-      if (this.deps.store.harnessDeliveries.find(event.id)?.state !== 'admitted')
+    await this.rows.restart();
+    for (const event of await host.call('assistantEvents', 'abandoned'))
+      if ((await host.call('harnessDeliveries', 'find', event.id))?.state !== 'admitted')
         this.settleDialogue(event, HUB_RESTARTED, false);
   }
 
@@ -149,10 +154,9 @@ export class Delegation {
       {
         ...this.deps,
         ...resources,
-        queueRun: (source, target, eventId, text): void => {
+        queueRun: async (source): Promise<void> => {
           this.gate?.check('subagent');
-          this.admission.preflight(source, false);
-          this.rows.queued(source, target, eventId, text);
+          await this.admission.preflight(source, false);
         },
       },
       sender,
@@ -161,18 +165,22 @@ export class Delegation {
     );
   }
 
-  assertChange(chat: AiChatRow, change: AiChatChange): void {
-    assertChildChange(this.deps.store, chat, change);
+  assertChange(chat: AiChatRow, change: AiChatChange): Promise<void> {
+    return assertChildChange(this.deps.store, chat, change);
   }
 
   async ask(sender: AskSender, chatId: string, body: AiAsk): Promise<AiAskResult> {
-    const target = this.deps.chats.own(sender.owner, chatId);
+    const { store } = this.deps;
+    const target = await this.deps.chats.own(sender.owner, chatId);
     admitChatExecution(target);
-    const source = this.sourceOf(sender);
+    const source = await this.sourceOf(sender);
     this.admitTarget(target);
     if (source?.id === target.id)
       throw new ApiError('invalid_request', 'A chat cannot message itself; pick another chat.');
-    const quote = quoteForChat(this.deps.store, target, body.quoteMessageId);
+    const quote = await store.host.read('assistantQuote', {
+      chat: target,
+      id: body.quoteMessageId,
+    });
     const relay = {
       source,
       target,
@@ -181,9 +189,12 @@ export class Delegation {
       seconds: body.timeoutSeconds,
       ...(quote === null ? {} : { quote }),
     };
-    const hops = source === null ? 1 : this.deps.store.assistantEvents.currentHops(source.id) + 1;
+    const hops =
+      source === null
+        ? 1
+        : (await store.host.call('assistantEvents', 'currentHops', source.id)) + 1;
     if (target.kind === 'subagent') this.gate?.check('subagent');
-    const eventId = this.postRelay(sender, relay, hops);
+    const eventId = await this.postRelay(sender, relay, hops);
     log.info('relay.queued', {
       eventId,
       sourceId: source?.id,
@@ -202,24 +213,23 @@ export class Delegation {
         'forbidden',
         'A model may launch children only from its actual calling chat.',
       );
-    const parent = this.deps.chats.own(sender.owner, parentId);
+    const { store } = this.deps;
+    const parent = await this.deps.chats.own(sender.owner, parentId);
     admitChatExecution(parent);
     if (parent.engine.kind === 'dsh' && (body.engine === undefined || body.engine.kind === 'dsh'))
       throw new ApiError('conflict', NATIVE_DELEGATION);
-    const engine = selectedHelper(this.deps.store, parent, body.engine);
-    const hops = this.deps.store.assistantEvents.currentHops(parent.id) + 1;
+    const engine = selectedHelper(store, parent, body.engine);
+    const hops = (await store.host.call('assistantEvents', 'currentHops', parent.id)) + 1;
     this.gate?.check('subagent');
-    this.admission.preflight(parent, body.wait);
-    const tools = childTools(this.deps.store, parent, body, this.deps.tools?.() ?? null);
-    const launched = this.deps.store.write(() =>
-      this.start({
-        sender,
-        parent,
-        body: { ...body, ...(engine === undefined ? {} : { engine }) },
-        tools,
-        hops,
-      }),
-    );
+    await this.admission.preflight(parent, body.wait);
+    const tools = await childTools(store, parent, body, this.deps.tools?.() ?? null);
+    const launched = await this.start({
+      sender,
+      parent,
+      body: { ...body, ...(engine === undefined ? {} : { engine }) },
+      tools,
+      hops,
+    });
     log.info('subagent.launched', {
       parentId: parent.id,
       childId: launched.target.id,
@@ -236,18 +246,31 @@ export class Delegation {
     );
   }
 
-  private start(launch: Launch): Launched {
+  private async start(launch: Launch): Promise<Launched> {
     const { sender, parent, body, tools, hops } = launch;
-    const child = this.deps.chats.create(sender.owner, {
+    const { store } = this.deps;
+    const child = await this.deps.chats.prepare(sender.owner, {
       title: body.title ?? titleOf(body.task),
       engine: body.engine ?? parent.engine,
       parent_id: parent.id,
     });
-    const target = this.deps.store.aiChats.update(child.id, { tools: [...tools] });
-    const relay = { source: parent, target, text: body.task, ...waiting(body) };
-    this.admitTarget(target);
-    const eventId = this.post(sender, relay, hops);
-    this.rows.queued(parent, target, eventId, body.task);
+    this.admitTarget({ profile_id: child.profileId, engine: child.engine });
+    const eventId = randomUUID();
+    const target = await store.host.write('assistantSubagentStart', {
+      eventId,
+      speaker: relayAuthor(this.assistantName(), parent, hops, sender.plugin),
+      source: parent,
+      clientId: sender.clientId,
+      text: body.task,
+      quote: null,
+      hops,
+      child,
+      tools,
+      parent,
+      now: this.deps.now().toISOString(),
+      held: store.live.chatWork.holds.held(),
+      scope: authorityScope(),
+    });
     return { target, eventId };
   }
 
@@ -260,32 +283,48 @@ export class Delegation {
     return { chatId: relay.target.id, eventId, ...(await waiter) };
   }
 
-  private postRelay(sender: AskSender, relay: Relay, hops: number): string {
+  private async postRelay(sender: AskSender, relay: Relay, hops: number): Promise<string> {
+    const { store } = this.deps;
     const { target } = relay;
-    if (target.kind !== 'subagent' || target.parent_id === null)
-      return this.deps.store.write(() => this.post(sender, relay, hops));
-    const parent = this.deps.store.aiChats.chat(target.parent_id);
-    this.admission.preflight(relay.source ?? parent, relay.wait);
-    return this.deps.store.write(() => {
-      const eventId = this.post(sender, relay, hops);
-      this.projectHelperAsk(sender, relay, hops);
-      this.rows.queued(relay.source ?? parent, target, eventId, relay.text);
+    const eventId = randomUUID();
+    const post = {
+      eventId,
+      speaker: await this.relayedSpeaker(sender, relay, hops),
+      target,
+      source: relay.source,
+      clientId: sender.clientId,
+      text: relay.text,
+      quote: relay.quote ?? null,
+      hops,
+      held: store.live.chatWork.holds.held(),
+      scope: authorityScope(),
+    };
+    if (target.kind !== 'subagent' || target.parent_id === null) {
+      await store.host.write('assistantRelayPost', { ...post, mirror: null, run: null });
       return eventId;
+    }
+    const parent = await store.host.call('aiChats', 'chat', target.parent_id);
+    await this.admission.preflight(relay.source ?? parent, relay.wait);
+    await store.host.write('assistantRelayPost', {
+      ...post,
+      mirror: this.helperAsk(sender, relay, hops),
+      run: { parent: relay.source ?? parent, now: this.deps.now().toISOString() },
     });
+    return eventId;
   }
 
-  private projectHelperAsk(sender: AskSender, relay: Relay, hops: number): void {
+  private helperAsk(sender: AskSender, relay: Relay, hops: number): PersonMessage | null {
     const { source, target, text } = relay;
-    if (source === null) return;
+    if (source === null) return null;
     const helperDialogue = directHelperDialogue(source, target, 'to_helper');
-    if (helperDialogue === undefined) return;
+    if (helperDialogue === undefined) return null;
     const { author, origin } = relaySpeaker(
-      this.deps.store,
+      this.assistantName(),
       { from: source, to: target },
       hops,
       sender.plugin,
     );
-    this.deps.conversation.person({
+    return {
       chat: source,
       clientId: null,
       author,
@@ -294,48 +333,37 @@ export class Delegation {
       files: [],
       helperDialogue,
       quote: relay.quote ?? null,
-    });
+    };
   }
 
-  private post(sender: AskSender, relay: Relay, hops: number): string {
-    const { store, conversation } = this.deps;
-    const speaker =
-      relay.source === null
-        ? this.serviceSpeaker(sender, hops)
-        : relaySpeaker(store, { from: relay.source, to: relay.target }, hops, sender.plugin);
-    const row = conversation.person({
-      ...speaker,
-      chat: relay.target,
-      clientId: sender.clientId,
-      text: relay.text,
-      files: [],
-      queued: true,
-      quote: relay.quote ?? null,
-    });
-    const eventId = randomUUID();
-    store.live.chatWork.holds.assertQueued(relay.target.id);
-    const queued = store.assistantEvents.add({
-      id: eventId,
-      kind: 'chat',
-      chat_id: relay.target.id,
-      message_id: row.id,
-      profile_id: relay.target.profile_id,
-      client_id: sender.clientId,
-      text: relay.text,
-      report_to: relay.source?.id ?? null,
-      hops,
-    });
-    eventAuthority(store, queued);
-    return eventId;
+  private assistantName(): string {
+    return assistantLabel(this.deps.store.live.home.assistant.read());
   }
 
-  private serviceSpeaker(
+  private async relayedSpeaker(
+    sender: AskSender,
+    relay: Relay,
+    hops: number,
+  ): Promise<Pick<PersonMessage, 'author' | 'origin' | 'helperDialogue'>> {
+    return relay.source === null
+      ? await this.serviceSpeaker(sender, hops)
+      : relaySpeaker(
+          this.assistantName(),
+          { from: relay.source, to: relay.target },
+          hops,
+          sender.plugin,
+        );
+  }
+
+  private async serviceSpeaker(
     sender: AskSender,
     hops: number,
-  ): Pick<PersonMessage, 'author' | 'origin'> {
+  ): Promise<Pick<PersonMessage, 'author' | 'origin'>> {
     const { store } = this.deps;
     const name = (
-      sender.clientId === null ? 'Service' : store.clients.byId(sender.clientId).name
+      sender.clientId === null
+        ? 'Service'
+        : (await store.host.call('clients', 'byId', sender.clientId)).name
     ).slice(0, 120);
     return {
       author: name,
@@ -350,13 +378,13 @@ export class Delegation {
     };
   }
 
-  private admitTarget(target: AiChatRow): void {
+  private admitTarget(target: Pick<AiChatRow, 'profile_id' | 'engine'>): void {
     const authority = currentExecutionAuthority();
     if (authority !== undefined) admitExecutionTarget(this.deps.store, target, authority);
   }
 
-  private sourceOf(sender: AskSender): AiChatRow | null {
-    return sender.chatId === null ? null : this.deps.chats.own(sender.owner, sender.chatId);
+  private async sourceOf(sender: AskSender): Promise<AiChatRow | null> {
+    return sender.chatId === null ? null : await this.deps.chats.own(sender.owner, sender.chatId);
   }
 }
 

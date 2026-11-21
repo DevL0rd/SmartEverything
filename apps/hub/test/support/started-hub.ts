@@ -1,18 +1,17 @@
+import { type SeededStore, type TestStore } from './store';
 import { join } from 'node:path';
 import type { DiscoveredDevice } from '@smarteverything/domain';
 import { startHub, type RunningHub } from '../../src/hub';
 import { SecretStore } from '../../src/secrets/store';
 import { recordingPathIn } from '../../src/services';
 import { storeDatabase } from '../../src/store/hub-database';
-import type { Store } from '../../src/store/store';
 import type { Go2rtcClient } from '../../src/cameras/go2rtc-client';
 import { FakeClock } from './fake-clock';
 import { LAMP, fakeModule, type FakeModule } from './fake-provider';
 import { testLogger } from './logs';
-import type { TestStore } from './store';
 
 export interface StartedHub {
-  readonly store: Store;
+  readonly store: SeededStore;
   readonly fake: FakeModule;
   readonly hub: RunningHub;
 }
@@ -69,7 +68,7 @@ export async function startedHub(
   return { store, fake, hub };
 }
 
-export function deviceIdOf(store: Store, externalId: string): string {
+export function deviceIdOf(store: SeededStore, externalId: string): string {
   const device = store.devices.list().find((candidate) => candidate.external_id === externalId);
   if (device === undefined) {
     throw new Error(`no device ${externalId}`);

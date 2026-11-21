@@ -55,7 +55,7 @@ export function treadmillAutomationRuntime(ports: TreadmillToolPorts): DriverRun
 
 export interface HubCommandPorts {
   readonly store: Pick<Store, 'host' | 'feed'>;
-  readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
+  readonly submit: (commands: readonly NewCommand[]) => Promise<CommandRow[]>;
 }
 
 function finishedRow(store: HubCommandPorts['store'], row: CommandRow): Promise<CommandRow> {
@@ -87,7 +87,7 @@ function finishedRow(store: HubCommandPorts['store'], row: CommandRow): Promise<
 
 export function issueThroughHub(ports: HubCommandPorts): TreadmillToolPorts['issue'] {
   return async (device, control, value) => {
-    const [row] = ports.submit([
+    const [row] = await ports.submit([
       { deviceId: device.id, capability: control, value, source: 'automation', requestedBy: null },
     ]);
     if (row === undefined) {

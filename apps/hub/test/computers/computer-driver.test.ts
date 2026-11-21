@@ -1,3 +1,4 @@
+import { hostDeviceMetrics } from '../../src/store/host/hosted';
 import { DEFAULT_COMPUTER_SCOPES, COMPUTER_ROLE_MODELS } from '@smarteverything/domain';
 import type { DiscoveredDevice } from '@smarteverything/domain';
 import { NO_PLACEMENTS } from '../support/session-rig';
@@ -31,7 +32,7 @@ function deviceIdOf(externalId: string): string | undefined {
 function options(bound: string[]): ComputerDriverOptions {
   return {
     history: new MetricHistory({
-      store: opened.store.deviceMetrics,
+      store: hostDeviceMetrics(opened.store.host),
       log: testLogger('metrics'),
       now: () => NOW,
     }),

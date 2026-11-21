@@ -7,28 +7,40 @@ import {
   targetDevices,
   withRole,
   type CommandRow,
+  type DeviceGroupRow,
   type DeviceRow,
   type DeviceScope,
   type DeviceTarget,
   type GroupCommandPlan,
+  type RoomRow,
+  type StateRow,
   type TargetChange,
 } from '@smarteverything/domain';
 import { deviceHidden } from '../server/person-scope';
-import type { Store } from '../store/store';
 
-export function resolveTarget(store: Store, target: DeviceTarget): readonly DeviceRow[] {
-  if (target.kind === 'room') store.rooms.byId(target.roomId);
-  if (target.kind === 'group') store.deviceGroups.byId(target.groupId);
-  if (target.kind === 'devices')
-    target.deviceIds.forEach((id) => {
-      store.devices.byId(id);
-    });
-  return targetDevices(store.devices.list(), store.deviceGroups.list(), target);
+export interface TargetHome {
+  readonly rooms: { readonly byId: (id: string) => RoomRow };
+  readonly deviceGroups: {
+    readonly byId: (id: string) => DeviceGroupRow;
+    readonly list: () => DeviceGroupRow[];
+  };
+  readonly devices: { readonly byId: (id: string) => DeviceRow; readonly list: () => DeviceRow[] };
+  readonly state: { readonly list: () => StateRow[] };
 }
 
-export function litMembers(store: Store, devices: readonly DeviceRow[]): readonly DeviceRow[] {
+export function resolveTarget(home: TargetHome, target: DeviceTarget): readonly DeviceRow[] {
+  if (target.kind === 'room') home.rooms.byId(target.roomId);
+  if (target.kind === 'group') home.deviceGroups.byId(target.groupId);
+  if (target.kind === 'devices')
+    target.deviceIds.forEach((id) => {
+      home.devices.byId(id);
+    });
+  return targetDevices(home.devices.list(), home.deviceGroups.list(), target);
+}
+
+export function litMembers(home: TargetHome, devices: readonly DeviceRow[]): readonly DeviceRow[] {
   const lit = new Set(
-    store.state
+    home.state
       .list()
       .filter((row) => row.value === true)
       .map((row) => `${row.device_id}:${row.capability}`),
@@ -42,16 +54,16 @@ export function litMembers(store: Store, devices: readonly DeviceRow[]): readonl
 const OUT_OF_REACH = 'not one of the devices this person may use';
 
 export function prepareTargetCommands(
-  store: Store,
+  home: TargetHome,
   change: TargetChange,
   scope: DeviceScope | null,
 ): GroupCommandPlan {
-  const everything = resolveTarget(store, change.target);
+  const everything = resolveTarget(home, change.target);
   if (everything.length === 0 && change.target.kind !== 'group')
     throw new ApiError('not_found', 'This target has no devices.');
   const resolved = everything.filter((device) => !deviceHidden(scope, device));
   const plan = planGroupCommands(
-    change.scope === 'on' ? litMembers(store, resolved) : resolved,
+    change.scope === 'on' ? litMembers(home, resolved) : resolved,
     change,
   );
   const outOfReach = everything
@@ -62,7 +74,7 @@ export function prepareTargetCommands(
       detail: OUT_OF_REACH,
     }));
   if (change.target.kind !== 'group') return { ...plan, skipped: [...plan.skipped, ...outOfReach] };
-  const members = store.deviceGroups.byId(change.target.groupId).device_ids;
+  const members = home.deviceGroups.byId(change.target.groupId).device_ids;
   const missing = members.filter((id) => !everything.some((device) => device.id === id));
   return {
     ...plan,
@@ -75,11 +87,11 @@ export function prepareTargetCommands(
 }
 
 export function skippedMembersNote(
-  store: Store,
+  home: Pick<TargetHome, 'devices'>,
   skipped: GroupCommandPlan['skipped'],
 ): string | null {
   if (skipped.length === 0) return null;
-  const names = new Map(store.devices.list().map((device) => [device.id, baseNameOf(device)]));
+  const names = new Map(home.devices.list().map((device) => [device.id, baseNameOf(device)]));
   const lines = skipped.map((skip) =>
     memberOutcomeLine(names.get(skip.deviceId) ?? skip.deviceId, { status: 'skipped', ...skip }),
   );

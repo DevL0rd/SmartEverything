@@ -1,3 +1,4 @@
+import { background } from '@smarteverything/logging';
 import type { ComputerAiDirectory } from '../computers/ai-directory';
 import { ClaudeRunner, type ClaudeRunnerDeps } from './engines/claude/runner';
 import { CodexRunner } from './engines/codex/runner';
@@ -17,10 +18,16 @@ export function computerRunners(
     ...runnerPorts,
     directory,
     finished: (event, text, ok): void => {
-      requests.finished(event, text, ok);
+      background(requests.finished(event, text, ok), 'request.finish_record_failed', {
+        eventId: event.id,
+      });
     },
     command: (chat, text): void => {
-      requests.turn(chat, text, { source: 'app', plugin_id: null, device_id: null, name: null });
+      background(
+        requests.turn(chat, text, { source: 'app', plugin_id: null, device_id: null, name: null }),
+        'request.command_turn_failed',
+        { chatId: chat.id },
+      );
     },
     providerNotice: (
       notice: Parameters<ClaudeRunnerDeps['providerNotice']>[0],

@@ -20,7 +20,11 @@ function watchDetail(context: ExtensionContext, live: PhoneLive): () => void {
     live.reported(target.deviceId);
     if (detail === undefined) return;
     context.live.watches.publishEach(target.deviceId, (client) =>
-      detailNotice(target, detail, phoneViewerOfClient(store, client)),
+      detailNotice(
+        target,
+        detail,
+        phoneViewerOfClient(store.live.access.activeProfileOf(client.id), client),
+      ),
     );
   });
   return (): void => {

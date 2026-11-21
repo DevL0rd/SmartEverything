@@ -8,7 +8,7 @@ import {
   type AiNativeCommandReceipt,
   type AiNativeCommandDescriptor,
 } from '@smarteverything/domain';
-import { effectiveClientById } from '../../../server/person-access';
+import { effectiveClientOf } from '../../../server/person-access';
 import type { z } from 'zod';
 import type { ComputerRunnerDeps } from './ports';
 import type { ProviderState } from './provider-state';
@@ -44,12 +44,12 @@ export async function retainManualCommand(
   invocation: { readonly input: AiNativeCommandWrite; readonly command: AiNativeCommandDescriptor },
 ): Promise<void> {
   const { input, command } = invocation;
-  commandAuthority(deps, chat, input.scope);
+  await commandAuthority(deps, chat, input.scope);
   assertManualBinding(chat, input);
   const client =
     input.scope.client_id === null
       ? undefined
-      : effectiveClientById(deps.store, input.scope.client_id);
+      : await effectiveClientOf(deps.store, input.scope.client_id);
   if (client === undefined)
     throw new ApiError('forbidden', 'A native manual command needs its genuine initiating client.');
   await deps.store.host.write('nativeManualCommandRetain', {
@@ -65,33 +65,34 @@ export async function retainManualCommand(
       : null,
   });
 }
-export function rejectUnknownCommand(
+export async function rejectUnknownCommand(
   deps: ComputerRunnerDeps,
   input: AiNativeCommandWrite,
-): AiNativeCommandReceipt {
+): Promise<AiNativeCommandReceipt> {
   const receipt = {
     ...pendingCommand(input),
     status: 'rejected' as const,
     text: 'The selected native command definition is unknown.',
   };
-  deps.store.nativeCommandOperations.reserve(input, receipt);
+  await deps.store.host.call('nativeCommandOperations', 'reserve', input, receipt);
   return receipt;
 }
-export function authorizeNativeDispatch(
+export async function authorizeNativeDispatch(
   deps: ComputerRunnerDeps,
   state: ProviderState,
   input: AiNativeCommandWrite,
-): void {
-  const chat = deps.store.aiChats.chat(input.scope.chat_id);
-  manualCommandCaller(deps, chat, input);
-  assertClaudeCommandBinding(deps, state, chat, input.scope);
-  const current = state.bound(chat);
+): Promise<void> {
+  const chat = await deps.store.host.call('aiChats', 'chat', input.scope.chat_id);
+  await manualCommandCaller(deps, chat, input);
+  await assertClaudeCommandBinding(deps, state, chat, input.scope);
+  const current = await state.bound(chat);
   assertPreparedBinding(current, input, chat);
-  assertPendingCommand(deps, current, input);
+  await assertPendingCommand(deps, current, input);
   assertCommandAttachment(deps, input);
 }
+type BoundState = Awaited<ReturnType<ProviderState['bound']>>;
 function assertPreparedBinding(
-  current: ReturnType<ProviderState['bound']>,
+  current: BoundState,
   input: AiNativeCommandWrite,
   chat: AiChatRow,
 ): void {
@@ -110,16 +111,17 @@ function assertPreparedBinding(
   )
     throw new ApiError('conflict', 'The native source catalogue or state changed before dispatch.');
 }
-function assertPendingCommand(
+async function assertPendingCommand(
   deps: ComputerRunnerDeps,
-  current: ReturnType<ProviderState['bound']>,
+  current: BoundState,
   input: AiNativeCommandWrite,
-): void {
-  const receipt = deps.store.nativeCommandOperations.known(input);
+): Promise<void> {
+  const receipt = await deps.store.host.call('nativeCommandOperations', 'known', input);
   if (
     receipt?.status !== 'pending' ||
     current.prompts.some((prompt) => prompt.status === 'pending') ||
-    deps.store.nativeCommandOperations.unknownForChat(input.scope.chat_id).length !== 0
+    (await deps.store.host.call('nativeCommandOperations', 'unknownForChat', input.scope.chat_id))
+      .length !== 0
   )
     throw new ApiError('conflict', 'The exact native command is no longer awaiting dispatch.');
 }

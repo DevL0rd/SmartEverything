@@ -56,7 +56,7 @@ beforeEach(async () => {
   behaviour = (): Promise<MediaNoteAnswer> => Promise.resolve({ text: 'a clip', usage: null });
   files = new AssistantFiles({
     layout: hubLayout(test.directory, {}),
-    chat: test.store.assistantChat,
+    store: test.store,
     attachments: test.store.live.attachments,
     now: (): Date => new Date(),
   });
@@ -67,11 +67,11 @@ beforeEach(async () => {
     new MediaNotes({
       provider: new Provider(),
       transcriptionProvider: transcription,
-      chat: test.store.assistantChat,
+      store: test.store.host,
       ledger: test.store.host,
       filesRoot: test.directory,
       describeImages: (): boolean => describeImages,
-      inputModalities: (): readonly string[] | null => modalities,
+      inputModalities: (): Promise<readonly string[] | null> => Promise.resolve(modalities),
       log: testLogger('note-of'),
     }),
   );
@@ -85,7 +85,7 @@ describe('reading a media note for a turn', () => {
   it('returns at once while the caption call is still pending', async () => {
     behaviour = (): Promise<MediaNoteAnswer> => new Promise<MediaNoteAnswer>(() => undefined);
     const file = await stored('video/mp4', 'clip.mp4');
-    const line = files.noteLine(file);
+    const line = await files.noteLine(file);
     expect(line).toContain('Transcript pending.');
     expect(line).toContain(`chat_read view attachment with id ${file.id}`);
     await settle();
@@ -95,15 +95,15 @@ describe('reading a media note for a turn', () => {
   it('returns at once when the caption call fails and never throws', async () => {
     behaviour = (): Promise<MediaNoteAnswer> => Promise.reject(new Error('OpenRouter is busy'));
     const file = await stored('video/mp4', 'clip.mp4');
-    expect(files.noteOf(file)).toBeNull();
+    expect(await files.noteOf(file)).toBeNull();
     await settle();
-    expect(files.noteOf(file)).toBeNull();
+    expect(await files.noteOf(file)).toBeNull();
   });
 
   it('uses the stored note without calling the provider', async () => {
     const file = await stored('video/mp4', 'clip.mp4');
     test.store.assistantChat.setTranscript(file.id, 'a clip');
-    const line = files.noteLine(test.store.assistantChat.attachment(file.id));
+    const line = await files.noteLine(test.store.assistantChat.attachment(file.id));
     expect(line).toContain('Transcript: a clip');
     expect(line).toContain(`chat_read view attachment with id ${file.id}`);
     await settle();
@@ -115,7 +115,7 @@ describe('images follow the model and the setting', () => {
   it('make no call for a vision model while the setting is off', async () => {
     modalities = ['text', 'image'];
     const file = await stored('image/png', 'cat.png');
-    const line = files.noteLine(file);
+    const line = await files.noteLine(file);
     expect(line).toContain(`id ${file.id}`);
     expect(line).not.toContain('pending');
     await settle();
@@ -126,23 +126,23 @@ describe('images follow the model and the setting', () => {
     modalities = ['text', 'image'];
     describeImages = true;
     const file = await stored('image/png', 'cat.png');
-    expect(files.noteLine(file)).toContain('Description pending.');
+    expect(await files.noteLine(file)).toContain('Description pending.');
     await settle();
     expect(calls).toBe(1);
-    expect(files.noteLine(file)).toContain('Description: a clip');
+    expect(await files.noteLine(file)).toContain('Description: a clip');
   });
 
   it('always describe for a model that cannot see them', async () => {
     modalities = ['text'];
     const file = await stored('image/png', 'cat.png');
-    files.noteLine(file);
+    await files.noteLine(file);
     await settle();
     expect(calls).toBe(1);
   });
 
   it('describe when the model is unknown', async () => {
     const file = await stored('image/png', 'cat.png');
-    files.noteLine(file);
+    await files.noteLine(file);
     await settle();
     expect(calls).toBe(1);
   });

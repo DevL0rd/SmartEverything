@@ -1,5 +1,6 @@
 import { DriveReadService } from '../../src/drive/service-read';
 import { DrivePosix } from '../../src/drive/posix/service';
+import { hostQuotaSource } from '../../src/drive/quotas';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { fileEnv } from '../../src/drive/versions';
 import { testLogger } from '../support/logs';
@@ -16,10 +17,10 @@ export function syncPosixOf(store: TestStore['store'], now: () => Date): DrivePo
       store,
       purge: { rearm: (): void => undefined },
     },
-    guard: { status: (profileId) => store.driveQuotas.status(profileId), space },
+    guard: { status: hostQuotaSource(store), space },
     space: {
       read: new DriveReadService(store),
-      quota: (profileId) => store.driveQuotas.status(profileId),
+      quota: hostQuotaSource(store),
       probe: { space },
       inodes: () => Promise.resolve({ files: 1000, free: 900 }),
     },

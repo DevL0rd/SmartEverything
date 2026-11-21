@@ -56,19 +56,14 @@ export function discordSpeechReader(
       name: pluginToolName(PLUGIN_ID.parse('discord'), 'voice'),
       args: { action: 'calls' },
     }),
-    admit: (caller, sourceId): void => {
+    admit: async (caller, sourceId): Promise<void> => {
       validateCaller(services, caller);
-      if (sourceId !== undefined) admitSelected(services, transcripts, sourceId);
+      if (sourceId !== undefined) await admitSelected(services, transcripts, sourceId);
     },
-    validate: (caller, session, sourceId): void => {
-      validateCaller(services, caller);
-      if (session !== undefined) validateSession(services, session, sourceId);
-      else if (sourceId !== undefined) validateKey(services, sourceId);
-    },
-    sources: (caller): ReturnType<PluginSpeechReader['sources']> => {
+    sources: async (caller): ReturnType<PluginSpeechReader['sources']> => {
       validateCaller(services, caller);
       const seen = new Set<string>();
-      return transcripts.list(RECENT_CALLS).flatMap((session) => {
+      return (await transcripts.list(RECENT_CALLS)).flatMap((session) => {
         const summary = summaryOf(session);
         if (
           summary === null ||
@@ -89,15 +84,15 @@ export function discordSpeechReader(
   };
 }
 
-function admitSelected(
+async function admitSelected(
   services: DiscordServices,
   transcripts: PluginTranscripts,
   sourceId: string,
-): void {
+): Promise<void> {
   validateKey(services, sourceId);
-  const session = transcripts
-    .list(RECENT_CALLS)
-    .find((item) => summaryOf(item) !== null && sourceKey(item) === sourceId);
+  const session = (await transcripts.list(RECENT_CALLS)).find(
+    (item) => summaryOf(item) !== null && sourceKey(item) === sourceId,
+  );
   if (session === undefined)
     throw new ApiError('not_found', 'The selected Discord speech source is unavailable.');
   validateSession(services, session, sourceId);

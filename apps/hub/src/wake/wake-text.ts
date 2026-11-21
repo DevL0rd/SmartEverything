@@ -6,15 +6,15 @@ import {
   type SignalKindSpec,
   type SignalSubject,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { unlessGone } from './unless-gone';
-import { personClockText } from '../clock/person-clock';
+import { personClockText } from '../clock/person-clock-units';
 
 const VALUE_TEXT_MAX = 300;
 const DETAILS_TEXT_MAX = 600;
 
 export type WakeNameStore = Pick<
-  Store,
+  HostStore,
   | 'devices'
   | 'profiles'
   | 'aiChats'

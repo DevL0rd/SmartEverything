@@ -41,7 +41,11 @@ export async function keepResults(
     return completed;
   } catch (cause) {
     await options.files.remove(files);
-    options.store.assistantChat.removeAttachments(files.map((file) => file.id));
+    await options.store.host.call(
+      'assistantChat',
+      'removeAttachments',
+      files.map((file) => file.id),
+    );
     throw cause;
   }
 }
@@ -57,8 +61,8 @@ async function saveImages(
       files.push(
         await options.files.keepBytes({
           profileId: receipt.profile_id,
-          authorize: (): void => {
-            options.store.aiChats.chat(receipt.chat_id);
+          authorize: async (): Promise<void> => {
+            await options.store.host.call('aiChats', 'chat', receipt.chat_id);
           },
           name: `image-${String(index + 1)}.${EXTENSIONS[image.mime]}`,
           mime: image.mime,

@@ -12,7 +12,7 @@ import {
 } from '@smarteverything/domain';
 import { HarnessLocalFileSystem } from '@smarteverything/harness';
 import type { HubLayout } from '../data-layout';
-import type { Store } from '../store/store';
+import type { ChatMirror } from '../store/chat-mirror';
 import { chatFolder, ensureChatFolder } from './paths';
 import { ProjectQueue } from './queue';
 import {
@@ -36,7 +36,7 @@ export class ProjectFilesService {
   private readonly deleting = new Set<(chat: string) => void>();
   constructor(
     private readonly layout: HubLayout,
-    private readonly chats: Pick<Store['aiChats'], 'chat'>,
+    private readonly chats: Pick<ChatMirror, 'chat'>,
   ) {
     this.fs = new HarnessLocalFileSystem(new Context(), {
       cwd: layout.root,
@@ -61,7 +61,7 @@ export class ProjectFilesService {
     const request = AI_PROJECT_REQUEST.parse(input);
     const write = isMutation(request);
     return this.queue.run(authority.chatId, async () => {
-      authority.validate(write);
+      await authority.validate(write);
       const folder = { root: await this.ensure(authority.chatId), fs: this.fs };
       const result = write
         ? await projectMutation(folder, request)
@@ -79,8 +79,8 @@ export class ProjectFilesService {
     if (length < 1 || length > BYTES_MAX)
       throw new ApiError('invalid_request', 'Project reads are bounded to 1 MiB per range.');
     const relative = AI_PROJECT_PATH.parse(path);
-    return this.queue.run(authority.chatId, () => {
-      authority.validate(false);
+    return this.queue.run(authority.chatId, async () => {
+      await authority.validate(false);
       return readProjectBytes({ root: this.root(authority.chatId), fs: this.fs }, relative, {
         offset,
         length,
@@ -90,7 +90,7 @@ export class ProjectFilesService {
   readFile(authority: ProjectAuthority, path: string, maxBytes: number): Promise<Buffer> {
     const absolute = join(this.root(authority.chatId), AI_PROJECT_PATH.parse(path));
     return this.queue.run(authority.chatId, async () => {
-      authority.validate(false);
+      await authority.validate(false);
       const info = await stat(absolute).catch((cause: unknown) => {
         if (isMissing(cause)) throw new ApiError('not_found', 'The chat folder file is absent.');
         throw cause;

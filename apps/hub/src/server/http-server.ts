@@ -69,7 +69,7 @@ function urlOf(request: IncomingMessage): URL {
 }
 
 function isPublicOrigin(options: HttpServerOptions, origin: string): boolean {
-  const publicUrl = options.context.store.settings.read().public_url;
+  const publicUrl = options.context.store.live.home.settings.read().public_url;
   return publicUrl !== null && new URL(publicUrl).origin === origin;
 }
 
@@ -147,7 +147,11 @@ const serveRecordingFile: PublicPath = async (options, request, response, url) =
   }
   noteRoute(response, `GET ${MEDIA_PATHS.recording}`, 'signed');
   const size = options.context.links.verifyImage(url);
-  const row = options.context.store.cameras.recording(recording['recordingId'] ?? '');
+  const row = await options.context.store.host.call(
+    'cameras',
+    'recording',
+    recording['recordingId'] ?? '',
+  );
   const path = options.context.recordingPath(row.storage_path);
   await sendRecording(await recordingFile(row, path, size, options.thumbnails), request, response);
   return true;
@@ -178,7 +182,7 @@ const serveTalkMessage: PublicPath = async (options, request, response, url) => 
   }
   noteRoute(response, `GET ${MEDIA_PATHS.talkMessage}`, 'signed');
   options.context.links.verify(url);
-  const row = options.context.store.talk.message(message['messageId'] ?? '');
+  const row = await options.context.store.host.call('talk', 'message', message['messageId'] ?? '');
   if (row.storage_path === null) {
     throw new ApiError('not_found', 'This walkie-talkie message has no saved audio.');
   }
@@ -194,7 +198,11 @@ const serveAssistantAttachment: PublicPath = async (options, request, response, 
   }
   noteRoute(response, `GET ${MEDIA_PATHS.assistantAttachment}`, 'signed');
   options.context.links.verify(url);
-  const file = options.context.store.assistantChat.attachment(found['attachmentId'] ?? '');
+  const file = await options.context.store.host.call(
+    'assistantChat',
+    'attachment',
+    found['attachmentId'] ?? '',
+  );
   const path = options.context.assistant.files.pathOf(file);
   await sendAssistantAttachment(file, path, request, response);
   return true;

@@ -1,3 +1,4 @@
+import { openSeededStore, testStore, type TestStore } from '../support/store';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -11,10 +12,8 @@ import { reconcileHubUpdateNotes } from '../../src/self-update/completion';
 import { startHubUpdateCompletion } from '../../src/self-update/completion-extension';
 import { hubUpdateStatus, readHubUpdateLedger } from '../../src/self-update/recovery';
 import { saveRepairWorkClaim } from '../../src/store/repositories/repair-work-claims';
-import { openStore } from '../../src/store/store';
 import { TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 import { testStoreHost } from '../support/store-host';
 
 const NOW = '2026-11-05T06:00:00.000Z';
@@ -90,10 +89,10 @@ function nextNote(): Promise<void> {
   });
 }
 
-function reopen(): void {
+async function reopen(): Promise<void> {
   const { directory, layout } = fixture;
-  fixture.store.close();
-  const store = openStore({
+  await fixture.store.close();
+  const store = await openSeededStore({
     host: testStoreHost(),
     path: join(directory, 'test.db'),
     now: () => new Date(NOW),
@@ -106,7 +105,7 @@ function reopen(): void {
     layout,
     store,
     close: async (): Promise<void> => {
-      store.close();
+      await store.close();
       await rm(directory, { recursive: true, force: true });
     },
   };
@@ -126,7 +125,7 @@ it('reconciles a terminal update after startup exactly once, even after note del
   expect(messages(target.chatId)[0]?.text).toContain(done.runId);
   expect(JSON.stringify(messages(target.chatId))).not.toContain(PRIVATE);
   fixture.store.assistantChat.removeMessages(messages(target.chatId).map(({ id }) => id));
-  reopen();
+  await reopen();
   const restarted = await startHubUpdateCompletion({
     store: fixture.store,
     layout: fixture.layout,

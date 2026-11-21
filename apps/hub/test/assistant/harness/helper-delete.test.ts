@@ -8,7 +8,7 @@ import {
   removalNeedsInactive,
 } from '../../../src/assistant/agent-runs/inactive-removal';
 import { adoptSubagentSession } from '../../../src/assistant/engines/dsh/children-adoption';
-import { settleNativeChild } from '../../../src/assistant/engines/dsh/children';
+import { settleNativeChild } from '../../../src/assistant/engines/dsh/children-units';
 import { harnessRig, type Rig } from './support/rig';
 import { hubLayout } from '../../../src/data-layout';
 
@@ -62,9 +62,9 @@ describe('deleting a helper chat without the inactive flag', () => {
   it('is held to the inactive rule for helpers and not for ordinary chats', async () => {
     const { made, parentId, childId } = await finishedHelper();
     const { store } = made.opened;
-    expect(removalNeedsInactive(store, childId, false)).toBe(true);
-    expect(removalNeedsInactive(store, parentId, false)).toBe(false);
-    expect(removalNeedsInactive(store, parentId, true)).toBe(true);
+    expect(await removalNeedsInactive(store, childId, false)).toBe(true);
+    expect(await removalNeedsInactive(store, parentId, false)).toBe(false);
+    expect(await removalNeedsInactive(store, parentId, true)).toBe(true);
   });
 });
 
@@ -80,12 +80,10 @@ describe('deleting a finished helper from its row', () => {
       chatId: childId,
       status: () => ({ state: 'ready', reason: null }) as const,
     };
-    expect(() => {
-      admitInactiveRemoval(admission, [child]);
-    }).not.toThrow();
-    expect(() => {
-      admitInactiveRemoval({ ...admission, chatId: parentId }, [parent]);
-    }).toThrow('Only inactive helper conversations');
+    await expect(admitInactiveRemoval(admission, [child])).resolves.toBeUndefined();
+    await expect(
+      admitInactiveRemoval({ ...admission, chatId: parentId }, [parent]),
+    ).rejects.toThrow('Only inactive helper conversations');
     if (child.engine.kind !== 'dsh') throw new Error('The fixture helper needs a DSH engine.');
     const nested = store.aiChats.create({
       profileId: child.profile_id,
@@ -106,9 +104,7 @@ describe('deleting a finished helper from its row', () => {
       text: 'Another task',
       hops: 0,
     });
-    expect(() => {
-      admitInactiveRemoval(admission, [nested, child]);
-    }).toThrow('still working');
+    await expect(admitInactiveRemoval(admission, [nested, child])).rejects.toThrow('still working');
     expect(store.aiChats.find(childId)).toBeDefined();
     expect(store.aiChats.find(nested.id)).toBeDefined();
   });
@@ -135,13 +131,13 @@ describe('deleting a finished helper from its row', () => {
       store,
       new AssistantFiles({
         layout: hubLayout(made.opened.directory, {}),
-        chat: store.assistantChat,
+        store: store,
         attachments: store.live.attachments,
         now: (): Date => new Date(),
       }),
     );
-    const scope = directory.removalScope(made.owner, childId);
-    admitInactiveRemoval(
+    const scope = await directory.removalScope(made.owner, childId);
+    await admitInactiveRemoval(
       {
         store,
         owner: made.owner,

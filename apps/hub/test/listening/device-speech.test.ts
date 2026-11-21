@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DeviceSpeech } from '../../src/listening/device-speech';
 import { phoneExternalId } from '../../src/phones/phone-device';
 import { Transcripts } from '../../src/transcripts/transcript-service';
+import { settleWithHost } from '../support/host-settle';
 import type { TranscribeRequest } from '../../src/transcripts/transcriber';
 import { FakeClock } from '../support/fake-clock';
 import { testLogger } from '../support/logs';
@@ -30,9 +31,7 @@ function segment(startMs: number, seconds: number): Parameters<DeviceSpeech['seg
 }
 
 async function settled(): Promise<void> {
-  for (let turn = 0; turn < 20; turn += 1) {
-    await Promise.resolve();
-  }
+  await settleWithHost();
 }
 
 async function say(startMs: number, seconds: number): Promise<void> {
@@ -78,7 +77,7 @@ beforeEach(async () => {
         return Promise.resolve(answers.shift() ?? null);
       },
     },
-    budget: { capReached: (): boolean => capped },
+    budget: { capReached: (): Promise<boolean> => Promise.resolve(capped) },
     keyPresent: (): boolean => key,
     names: (): string[] => ['Friday'],
     paused: (_deviceId, reason): void => {

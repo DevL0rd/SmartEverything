@@ -2,12 +2,9 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  DriveSpaceMissingError,
-  ensureDrives,
-  personalDrive,
-  sharedDrive,
-} from '../../src/drive/spaces';
+import { ensureDrives } from '../../src/drive/spaces';
+import { DriveSpaceMissingError } from '../../src/drive/space-missing-error';
+import { personalDrive, sharedDrive } from '../../src/drive/units/spaces';
 import { MARKER_FILE } from '../../src/drive/root-marker';
 import { captureLogs } from '../support/logs';
 import type { TestStore } from '../support/store';

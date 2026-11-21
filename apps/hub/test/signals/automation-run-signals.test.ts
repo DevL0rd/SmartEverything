@@ -32,11 +32,7 @@ function signalsOf(mode: 'live' | 'dry' | 'simulated'): SignalInput[] {
     planHash: 'a'.repeat(64),
   });
   store.automationRunRecords.update(run.id, { status: 'running' });
-  const context = feedContextOf(
-    new Date('2026-10-18T10:00:00.000Z'),
-    () => 'UTC',
-    () => null,
-  );
+  const context = feedContextOf(new Date('2026-10-18T10:00:00.000Z'), () => 'UTC');
   return changes.flatMap((change) => [...automationSignals(change, context)]);
 }
 

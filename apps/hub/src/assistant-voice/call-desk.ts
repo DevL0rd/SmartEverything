@@ -114,7 +114,7 @@ export class CallDesk {
   async start(endpoint: VoiceEndpoint, client: ClientRow, message: CallStart): Promise<void> {
     await this.calls.get(endpoint.id)?.conversation.end('replaced', null, 'replaced_by_new_call');
     const caller = await callerOf(this.options.store, client, message.device);
-    const chatId = this.options.responder.chatForCall({
+    const chatId = await this.options.responder.chatForCall({
       profileId: caller.profileId,
       clientId: client.id,
       device: caller.device,

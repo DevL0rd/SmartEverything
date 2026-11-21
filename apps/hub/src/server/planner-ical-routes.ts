@@ -23,7 +23,7 @@ import { BODY_LIMIT, readBody, sendJson } from './http';
 import type { RawRoute } from './http-server';
 import { assertOwnerRoute } from './owner-route';
 import { assertScopeRoute } from './person-scope';
-import { plannerProfileOf } from './handlers/planner-profile';
+import { plannerProfileFor } from './handlers/planner-profile';
 
 export interface PlannerIcalServices {
   readonly store: Store;
@@ -95,7 +95,7 @@ async function importCalendar(
   if (!type.startsWith(PLANNER_ICS_CONTENT_TYPE)) {
     throw new ApiError('unsupported_media_type', `Send the file as ${PLANNER_ICS_CONTENT_TYPE}.`);
   }
-  const profileId = plannerProfileOf({ store }, caller, query.personId);
+  const profileId = await plannerProfileFor({ store }, caller, query.personId);
   const collection = await store.host.read('plannerFeedCollection', {
     profileId,
     collectionId: params['collectionId'] ?? '',
@@ -110,7 +110,7 @@ async function importCalendar(
       profileId: collection.profile_id,
       collectionId: collection.id,
       text,
-      defaultZone: store.settings.read().time_zone,
+      defaultZone: store.live.home.settings.read().time_zone,
     });
     services.log.info('planner.ics_imported', {
       collection: collection.id,
@@ -135,7 +135,7 @@ async function exportCalendar(
   const caller = await authorize(services, request, E.exportPlannerCalendar, params);
   const query = queryOf(request, E.exportPlannerCalendar.query);
   const { store } = services;
-  const profileId = plannerProfileOf({ store }, caller, query.personId);
+  const profileId = await plannerProfileFor({ store }, caller, query.personId);
   const collection = await store.host.read('plannerFeedCollection', {
     profileId,
     collectionId: params['collectionId'] ?? '',
@@ -157,7 +157,7 @@ async function exportItem(
   const caller = await authorize(services, request, E.exportPlannerItem, params);
   const query = queryOf(request, E.exportPlannerItem.query);
   const { store } = services;
-  const profileId = plannerProfileOf({ store }, caller, query.personId);
+  const profileId = await plannerProfileFor({ store }, caller, query.personId);
   const item = await store.host.call('plannerItems', 'byId', params['itemId'] ?? '', profileId);
   sendCalendar(response, await exportItemText(store, item, services.now()), item.title);
 }

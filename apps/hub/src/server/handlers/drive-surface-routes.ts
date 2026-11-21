@@ -2,6 +2,7 @@ import type { Logger } from '@smarteverything/logging';
 import { ApiError, type DriveSettings } from '@smarteverything/domain';
 import type { ConflictEnv } from '../../drive/conflicts';
 import { nodeInodeProbe } from '../../drive/fs-space';
+import { hostQuotaSource } from '../../drive/quotas';
 import type { DriveActivity } from '../../drive/activity';
 import type { DriveRootLanes } from '../../drive/root-lanes';
 import { DriveMount } from '../../drive/mount/service';
@@ -71,7 +72,7 @@ function davDepsOf(inputs: DriveSurfaceInputs): DavDeps {
     store,
     env: inputs.env,
     guard: {
-      status: (profileId) => store.driveQuotas.status(profileId),
+      status: hostQuotaSource(store),
       space: services.probe.space,
     },
     nodes: services.files.nodes,
@@ -120,8 +121,7 @@ function syncRoutes(
 
 function mountEnvOf(inputs: DriveSurfaceInputs): ConstructorParameters<typeof DriveMount>[0] {
   const { store, services } = inputs;
-  const quota = (profileId: string): ReturnType<typeof store.driveQuotas.status> =>
-    store.driveQuotas.status(profileId);
+  const quota = hostQuotaSource(store);
   return {
     store,
     change: { ...inputs.env, store },

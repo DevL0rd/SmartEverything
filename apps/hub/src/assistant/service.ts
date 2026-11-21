@@ -83,6 +83,7 @@ import type {
 } from './service-contract';
 export type * from './service-contract';
 export type { Sender } from './requests';
+type MessagesRead = Promise<AssistantMessageRow[]>;
 const log = new Logger('hub.assistant');
 export class AssistantService {
   readonly files: AssistantFiles;
@@ -113,13 +114,13 @@ export class AssistantService {
   private readonly listeners = new TurnListeners();
   constructor(private readonly options: AssistantServiceOptions) {
     const { store } = options;
-    this.projects = new ProjectFilesService(options.layout, store.aiChats);
+    this.projects = new ProjectFilesService(options.layout, store.live.chats);
     this.references = new ReferenceService(store, this.projects);
     this.files = assistantFiles(options, this.projects);
     this.conversation = new ConversationLog(store);
     this.chats = assistantChats(options, this.files, () => this.selections, this.projects);
     this.branches = new ChatBranches(store, this.files, this.chats);
-    this.repair = assistantRepair(options, this.conversation, this.chats, () => this.delivery);
+    this.repair = assistantRepair(options, this.chats, () => this.delivery);
     this.engines = new EngineRegistry(store);
     this.delivery = assistantDelivery(
       options,
@@ -172,9 +173,9 @@ export class AssistantService {
       },
     });
   }
-  activity(profileId: string): ChatActivityNotice[] {
+  async activity(profileId: string): Promise<ChatActivityNotice[]> {
     return [
-      ...this.engines.activity(profileId),
+      ...(await this.engines.activity(profileId)),
       ...[...this.computerProviders.values()].flatMap((runner) => runner.activity(profileId)),
     ];
   }
@@ -182,10 +183,10 @@ export class AssistantService {
     id: string,
     scope: { readonly chatId: string; readonly profileId: string; readonly clientId: string },
     text: string,
-  ): void {
-    this.requests.previewError(id, scope, text);
+  ): Promise<void> {
+    return this.requests.previewError(id, scope, text);
   }
-  runTurn(input: TurnRequest): { chatId: string; eventId: string } {
+  runTurn(input: TurnRequest): Promise<{ chatId: string; eventId: string }> {
     return this.requests.runTurn(input);
   }
   admitDelivery(admit: (event: StoredEvent) => boolean): () => void {
@@ -217,17 +218,12 @@ export class AssistantService {
   }
   attachHarness(service: HarnessService, dispatcher: HarnessDispatcher): void {
     this.harness = attachHarnessReferences(service, this.references);
-    service.onMachineChanged((chat, text) => {
-      this.conversation.note(chat, 'SmartEverything', text, null);
-    });
     this.engines.attach(
       harnessEngine({ service, dispatcher, conversation: this.conversation }, this.options, {
         activity: (notice): void => {
           this.listeners.activity(notice);
         },
-        finished: (event, text, ok): void => {
-          this.requests.finished(event, text, ok);
-        },
+        finished: (event, text, ok) => this.requests.finished(event, text, ok),
       }),
     );
     log.info('engine.attached', { kind: 'harness' });
@@ -244,14 +240,14 @@ export class AssistantService {
     return this.listeners.onActivity(listener);
   }
   private ended(event: StoredEvent, text: string, ok: boolean): void {
-    this.delegation.finished(event, text, ok);
+    this.delegation.ended(event, text, ok);
     this.listeners.finished(event, text, ok);
   }
   inbound(turn: InboundTurn): Promise<{ eventId: string; messageId: string }> {
     return this.requests.inbound(turn);
   }
-  systemNote(chatId: string, text: string, author: string): AssistantMessageRow {
-    return this.conversation.note(this.options.store.aiChats.chat(chatId), author, text, null);
+  systemNote(chatId: string, text: string, author: string): Promise<AssistantMessageRow> {
+    return this.conversation.noteIn(chatId, author, text);
   }
   attachTools(tools: ToolHub): void {
     this.tools = tools;
@@ -260,17 +256,17 @@ export class AssistantService {
     this.learner = learner;
     this.titles = assistantAuxiliaries(this.options, parts, this.onFinished.bind(this), learner);
   }
-  stop(): void {
+  async stop(): Promise<void> {
     log.info('service.stopping', { engines: this.computerProviders.size });
     this.delivery.stop();
-    for (const runner of this.computerProviders.values()) runner.stop();
     this.selections?.stop();
+    await Promise.all([...this.computerProviders.values()].map((runner) => runner.stop()));
   }
   onVoiceResult(handler: VoiceResultHandler): void {
     this.voiceResult = handler;
   }
   settings(): AssistantSettings {
-    return this.options.store.assistantChat.settings();
+    return this.options.store.live.home.assistant.read();
   }
   status(): AssistantStatus {
     return { settings: legacyAssistantSettings(this.settings()), ...RETIRED_STATUS_FIELDS };
@@ -279,20 +275,20 @@ export class AssistantService {
     await this.options.store.live.home.assistant.save(
       patchAssistantSettings(this.settings(), change),
     );
-    if (change.name !== undefined) this.chats.retitleConversations();
+    if (change.name !== undefined) await this.chats.retitleConversations();
     log.info('settings.updated', { fields: Object.keys(change).join(',') });
     this.delivery.pump();
     this.publisher.publish();
     return this.status();
   }
-  messages(chatId: string, before: string | undefined, limit: number): AssistantMessageRow[] {
-    return this.options.store.assistantChat.messages({ chatId, before, limit });
+  messages(chatId: string, before: string | undefined, limit: number): MessagesRead {
+    return this.options.store.host.call('assistantChat', 'messages', { chatId, before, limit });
   }
   react(
     caller: Caller,
     target: { readonly chatId: string; readonly messageId: string },
     change: AssistantReactionChange,
-  ): readonly AssistantReaction[] {
+  ): Promise<readonly AssistantReaction[]> {
     return setMessageReaction(
       { store: this.options.store, chats: this.chats, engines: this.engines },
       caller,
@@ -307,10 +303,10 @@ export class AssistantService {
       ids,
     );
   }
-  createChat(owner: ChatOwner, input: AiChatNew, allowStandalone = false): AiChatRow {
+  createChat(owner: ChatOwner, input: AiChatNew, allowStandalone = false): Promise<AiChatRow> {
     return this.chats.create(owner, input, allowStandalone);
   }
-  preparedChat(owner: ChatOwner, input: AiChatNew): NewChat {
+  preparedChat(owner: ChatOwner, input: AiChatNew): Promise<NewChat> {
     return this.chats.prepare(owner, input);
   }
   removeChat(
@@ -323,12 +319,12 @@ export class AssistantService {
     log.info('chat.removing', { chatId, profileId: owner.profileId, inactiveOnly });
     return removeChatTree({ chats, engines, delivery, admit, inactiveOnly }, owner, chatId);
   }
-  branchChat(...input: Parameters<ChatBranches['branch']>): Promise<AiChatRow> {
+  async branchChat(...input: Parameters<ChatBranches['branch']>): Promise<AiChatRow> {
     const [owner, chatId] = input;
-    this.engines.forMutation(this.chats.own(owner, chatId), owner.role);
-    return this.branches.branch(...input);
+    this.engines.forMutation(await this.chats.own(owner, chatId), owner.role);
+    return await this.branches.branch(...input);
   }
-  searchChats(owner: ChatOwner, query: AiChatSearch): AiChatHit[] {
+  searchChats(owner: ChatOwner, query: AiChatSearch): Promise<AiChatHit[]> {
     return this.chats.search(owner, query);
   }
   updateChat(owner: ChatOwner, chatId: string, change: AiChatChangeRequest): Promise<AiChatRow> {

@@ -37,6 +37,7 @@ const EXPIRY_AT =
   "strftime('%Y-%m-%dT%H:%M:%fZ', coalesce(last_line_at, started_at), '+' || coalesce(retention_days, $days) || ' days')";
 
 export interface NewTranscriptSession {
+  readonly id?: string;
   readonly source: TranscriptSource;
   readonly sourceId: string;
   readonly pluginId: string | null;
@@ -92,7 +93,7 @@ export class TranscriptsRepository {
 
   open(session: NewTranscriptSession): TranscriptSession {
     return this.context.write(() => {
-      const id = this.context.newId();
+      const id = session.id ?? this.context.newId();
       this.context.sql.run(
         'open the transcript',
         `insert into transcript_sessions (id, source, source_id, plugin_id, title, retention_days, started_at)

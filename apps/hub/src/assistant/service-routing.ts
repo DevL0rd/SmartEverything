@@ -9,18 +9,15 @@ import type { EngineRegistry } from './engines/registry';
 import { AssistantDelivery, hostedDeliveryEvents } from './delivery';
 import type { DeliveryOptions } from './delivery';
 import type { AssistantServiceOptions } from './service-contract';
-import type { ConversationLog } from './conversation-log';
 import { RepairDispatch } from './repair-dispatch';
 
 export function assistantRepair(
   { store }: AssistantServiceOptions,
-  conversation: ConversationLog,
   chats: Pick<ChatDirectory, 'repairChat'>,
   delivery: () => AssistantDelivery,
 ): RepairDispatch {
   return new RepairDispatch({
     store,
-    conversation,
     repairChat: (profileId) => chats.repairChat(profileId),
     added: (): void => {
       delivery().added();
@@ -34,7 +31,8 @@ export function assistantDelivery(
 ): AssistantDelivery {
   return new AssistantDelivery({
     events: hostedDeliveryEvents(options.store),
-    frozen: (id): boolean => options.store.aiChats.chat(id).deletion_state !== null,
+    frozen: async (id): Promise<boolean> =>
+      (await options.store.host.call('aiChats', 'chat', id)).deletion_state !== null,
     route: (event) => engines.route(event),
     ...ports,
     log: options.log,
@@ -81,7 +79,7 @@ export function assistantFiles(
 ): AssistantFiles {
   return new AssistantFiles({
     layout: options.layout,
-    chat: options.store.assistantChat,
+    store: options.store,
     attachments: options.store.live.attachments,
     now: options.now,
     projects,

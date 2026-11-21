@@ -4,6 +4,7 @@ import type { AiChatRow } from '@smarteverything/domain';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import type { TurnStream } from '../../conversation/stream';
 import { CONTINUE_NOTE } from '../../interruption';
+import { isModelUnavailable } from '../../../harness/model-unavailable';
 
 export const RETRY_WAIT_MS = 2000;
 
@@ -35,6 +36,7 @@ export function finalFailure(failure: TurnFailure): boolean {
 export interface TurnRetryPorts<T extends RetryableTurn> {
   readonly resume: (turn: T, deliveryId: string, text: string) => Promise<void>;
   readonly active: (turn: T) => boolean;
+  readonly final: (turn: T, message: string) => void;
 }
 
 export class TurnRetries<T extends RetryableTurn> {
@@ -109,6 +111,10 @@ export class TurnRetries<T extends RetryableTurn> {
     } catch (cause) {
       if (!this.ports.active(turn)) return;
       const { name, message } = describeFailure(cause);
+      if (isModelUnavailable(cause)) {
+        this.ports.final(turn, message);
+        return;
+      }
       log.error('turn.retry_send_failed', cause, { eventId: id, chatId: turn.chat.id });
       this.failed(turn, { code: name, message });
     }

@@ -12,9 +12,10 @@ export function assistantVoice(deps: {
 }): VoiceResponder {
   return {
     ready: (chatId?: string): string | null =>
-      chatId === undefined ? null : deps.engines.ready(deps.store.aiChats.chat(chatId)),
-    chatForCall: ({ chatId, ...place }): string => deps.chats.chatForCall(place, chatId).id,
-    request: (task): string => deps.requests.voice(task),
+      chatId === undefined ? null : deps.engines.ready(deps.store.live.chats.chat(chatId)),
+    chatForCall: async ({ chatId, ...place }): Promise<string> =>
+      (await deps.chats.chatForCall(place, chatId)).id,
+    request: (task): Promise<string> => deps.requests.voice(task),
     callEnded: deps.afterCall,
   };
 }

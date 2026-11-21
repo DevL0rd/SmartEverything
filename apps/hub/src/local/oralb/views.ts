@@ -120,8 +120,8 @@ function segmentsOf(points: readonly Point[]): Point[][] {
   return segments;
 }
 
-export function oralbHeadTimeline(context: ViewContext): HeadTimeline {
-  const points = context.deps.series(context.device.id, 'brush_head_days_left').points;
+export async function oralbHeadTimeline(context: ViewContext): Promise<HeadTimeline> {
+  const { points } = await context.deps.series(context.device.id, 'brush_head_days_left');
   const segments = segmentsOf(points).filter((segment) => (segment[0]?.value ?? 0) > 0);
   return {
     timeline: segments.flatMap((segment, index) => {

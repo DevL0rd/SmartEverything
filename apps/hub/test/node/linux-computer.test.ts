@@ -30,6 +30,16 @@ describe.skipIf(process.platform !== 'linux')('LinuxComputer on this machine', (
       expect(parts.cpu?.cores).toHaveLength(hello.cpu.threads);
       expect(parts.memory?.totalBytes).toBeGreaterThan(0);
       expect(parts.disks?.disks.length).toBeGreaterThan(0);
+      expect(parts.disk_usage?.disks).toEqual(
+        parts.disks?.disks.map(({ mount, device, label, filesystem, usedBytes, totalBytes }) => ({
+          mount,
+          device,
+          label,
+          filesystem,
+          usedBytes,
+          totalBytes,
+        })),
+      );
     } finally {
       computer.stop();
     }

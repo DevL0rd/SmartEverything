@@ -15,20 +15,21 @@ let refuseWrites: boolean;
 
 beforeEach(async () => {
   rig = await harnessRig();
-  files = new ProjectFilesService(rig.opened.layout, rig.opened.store.aiChats);
+  files = new ProjectFilesService(rig.opened.layout, rig.opened.store.live.chats);
   const chat = rig.newChat({ kind: 'server' });
   writes = [];
   refuseWrites = false;
   authority = {
     chatId: chat.id,
     profileId: rig.owner.profileId,
-    validate: (write): void => {
+    validate: (write): Promise<void> => {
       writes.push(write);
       if (write && refuseWrites)
         throw new ApiError(
           'forbidden',
           'Managed project is read-only under this session permission.',
         );
+      return Promise.resolve();
     },
   };
 });

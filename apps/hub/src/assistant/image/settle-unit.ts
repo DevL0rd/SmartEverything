@@ -1,7 +1,7 @@
 import { assistantLabel, type ImageOperationReceipt } from '@smarteverything/domain';
 import { durableStoreUnit } from '../../store/host/unit';
 import type { StoredAttachment } from '../../store/repositories/assistant-chat';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { responderMessage } from '../conversation-log';
 import { addConversationMessage } from '../store-units';
 import { recordImageUsage } from './usage';
@@ -17,7 +17,7 @@ export interface ImageSettleInput {
 }
 
 function withResultMessage(
-  store: Store,
+  store: HostStore,
   receipt: ImageOperationReceipt,
   message: ImageResultMessage | undefined,
 ): ImageOperationReceipt {

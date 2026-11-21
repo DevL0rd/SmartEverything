@@ -77,7 +77,7 @@ function cameraHandlers(home: Home): ReturnType<typeof coreNodeEffects> {
     signals: { emit: (): void => undefined },
     replies: new WebhookReplies(),
     clock: { now: (): Date => new Date(home.clock.current) },
-    ownerProfileId: () => 'profile-1',
+    ownerProfileId: () => Promise.resolve('profile-1'),
   });
   return coreNodeEffects({
     store: home.test.store,

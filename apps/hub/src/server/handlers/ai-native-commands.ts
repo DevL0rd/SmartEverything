@@ -17,15 +17,15 @@ export const nativeCommandRoutes = (context: NativeCommandContext) =>
   ({
     listAiChatNativeCommands: bound(
       API_ENDPOINTS.listAiChatNativeCommands,
-      ({ params, caller }) => {
-        const { chat, commands, clientId } = owned(context, caller, params.chatId);
+      async ({ params, caller }) => {
+        const { chat, commands, clientId } = await owned(context, caller, params.chatId);
         return commands.list(chat, clientId);
       },
     ),
     executeAiChatNativeCommand: bound(
       API_ENDPOINTS.executeAiChatNativeCommand,
-      ({ params, caller, body }) => {
-        const { chat, commands, clientId } = owned(context, caller, params.chatId);
+      async ({ params, caller, body }) => {
+        const { chat, commands, clientId } = await owned(context, caller, params.chatId);
         if (
           body.scope.client_id !== clientId ||
           body.scope.profile_id !== chat.profile_id ||
@@ -40,28 +40,28 @@ export const nativeCommandRoutes = (context: NativeCommandContext) =>
     ),
     readAiChatNativeCommandReceipt: bound(
       API_ENDPOINTS.readAiChatNativeCommandReceipt,
-      ({ params, caller }) => {
-        const { chat, commands, clientId } = owned(context, caller, params.chatId);
+      async ({ params, caller }) => {
+        const { chat, commands, clientId } = await owned(context, caller, params.chatId);
         return commands.read(chat, params.operationId, clientId);
       },
     ),
   }) as const;
-function owned(
+async function owned(
   context: NativeCommandContext,
   caller: Caller,
   chatId: string,
-): {
-  readonly chat: ReturnType<ChatDirectory['own']>;
+): Promise<{
+  readonly chat: Awaited<ReturnType<ChatDirectory['own']>>;
   readonly commands: NonNullable<ReturnType<ComputerProviders['get']>>['commands'];
   readonly clientId: string;
-} {
+}> {
   const client = directClient(caller);
   if (client === undefined)
     throw new ApiError(
       'forbidden',
       'Native commands require the owner’s direct authenticated app request.',
     );
-  const chat = context.assistant.chats.own(
+  const chat = await context.assistant.chats.own(
     { profileId: profileIdOf(caller), role: 'owner' },
     chatId,
   );

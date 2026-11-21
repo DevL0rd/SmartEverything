@@ -72,8 +72,8 @@ async function openTurn(): Promise<Turn> {
     provider: fakeGemini(sockets),
     responder: {
       ready: (): null => null,
-      chatForCall: (): string => chatId,
-      request: (): string => 'event-1',
+      chatForCall: (): Promise<string> => Promise.resolve(chatId),
+      request: (): Promise<string> => Promise.resolve('event-1'),
       callEnded: (): void => undefined,
     },
     tools: new ToolHub([]),
@@ -136,7 +136,7 @@ function ask(turn: Turn): void {
   turn.session.finish();
 }
 
-const HOST_ROUNDS = 6;
+const HOST_ROUNDS = 16;
 
 const settle = async (): Promise<void> => {
   for (let round = 0; round < HOST_ROUNDS; round += 1) {

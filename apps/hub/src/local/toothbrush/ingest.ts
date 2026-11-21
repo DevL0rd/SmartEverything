@@ -41,7 +41,7 @@ export interface LivePublisher {
 }
 
 export interface IngestDeps {
-  readonly store: Pick<Store, 'host' | 'profiles'>;
+  readonly store: Pick<Store, 'host' | 'live'>;
   readonly fleet: Fleet;
   readonly publisher: Publisher;
   readonly sink: () => AdapterSink;
@@ -416,7 +416,7 @@ export class BrushIngest {
     }
     const person = this.personOf(state);
     this.deps.live.publish(device.id, (client) => {
-      const profileId = this.deps.store.profiles.activeOf(client.id).id;
+      const profileId = this.deps.store.live.access.activeProfileOf(client.id);
       return noticeOf(
         device,
         liveFrameOf(state, now, ownsSessions({ role: client.role, profileId }, person)),

@@ -20,14 +20,14 @@ import { graphFunction } from './support/graph-of';
 let rig: ProgramRig;
 let service: AutomationFunctions;
 
-beforeEach(() => {
+beforeEach(async () => {
   captureLogs();
-  rig = programRig();
+  rig = await programRig();
   service = automationFunctions(rig.env);
 });
 
-afterEach(() => {
-  rig.close();
+afterEach(async () => {
+  await rig.close();
 });
 
 function functionOf(extra: Partial<FunctionV3> = {}): FunctionV4 {

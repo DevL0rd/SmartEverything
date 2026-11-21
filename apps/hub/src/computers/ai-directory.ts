@@ -249,7 +249,7 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
   }
   override startRuntimeCommand(
     input: AiNativeCommandWrite,
-    authorize: () => void,
+    authorize: () => Promise<void>,
     configuration?: CodexCommandConfiguration,
   ): Promise<AiNativeCommandReceipt> {
     return startClaudeCommand(this.jobs, this.runtimes, {

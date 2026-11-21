@@ -13,9 +13,9 @@ import {
 } from '@smarteverything/domain';
 import { driveNotificationNames } from '../../drive/social/notify-push';
 import { drainActivity, type ActivityCursor } from '../../photos/sharing/tail';
-import { effectiveClientById } from '../../server/person-access';
+import { effectiveClientById } from '../../server/person-access-units';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { PhotoAlbumActivityRow } from '../../store/repositories/photo-album-activity';
 import type { PushNotification } from './fcm';
 
@@ -34,7 +34,7 @@ export interface PushAudienceFacts {
   readonly clients: PushClient[];
 }
 
-export function pushClientOf(store: Store, clientId: string): PushClient {
+export function pushClientOf(store: HostStore, clientId: string): PushClient {
   const owner = { clientId, profileId: store.profiles.activeOf(clientId).id };
   return {
     clientId,
@@ -60,7 +60,7 @@ export const PUSH_DRIVE_NAMES_UNIT = storeUnit((store, row: DriveNotification) =
 );
 
 export type AlbumPushStore = Pick<
-  Store,
+  HostStore,
   'driveAlbums' | 'photoAlbumMembers' | 'profiles' | 'personal'
 >;
 

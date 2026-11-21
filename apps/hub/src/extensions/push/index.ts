@@ -65,7 +65,7 @@ class PushSender {
     const { store } = context;
     this.cameraGate = new CameraGate({
       now: options.now,
-      timeZone: (): string => store.settings.read().time_zone,
+      timeZone: (): string => store.live.home.settings.read().time_zone,
       log,
     });
   }
@@ -138,18 +138,21 @@ class PushSender {
     const { store, live, openCalls, replyNotices } = this.context;
     const subject = { kind: 'assistant_reply', messageId: row.id };
     const extras = replyNotices.take(row.id);
-    const audience = replyAudience(row, {
-      asker: (id) => store.assistantChat.find(id),
-      listening: (clientId, stream) => live.clientListening(clientId, stream),
-      callOpen: (id) => openCalls.isOpen(id),
-    });
+    const asking =
+      row.reply_to === null
+        ? Promise.resolve(undefined)
+        : store.host.call('assistantChat', 'find', row.reply_to);
+    const label = assistantLabel(store.live.home.assistant.read());
     this.track(
       subject,
-      () =>
-        Promise.resolve(
-          replyNotification(row, assistantLabel(store.assistantChat.settings()), extras),
-        ),
-      audience,
+      () => Promise.resolve(replyNotification(row, label, extras)),
+      asking.then((asker) =>
+        replyAudience(row, {
+          asker: () => asker,
+          listening: (clientId, stream) => live.clientListening(clientId, stream),
+          callOpen: (id) => openCalls.isOpen(id),
+        }),
+      ),
     );
   }
 
@@ -202,7 +205,7 @@ class PushSender {
       row.device_id === null ? undefined : await store.host.call('devices', 'find', row.device_id);
     const event = urgentEventOf(
       row,
-      store.settings.read().home_name,
+      store.live.home.settings.read().home_name,
       device === undefined ? null : (device.display_name ?? device.name),
     );
     return {
@@ -218,7 +221,7 @@ class PushSender {
   track(
     subject: Subject,
     compose: () => Promise<PushNotification>,
-    accept: Audience = () => true,
+    accept: Audience | Promise<Audience> = () => true,
   ): void {
     const delivery = this.deliver(subject, compose, accept).catch((cause: unknown) => {
       this.record({ ...NOTHING, reasons: [failureLine(cause)] });
@@ -234,8 +237,9 @@ class PushSender {
   private async deliver(
     subject: Subject,
     compose: () => Promise<PushNotification>,
-    accept: Audience,
+    audienceOf: Audience | Promise<Audience>,
   ): Promise<void> {
+    const accept = await audienceOf;
     const facts = await this.context.store.host.read('pushAudience', [
       ...this.context.live.backgroundClients(),
     ]);

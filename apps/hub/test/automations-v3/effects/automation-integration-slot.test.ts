@@ -44,7 +44,7 @@ describe('AutomationIntegrationSlot', () => {
       signals: { emit: () => undefined },
       replies,
       clock: { now: () => new Date(0) },
-      ownerProfileId: () => 'owner',
+      ownerProfileId: () => Promise.resolve('owner'),
     });
     expect(slot.replies).toBe(replies);
     slot.stop();

@@ -6,6 +6,6 @@ export interface InstalledPlugins {
   };
 }
 
-export function installedSignalSources(store: InstalledPlugins): readonly SignalSourceSpec[] {
-  return [...SIGNAL_SOURCES, ...store.plugins.list().map((row) => pluginSignalSpec(row.manifest))];
+export function installedSignalSources(home: InstalledPlugins): readonly SignalSourceSpec[] {
+  return [...SIGNAL_SOURCES, ...home.plugins.list().map((row) => pluginSignalSpec(row.manifest))];
 }

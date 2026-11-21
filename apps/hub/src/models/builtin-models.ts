@@ -1,7 +1,7 @@
 import { setImmediate } from 'node:timers/promises';
 import { MODEL_OWNER, PLUGIN_MANIFEST, type ModelSpec } from '@smarteverything/domain';
 import type { BuiltinPlugin } from '../plugins/builtin/contract';
-import type { ModelBatch, ModelBatchResult, ModelCatalogService } from './catalog-service';
+import type { ModelBatch, ModelBatchResult } from './catalog-service';
 import { admitEntry, entryFromSpec, type Admission, type ModelEntry } from './contributions';
 
 export const BUILTIN_MODEL_OWNER = 'builtin';
@@ -33,13 +33,20 @@ async function admissionsOf(batch: ModelBatch): Promise<readonly Admission[]> {
   return admissions;
 }
 
+export interface AdmittedReplacer {
+  readonly replaceAdmitted: (
+    batch: ModelBatch,
+    admissions: readonly Admission[],
+  ) => ModelBatchResult | Promise<ModelBatchResult>;
+}
+
 export async function seedBuiltinModels(
-  service: Pick<ModelCatalogService, 'replaceAdmitted'>,
+  service: AdmittedReplacer,
   batches: readonly ModelBatch[],
 ): Promise<readonly ModelBatchResult[]> {
   const results: ModelBatchResult[] = [];
   for (const batch of batches) {
-    results.push(service.replaceAdmitted(batch, await admissionsOf(batch)));
+    results.push(await service.replaceAdmitted(batch, await admissionsOf(batch)));
   }
   return results;
 }

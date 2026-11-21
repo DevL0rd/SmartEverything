@@ -6,7 +6,7 @@ import type {
 import { instantsOf } from '../../../planner/instants';
 import { resolveItem, visibleCollections } from '../../../planner/sharing/visibility';
 import { storeUnit } from '../../../store/host/unit';
-import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 
 export interface ItemAsk {
   readonly profileId: string;
@@ -72,7 +72,7 @@ function nextPosition(positions: readonly { readonly position: number }[]): numb
   return positions.reduce((highest, row) => Math.max(highest, row.position + 1), 0);
 }
 
-function proposed(store: Store, profileId: string, draft: PlannerItemCreate): PlannerItemRow {
+function proposed(store: HostStore, profileId: string, draft: PlannerItemCreate): PlannerItemRow {
   store.plannerCollections.byId(draft.collection_id, profileId);
   return store.plannerItems.insert({
     ...draft,

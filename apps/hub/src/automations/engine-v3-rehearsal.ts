@@ -81,7 +81,8 @@ export function rehearsalOf(subject: Subject, source: RehearsalSource): Rehearsa
         );
         return {
           state,
-          context: contextOf(subject, triggerKeyOf(state), {
+          ...contextOf(subject, triggerKeyOf(state), {
+            host: env.host,
             reads: env.reads,
             persistent: env.world.persistentVariables(),
             stateMemory: env.world.stateMemory(),

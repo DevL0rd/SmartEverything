@@ -1,12 +1,12 @@
 import type { DriveItem, DriveUploadTarget } from '@smarteverything/domain';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { canRead, canWrite, driveAccess, itemAccess, type DriveActor } from '../access';
 import { isFileItem } from '../file-item';
 import type { Destination } from '../uploads-tus-target';
 
-type DestinationStore = Pick<Store, 'driveRoots' | 'driveItems' | 'driveGrants'>;
+type DestinationStore = Pick<HostStore, 'driveRoots' | 'driveItems' | 'driveGrants'>;
 
 class UploadRefusal extends Error {
   override readonly name = 'UploadRefusal';

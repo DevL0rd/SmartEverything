@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { addResponderMessage } from '../../../src/assistant/store-units';
 import {
   CHAT_RETRYING_REASON,
   CHAT_TIMELINE_EMBED,
@@ -36,7 +37,11 @@ interface Fixture {
   readonly toolsFinished: string[];
   readonly event: (kind: 'completed' | 'tool', seq: number) => AiHarnessEvent;
   readonly text: (seq: number, delta: string) => AiHarnessEvent;
-  readonly continued: (kind: 'state' | 'completed', seq: number, id: string) => AiHarnessEvent;
+  readonly continued: (
+    kind: 'state' | 'completed',
+    seq: number,
+    id: string,
+  ) => Promise<AiHarnessEvent>;
   readonly addSteered: () => StoredEvent;
   readonly failed: (seq: number, message: string) => Extract<AiHarnessEvent, { kind: 'failed' }>;
   readonly resumed: { readonly id: string; readonly text: string }[];
@@ -67,9 +72,10 @@ async function startedTurn(): Promise<Fixture> {
         finished.push({ id: event.id, ok });
       },
     },
-    (): void => undefined,
-    (turn): void => {
+    (): Promise<void> => Promise.resolve(),
+    (turn): Promise<void> => {
       toolsFinished.push(turn.event.id);
+      return Promise.resolve();
     },
     (_turn, id, text): Promise<void> => {
       if (control.rejectResume) return Promise.reject(new Error('Host is offline.'));
@@ -100,13 +106,13 @@ async function startedTurn(): Promise<Fixture> {
     native_turn: 1,
   };
   const deliver = (incoming: AiHarnessEvent): void => {
-    streams.received(incoming);
+    void streams.received(incoming);
   };
   deliver({
     ...base,
     seq: 0,
     kind: 'state',
-    session: rig.service.state(rig.owner, chat.id),
+    session: await rig.service.state(rig.owner, chat.id),
   });
   return {
     streams,
@@ -138,7 +144,7 @@ async function startedTurn(): Promise<Fixture> {
             detail: null,
           },
     text: (seq, delta): AiHarnessEvent => ({ ...base, seq, kind: 'text', delta }),
-    continued: (kind, seq, id): AiHarnessEvent =>
+    continued: async (kind, seq, id): Promise<AiHarnessEvent> =>
       kind === 'state'
         ? {
             ...base,
@@ -146,7 +152,7 @@ async function startedTurn(): Promise<Fixture> {
             native_turn: 2,
             seq,
             kind,
-            session: rig.service.state(rig.owner, chat.id),
+            session: await rig.service.state(rig.owner, chat.id),
           }
         : {
             ...base,
@@ -197,8 +203,8 @@ describe('a turn that is moving to another machine', () => {
     const carried = randomUUID();
     mine.streams.continueAs(mine.turn, carried);
 
-    mine.deliver(mine.continued('state', 3, carried));
-    mine.deliver(mine.continued('completed', 4, carried));
+    mine.deliver(await mine.continued('state', 3, carried));
+    mine.deliver(await mine.continued('completed', 4, carried));
     await mine.streams.settled();
 
     expect(mine.streams.active.has(mine.turn.event.id)).toBe(false);
@@ -219,7 +225,7 @@ describe('a turn that is moving to another machine', () => {
 describe('a provider that is retrying', () => {
   it('shows only the reconnecting marker, never the provider wording, and clears it afterwards', async () => {
     const mine = await startedTurn();
-    const session = rig.service.state(rig.owner, mine.chat.id);
+    const session = await rig.service.state(rig.owner, mine.chat.id);
     const base = {
       session_id: session.session_id,
       chat_id: mine.chat.id,
@@ -246,7 +252,7 @@ describe('the delivery log', () => {
   it('records a reconnect when the provider retries, not every assistant attempt', async () => {
     const logs = captureLogs();
     const mine = await startedTurn();
-    const session = rig.service.state(rig.owner, mine.chat.id);
+    const session = await rig.service.state(rig.owner, mine.chat.id);
     const base = {
       session_id: session.session_id,
       chat_id: mine.chat.id,
@@ -291,10 +297,14 @@ describe('output after an interleaved message', () => {
     const other = new ConversationLog(store);
     mine.deliver(mine.text(1, 'Before'));
     await mine.streams.settled();
-    const report = other.responderInChat({ chat: mine.chat, replyTo: null, text: 'Helper report' });
+    const report = await other.responderInChat({
+      chat: mine.chat,
+      replyTo: null,
+      text: 'Helper report',
+    });
     expect(() =>
       store.write(() => {
-        other.responderInChat({ chat: mine.chat, replyTo: null, text: 'Rolled back' });
+        addResponderMessage(store, { chat: mine.chat, replyTo: null, text: 'Rolled back' });
         throw new Error('Rollback fixture');
       }),
     ).toThrow('Rollback fixture');
@@ -308,7 +318,7 @@ describe('output after an interleaved message', () => {
     expect(timeline.parts.filter((part) => part.kind === 'steer')).toEqual([
       { kind: 'steer', key: `steer:${report.id}`, message_id: report.id },
     ]);
-    other.responderInChat({ chat: mine.chat, replyTo: null, text: 'After completion' });
+    await other.responderInChat({ chat: mine.chat, replyTo: null, text: 'After completion' });
     expect(store.assistantChat.message(mine.turn.replyId).embeds).toEqual(saved.embeds);
   });
 
@@ -365,7 +375,7 @@ describe('output after an interleaved message', () => {
 
   it('retains committed message boundaries when an open assistant attempt is discarded', async () => {
     const mine = await startedTurn();
-    const session = rig.service.state(rig.owner, mine.chat.id);
+    const session = await rig.service.state(rig.owner, mine.chat.id);
     const attempt = (seq: number, state: 'started' | 'discarded'): AiHarnessEvent => ({
       session_id: session.session_id,
       chat_id: mine.chat.id,
@@ -440,16 +450,17 @@ describe('a turn that fails', () => {
     await mine.streams.settled();
     await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS);
     const note = mine.resumed[0]?.id ?? '';
-    mine.deliver(mine.continued('state', 2, note));
+    mine.deliver(await mine.continued('state', 2, note));
     mine.deliver({
-      ...mine.continued('completed', 3, note),
+      ...(await mine.continued('completed', 3, note)),
       kind: 'failed',
       failure: { code: 'operation_failed', message: 'second', retry_at: null },
     });
+    await mine.streams.settled();
     await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS);
     expect(mine.resumed.map((entry) => entry.id)).toStrictEqual([note, note]);
 
-    mine.deliver(mine.continued('state', 4, note));
+    mine.deliver(await mine.continued('state', 4, note));
     mine.deliver({ ...mine.text(5, 'Back again'), delivery_id: note, native_turn: 2 });
     await mine.streams.settled();
     expect(mine.turn.stream.current().reason).toBeNull();
@@ -539,17 +550,17 @@ describe('work the native session reports without a hub delivery', () => {
     const mine = await startedTurn();
     mine.deliver(mine.event('completed', 1));
     await mine.streams.settled();
-    const session = rig.service.state(rig.owner, mine.chat.id);
+    const session = await rig.service.state(rig.owner, mine.chat.id);
     const own = {
       session_id: session.session_id,
       chat_id: mine.chat.id,
       epoch: session.epoch ?? 1,
     };
-    const reported = (event: AiHarnessEvent): void => {
-      rig.service.publish(event);
+    const reported = async (event: AiHarnessEvent): Promise<void> => {
+      await rig.service.publish(event);
       mine.deliver(event);
     };
-    reported({ ...own, seq: 2, kind: 'state', session: { ...session, state: 'waiting' } });
+    await reported({ ...own, seq: 2, kind: 'state', session: { ...session, state: 'waiting' } });
     mine.deliver({
       ...own,
       seq: 3,
@@ -560,14 +571,15 @@ describe('work the native session reports without a hub delivery', () => {
       target: rig.hub.target,
       detail: null,
     });
-    const [live] = mine.streams.sessions.activity(rig.owner.profileId);
+    await mine.streams.settled();
+    const [live] = await mine.streams.sessions.activity(rig.owner.profileId);
     expect(live).toMatchObject({ chatId: mine.chat.id, state: 'tool', messageId: null });
     expect(live?.turnId).not.toBe(mine.turn.event.id);
     expect(live?.tools.map((tool) => [tool.title, tool.state])).toStrictEqual([
       ['read', 'running'],
     ]);
 
-    reported({ ...own, seq: 4, kind: 'state', session: { ...session, state: 'idle' } });
+    await reported({ ...own, seq: 4, kind: 'state', session: { ...session, state: 'idle' } });
 
     const last = mine.notices.findLast(
       (notice) => notice.type === 'chat_activity' && notice.turnId === live?.turnId,

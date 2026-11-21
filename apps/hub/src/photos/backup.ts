@@ -1,29 +1,12 @@
 import { ApiError, type DriveItem } from '@smarteverything/domain';
-import {
-  folderDraft,
-  recordItem,
-  type ChangeActor,
-  type ChangeEnv,
-  type ChangeStore,
-} from '../drive/changes';
+import { folderDraft, recordItem, type ChangeActor, type ChangeEnv } from '../drive/changes';
 import { identityOf, isoOf } from '../drive/change-rows';
 import { locate, type DriveWriteRoot } from '../drive/intents';
 import { DriveWriteError } from '../drive/write-error';
-import { DriveSpaceMissingError } from '../drive/spaces';
-import type { DriveBackupRepository } from '../store/repositories/drive-backup';
-import type { DevicesRepository } from '../store/repositories/devices';
-import type { Sql } from '../store/sql';
+import { DriveSpaceMissingError } from '../drive/space-missing-error';
 import { PHOTOS_FOLDER } from './membership';
 
-export interface BackupStore extends ChangeStore {
-  readonly driveBackup: DriveBackupRepository;
-  readonly devices: Pick<DevicesRepository, 'find'>;
-}
-
-export interface BackupEnv extends ChangeEnv {
-  readonly store: BackupStore;
-  readonly sql: Sql;
-}
+export type BackupEnv = ChangeEnv;
 
 export interface BackupTarget {
   readonly folderId: string;

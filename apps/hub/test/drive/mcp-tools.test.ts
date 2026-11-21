@@ -1,3 +1,4 @@
+import { testStore, type TestStore, type SeededStore } from '../support/store';
 import { randomUUID } from 'node:crypto';
 import {
   CHAT_WIDGET,
@@ -16,10 +17,8 @@ import { toolNamed } from '../../src/extensions/mcp/tools';
 import { DRIVE_EDIT } from '../../src/extensions/mcp/tools/drive-edits';
 import { DRIVE_READ } from '../../src/extensions/mcp/tools/drive-reads';
 import { CHANGED_BY } from '../../src/extensions/mcp/tools/settings';
-import type { Store } from '../../src/store/store';
 import { operatingContext, selected, type Answers, type Call } from './mcp-rig';
 import { captureLogs } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 
 const ROOT = randomUUID();
 const FOLDER = randomUUID();
@@ -36,7 +35,7 @@ let context: OperatingContext;
 function operating(client: ClientRow, profile: ProfileRow): OperatingContext {
   return operatingContext(
     {
-      store: (): Store => opened.store,
+      store: (): SeededStore => opened.store,
       record: (call): void => {
         calls.push(call);
       },

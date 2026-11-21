@@ -8,7 +8,7 @@ import type {
 } from '@smarteverything/domain';
 import { lower } from '@smarteverything/flow/compile/lower';
 import { Logger } from '@smarteverything/logging';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { readAutomation, structuredFunction } from '../../store/repositories/automation-trees';
 import { jsonRecord } from '../engine-v3-start';
 import { rewriteProgramKinds, usedKindIds, type KindMigration } from './versions';
@@ -16,11 +16,11 @@ import { rewriteProgramKinds, usedKindIds, type KindMigration } from './versions
 const log = new Logger('hub.plugin-kinds');
 
 type LedgerStore = Pick<
-  Store,
+  HostStore,
   'pluginKinds' | 'automations' | 'automationFunctions' | 'automationPlans'
 >;
 
-type UsageStore = Pick<Store, 'automations' | 'automationFunctions'>;
+type UsageStore = Pick<HostStore, 'automations' | 'automationFunctions'>;
 
 export function usedKindsOf(store: UsageStore): ReadonlySet<string> {
   const used = new Set<string>();

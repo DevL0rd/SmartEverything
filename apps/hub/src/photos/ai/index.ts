@@ -14,7 +14,7 @@ interface Entry {
 }
 
 export interface EmbeddingSource {
-  readonly after: (itemId: string | null, size: number) => readonly PhotoEmbedding[];
+  readonly after: (itemId: string | null, size: number) => Promise<readonly PhotoEmbedding[]>;
 }
 
 const PAGE = 2000;
@@ -79,14 +79,13 @@ export class PhotoVectorIndex {
   private async load(): Promise<void> {
     let after: string | null = null;
     for (;;) {
-      const page = this.source.after(after, PAGE);
+      const page = await this.source.after(after, PAGE);
       for (const embedding of page) {
         if (!this.entries.has(embedding.itemId)) this.upsert(embedding);
       }
       const last = page.at(-1);
       if (last === undefined) return;
       after = last.itemId;
-      await nextTurn();
     }
   }
 }

@@ -8,6 +8,7 @@ import type {
 import type { WaitResume } from '@smarteverything/flow/interpret/waits';
 import type { CancelReason, RunState, Wait } from '@smarteverything/flow/state/run-state';
 import type { Cancel, Clock } from '../../clock';
+import type { StepReads } from '../world-v3/step-reads';
 import type { DecisionReason } from './decisions';
 
 export type RunKind = 'live' | 'dry' | 'simulated';
@@ -72,6 +73,7 @@ export interface DriverPorts {
 export interface RunStart {
   readonly state: RunState;
   readonly context: StepContext;
+  readonly reads: StepReads;
   readonly name: string;
   readonly kind: RunKind;
   readonly startedBy: string | null;

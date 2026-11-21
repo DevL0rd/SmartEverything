@@ -24,15 +24,21 @@ import {
   type BudgetAlert,
   type Spend,
 } from './budget-rules';
-import type { Ledger, Unsubscribe } from './ledger';
+import type { Unsubscribe } from './ledger';
+import type { SpendSource } from './person-budget';
 
 interface BudgetSettingsStore {
-  readonly read: (key: string) => Readonly<Record<string, unknown>> | null;
-  readonly save: (key: string, settings: Readonly<Record<string, unknown>>) => void;
+  readonly read: (key: typeof AI_BUDGET_KEY) => Readonly<Record<string, unknown>> | null;
+  readonly save: (
+    key: typeof AI_BUDGET_KEY,
+    settings: Readonly<Record<string, unknown>>,
+  ) => Promise<void>;
 }
 
 export interface BudgetOptions {
-  readonly ledger: Ledger;
+  readonly ledger: SpendSource & {
+    readonly on: (listener: (row: AiUsageRow) => void) => Unsubscribe;
+  };
   readonly settings: BudgetSettingsStore;
   readonly credits: CreditsWatch;
   readonly people: PersonBudgetSource;
@@ -126,12 +132,12 @@ export class Budget {
     };
   }
 
-  update(change: AiBudgetChange): Promise<AiBudgetStatus> {
+  async update(change: AiBudgetChange): Promise<AiBudgetStatus> {
     const settings = AI_BUDGET_SETTINGS.parse({ ...this.settings(), ...change });
-    this.options.settings.save(AI_BUDGET_KEY, settings);
+    await this.options.settings.save(AI_BUDGET_KEY, settings);
     this.baseline();
     this.options.log.info('budget.updated', { fields: Object.keys(change) });
-    return this.status();
+    return await this.status();
   }
 
   on(listener: BudgetListener): Unsubscribe {

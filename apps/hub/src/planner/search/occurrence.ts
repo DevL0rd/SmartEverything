@@ -3,11 +3,11 @@ import {
   type PlannerItemRow,
   type PlannerOccurrenceView,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { instantOf } from '../instants';
 import { expandOccurrences } from '../occurrences';
 
-export type SearchOccurrenceStore = Pick<Store, 'plannerItems' | 'plannerOccurrences'>;
+export type SearchOccurrenceStore = Pick<HostStore, 'plannerItems' | 'plannerOccurrences'>;
 
 export interface Reference {
   readonly now: Temporal.Instant;

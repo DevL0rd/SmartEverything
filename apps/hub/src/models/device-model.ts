@@ -12,7 +12,7 @@ import {
   type ModelResolution,
 } from '@smarteverything/domain';
 import type { ModelOverridesRepository } from '../store/repositories/model-overrides';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { ModelCatalogService } from './catalog-service';
 
 export interface ModelResolveSources {
@@ -73,7 +73,7 @@ export function modelViewOf(resolution: ModelResolution): DeviceModelView {
 }
 
 export function modelResolveSources(
-  store: Pick<Store, 'modelAssets' | 'modelCatalog' | 'modelOverrides'>,
+  store: Pick<HostStore, 'modelAssets' | 'modelCatalog' | 'modelOverrides'>,
 ): ModelResolveSources {
   return {
     catalog: new ModelCatalogService({ assets: store.modelAssets, catalog: store.modelCatalog }),

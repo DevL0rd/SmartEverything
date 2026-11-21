@@ -2,7 +2,7 @@ import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { StoreContext } from '../../store/context';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { PhotoConsent, type ConsentSwitches } from './consent';
 import { PHOTOS_AI_AREA } from './defaults';
 import { itemsIn, subjectOf, type SubjectScope } from './scope';
@@ -99,7 +99,7 @@ export interface ConsentPurge {
 }
 
 function purgeConsent(
-  store: Store,
+  store: HostStore,
   input: { readonly profileId: string; readonly before: ConsentSwitches | undefined },
 ): ConsentPurge {
   const { profileId, before } = input;

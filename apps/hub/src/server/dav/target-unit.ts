@@ -2,7 +2,7 @@ import { dirname } from 'node:path';
 import type { DriveItem, DriveRoot } from '@smarteverything/domain';
 import { driveAccess, itemAccess, type DriveActor, type ItemAccess } from '../../drive/access';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export interface DavLookup {
   readonly root: DriveRoot;
@@ -15,7 +15,7 @@ export interface DavFound {
   readonly item: DriveItem | null;
 }
 
-function accessOf(store: Store, { root, relPath, actor }: DavLookup): ItemAccess {
+function accessOf(store: HostStore, { root, relPath, actor }: DavLookup): ItemAccess {
   const whole = driveAccess(actor, root);
   if (whole !== 'none') return whole;
   for (let path = relPath; path !== ''; path = dirname(path) === '.' ? '' : dirname(path)) {

@@ -13,13 +13,7 @@ import { stageBytes, type StagedBytes } from './versions';
 import type { ContentAlongside } from './units/content';
 import { resultOf, writeDriveOps, type DriveOp, type DriveOpResult } from './units/ops';
 
-export interface DriveConflictStore {
-  readonly find: (id: string) => DriveConflict | undefined;
-}
-
-export interface ConflictEnv extends ChangeEnv {
-  readonly conflicts: DriveConflictStore;
-}
+export type ConflictEnv = ChangeEnv;
 
 const DEVICE_LABEL_LENGTH = 8;
 

@@ -1,6 +1,5 @@
 import { API_ENDPOINTS as E, type DriveItem } from '@smarteverything/domain';
 import { z } from 'zod';
-import { itemAccess } from '../../../drive/access';
 import { DrivePathError, openResolved, resolveInRoot } from '../../../drive/paths';
 import { requireExport } from '../../../drive/sharing/export-guard';
 import { operate, profileFor, type OperatingContext } from './acting';
@@ -54,16 +53,11 @@ export function attachToChat(): Selection {
         await operate(context, 'readItem', { params: { itemId: input.itemId } }, as),
       );
       const file = lookable(item);
-      const { store } = context;
-      requireExport(
-        itemAccess(
-          store,
-          { profileId: await profileFor(context, as) },
-          await store.host.call('driveRoots', 'byId', file.rootId),
-          file,
-        ),
-        file,
-      );
+      const access = await context.store.host.read('driveItemAccess', {
+        actor: { profileId: await profileFor(context, as) },
+        item: file,
+      });
+      requireExport(access, file);
       const content = await bytesOf(context, file);
       return new SelectionImages(
         { itemId: file.id, name: file.name, mime: file.mime, bytes: file.bytes },

@@ -1,6 +1,6 @@
 import { ApiError, type NodeHello } from '@smarteverything/domain';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { computerExternalId, describeComputer } from './computer-device';
 
 export interface NodeClaim {
@@ -15,7 +15,7 @@ export interface NodeClaimed {
   readonly hubUrl: string;
 }
 
-type ClaimStore = Pick<Store, 'clients' | 'computerAi' | 'computerNodes' | 'devices'>;
+type ClaimStore = Pick<HostStore, 'clients' | 'computerAi' | 'computerNodes' | 'devices'>;
 
 function windowClientOf(
   store: ClaimStore,

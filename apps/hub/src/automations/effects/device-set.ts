@@ -144,7 +144,7 @@ export async function submitPlan(
     readonly at?: CommandStamp;
   },
 ): Promise<Planned> {
-  const note = skippedMembersNote(ports.store, plan.skipped);
+  const note = skippedMembersNote(ports.store.live.home, plan.skipped);
   if (plan.commands.length === 0)
     throw new ApiError('command_refused', note ?? 'No supported target commands.');
   if (options.requireAll === true && note !== null) throw new ApiError('command_refused', note);

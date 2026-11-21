@@ -1,3 +1,4 @@
+import { hostMemoryChats, hostMemoryRows } from '../../src/store/host/hosted';
 import { remember } from '../support/memory-service';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
@@ -244,8 +245,8 @@ async function boot(): Promise<Rig> {
               },
             },
             new MemoryService(
-              opened.store.aiMemories,
-              opened.store.aiChats,
+              hostMemoryRows(opened.store.host),
+              hostMemoryChats(opened.store.host),
               new FakeMemoryEmbedder(),
             ),
           ),
@@ -289,8 +290,8 @@ describe('the memory plugin wired the way the hub wires it', () => {
     const ida = person('Ida', 'member');
     const kid = person('Kid', 'member');
     const service = new MemoryService(
-      opened.store.aiMemories,
-      opened.store.aiChats,
+      hostMemoryRows(opened.store.host),
+      hostMemoryChats(opened.store.host),
       new FakeMemoryEmbedder(),
     );
     await remember(
@@ -340,13 +341,13 @@ describe('the memory plugin wired the way the hub wires it', () => {
     const host = await boot();
     const ida = person('Ida', 'member');
     const service = new MemoryService(
-      opened.store.aiMemories,
-      opened.store.aiChats,
+      hostMemoryRows(opened.store.host),
+      hostMemoryChats(opened.store.host),
       new FakeMemoryEmbedder(),
     );
     const who = { profileId: ida.id, role: 'member' as const, chatId: null, messageId: null };
     await remember(service, who, { scope: 'person', text: 'Ida takes the 7:40 bus' });
-    service.changeSettings(who, { enabled: false });
+    await service.changeSettings(who, { enabled: false });
     host.model.script({ kind: 'text', text: 'one' });
 
     await asked(host, ida.session, 1);

@@ -36,7 +36,7 @@ describe('a generated image is saved after the turn that started it has ended', 
     const { store } = rig.opened;
     const scope = authority();
     store.harnessRecovery.authorize(scope);
-    const actor = withExecutionAuthority(scope, () =>
+    const actor = await withExecutionAuthority(scope, () =>
       imageActorOf(
         { store, configured: () => true, spend: () => undefined },
         { kind: 'client', client: store.clients.byId(rig.clientId), chatId: chat.id },
@@ -46,11 +46,9 @@ describe('a generated image is saved after the turn that started it has ended', 
     if (session.kind !== 'dsh' || session.session_id === null)
       throw new Error('The chat has no native session.');
     store.dshSessions.detach(session.session_id, rig.owner.profileId);
-    expect(() => {
-      withExecutionAuthority(scope, () => {
-        actor.authorize('persist', chat.id);
-      });
-    }).not.toThrow();
+    await expect(
+      withExecutionAuthority(scope, () => actor.authorize('persist', chat.id)),
+    ).resolves.toBeUndefined();
   });
 
   it('asks the spending gate on behalf of the person who started the image', async () => {
@@ -60,7 +58,7 @@ describe('a generated image is saved after the turn that started it has ended', 
     const scope = authority();
     store.harnessRecovery.authorize(scope);
     const asked: unknown[] = [];
-    const actor = withExecutionAuthority(scope, () =>
+    const actor = await withExecutionAuthority(scope, () =>
       imageActorOf(
         {
           store,
@@ -72,9 +70,7 @@ describe('a generated image is saved after the turn that started it has ended', 
         { kind: 'client', client: store.clients.byId(rig.clientId), chatId: chat.id },
       ),
     );
-    withExecutionAuthority(scope, () => {
-      actor.authorize('provider', chat.id);
-    });
+    await withExecutionAuthority(scope, () => actor.authorize('provider', chat.id));
     expect(asked).toStrictEqual([{ background: false, profileId: rig.owner.profileId }]);
   });
 });

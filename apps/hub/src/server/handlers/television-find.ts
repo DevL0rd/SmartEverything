@@ -3,7 +3,6 @@ import type { Logger } from '@smarteverything/logging';
 import { televisionSearch } from '../../adapters/samsung-tv/candidates';
 import {
   findTelevision,
-  screensOf,
   type FindResult,
   type FindTelevisionOptions,
 } from '../../adapters/samsung-tv/find-television';
@@ -28,14 +27,15 @@ function optionsOf(
   return {
     search,
     io,
-    screens: (): readonly ScreenDevice[] => screensOf(store),
-    isLinked: (deviceId): boolean => {
-      const settings = store.televisionSettings.find(deviceId);
+    screens: (): Promise<readonly ScreenDevice[]> => store.host.read('televisionScreens', null),
+    isLinked: async (deviceId): Promise<boolean> => {
+      const settings = await store.host.call('televisionSettings', 'find', deviceId);
       return (settings?.direct_host ?? null) !== null && (settings?.direct_mac ?? null) !== null;
     },
-    isLinking: (): boolean => store.providers.find('samsung_tv')?.status === 'linking',
-    learn: (deviceId, mac): void => {
-      store.televisionSettings.setWakeAddress(deviceId, mac);
+    isLinking: async (): Promise<boolean> =>
+      (await store.host.call('providers', 'find', 'samsung_tv'))?.status === 'linking',
+    learn: async (deviceId, mac): Promise<void> => {
+      await store.host.call('televisionSettings', 'setWakeAddress', deviceId, mac);
     },
     startLink: (host, attachTo): void => {
       hub.providers.link({ provider: 'samsung_tv', host, attachTo }).catch((cause: unknown) => {

@@ -1,6 +1,6 @@
 import type { DriveActor } from '../../drive/access';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { AlbumActivityService } from './activity';
 import { PartnerAutoSaver } from './auto-save';
 import { SharedAlbumMembers } from './members';
@@ -16,7 +16,7 @@ interface SharingServices {
   readonly partners: PartnerSharing;
 }
 
-function sharingOf(store: Store): SharingServices {
+function sharingOf(store: HostStore): SharingServices {
   const seen = new AlbumSeen(store);
   const saved = new SavedAlbums(store);
   return {

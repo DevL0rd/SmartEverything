@@ -25,7 +25,7 @@ function hostOf(manifests: readonly PluginManifest[]): Host {
       for (const listener of listeners) listener();
     },
     source: {
-      plugins: () => [...rows].map(([id, manifest]) => ({ id, manifest })),
+      plugins: () => Promise.resolve([...rows].map(([id, manifest]) => ({ id, manifest }))),
       loaded: (id) => running.has(id),
       changes: (listener) => {
         listeners.add(listener);
@@ -39,45 +39,56 @@ function hostOf(manifests: readonly PluginManifest[]): Host {
 
 const POST_ID = 'plugin.chat_hub.post_message';
 
+function written(): ReturnType<typeof vi.fn<(pluginId: string, detail: string) => Promise<void>>> {
+  return vi.fn((_pluginId: string, _detail: string) => Promise.resolve());
+}
+
+function failed(cause: unknown): void {
+  throw cause;
+}
+
 describe('followPluginKinds', () => {
-  it('adds kinds when a plugin loads and removes them when it unloads', () => {
+  it('adds kinds when a plugin loads and removes them when it unloads', async () => {
     const catalog = createKindCatalog();
     const host = hostOf([manifestWith('chat-hub', { nodes: [POST_NODE], autoTriggers: false })]);
     host.running.add('chat-hub');
-    const stop = followPluginKinds(catalog, host.source, vi.fn());
+    const follow = await followPluginKinds(catalog, host.source, written(), failed);
     expect(catalog.has(POST_ID)).toBe(true);
     host.running.delete('chat-hub');
     host.fire();
+    await follow.settled();
     expect(catalog.has(POST_ID)).toBe(false);
     host.running.add('chat-hub');
     host.fire();
+    await follow.settled();
     expect(catalog.has(POST_ID)).toBe(true);
-    stop();
+    follow.stop();
     expect(catalog.has(POST_ID)).toBe(false);
   });
 
-  it('ignores plugins that are installed but not loaded', () => {
+  it('ignores plugins that are installed but not loaded', async () => {
     const catalog = createKindCatalog();
     const host = hostOf([manifestWith('chat-hub', { nodes: [POST_NODE], autoTriggers: false })]);
-    followPluginKinds(catalog, host.source, vi.fn());
+    await followPluginKinds(catalog, host.source, written(), failed);
     expect(catalog.has(POST_ID)).toBe(false);
   });
 
-  it('resyncs when the loaded manifest changes', () => {
+  it('resyncs when the loaded manifest changes', async () => {
     const catalog = createKindCatalog();
     const host = hostOf([manifestWith('chat-hub', { nodes: [POST_NODE], autoTriggers: false })]);
     host.running.add('chat-hub');
-    followPluginKinds(catalog, host.source, vi.fn());
+    const follow = await followPluginKinds(catalog, host.source, written(), failed);
     host.rows.set(
       'chat-hub',
       manifestWith('chat-hub', { values: [ONLINE_VALUE], autoTriggers: false }),
     );
     host.fire();
+    await follow.settled();
     expect(catalog.has(POST_ID)).toBe(false);
     expect(catalog.has('plugin.chat_hub.members_online')).toBe(true);
   });
 
-  it('writes rejected kinds into the plugin status detail while the good ones load', () => {
+  it('writes rejected kinds into the plugin status detail while the good ones load', async () => {
     const catalog = createKindCatalog();
     const bad = {
       ...POST_NODE,
@@ -88,8 +99,8 @@ describe('followPluginKinds', () => {
       manifestWith('chat-hub', { nodes: [POST_NODE, bad], autoTriggers: false }),
     ]);
     host.running.add('chat-hub');
-    const write = vi.fn();
-    followPluginKinds(catalog, host.source, write);
+    const write = written();
+    await followPluginKinds(catalog, host.source, write, failed);
     expect(catalog.has(POST_ID)).toBe(true);
     expect(write).toHaveBeenCalledTimes(1);
     expect(write).toHaveBeenCalledWith(

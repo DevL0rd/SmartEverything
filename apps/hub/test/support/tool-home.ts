@@ -1,6 +1,6 @@
 import type { DeviceCapability, DeviceRow, RoomRow } from '@smarteverything/domain';
 import type { DeviceUpsert } from '../../src/database/port';
-import type { Store } from '../../src/store/store';
+import type { SeededStore } from './store';
 
 const SWITCH: DeviceCapability = {
   key: 'privacy_mode',
@@ -57,7 +57,7 @@ function stored(rows: readonly DeviceRow[], index: number): DeviceRow {
   return row;
 }
 
-export function furnishHome(store: Store): ToolHome {
+export function furnishHome(store: SeededStore): ToolHome {
   const study = store.rooms.create('Study', 0);
   const hall = store.rooms.create('Hall', 1);
   const rows = store.devices.upsert([

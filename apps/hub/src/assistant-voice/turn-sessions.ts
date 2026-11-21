@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { VoiceMemory } from './voice-memory';
+import { callPrincipal, type VoiceMemory } from './voice-memory';
 import type { Logger } from '@smarteverything/logging';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import type { VoiceResponder } from '../assistant/voice-link';
@@ -70,6 +70,7 @@ export class TurnSessions {
     const id = randomUUID();
     const caller = await hostedCallerOf(store, request.caller);
     const { tools: chatTools } = await store.host.call('aiChats', 'chat', request.chatId);
+    await memory.prepare(callPrincipal({ ...caller, chatId: request.chatId }));
     const session: TurnSession = new TurnSession({
       id,
       kit: { store, responder, tools, memory, now, prices, log },

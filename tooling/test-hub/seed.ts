@@ -88,7 +88,7 @@ async function storePhase(paths: ScratchPaths): Promise<Staged> {
     };
     return { deviceIds: household.deviceIds, context: { paths, anchor, people, rng }, datasets };
   } finally {
-    close();
+    await close();
   }
 }
 
@@ -131,7 +131,7 @@ async function latePhase(paths: ScratchPaths, context: FilesContext): Promise<La
       paths: shares.paths,
     };
   } finally {
-    close();
+    await close();
   }
 }
 

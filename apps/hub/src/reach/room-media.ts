@@ -1,5 +1,5 @@
 import type { DeviceRow, JsonValue } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import { phoneExternalId } from '../phones/phone-device';
 import type { NewCommand } from '../store/repositories/commands';
 import type { HomeMirror } from '../store/home-mirror';
@@ -20,7 +20,7 @@ interface RoomMediaStore {
 export interface RoomMediaOptions {
   readonly store: RoomMediaStore;
   readonly enabled: () => boolean;
-  readonly submit: (commands: readonly NewCommand[]) => void;
+  readonly submit: (commands: readonly NewCommand[]) => Promise<unknown>;
   readonly log: Logger;
 }
 
@@ -103,13 +103,13 @@ export class RoomMedia implements SpeakingMedia {
       .list()
       .filter((device) => device.room_id === roomId && device.online)
       .flatMap((device) => this.pausing(device, call.id));
-    if (!this.send('paused', call.id, commands)) {
+    this.send('paused', call.id, commands, () => {
       commands.forEach((entry) => {
         if (entry.deviceId !== null) {
           this.holders.delete(entry.deviceId);
         }
       });
-    }
+    });
   }
 
   private pausing(device: DeviceRow, callId: string): readonly NewCommand[] {
@@ -139,29 +139,37 @@ export class RoomMedia implements SpeakingMedia {
         commands.push(command(deviceId, play));
       }
     }
-    this.send('resumed', callId, commands);
+    this.send('resumed', callId, commands, () => undefined);
   }
 
   private send(
     step: 'paused' | 'resumed',
     callId: string,
     commands: readonly NewCommand[],
-  ): boolean {
-    if (commands.length === 0) {
-      return true;
-    }
+    failed: () => void,
+  ): void {
+    if (commands.length === 0) return;
+    background(this.sent(step, callId, commands, failed), 'reach.room_media_failed');
+  }
+
+  private async sent(
+    step: 'paused' | 'resumed',
+    callId: string,
+    commands: readonly NewCommand[],
+    failed: () => void,
+  ): Promise<void> {
     try {
-      this.options.submit(commands);
+      await this.options.submit(commands);
     } catch (cause) {
       this.options.log.error('reach.room_media_failed', cause, { step, callId });
-      return false;
+      failed();
+      return;
     }
     this.options.log.info('reach.room_media', {
       step,
       callId,
       devices: commands.map((entry) => entry.deviceId),
     });
-    return true;
   }
 
   private anchorOf(call: SpeakingCall): DeviceRow | undefined {

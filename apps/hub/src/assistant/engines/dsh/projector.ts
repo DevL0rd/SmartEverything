@@ -1,4 +1,5 @@
-import { helperParentMessageId } from '../../delegation/helper-dialogue';
+import { SettledLanes, markWorking } from './projector-lanes';
+import { helperParentMessageId } from '../../delegation/helper-delivery';
 import { Logger, background, messageOf } from '@smarteverything/logging';
 import type { ProjectedOp } from '@smarteverything/harness/process';
 import { retainInputRefusal } from '../../../harness/input-refusal';
@@ -32,12 +33,13 @@ export class ConversationProjector {
   private readonly held = new Set<string>();
   private readonly completing = new Set<string>();
   private readonly completions = new Map<string, Promise<void>>();
+  private readonly lanes = new SettledLanes();
   private readonly retries: TurnRetries<ActiveTurn>;
   readonly sessions: NativeSessionActivity;
   constructor(
     readonly options: ProjectorOptions,
-    private readonly authorize: (event: StoredEvent, chat: AiChatRow, id: string) => void,
-    private readonly toolFinished: (turn: ActiveTurn) => void,
+    private readonly authorize: (event: StoredEvent, chat: AiChatRow, id: string) => Promise<void>,
+    private readonly toolFinished: (turn: ActiveTurn) => Promise<void>,
     resume: (turn: ActiveTurn, deliveryId: string, text: string) => Promise<void>,
   ) {
     this.correlation = new DeliveryCorrelation(options.service, this.active);
@@ -50,6 +52,12 @@ export class ConversationProjector {
         return resume(turn, deliveryId, text);
       },
       active: (turn): boolean => this.active.get(turn.event.id) === turn,
+      final: (turn, message): void => {
+        this.complete(turn, {
+          kind: 'failed',
+          failure: { code: 'route_unavailable', message, retry_at: null },
+        });
+      },
     });
   }
 
@@ -85,9 +93,8 @@ export class ConversationProjector {
       (turn) => turn.chat.id === id && (!freshOnly || !turn.restored),
     );
   }
-  received = (event: AiHarnessEvent): void => {
-    this.receivedEvent(event);
-  };
+  received = (event: AiHarnessEvent): Promise<void> =>
+    this.lanes.run(event.chat_id, () => this.receivedEvent(event));
   start(event: StoredEvent, chat: AiChatRow, replyId: string, restored = false): Promise<void> {
     const stream = new TurnStream(
       {
@@ -135,10 +142,10 @@ export class ConversationProjector {
     stream.snapshot('thinking', null, null);
     return completed;
   }
-  private receivedEvent(event: AiHarnessEvent): void {
+  private async receivedEvent(event: AiHarnessEvent): Promise<void> {
     const turn = this.correlation.turnOf(event);
     if (turn === undefined) {
-      this.sessions.received(event);
+      await this.sessions.received(event);
       log.trace('dsh.event_uncorrelated', {
         kind: event.kind,
         chatId: event.chat_id,
@@ -154,30 +161,36 @@ export class ConversationProjector {
       });
       return;
     }
-    if (event.kind === 'state' && event.delivery_id !== undefined) this.admitClaim(turn, event);
+    if (event.kind === 'state' && event.delivery_id !== undefined)
+      await this.admitClaim(turn, event);
     if (
       event.delivery_id === undefined &&
       ['text', 'reasoning', 'tool'].includes(event.kind) &&
       !this.admitted.has(turn.event.id)
     ) {
-      this.working(turn);
       this.admitted.add(turn.event.id);
+      await markWorking(this.service.store, this.conversation, turn.event);
     }
-    this.activeEvent(turn, event);
+    await this.activeEvent(turn, event);
   }
   private swallowed(turn: ActiveTurn, event: AiHarnessEvent): boolean {
     return this.held.has(turn.event.id) && (event.kind === 'completed' || event.kind === 'failed');
   }
-  private admitClaim(turn: ActiveTurn, event: Extract<AiHarnessEvent, { kind: 'state' }>): void {
+  private async admitClaim(
+    turn: ActiveTurn,
+    event: Extract<AiHarnessEvent, { kind: 'state' }>,
+  ): Promise<void> {
     try {
-      this.authorize(turn.event, turn.chat, event.session_id);
-      this.service.store.harnessRecovery.claimTurn(
+      await this.authorize(turn.event, turn.chat, event.session_id);
+      await this.service.store.host.call(
+        'harnessRecovery',
+        'claimTurn',
         event.session_id,
         event.native_turn,
         turn.event.id,
       );
       if (!this.admitted.has(turn.event.id)) {
-        this.working(turn);
+        await markWorking(this.service.store, this.conversation, turn.event);
         log.debug('dsh.claim_admitted', {
           eventId: turn.event.id,
           chatId: turn.chat.id,
@@ -200,7 +213,7 @@ export class ConversationProjector {
       )
         throw cause;
       const refusal = new ApiError('command_refused', messageOf(cause));
-      retainInputRefusal(this.service.store, event, refusal);
+      background(retainInputRefusal(this.service.store, event, refusal), 'dsh.refusal_failed');
       this.complete(
         turn,
         {
@@ -212,7 +225,7 @@ export class ConversationProjector {
       throw refusal;
     }
   }
-  private activeEvent(turn: ActiveTurn, event: AiHarnessEvent): void {
+  private async activeEvent(turn: ActiveTurn, event: AiHarnessEvent): Promise<void> {
     switch (event.kind) {
       case 'text':
         turn.stream.text(event.delta);
@@ -221,7 +234,7 @@ export class ConversationProjector {
         turn.stream.reasoning(event.delta);
         return;
       case 'tool':
-        this.tool(turn, event);
+        await this.tool(turn, event);
         return;
       case 'usage':
         return;
@@ -243,17 +256,6 @@ export class ConversationProjector {
     if (event.session.reconnecting === true)
       log.info('dsh.turn_reconnecting', { eventId: turn.event.id, chatId: turn.chat.id });
     followSession(turn.stream, event.session);
-  }
-  private working(turn: ActiveTurn): void {
-    const messageId = turn.event.message_id;
-    if (messageId === null) return;
-    const current = this.service.store.assistantEvents.ofMessage(messageId);
-    if (current?.id !== turn.event.id) return;
-    const message = this.service.store.assistantChat.message(messageId);
-    if (message.state !== 'queued' && message.state !== 'delivered') return;
-    background(this.conversation.stateOf(messageId, 'working'), 'dsh.message_state_failed', {
-      eventId: turn.event.id,
-    });
   }
   private completedEvent(
     turn: ActiveTurn,
@@ -279,7 +281,10 @@ export class ConversationProjector {
     );
     this.complete(turn, event);
   }
-  private tool(turn: ActiveTurn, event: Extract<AiHarnessEvent, { kind: 'tool' }>): void {
+  private async tool(
+    turn: ActiveTurn,
+    event: Extract<AiHarnessEvent, { kind: 'tool' }>,
+  ): Promise<void> {
     log.debug('dsh.tool_event', {
       eventId: turn.event.id,
       chatId: turn.chat.id,
@@ -289,7 +294,7 @@ export class ConversationProjector {
     });
     this.toolEvent(turn, event);
     this.recordTodos(turn, chatTodosOf(event.name, event.input));
-    if (event.state !== 'running') this.toolFinished(turn);
+    if (event.state !== 'running') await this.toolFinished(turn);
   }
   private recordTodos(turn: ActiveTurn, todos: ReturnType<typeof chatTodosOf>): void {
     if (todos === null) return;
@@ -359,7 +364,8 @@ export class ConversationProjector {
     });
   }
   async settled(): Promise<void> {
-    while (this.completions.size > 0) await Promise.allSettled([...this.completions.values()]);
+    while (this.lanes.busy() || this.completions.size > 0)
+      await Promise.allSettled([...this.lanes.pending(), ...this.completions.values()]);
     await this.conversation.settled();
   }
   private completion(
@@ -384,7 +390,7 @@ export class ConversationProjector {
         this.admitted.delete(turn.event.id);
         this.held.delete(turn.event.id);
         settleSteered(this.conversation, this.options.finished, turn, event);
-        this.sessions.sync(turn.chat.id);
+        this.sessions.resync(turn.chat.id);
         turn.done();
       },
     });

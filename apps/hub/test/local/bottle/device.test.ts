@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StoreConflictError } from '../../../src/store/sql';
 import { larqBottleDriver } from '../../../src/local/bottle/driver';
 import { bottleSetup } from '../../../src/local/bottle/setup';
-import { sweepBottleRetention } from '../../../src/store/bottle-retention';
+import { sweepAged } from '../../support/retention-sweep';
 import {
   BottleReadingsRepository,
   type StoredReading,
@@ -167,7 +167,7 @@ describe('the housekeeping of old rows', () => {
       const seconds = Math.floor(now.getTime() / 1000);
       readings.insert(device?.id ?? '', row(seconds - 401 * day));
       readings.insert(device?.id ?? '', row(seconds - 399 * day));
-      expect(sweepBottleRetention(counted.sql, now)['bottle_readings']).toBe(1);
+      expect(sweepAged(counted.sql, now)['bottle_readings']).toBe(1);
       expect(readings.all(device?.id ?? '').map((kept) => kept.at)).toStrictEqual([
         seconds - 399 * day,
       ]);

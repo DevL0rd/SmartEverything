@@ -1,16 +1,12 @@
 import { AUTOMATION_TIMER_SOURCE, type SignalInput } from '@smarteverything/domain';
 import { TIMER_SLOT_PREFIX } from '@smarteverything/flow/nodes/state/timer';
 import type { Cancel, Clock } from '../../clock';
-import type {
-  AutomationNodeStateRepository,
-  NodeStateRow,
-  SlotKind,
-} from '../../store/repositories/automation-node-state';
+import type { NodeStateRow, SlotKind } from '../../store/repositories/automation-node-state';
 import { background } from '@smarteverything/logging';
 import type { StoreHost } from '../../store/host/host';
 import { STATE_PARTITION } from '../world-v3/node-memory';
 
-const TIMERS: SlotKind = { partition: STATE_PARTITION, prefix: TIMER_SLOT_PREFIX };
+export const TIMERS: SlotKind = { partition: STATE_PARTITION, prefix: TIMER_SLOT_PREFIX };
 
 export interface TimerRows {
   readonly due: (through: string) => Promise<NodeStateRow | undefined>;
@@ -25,19 +21,6 @@ export function hostTimerRows(host: StoreHost): TimerRows {
     next: () => host.call('automationNodeState', 'nextSlotWake', TIMERS),
     clear: (row) =>
       host.call('automationNodeState', 'clearWake', row.automation_id, row.node_id, row.partition),
-  };
-}
-
-export function directTimerRows(
-  rows: Pick<AutomationNodeStateRepository, 'dueSlots' | 'nextSlotWake' | 'clearWake'>,
-): TimerRows {
-  return {
-    due: (through) => Promise.resolve(rows.dueSlots(TIMERS, through)[0]),
-    next: () => Promise.resolve(rows.nextSlotWake(TIMERS)),
-    clear: (row): Promise<void> => {
-      rows.clearWake(row.automation_id, row.node_id, row.partition);
-      return Promise.resolve();
-    },
   };
 }
 

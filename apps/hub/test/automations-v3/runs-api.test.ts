@@ -59,9 +59,9 @@ function rehearsalOf(extra: Partial<AutomationRunRehearsal> = {}): AutomationRun
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   captureLogs();
-  rig = programRig();
+  rig = await programRig();
   const context = new StoreContext(
     new Sql(rig.database),
     new ChangeFeed(testLogger('store')),
@@ -83,11 +83,31 @@ beforeEach(() => {
   refusal = null;
   routes = automationRunRoutes({
     store: rig.store,
-    programs: rig.programs,
-    records,
-    nodes,
-    decisions,
-    tests,
+    programs: {
+      find: (...args) => Promise.resolve(rig.programs.find(...args)),
+      list: (...args) => Promise.resolve(rig.programs.list(...args)),
+    },
+    records: {
+      summaries: (...args) => Promise.resolve(records.summaries(...args)),
+      summariesOf: (...args) => Promise.resolve(records.summariesOf(...args)),
+      summaryById: (...args) => Promise.resolve(records.summaryById(...args)),
+    },
+    nodes: {
+      forRun: (...args) => Promise.resolve(nodes.forRun(...args)),
+      ofNode: (...args) => Promise.resolve(nodes.ofNode(...args)),
+    },
+    decisions: {
+      forAutomation: (...args) => Promise.resolve(decisions.forAutomation(...args)),
+    },
+    tests: {
+      list: (...args) => Promise.resolve(tests.list(...args)),
+      byId: (...args) => Promise.resolve(tests.byId(...args)),
+      save: (...args) => Promise.resolve(tests.save(...args)),
+      remove: (...args) => {
+        tests.remove(...args);
+        return Promise.resolve();
+      },
+    },
     engine: {
       recorded: (): Promise<void> => Promise.resolve(),
       start: (automationId): Submission => {
@@ -120,8 +140,8 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
-  rig.close();
+afterEach(async () => {
+  await rig.close();
 });
 
 async function programOf(caller: Caller = rig.owner.caller): Promise<string> {

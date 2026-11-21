@@ -26,7 +26,7 @@ import { AutomationFunctionsRepository } from '../../../src/store/repositories/a
 import { AutomationPlansRepository } from '../../../src/store/repositories/automation-plans';
 import { AutomationProgramsRepository } from '../../../src/store/repositories/automation-programs';
 import { AutomationRevisionsRepository } from '../../../src/store/repositories/automation-revisions';
-import { openStore, type Store } from '../../../src/store/store';
+import { openSeededStore, type SeededStore } from '../../support/store';
 import type { StoreContext } from '../../../src/store/context';
 import { testLogger } from '../../support/logs';
 import { testStoreHost } from '../../support/store-host';
@@ -41,7 +41,7 @@ interface Person {
 }
 
 export interface ProgramRig {
-  readonly store: Store;
+  readonly store: SeededStore;
   readonly env: ProgramEnv;
   readonly service: AutomationPrograms;
   readonly programs: AutomationProgramsRepository;
@@ -56,12 +56,12 @@ export interface ProgramRig {
   readonly secretIds: string[];
   readonly refusedTools: string[];
   readonly addPhone: (person: Person, name: string) => DeviceRow;
-  readonly close: () => void;
+  readonly close: () => Promise<void>;
 }
 
 export const RIG_NOW = new Date('2026-10-18T09:00:00.000Z');
 
-function personOf(store: Store, name: string, role: 'owner' | 'member'): Person {
+function personOf(store: SeededStore, name: string, role: 'owner' | 'member'): Person {
   const profile = role === 'owner' ? store.profiles.first() : store.profiles.create({ name });
   const client = store.clients.create({
     name: `${name} phone`,
@@ -73,7 +73,7 @@ function personOf(store: Store, name: string, role: 'owner' | 'member'): Person 
   return { client, profileId: profile.id, caller: { kind: 'client', client } };
 }
 
-function deviceOf(store: Store, kind: 'light' | 'computer', name: string): DeviceRow {
+function deviceOf(store: SeededStore, kind: 'light' | 'computer', name: string): DeviceRow {
   const [device] = store.devices.upsert([
     {
       provider: 'local',
@@ -98,12 +98,12 @@ interface Opened {
   readonly directory: string;
   readonly database: DatabaseSync;
   readonly context: StoreContext;
-  readonly store: Store;
+  readonly store: SeededStore;
 }
 
-function opened(): Opened {
+async function opened(): Promise<Opened> {
   const directory = mkdtempSync(join(tmpdir(), 'hub-program-rig-'));
-  const store = openStore({
+  const store = await openSeededStore({
     host: testStoreHost(),
     path: join(directory, 'test.db'),
     log: testLogger('store'),
@@ -139,8 +139,8 @@ function envOf(
   };
 }
 
-export function programRig(): ProgramRig {
-  const home = opened();
+export async function programRig(): Promise<ProgramRig> {
+  const home = await opened();
   const { store, database, directory } = home;
   const secretIds: string[] = [];
   const refusedTools: string[] = [];
@@ -170,8 +170,8 @@ export function programRig(): ProgramRig {
         },
         { clientId: person.client.id, profileId: person.profileId, name },
       ).device,
-    close: (): void => {
-      store.close();
+    close: async (): Promise<void> => {
+      await store.close();
       rmSync(directory, { recursive: true, force: true });
     },
   };

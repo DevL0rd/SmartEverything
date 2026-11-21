@@ -8,14 +8,15 @@ import { canonicalRuntimeInput } from '../../../computers/runtime-receipts';
 import type { ComputerRunnerDeps } from './ports';
 import type { ComputerEvent } from './provider-state';
 
-export function acceptedCommandState(
+export async function acceptedCommandState(
   deps: ComputerRunnerDeps,
   current: AiChatRuntimeProvider,
   chat: AiChatRow,
   event: ComputerEvent,
-): AiChatRuntimeProvider | null {
+): Promise<AiChatRuntimeProvider | null> {
   if (event.kind !== 'accepted') return null;
-  const receipt = deps.store.nativeCommandOperations.active(chat.id).find(
+  const active = await deps.store.host.call('nativeCommandOperations', 'active', chat.id);
+  const receipt = active.find(
     (operation) =>
       canonicalRuntimeInput([
         operation.scope.chat_id,

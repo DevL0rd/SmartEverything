@@ -13,6 +13,8 @@ import { ApiError } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 import type { AiChatRow, DshSessionMetadata } from '@smarteverything/domain';
 import { nativeHistoryPrefix, SESSION_MESSAGE_PROJECTIONS } from './history-mutation';
+import type { ForkCandidate } from './fork-units';
+import type { NativeForkPlan } from './fork-record';
 
 const SELECTION = z.object({ boundary: z.int().nonnegative() });
 const FORK_TAIL = 'smarteverything/fork-tail';
@@ -24,45 +26,42 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
   }
 }
 
-export function nativeForkIntent(
+export async function planNativeFork(
   store: Store,
   parent: AiChatRow,
-  child: AiChatRow,
   message: string,
-): void {
-  if (parent.engine.kind !== 'dsh' || parent.engine.session_id === null) return;
+): Promise<NativeForkPlan | undefined> {
+  if (parent.engine.kind !== 'dsh' || parent.engine.session_id === null) return undefined;
   const id = parent.engine.session_id;
-  const metadata = store.dshSessions.stat(id, parent.profile_id);
-  if (metadata === undefined)
-    throw new ApiError('not_found', 'The conversation being branched has no native session.');
-  const checkpoint = metadata.next_seq - 1;
-  if (checkpoint < 0) return;
-  const history = readHistory(store, id, parent.profile_id, checkpoint);
-  const boundary = forkBoundary(store, { id: parent.id, session_id: id }, message, history);
-  const operation = `fork:${child.id}`;
-  store.harnessSessions.begin(operation, id, { kind: 'fork', boundary });
-  store.harnessRecovery.fork(child.id, id, checkpoint);
-  store.harnessSessions.finish(operation, { kind: 'fork', boundary });
+  const read = await store.host.read('harnessForkPlanRead', {
+    session_id: id,
+    profile_id: parent.profile_id,
+    chat_id: parent.id,
+    message,
+  });
+  const checkpoint = read.metadata.next_seq - 1;
+  if (checkpoint < 0) return undefined;
+  const history = readNativeHistory(read.metadata.header, read.events);
+  return { session_id: id, checkpoint, boundary: forkBoundary(id, read.candidates, history) };
 }
 
-export function nativeForkSeed(
+export async function nativeForkSeed(
   store: Store,
   chat: AiChatRow,
-):
+): Promise<
   | {
       readonly parent: string;
       readonly inherited: number;
       readonly events: readonly SessionEvent[];
     }
-  | undefined {
-  const fork = store.harnessRecovery.forkOf(chat.id);
+  | undefined
+> {
+  const fork = await store.host.read('harnessForkSeedRead', chat);
   if (fork === undefined) return undefined;
-  const metadata = store.dshSessions.stat(fork.parent_session, chat.profile_id);
-  if (metadata === undefined || metadata.next_seq <= fork.boundary)
-    throw new ApiError('conflict', 'Native fork lost its complete committed parent checkpoint.');
-  const history = readHistory(store, fork.parent_session, chat.profile_id, fork.boundary);
+  const { metadata } = fork;
+  const history = readNativeHistory(metadata.header, fork.events);
   const events = forkedPrefix(metadata, history, fork.boundary);
-  const selection = forkSelection(store, chat);
+  const selection = SELECTION.parse(JSON.parse(fork.request));
   const projected = nativeHistoryPrefix(
     readNativeHistory(metadata.header, events),
     selection.boundary,
@@ -124,32 +123,13 @@ function parentLineage(
   };
 }
 
-function forkSelection(store: Store, chat: AiChatRow): z.infer<typeof SELECTION> {
-  const receipt = store.harnessSessions.operation(`fork:${chat.id}`);
-  if (receipt === undefined)
-    throw new ApiError('conflict', 'Native fork lost its admitted branch point.');
-  return SELECTION.parse(JSON.parse(receipt.request));
-}
-
-function readHistory(
-  store: Store,
-  id: string,
-  profile: string,
-  boundary: number,
-): ReturnType<typeof readNativeHistory> {
-  const events = store.dshSessions.readAll(id, profile, { length: boundary + 1 });
-  return readNativeHistory(store.dshSessions.stat(id, profile)?.header, events);
-}
-
 function forkBoundary(
-  store: Store,
-  parent: { readonly id: string; readonly session_id: string },
-  message: string,
+  sessionId: string,
+  candidates: readonly ForkCandidate[],
   history: ReturnType<typeof readNativeHistory>,
 ): number {
-  for (const row of store.assistantSearch.upTo(parent.id, message).toReversed()) {
-    const cut = store.harnessDeliveries.cutOfMessage(row.id);
-    if (cut?.session_id === parent.session_id) {
+  for (const { cut, ...row } of candidates) {
+    if (cut?.session_id === sessionId) {
       if (row.role === 'responder' && cut.end_seq !== null) return cut.end_seq;
       const event = history.find(
         (entry) =>

@@ -53,9 +53,9 @@ beforeEach(async () => {
     views: {
       store: rig.test.store,
       fleet: rig.fleet,
-      clock: homeClock(rig.test.store),
+      clock: homeClock(rig.test.store.live.home.settings),
       holder: (device) => bridges.holderOf(device),
-      series: () => ({ resolution: 'hour', points: [] }),
+      series: () => Promise.resolve({ resolution: 'hour', points: [] }),
       now: rig.clock.now,
     },
     acts: {
@@ -174,6 +174,7 @@ describe('the phone’s endpoints', () => {
       template: 'adult',
       scopes: { ...TEMPLATE_SCOPES.adult, devices: { mode: 'only', rooms: [], devices: [] } },
     });
+    await rig.test.store.live.access.settled();
     const plans = PHONE_BRUSHES.parse(
       await routes.readPhoneBrushes.run(caller(rig.member), raw({}), testLogger('x')),
     );
@@ -229,18 +230,19 @@ describe('who may reach the toothbrush', () => {
     };
   }
 
-  function hideFromMember(): void {
+  async function hideFromMember(): Promise<void> {
     rig.test.store.personAccess.change(rig.member.profile.id, {
       role: 'member',
       template: 'adult',
       scopes: { ...TEMPLATE_SCOPES.adult, devices: { mode: 'only', rooms: [], devices: [] } },
     });
+    await rig.test.store.live.access.settled();
   }
 
   const LINKED = { phase: 'linked', rssi: -50, detail: null };
 
   it('keeps a brush outside a member’s devices from their reads, actions and reports', async () => {
-    hideFromMember();
+    await hideFromMember();
     const params = { deviceId: rig.row().id };
     await expect(
       routes.readToothbrush.run(

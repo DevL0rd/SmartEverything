@@ -5,7 +5,7 @@ import {
   type PlannerSleep,
   type PlannerSleepNight,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { fromPreferredSource } from '../store/health-sources-priority';
 import type { SleepSpan } from './day';
 
@@ -16,7 +16,7 @@ const WEEK_DAYS = 7;
 
 type SleepRecord = Extract<HealthRecord, { readonly type: 'SleepSession' }>;
 
-export type SleepStore = Pick<Store, 'health'>;
+export type SleepStore = Pick<HostStore, 'health'>;
 
 export interface SleepCluster {
   readonly bed: number;

@@ -19,6 +19,7 @@ import type { Tick } from '../tick';
 import { AsyncReading } from './async-reading';
 import { OsCpu } from './os-cpu';
 import {
+  diskUsagePartOf,
   disksPartOf,
   fullestDiskOf,
   memoryPartOf,
@@ -80,6 +81,10 @@ export class PortableComputer implements ComputerCollector {
     gpu: () => ({ gpus: [] }),
     memory: () => this.memory.read()?.value ?? null,
     disks: () => this.disks.read()?.value ?? null,
+    disk_usage: () => {
+      const disks = this.disks.read()?.value ?? null;
+      return disks === null ? null : diskUsagePartOf(disks);
+    },
     network: () => this.network.read()?.value ?? null,
     sensors: () => ({ sensors: [], fans: [] }),
     power: () => {

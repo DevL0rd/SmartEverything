@@ -13,11 +13,11 @@ import { CODEX_COMPACT_DEFINITION } from '../../../codex/provider-commands';
 import { commandAuthority } from './native-command-authority';
 import { canonicalRuntimeInput } from '../../../computers/runtime-receipts';
 import { messageOf } from '@smarteverything/logging';
-export function nativeCommandConfiguration(
+export async function nativeCommandConfiguration(
   deps: ComputerRunnerDeps,
   chat: AiChatRow,
   input: AiNativeCommandWrite,
-): CodexCommandConfiguration | undefined {
+): Promise<CodexCommandConfiguration | undefined> {
   if (chat.engine.kind !== 'codex' || input.definition_id === CODEX_COMPACT_DEFINITION)
     return undefined;
   const status = deps.directory.runtimeStatus({
@@ -26,7 +26,7 @@ export function nativeCommandConfiguration(
   });
   if (status.settings.runtime !== 'codex')
     throw new ApiError('conflict', 'The native configuration belongs to another runtime.');
-  const { grant } = commandAuthority(deps, chat, input.scope);
+  const { grant } = await commandAuthority(deps, chat, input.scope);
   return CODEX_COMMAND_CONFIGURATION.parse({
     model: chat.engine.model,
     effort: chat.engine.effort,
@@ -34,14 +34,14 @@ export function nativeCommandConfiguration(
     tools: grant.tools,
   });
 }
-function assertNativeCommandConfiguration(
+async function assertNativeCommandConfiguration(
   deps: ComputerRunnerDeps,
   input: AiNativeCommandWrite,
   expected: CodexCommandConfiguration | undefined,
-): void {
-  const chat = deps.store.aiChats.chat(input.scope.chat_id);
+): Promise<void> {
+  const chat = await deps.store.host.call('aiChats', 'chat', input.scope.chat_id);
   if (
-    canonicalRuntimeInput(nativeCommandConfiguration(deps, chat, input) ?? null) !==
+    canonicalRuntimeInput((await nativeCommandConfiguration(deps, chat, input)) ?? null) !==
     canonicalRuntimeInput(expected ?? null)
   )
     throw new ApiError(
@@ -62,15 +62,15 @@ export async function submitNativeCommand(
   try {
     return await deps.directory.startRuntimeCommand(
       input,
-      (): void => {
-        authorizeNativeDispatch(deps, state, input);
-        assertNativeCommandConfiguration(deps, input, configuration);
+      async (): Promise<void> => {
+        await authorizeNativeDispatch(deps, state, input);
+        await assertNativeCommandConfiguration(deps, input, configuration);
       },
       configuration,
     );
   } catch (cause) {
     return {
-      ...deps.store.nativeCommandOperations.read(input.operation_id),
+      ...(await deps.store.host.call('nativeCommandOperations', 'read', input.operation_id)),
       status: 'unknown',
       text: messageOf(cause).slice(0, 2000),
     };

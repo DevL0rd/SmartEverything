@@ -1,12 +1,12 @@
 import { isCamera, type LiveChange, type TalkMemberKind } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 export interface MemberLabel {
   readonly label: string;
   readonly detail: string | null;
 }
 
-export function memberLabel(store: Store, kind: TalkMemberKind, memberId: string): MemberLabel {
+export function memberLabel(store: HostStore, kind: TalkMemberKind, memberId: string): MemberLabel {
   if (kind === 'client') {
     const client = store.clients.byId(memberId);
     return { label: store.profiles.activeOf(memberId).name, detail: client.name };
@@ -39,7 +39,7 @@ function cameraRelabelled(change: ChangeOf<'devices'>): LabelledMember[] {
   return renamed ? [['camera', record.id]] : [];
 }
 
-function profileRelabelled(store: Store, change: ChangeOf<'profiles'>): LabelledMember[] {
+function profileRelabelled(store: HostStore, change: ChangeOf<'profiles'>): LabelledMember[] {
   const { record, oldRecord } = change;
   if (record === null || oldRecord === null || record.name === oldRecord.name) {
     return [];
@@ -62,7 +62,7 @@ export function mayRelabel(change: LiveChange): boolean {
   );
 }
 
-export function relabelledMembers(store: Store, change: LiveChange): LabelledMember[] {
+export function relabelledMembers(store: HostStore, change: LiveChange): LabelledMember[] {
   if (change.operation !== 'UPDATE') {
     return [];
   }

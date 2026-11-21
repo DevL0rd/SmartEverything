@@ -13,8 +13,6 @@ import { DEVICE_REF } from './refs';
 import { deviceById } from './targets';
 import type { WorldReadDeps } from './deps';
 
-const EPOCH = '1970-01-01T00:00:00.000Z';
-
 const MOMENT = z.iso.datetime({ offset: true });
 
 const HISTORY = z.object({
@@ -80,7 +78,7 @@ function statistics(points: readonly HistoryRow[]): Readonly<Record<string, numb
 
 export function historyHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
-    'state.history': (inputs): ReadResult => {
+    'state.history': (inputs, scope): ReadResult => {
       const request = parseInputs('state.history', HISTORY, inputs);
       const device = deviceById(deps.world, request.device);
       readableControl(device, request.control);
@@ -91,22 +89,13 @@ export function historyHandlers(deps: WorldReadDeps): ReadHandlers {
           `${request.control} is sampled, so it has no change history`,
         );
       }
-      const range = rangeOf(request, deps.clock.now());
-      const series = { capabilities: [key], deviceIds: [device.id] };
-      const points = deps.store.state.history({
-        ...series,
+      const range = rangeOf(request, scope.now());
+      const { points, carried } = scope.fetch('worldSeries', {
+        capability: key,
+        deviceId: device.id,
         from: new Date(range.start).toISOString(),
         to: new Date(range.end).toISOString(),
-        order: 'asc',
-        limit: Number.MAX_SAFE_INTEGER,
       });
-      const carried = deps.store.state.history({
-        ...series,
-        from: EPOCH,
-        to: new Date(range.start).toISOString(),
-        order: 'desc',
-        limit: 1,
-      })[0]?.value;
       return outputsOf({
         points: points.map((row) => ({ at: row.observed_at, value: row.value })),
         ...statistics(points),

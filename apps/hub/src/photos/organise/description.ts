@@ -1,10 +1,10 @@
 import { ApiError, type PhotoDescriptionSet } from '@smarteverything/domain';
 import type { DriveActor } from '../../drive/access';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { announceItems, visibleItems, type AnnounceStore, type ItemsChanged } from './items';
 
 export type DescriptionStore = AnnounceStore &
-  Pick<Store, 'context' | 'write' | 'photoDescriptions'>;
+  Pick<HostStore, 'context' | 'write' | 'photoDescriptions'>;
 
 export class DescriptionEditor {
   constructor(private readonly store: DescriptionStore) {}

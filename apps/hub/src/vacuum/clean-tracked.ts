@@ -22,7 +22,7 @@ export interface CleanMap {
 
 export interface CleanStore {
   readonly save: (deviceId: string, clean: VacuumClean) => void;
-  readonly get: (deviceId: string, id: string) => VacuumClean | undefined;
+  readonly has: (deviceId: string, id: string) => boolean;
   readonly open: (deviceId: string) => VacuumClean | undefined;
   readonly rename: (deviceId: string, from: string, to: string) => void;
 }

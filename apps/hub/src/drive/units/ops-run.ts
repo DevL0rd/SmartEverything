@@ -3,9 +3,9 @@ import type { DriveInode, DriveInodeDraft } from '../../store/repositories/drive
 import type { DriveVersionPurge } from '../../store/repositories/drive-versions';
 import type { DriveItemDraft } from '../../store/repositories/drive-items';
 import type { XattrSetResult } from '../../store/repositories/drive-xattrs';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { ChangeActor } from '../changes';
-import { announce, appendFeed } from '../change-rows';
+import { announce, appendFeed } from './change-feed';
 import { repathItem } from '../service-write-repath';
 import { settleContentIn } from './content';
 import type { DriveOp, DriveOpResult, Reinstate, TrashRecord, XattrChange } from './ops';
@@ -18,7 +18,7 @@ export class DriveOpEntryError extends Error {
   }
 }
 
-export function recordTrashIn(store: Store, trash: TrashRecord): void {
+export function recordTrashIn(store: HostStore, trash: TrashRecord): void {
   const { item, entry, actor } = trash;
   const env = { store };
   store.driveTrash.insert(entry);
@@ -29,13 +29,13 @@ export function recordTrashIn(store: Store, trash: TrashRecord): void {
   announce(env, trash.rootId, item.parentId, [item]);
 }
 
-function adopted(store: Store, draft: DriveItemDraft): DriveItemDraft {
+function adopted(store: HostStore, draft: DriveItemDraft): DriveItemDraft {
   const taken = store.driveItems.lookups.placed(draft.rootId, draft.relPath);
   if (taken?.kind !== draft.kind) return draft;
   return { ...draft, id: taken.id, addedAt: taken.addedAt };
 }
 
-function created(store: Store, op: Extract<DriveOp, { kind: 'create' }>): DriveItem {
+function created(store: HostStore, op: Extract<DriveOp, { kind: 'create' }>): DriveItem {
   const env = { store };
   const written = store.driveItems.write({
     item: adopted(store, op.draft),
@@ -47,7 +47,7 @@ function created(store: Store, op: Extract<DriveOp, { kind: 'create' }>): DriveI
   return written.item;
 }
 
-function inodeRecorded(store: Store, op: Extract<DriveOp, { kind: 'inode' }>): DriveItem {
+function inodeRecorded(store: HostStore, op: Extract<DriveOp, { kind: 'inode' }>): DriveItem {
   const env = { store };
   const written = store.driveItems.write({
     item: op.item,
@@ -61,21 +61,21 @@ function inodeRecorded(store: Store, op: Extract<DriveOp, { kind: 'inode' }>): D
   return written.item;
 }
 
-function dropped(store: Store, item: DriveItem, actor: ChangeActor): void {
+function dropped(store: HostStore, item: DriveItem, actor: ChangeActor): void {
   const env = { store };
   appendFeed(env, { ...item, rev: item.rev + 1 }, 'delete', actor);
   store.driveItems.remove(item.id);
   announce(env, item.rootId, item.parentId, [item]);
 }
 
-function entryOf(store: Store, rootId: string, relPath: string): DriveOpResult {
+function entryOf(store: HostStore, rootId: string, relPath: string): DriveOpResult {
   const placed = store.driveItems.lookups.placed(rootId, relPath);
   const inode = placed === undefined ? undefined : store.driveInodes.ofItem(placed.id);
   if (inode === undefined) throw new DriveOpEntryError(relPath);
   return { kind: 'entry', inode, nlink: store.driveInodes.linkCount(inode.id) };
 }
 
-function purgeTrashIn(store: Store, itemId: string): DriveVersionPurge {
+function purgeTrashIn(store: HostStore, itemId: string): DriveVersionPurge {
   store.driveTrash.forgetPhoto(itemId);
   store.driveTrash.remove(itemId);
   store.driveGrants.sweepOrphans();
@@ -84,9 +84,9 @@ function purgeTrashIn(store: Store, itemId: string): DriveVersionPurge {
 }
 
 function dropScanRows(
-  store: Store,
+  store: HostStore,
   reinstate: Reinstate,
-  rows: ReturnType<Store['driveTrash']['stashed']>,
+  rows: ReturnType<HostStore['driveTrash']['stashed']>,
 ): void {
   const items = rows.filter((row) => row.table === 'drive_items');
   const top = items.find((row) => row.values['id'] === reinstate.itemId)?.values['rel_path'];
@@ -107,7 +107,7 @@ function dropScanRows(
   }
 }
 
-function reinstated(store: Store, reinstate: Reinstate): DriveItem {
+function reinstated(store: HostStore, reinstate: Reinstate): DriveItem {
   const env = { store };
   const rows = store.driveTrash.stashed(reinstate.itemId);
   dropScanRows(store, reinstate, rows);
@@ -125,13 +125,13 @@ function reinstated(store: Store, reinstate: Reinstate): DriveItem {
   return written;
 }
 
-function announced(store: Store, item: DriveItem, op: DriveFeedOp, actor: ChangeActor): void {
+function announced(store: HostStore, item: DriveItem, op: DriveFeedOp, actor: ChangeActor): void {
   const env = { store };
   appendFeed(env, item, op, actor);
   announce(env, item.rootId, item.parentId, [item]);
 }
 
-function xattrTouched(store: Store, xattr: XattrChange): void {
+function xattrTouched(store: HostStore, xattr: XattrChange): void {
   store.driveInodes.setTimes(xattr.inodeId, xattr.times);
   for (const id of store.driveInodes.names(xattr.inodeId)) {
     const item = store.driveItems.find(id, null);
@@ -139,20 +139,20 @@ function xattrTouched(store: Store, xattr: XattrChange): void {
   }
 }
 
-function xattrSet(store: Store, op: Extract<DriveOp, { kind: 'xattrSet' }>): XattrSetResult {
+function xattrSet(store: HostStore, op: Extract<DriveOp, { kind: 'xattrSet' }>): XattrSetResult {
   const { xattr } = op;
   const set = store.driveXattrs.set(xattr.inodeId, xattr.name, op.value, op.flag);
   if (set.stored) xattrTouched(store, xattr);
   return set;
 }
 
-function xattrRemoved(store: Store, xattr: XattrChange): boolean {
+function xattrRemoved(store: HostStore, xattr: XattrChange): boolean {
   const removed = store.driveXattrs.remove(xattr.inodeId, xattr.name);
   if (removed) xattrTouched(store, xattr);
   return removed;
 }
 
-function written(store: Store, op: Extract<DriveOp, { kind: 'write' }>): DriveItem {
+function written(store: HostStore, op: Extract<DriveOp, { kind: 'write' }>): DriveItem {
   const item = store.driveItems.write({
     item: op.draft,
     identity: op.identity,
@@ -165,7 +165,7 @@ function written(store: Store, op: Extract<DriveOp, { kind: 'write' }>): DriveIt
   return item;
 }
 
-function orphanMade(store: Store, draft: DriveInodeDraft): DriveInode {
+function orphanMade(store: HostStore, draft: DriveInodeDraft): DriveInode {
   const inode = store.driveInodes.create(draft);
   store.driveInodes.setOrphan(inode.id, true);
   return inode;
@@ -213,7 +213,7 @@ function within<const K extends readonly DriveOp['kind'][]>(
   return kinds.some((kind) => kind === op.kind);
 }
 
-function runItemOp(store: Store, op: OpOf<(typeof ITEM_KINDS)[number]>): DriveOpResult {
+function runItemOp(store: HostStore, op: OpOf<(typeof ITEM_KINDS)[number]>): DriveOpResult {
   switch (op.kind) {
     case 'content':
       return { kind: 'content', settled: settleContentIn(store, op.input) };
@@ -236,7 +236,7 @@ function runItemOp(store: Store, op: OpOf<(typeof ITEM_KINDS)[number]>): DriveOp
   }
 }
 
-function runTrashOp(store: Store, op: OpOf<(typeof TRASH_KINDS)[number]>): DriveOpResult {
+function runTrashOp(store: HostStore, op: OpOf<(typeof TRASH_KINDS)[number]>): DriveOpResult {
   switch (op.kind) {
     case 'trash':
       recordTrashIn(store, op.trash);
@@ -265,7 +265,7 @@ function runTrashOp(store: Store, op: OpOf<(typeof TRASH_KINDS)[number]>): Drive
   }
 }
 
-function runInodeOp(store: Store, op: OpOf<(typeof INODE_KINDS)[number]>): DriveOpResult {
+function runInodeOp(store: HostStore, op: OpOf<(typeof INODE_KINDS)[number]>): DriveOpResult {
   switch (op.kind) {
     case 'times':
       store.driveInodes.setTimes(op.inodeId, op.times);
@@ -292,7 +292,7 @@ type OtherOp = Exclude<
   OpOf<(typeof ITEM_KINDS)[number] | (typeof TRASH_KINDS)[number] | (typeof INODE_KINDS)[number]>
 >;
 
-function runOtherOp(store: Store, op: OtherOp): DriveOpResult {
+function runOtherOp(store: HostStore, op: OtherOp): DriveOpResult {
   switch (op.kind) {
     case 'xattrSet':
       return { kind: 'xattr', set: xattrSet(store, op) };
@@ -310,7 +310,7 @@ function runOtherOp(store: Store, op: OtherOp): DriveOpResult {
   }
 }
 
-export function runOp(store: Store, op: DriveOp): DriveOpResult {
+export function runOp(store: HostStore, op: DriveOp): DriveOpResult {
   if (within(ITEM_KINDS, op)) return runItemOp(store, op);
   if (within(TRASH_KINDS, op)) return runTrashOp(store, op);
   if (within(INODE_KINDS, op)) return runInodeOp(store, op);

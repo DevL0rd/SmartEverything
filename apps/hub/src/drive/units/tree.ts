@@ -1,7 +1,8 @@
 import type { DriveItem } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
 import { itemAccess, type DriveActor } from '../access';
-import { announce, appendFeed, type NewItem } from '../change-rows';
+import type { NewItem } from '../change-rows';
+import { announce, appendFeed } from './change-feed';
 import type { ChangeActor } from '../changes';
 import { NO_IDENTITY, specialDraft } from '../posix/drafts';
 import { DriveWriteError } from '../write-error';

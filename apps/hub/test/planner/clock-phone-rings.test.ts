@@ -6,7 +6,7 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SimulatedClock } from '../../src/clock/simulated';
-import { plannerPreferencesOf } from '../../src/planner/preferences';
+import { DEFAULT_PREFERENCES } from '../../src/planner/preferences';
 import {
   PHONE_RING_ACK,
   PHONE_RING_SET,
@@ -351,7 +351,9 @@ describe('the ring set a phone installs', () => {
   ): Promise<void> {
     test.store.plannerPreferences.put(
       owner.profileId,
-      change(plannerPreferencesOf(test.store, owner.profileId)),
+      change(
+        test.store.plannerPreferences.find(owner.profileId)?.preferences ?? DEFAULT_PREFERENCES,
+      ),
     );
     rings.preferencesChanged(owner.profileId);
     await rings.settled();

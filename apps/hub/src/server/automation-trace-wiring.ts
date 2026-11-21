@@ -9,8 +9,6 @@ import {
 import type { LiveSinkParts } from '../automations/driver/live-sink';
 import { traceWatchSource } from '../automations/driver/live-sink';
 import type { Viewers, DeviceDetail } from '../metrics/viewers';
-import type { AutomationRunNodesRepository } from '../store/repositories/automation-run-nodes';
-import type { AutomationRunRecordsRepository } from '../store/repositories/automation-run-records';
 import { StoreNotFoundError } from '../store/context';
 import type { LiveWatch, WatchConnection } from './live-watch';
 import type { TraceOwners, TraceProfiles } from './live-trace';
@@ -21,9 +19,12 @@ export interface AutomationTraceWiringParts {
   };
   readonly viewers: Viewers<DeviceDetail>;
   readonly owners: TraceOwners;
-  readonly store: TraceProfiles;
-  readonly records: Pick<AutomationRunRecordsRepository, 'active' | 'byId'>;
-  readonly nodes: Pick<AutomationRunNodesRepository, 'forRun'>;
+  readonly profiles: TraceProfiles;
+  readonly records: {
+    readonly active: (automationId: string) => Promise<readonly AutomationRunRecord[]>;
+    readonly byId: (runId: string) => Promise<AutomationRunRecord>;
+  };
+  readonly nodes: { readonly forRun: (runId: string) => Promise<readonly RunNodeRecord[]> };
   readonly now: () => string;
 }
 
@@ -52,20 +53,21 @@ function waitOf(record: AutomationRunRecord): TraceWait | null {
 
 export function wireAutomationTrace(parts: AutomationTraceWiringParts): AutomationTraceWiring {
   const { records, nodes, viewers } = parts;
-  const traceRun = (record: AutomationRunRecord): TraceRun => ({
+  const traceRun = async (record: AutomationRunRecord): Promise<TraceRun> => ({
     runId: record.id,
     automationId: record.automation_id,
     status: record.status,
     activePaths: [...record.active_paths],
-    lastNodeStates: nodeStates(nodes.forRun(record.id)),
+    lastNodeStates: nodeStates(await nodes.forRun(record.id)),
     wait: waitOf(record),
   });
-  const runsOf = (subject: string): readonly TraceRun[] => {
+  const runsOf = async (subject: string): Promise<readonly TraceRun[]> => {
     const parsed = traceSubjectOf(subject);
     if (parsed === null) return [];
-    if (parsed.kind === 'automation') return records.active(parsed.id).map(traceRun);
+    if (parsed.kind === 'automation')
+      return Promise.all((await records.active(parsed.id)).map(traceRun));
     try {
-      return [traceRun(records.byId(parsed.id))];
+      return [await traceRun(await records.byId(parsed.id))];
     } catch (error) {
       if (error instanceof StoreNotFoundError) return [];
       throw error;
@@ -75,7 +77,7 @@ export function wireAutomationTrace(parts: AutomationTraceWiringParts): Automati
     traceWatchSource({
       viewers,
       owners: parts.owners,
-      store: parts.store,
+      profiles: parts.profiles,
       runs: runsOf,
       now: parts.now,
     }),

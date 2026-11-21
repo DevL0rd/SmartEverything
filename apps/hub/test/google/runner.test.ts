@@ -1,3 +1,4 @@
+import { hostGoogleAccounts, hostGoogleSyncState } from '../../src/store/host/hosted';
 import { join } from 'node:path';
 import type {
   GoogleSyncLogEntry,
@@ -14,7 +15,7 @@ import { GoogleTokens } from '../../src/google/tokens';
 import { instantsOf } from '../../src/planner/instants';
 import { GoogleCalendarSync } from '../../src/planner/google/calendar-sync';
 import { SecretStore } from '../../src/secrets/store';
-import { sweepRetention } from '../../src/store/retention';
+import { sweepRetention } from '../support/retention-sweep';
 import { GoogleAccountsRepository } from '../../src/store/repositories/google-accounts';
 import { GoogleSyncLogRepository } from '../../src/store/repositories/google-sync-log';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
@@ -57,10 +58,10 @@ function headerOf(notification: PushNotification, name: string): string | null {
 
 async function build(withPublicUrl: boolean, calendarOverride?: ProductSync): Promise<Rig> {
   const outcomes: PushOutcome[] = [];
-  let receive: ((notification: PushNotification) => void) | null = null;
+  let receive: ((notification: PushNotification) => Promise<void>) | null = null;
   const google = createFakeGoogle({
     deliver: (notification) => {
-      receive?.(notification);
+      if (receive !== null) void receive(notification);
     },
   });
   const test = await testStore(() => google.clock.now());
@@ -73,17 +74,17 @@ async function build(withPublicUrl: boolean, calendarOverride?: ProductSync): Pr
   });
   const tokens = new GoogleTokens({
     secrets,
-    accounts: store.googleAccounts,
+    accounts: hostGoogleAccounts(store.host),
     fetch: google.fetch,
     nowMs: (): number => google.clock.nowMs(),
   });
   const link = new GoogleLink({
     secrets,
-    accounts: store.googleAccounts,
+    accounts: hostGoogleAccounts(store.host),
     tokens,
     fetch: google.fetch,
   });
-  const started = link.begin({
+  const started = await link.begin({
     profileId: ann,
     client: 'desktop',
     redirectUri: REDIRECT,
@@ -121,10 +122,14 @@ async function build(withPublicUrl: boolean, calendarOverride?: ProductSync): Pr
     clock: sim,
     key: KEY,
   });
-  const receiver = new GooglePushReceiver({ states: store.googleSyncState, runner, key: KEY });
-  receive = (notification): void => {
+  const receiver = new GooglePushReceiver({
+    states: hostGoogleSyncState(store.host),
+    runner,
+    key: KEY,
+  });
+  receive = async (notification): Promise<void> => {
     outcomes.push(
-      receiver.receive({
+      await receiver.receive({
         channelId: notification.channelId,
         token: headerOf(notification, 'X-Goog-Channel-Token'),
         resourceId: headerOf(notification, 'X-Goog-Resource-ID'),
@@ -282,7 +287,9 @@ describe('push channels', () => {
     expect(rig.google.channels.active()[0]?.address).toBe(
       `${PUBLIC_URL}/api/google/push/${channelOf().channel_id}`,
     );
-    expect(rig.outcomes).toEqual(['ignored']);
+    await vi.waitFor(() => {
+      expect(rig.outcomes).toEqual(['ignored']);
+    });
     rig.google
       .account(EMAIL)
       .calendars.events(EMAIL)
@@ -292,7 +299,9 @@ describe('push channels', () => {
         end: { dateTime: '2026-11-10T10:00:00+01:00', timeZone: 'Europe/Berlin' },
       });
     await rig.google.channels.flush();
-    expect(rig.outcomes).toEqual(['ignored', 'queued']);
+    await vi.waitFor(() => {
+      expect(rig.outcomes).toEqual(['ignored', 'queued']);
+    });
     await vi.waitFor(() => {
       expect(calendarLog('push')).toHaveLength(1);
     });
@@ -308,11 +317,11 @@ describe('push channels', () => {
     const { channel_id: channelId } = channelOf();
     const resourceId = rig.test.store.googleSyncState.byChannel(channelId)?.channel?.resource_id;
     const before = calendarLog().length;
-    const attempt = (token: string | null, resource: string | null): PushOutcome =>
+    const attempt = (token: string | null, resource: string | null): Promise<PushOutcome> =>
       rig.receiver.receive({ channelId, token, resourceId: resource, state: 'exists' });
-    expect(attempt('0'.repeat(64), resourceId ?? null)).toBe('rejected');
-    expect(attempt(null, resourceId ?? null)).toBe('rejected');
-    expect(attempt(channelToken(KEY, channelId), 'other-resource')).toBe('rejected');
+    expect(await attempt('0'.repeat(64), resourceId ?? null)).toBe('rejected');
+    expect(await attempt(null, resourceId ?? null)).toBe('rejected');
+    expect(await attempt(channelToken(KEY, channelId), 'other-resource')).toBe('rejected');
     expect(calendarLog()).toHaveLength(before);
   });
 

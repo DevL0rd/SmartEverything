@@ -15,7 +15,7 @@ import { plannerBedtimeRoutes } from './handlers/planner-bedtime';
 import { RadioDirectory } from '../planner/radio';
 import { plannerClockRoutes } from './handlers/planner-clock';
 import { deviceScopeOf } from './person-scope';
-import { loadPlannerPreferences, plannerPreferencesOf } from '../planner/preferences';
+import { loadPlannerPreferences } from '../planner/preferences';
 import { triggerCatalogueOf } from '../signals/trigger-catalogue-of';
 
 type PlannerOptions = Pick<BuildOptions, 'clock' | 'core' | 'fetch' | 'version'>;
@@ -32,10 +32,10 @@ function plannerDayRoutes(
   return {
     ...plannerCoreRoutes(context, {
       now,
-      preferencesOf: (profileId) => plannerPreferencesOf(context.store, profileId),
+      preferencesOf: (profileId) => loadPlannerPreferences(context.store, profileId),
       feeds: planner.feeds,
       catalogueOf: (caller) =>
-        triggerCatalogueOf(context.store, deviceScopeOf(context.store, caller)),
+        triggerCatalogueOf(context.store.live.home, deviceScopeOf(context.store, caller)),
     }),
     ...plannerClockRoutes(context, {
       preferencesOf: (profileId) => loadPlannerPreferences(context.store, profileId),

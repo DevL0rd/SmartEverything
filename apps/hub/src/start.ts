@@ -48,6 +48,7 @@ import { listenWhileStarting } from './service/starting-listener';
 import type { LogLines } from './service/log-lines';
 import { startCore, type Core } from './services';
 import { openStore, type Store } from './store/store';
+import { hostRepairInbox } from './store/host/hosted';
 import { LogStore } from './logs/log-store';
 import { closeCodecs, openCodecs, type Codecs } from './codec/open';
 import { HUB_VERSION } from './version';
@@ -172,7 +173,7 @@ async function stopAll(
   await stopGo2rtcForShutdown(started.core.supervisor, go2rtcLog);
   await closeCodecs(started);
   await started.logs.close();
-  started.store.close();
+  await started.store.close();
   await started.lock.release();
 }
 
@@ -220,7 +221,7 @@ async function openConnections(options: ServerOptions, store: Store): Promise<Hu
   );
 }
 
-function openHubStore(options: ServerOptions, clock: Clock): Store {
+function openHubStore(options: ServerOptions, clock: Clock): Promise<Store> {
   const { layout } = options;
   return openStore({
     path: layout.system.database.file,
@@ -232,11 +233,11 @@ function openHubStore(options: ServerOptions, clock: Clock): Store {
   });
 }
 
-function openHubLogs(options: ServerOptions, store: Store): LogStore {
+function openHubLogs(options: ServerOptions, store: Store): Promise<LogStore> {
   return LogStore.open({
     path: options.layout.system.logs.runtimeLogs,
     workerScript: options.logWorkerScript,
-    repairs: store.aiRepairInbox,
+    repairs: hostRepairInbox(store.host),
     now: store.now,
     log: options.log.forArea('hub.logs'),
     fatal: options.fatal,
@@ -252,9 +253,9 @@ async function boot(
   const lock = await lockDataDirectory(options.layout);
   undo.push(lock.release);
   const secrets = await openSecretStore(options.layout.system.keys, options.log);
-  const store = openHubStore(options, clock);
+  const store = await openHubStore(options, clock);
   undo.push(store.close);
-  const logs = openHubLogs(options, store);
+  const logs = await openHubLogs(options, store);
   undo.push(() => logs.close());
   const codecs = openCodecs(options.codecWorkerScript, options.log);
   undo.push(() => closeCodecs(codecs));

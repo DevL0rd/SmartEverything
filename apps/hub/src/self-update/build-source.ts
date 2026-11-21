@@ -1,4 +1,3 @@
-import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import {
   BUILD_SOURCE_SETTING_VALUE,
@@ -13,9 +12,11 @@ import {
   type ReleaseArtifact,
   type ReleaseSource,
 } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import type { HubLayout } from '../data-layout';
+import { StoreReader } from '../store/reader';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 
 export class BuildSourceMissingError extends Error {
   override readonly name = 'BuildSourceMissingError';
@@ -37,7 +38,7 @@ function sourceOf(
   return BUILD_SOURCE_SETTING_VALUE.parse(saved).source;
 }
 
-function readBuildSources(store: Pick<Store, 'settingsKv'>): BuildSourceSettings {
+function readBuildSources(store: Pick<HostStore, 'settingsKv'>): BuildSourceSettings {
   return buildSourcesFrom((artifact) =>
     sourceOf(store.settingsKv.read(buildSourceSettingId(artifact)), artifact),
   );
@@ -61,17 +62,39 @@ export const BUILD_SOURCES_UPDATE_UNIT = storeUnit(
   },
 );
 
-export function buildSourceOf(layout: HubLayout, component: PipelineComponent): ReleaseSource {
+const SETTING_TEXT = 'select settings from ai_settings where key = $key';
+
+const BUSY_TIMEOUT_MS = 5000;
+
+const log = new Logger('hub.self-update');
+
+export function buildSourceSettingQuery(artifact: ReleaseArtifact): {
+  readonly text: string;
+  readonly key: string;
+} {
+  return { text: SETTING_TEXT, key: buildSourceSettingId(artifact) };
+}
+
+export function storedBuildSource(row: unknown, artifact: ReleaseArtifact): ReleaseSource {
+  if (row === undefined) throw new BuildSourceMissingError(artifact);
+  return BUILD_SOURCE_SETTING_VALUE.parse(JSON.parse(STORED_SETTINGS.parse(row).settings)).source;
+}
+
+export async function buildSourceOf(
+  layout: HubLayout,
+  component: PipelineComponent,
+): Promise<ReleaseSource> {
   const artifact = releaseArtifactOf(component);
-  const database = new DatabaseSync(layout.system.database.file, { readOnly: true });
+  const reader = new StoreReader({
+    path: layout.system.database.file,
+    busyTimeoutMs: BUSY_TIMEOUT_MS,
+    log,
+  });
   try {
-    const row = database
-      .prepare('select settings from ai_settings where key = ?')
-      .get(buildSourceSettingId(artifact));
-    if (row === undefined) throw new BuildSourceMissingError(artifact);
-    return BUILD_SOURCE_SETTING_VALUE.parse(JSON.parse(STORED_SETTINGS.parse({ ...row }).settings))
-      .source;
+    const { text, key } = buildSourceSettingQuery(artifact);
+    const [row] = await reader.all(STORED_SETTINGS, text, { key });
+    return storedBuildSource(row, artifact);
   } finally {
-    database.close();
+    await reader.close();
   }
 }

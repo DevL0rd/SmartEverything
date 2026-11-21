@@ -144,7 +144,7 @@ export class ScheduleBook {
     const occurrences = occurrencesOf(
       timing,
       this.clock.now(),
-      this.store.settings.read().time_zone,
+      this.store.live.home.settings.read().time_zone,
     );
     return {
       timing,

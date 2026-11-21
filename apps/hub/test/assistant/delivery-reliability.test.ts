@@ -64,7 +64,7 @@ function fixture(
   const delivery = new AssistantDelivery({
     events: mainDeliveryEvents(store),
     route: (): ReturnType<DeliveryOptions['route']> =>
-      attached ? { kind: 'engine', engine, chat } : { kind: 'waiting' },
+      Promise.resolve(attached ? { kind: 'engine', engine, chat } : { kind: 'waiting' }),
     delivered: (): undefined => undefined,
     failed: (event): undefined => {
       given.push(event.text);

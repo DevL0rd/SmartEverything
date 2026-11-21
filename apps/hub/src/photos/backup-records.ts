@@ -18,7 +18,7 @@ import {
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { isFileItem } from '../drive/file-item';
-import { personalDrive } from '../drive/spaces';
+import { personalDrive } from '../drive/units/spaces';
 import { storeUnit } from '../store/host/unit';
 import {
   DriveBackupRepository,
@@ -26,13 +26,16 @@ import {
 } from '../store/repositories/drive-backup';
 import type { DevicesRepository } from '../store/repositories/devices';
 import { inList, type Sql } from '../store/sql';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { folderCopiesOf } from './folder-copies';
 import { PhotoFolderStore } from './folder-store';
 import { LOCAL_MONTH } from './library';
 import { PHOTOS_FOLDER } from './membership';
 
-export interface RecordsStore extends Pick<Store, 'write' | 'feed' | 'driveRoots' | 'driveFeed'> {
+export interface RecordsStore extends Pick<
+  HostStore,
+  'write' | 'feed' | 'driveRoots' | 'driveFeed'
+> {
   readonly driveBackup: DriveBackupRepository;
   readonly devices: Pick<DevicesRepository, 'find'>;
 }
@@ -292,7 +295,7 @@ export class BackupRecords {
 
 const log = new Logger('hub.photos');
 
-function recordsOf(store: Store): BackupRecords {
+function recordsOf(store: HostStore): BackupRecords {
   return new BackupRecords({
     store: {
       write: store.write,
@@ -367,6 +370,6 @@ export const PHOTO_BACKUP_TOUCH_UNIT = storeUnit(
   },
 );
 
-export function settleBackupIn(store: Store, item: DriveItem): number {
+export function settleBackupIn(store: HostStore, item: DriveItem): number {
   return recordsOf(store).settleItem(item);
 }

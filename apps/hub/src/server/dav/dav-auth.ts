@@ -63,7 +63,7 @@ export async function authenticateDav(deps: DavDeps, request: IncomingMessage): 
   }
   if (NODE_AI_TOKEN.safeParse(token).success) {
     const node = await deps.nodes.authenticate(token);
-    return callerOf(deps.nodes.actorOf(node), node.device_id);
+    return callerOf(await deps.nodes.actorOf(node), node.device_id);
   }
   const client = clientOf(await authenticate(deps.store, request, 'member', false));
   return callerOf(actorOf({ kind: 'client', client }), client.id);

@@ -8,7 +8,7 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { DriveCommentParentError } from '../../store/repositories/drive-comments';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { canRead, itemAccess, type DriveActor, type ItemAccess } from '../access';
 import { storeUnit } from '../../store/host/unit';
 import { DriveReadRules } from './read';
@@ -19,7 +19,7 @@ import { checkMentions } from '../social/mentions';
 
 const log = new Logger('hub.drive');
 
-type CommentStore = AudienceStore & Pick<Store, 'driveComments' | 'driveNotifications'>;
+type CommentStore = AudienceStore & Pick<HostStore, 'driveComments' | 'driveNotifications'>;
 
 interface CommentsEnv {
   readonly store: CommentStore;
@@ -194,7 +194,7 @@ class CommentRules {
   }
 }
 
-function rules(store: Store): CommentRules {
+function rules(store: HostStore): CommentRules {
   return new CommentRules({ store, read: new DriveReadRules(store) });
 }
 

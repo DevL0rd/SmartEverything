@@ -44,7 +44,7 @@ export function commandPorts(
       const capability = CAPABILITY_KEY.parse(rawCapability);
       const device = await options.store.host.call('devices', 'byId', deviceId);
       const checked = validateCommand(device, { capability, value });
-      const [row] = options.submit([
+      const [row] = await options.submit([
         {
           deviceId,
           capability,

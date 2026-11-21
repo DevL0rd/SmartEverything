@@ -43,36 +43,36 @@ export interface ChatRef {
 }
 
 export interface ChatSessionSource {
-  own(owner: ChatOwner, chatId: string): ChatRef;
+  own(owner: ChatOwner, chatId: string): Promise<ChatRef>;
   binding(chat: ChatRef): {
     readonly session_id: string | null;
     readonly execution_target: AiHarnessTarget;
   };
-  readonly store: {
-    readonly dshSessions: {
-      stat(sessionId: string, profileId: string): DshSessionMetadata | undefined;
-      readAll(sessionId: string, profileId: string): readonly DshSessionEvent[];
-    };
-  };
+  sessionLog(sessionId: string, profileId: string): Promise<StoredSessionLog | null>;
 }
 
-export function sessionLogOf(
+export interface StoredSessionLog {
+  readonly metadata: DshSessionMetadata;
+  readonly events: readonly DshSessionEvent[];
+}
+
+export async function sessionLogOf(
   service: ChatSessionSource,
   owner: ChatOwner,
   chatId: string,
-): SessionLog | null {
-  const chat = service.own(owner, chatId);
+): Promise<SessionLog | null> {
+  const chat = await service.own(owner, chatId);
   const binding = service.binding(chat);
   if (binding.session_id === null) return null;
-  const metadata = service.store.dshSessions.stat(binding.session_id, chat.profile_id);
-  if (metadata === undefined) return null;
+  const stored = await service.sessionLog(binding.session_id, chat.profile_id);
+  if (stored === null) return null;
   return {
     chatId: chat.id,
     profileId: chat.profile_id,
     sessionId: binding.session_id,
     onHub: binding.execution_target.kind === 'server',
-    metadata,
-    events: service.store.dshSessions.readAll(binding.session_id, chat.profile_id),
+    metadata: stored.metadata,
+    events: stored.events,
   };
 }
 
@@ -256,7 +256,7 @@ export async function readWorkspace(
   owner: ChatOwner,
   chatId: string,
 ): Promise<AiWorkspace> {
-  const session = sessionLogOf(service, owner, chatId);
+  const session = await sessionLogOf(service, owner, chatId);
   if (session === null) return NO_WORKSPACE;
   await projector.project(session);
   return workspaceOf(session, (key) => projector.attachmentOf(session.sessionId, key));

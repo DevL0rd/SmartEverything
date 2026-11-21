@@ -13,18 +13,19 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DriveAlbums } from '../../src/drive/service-write-albums';
+import { hostQuotaSource } from '../../src/drive/quotas';
 import { commitContent, folderDraft, recordItem } from '../../src/drive/changes';
 import { identityOf, isoOf } from '../../src/drive/change-rows';
 import type { ConflictEnv } from '../../src/drive/conflicts';
 import { DriveReadService } from '../../src/drive/service-read';
-import { ensureDrives, personalDrive, sharedDrive } from '../../src/drive/spaces';
+import { ensureDrives } from '../../src/drive/spaces';
+import { personalDrive, sharedDrive } from '../../src/drive/units/spaces';
 import { DriveWriteService } from '../../src/drive/service-write';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import type { DriveCaller } from '../../src/drive/service-write-support';
 import { DriveShares } from '../../src/drive/shares';
 import { stageBytes, fileEnv, nodeFiles } from '../../src/drive/versions';
 import type { StoredDrive } from '../../src/store/repositories/drive-roots';
-import type { DriveQuotaStatus } from '../../src/store/repositories/drive-quotas';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
@@ -63,9 +64,6 @@ function changeEnv(): ConflictEnv {
     store: opened.store,
     purge: {
       rearm: (): void => undefined,
-    },
-    conflicts: {
-      find: (id) => conflictRows.get(id),
     },
   };
 }
@@ -171,7 +169,7 @@ beforeEach(async () => {
         opened.store.host.write('driveBackupReport', input),
     },
     guard: {
-      status: (profileId): DriveQuotaStatus => opened.store.driveQuotas.status(profileId),
+      status: hostQuotaSource(opened.store),
       space: (): Promise<Pick<DriveDataSpace, 'totalBytes' | 'freeBytes'>> =>
         Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },
@@ -497,7 +495,7 @@ describe('versions, quotas, settings, shares and conflicts', () => {
     await expect(service.setQuota(member(), { profileId: memberId, bytes: 5 })).rejects.toThrow(
       expect.objectContaining({ code: 'forbidden' }),
     );
-    expect(() => service.updateSettings(member(), { membersMayShare: true })).toThrow(
+    await expect(service.updateSettings(member(), { membersMayShare: true })).rejects.toThrow(
       expect.objectContaining({ code: 'forbidden' }),
     );
     await expect(service.startScrub(member())).rejects.toThrow(
@@ -511,7 +509,9 @@ describe('versions, quotas, settings, shares and conflicts', () => {
     expect(opened.store.driveQuotas.find(memberId)?.bytes).toBe(5);
     await service.setQuota(owner(), { profileId: memberId, bytes: null });
     expect(opened.store.driveQuotas.find(memberId)).toBeUndefined();
-    expect(service.updateSettings(owner(), { membersMayShare: true }).membersMayShare).toBe(true);
+    expect((await service.updateSettings(owner(), { membersMayShare: true })).membersMayShare).toBe(
+      true,
+    );
     expect((await service.startScrub(owner())).state).toBe('idle');
     expect(scrubStarts).toBe(1);
     expect(
@@ -527,7 +527,7 @@ describe('versions, quotas, settings, shares and conflicts', () => {
     const file = await seedFile(root, 'a.txt', 'a');
     const input = { itemId: file.id, permission: 'view' as const, expiresAt: null, password: null };
     await expect(service.createShare(member(), input)).rejects.toMatchObject({ code: 'forbidden' });
-    service.updateSettings(owner(), { membersMayShare: true });
+    await service.updateSettings(owner(), { membersMayShare: true });
     const created = await service.createShare(member(), input);
     expect((await service.revokeShare(owner(), created.share.id)).revokedAt).not.toBeNull();
   });

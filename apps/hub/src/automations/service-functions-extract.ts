@@ -19,7 +19,7 @@ import { withExecutionAuthority } from '../assistant/turn-authority';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import { profileIdOf, type Caller } from '../server/auth';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { SpeechPrincipal } from '../transcripts/speech-principal';
 import type { ProgramData } from './program-data';
 import { unitKinds } from './program-kinds';
@@ -194,14 +194,14 @@ function extracted(
   };
 }
 
-function prepare(store: Store, input: PrepareExtractInput): PreparedExtraction {
+function prepare(store: HostStore, input: PrepareExtractInput): PreparedExtraction {
   const env = analysisEnv(store, input.data, null);
   const found = extracted(env, input.request);
   if ('kind' in found) return found;
   return checked(env, input.caller, found);
 }
 
-function commit(store: Store, input: CommitExtractInput): AutomationFunctionExtractReply {
+function commit(store: HostStore, input: CommitExtractInput): AutomationFunctionExtractReply {
   const { found, calleePlan, callerPlan, problems } = input.ready;
   const kinds = unitKinds(store, input.kinds);
   const author = authorOf(input.caller);

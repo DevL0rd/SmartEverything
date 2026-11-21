@@ -28,7 +28,7 @@ function keyframeOf(
 ): BrushLiveNotice {
   const { device, client } = target;
   const state = wiring.fleet.of(device);
-  const profileId = context.store.profiles.activeOf(client.id).id;
+  const profileId = context.store.live.access.activeProfileOf(client.id);
   const mine = ownsSessions(
     { role: client.role, profileId },
     entrySettingsOf(state.entry).personId,

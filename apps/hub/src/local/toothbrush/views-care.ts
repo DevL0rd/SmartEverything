@@ -33,10 +33,14 @@ export function handleViewOf(deps: ViewDeps, device: DeviceRow, state: DeviceSta
   return state.runtime.brand.handleView(viewContextOf(deps, device, state));
 }
 
-export function batteryViewOf(deps: ViewDeps, device: DeviceRow, state: DeviceState): BatteryView {
+export async function batteryViewOf(
+  deps: ViewDeps,
+  device: DeviceRow,
+  state: DeviceState,
+): Promise<BatteryView> {
   const settings = entrySettingsOf(state.entry);
   const { battery, batteryMillivolts, activity } = state.runtime.state;
-  const levels = deps.series(device.id, 'battery').points;
+  const levels = (await deps.series(device.id, 'battery')).points;
   const run = batteryRun(levels.map((point) => ({ at: point.at, percent: point.value })));
   return {
     percent: battery,
@@ -47,31 +51,31 @@ export function batteryViewOf(deps: ViewDeps, device: DeviceRow, state: DeviceSt
   };
 }
 
-export function headTimeline(
+export async function headTimeline(
   deps: ViewDeps,
   device: DeviceRow,
   state: DeviceState,
-): Extract<BrushView, { readonly view: 'head' }> {
+): Promise<Extract<BrushView, { readonly view: 'head' }>> {
   const context = viewContextOf(deps, device, state);
   return {
     view: 'head',
     head: state.runtime.brand.headView(context),
-    ...state.runtime.brand.headTimeline(context),
+    ...(await state.runtime.brand.headTimeline(context)),
   };
 }
 
-export function batteryView(
+export async function batteryView(
   deps: ViewDeps,
   device: DeviceRow,
   state: DeviceState,
-): Extract<BrushView, { readonly view: 'battery' }> {
-  const levels = deps.series(device.id, 'battery').points;
-  const volts = deps.series(device.id, 'brush_battery_mv').points;
+): Promise<Extract<BrushView, { readonly view: 'battery' }>> {
+  const levels = (await deps.series(device.id, 'battery')).points;
+  const volts = (await deps.series(device.id, 'brush_battery_mv')).points;
   const run = batteryRun(levels.map((point) => ({ at: point.at, percent: point.value })));
   const levelAt = new Map(levels.map((point) => [point.at, point.value]));
   return {
     view: 'battery',
-    battery: batteryViewOf(deps, device, state),
+    battery: await batteryViewOf(deps, device, state),
     levels: levels.map((point) => ({ at: point.at, value: point.value })),
     millivolts: volts.flatMap((point) => {
       const percent = levelAt.get(point.at);
@@ -82,12 +86,12 @@ export function batteryView(
   };
 }
 
-export function handleView(
+export async function handleView(
   deps: ViewDeps,
   device: DeviceRow,
   state: DeviceState,
   sessions: readonly BrushingSession[],
-): Extract<BrushView, { readonly view: 'handle' }> {
+): Promise<Extract<BrushView, { readonly view: 'handle' }>> {
   const weeks = new Map<string, number>();
   for (const session of sessions) {
     const week = windowOf('week', session.startedAt.slice(0, 10)).from;
@@ -96,7 +100,7 @@ export function handleView(
   return {
     view: 'handle',
     handle: handleViewOf(deps, device, state),
-    motorHours: deps.series(device.id, 'brush_motor_hours').points.map((point) => ({
+    motorHours: (await deps.series(device.id, 'brush_motor_hours')).points.map((point) => ({
       at: point.at,
       value: point.value,
     })),

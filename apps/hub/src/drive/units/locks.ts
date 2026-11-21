@@ -1,6 +1,6 @@
 import { ApiError, type DriveItem, type DriveLockSet } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { canRead, canShare, itemAccess, type DriveActor } from '../access';
 import { takenMonths } from '../changes-months';
@@ -8,7 +8,7 @@ import { takenMonths } from '../changes-months';
 const log = new Logger('hub.drive');
 
 type LocksStore = Pick<
-  Store,
+  HostStore,
   'driveGrants' | 'driveItems' | 'driveRoots' | 'driveLocks' | 'driveFeed' | 'feed'
 >;
 

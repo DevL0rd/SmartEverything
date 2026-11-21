@@ -1,7 +1,7 @@
 import type { BrushingSession, ClientRow } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
 import type { StoredHead, StoredHeadWrite } from '../../store/repositories/brushing-sessions';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { RetainedDraft } from './brand';
 import { homeClock } from './clock';
 import { commandRoleOf } from './command-access';
@@ -30,11 +30,11 @@ export interface BrushPageRead {
   readonly hidden: number;
 }
 
-function logOf(store: Store): BrushingLog {
-  return new BrushingLog({ store, clock: homeClock(store) });
+function logOf(store: HostStore): BrushingLog {
+  return new BrushingLog({ store, clock: homeClock(store.settings) });
 }
 
-function named(store: Store, logged: Logged): BrushLogged {
+function named(store: HostStore, logged: Logged): BrushLogged {
   const { personId } = logged.session;
   return { ...logged, personName: personId === null ? null : store.profiles.byId(personId).name };
 }

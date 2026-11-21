@@ -1,5 +1,5 @@
 import { Logger, background } from '@smarteverything/logging';
-import type { GoogleSyncStateRepository } from '../store/repositories/google-sync-state';
+import type { HostedRepository } from '../store/host/hosted';
 import { validChannelToken } from './channels';
 import type { GoogleSyncRunner } from './sync-runner';
 
@@ -15,7 +15,7 @@ export interface PushNotification {
 }
 
 export interface GooglePushReceiverOptions {
-  readonly states: Pick<GoogleSyncStateRepository, 'byChannel'>;
+  readonly states: HostedRepository<'googleSyncState', 'byChannel'>;
   readonly runner: Pick<GoogleSyncRunner, 'sync'>;
   readonly key: Uint8Array;
 }
@@ -23,13 +23,13 @@ export interface GooglePushReceiverOptions {
 export class GooglePushReceiver {
   constructor(private readonly options: GooglePushReceiverOptions) {}
 
-  receive(notification: PushNotification): PushOutcome {
+  async receive(notification: PushNotification): Promise<PushOutcome> {
     const { channelId } = notification;
     if (!validChannelToken(this.options.key, channelId, notification.token)) {
       log.warn('google.push_rejected', { channelId });
       return 'rejected';
     }
-    const stored = this.options.states.byChannel(channelId);
+    const stored = await this.options.states.byChannel(channelId);
     if (stored === undefined) return 'ignored';
     if (stored.channel?.resource_id !== notification.resourceId) {
       log.warn('google.push_rejected', { channelId });

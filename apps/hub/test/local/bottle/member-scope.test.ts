@@ -1,7 +1,8 @@
 import type { LiveChange } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { hiddenByAccess } from '../../../src/server/live-access';
-import { deviceHidden, reachableRows, scopesOf } from '../../../src/server/person-scope';
+import { deviceHidden } from '../../../src/server/person-scope';
+import { reachableRows, scopesOf } from '../../../src/server/person-scope-units';
 import { captureLogs } from '../../support/logs';
 import { bottleRig, type BottleRig, type Person } from '../../support/bottle-rig';
 

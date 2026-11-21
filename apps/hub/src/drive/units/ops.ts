@@ -18,6 +18,7 @@ import type { DriveVersionPurge } from '../../store/repositories/drive-versions'
 import type { DriveInodePatch } from '../../store/repositories/drive-item-inodes';
 import type { DriveItemDraft, DriveItemIdentity } from '../../store/repositories/drive-items';
 import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import type { ChangeActor } from '../changes';
 import { currentClaim, type ReplayClaim } from '../replay-claims';
@@ -156,7 +157,7 @@ export type DriveOpResult =
   | { readonly kind: 'missing' }
   | { readonly kind: 'done' };
 
-export function runDriveOps(store: Store, ops: readonly DriveOp[]): DriveOpResult[] {
+export function runDriveOps(store: HostStore, ops: readonly DriveOp[]): DriveOpResult[] {
   return ops.map((op) => runOp(store, op));
 }
 

@@ -8,7 +8,7 @@ import {
   type DriveOpenItem,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import { itemAccess, type DriveActor, type ItemAccess } from '../access';
 import type { AccessRequestPage } from '../sharing/access-requests';
@@ -26,7 +26,7 @@ const STRENGTH: Readonly<Record<ItemAccess, number>> = {
 };
 
 type AccessRequestsStore = Pick<
-  Store,
+  HostStore,
   | 'driveAccessRequests'
   | 'driveGrants'
   | 'driveItems'

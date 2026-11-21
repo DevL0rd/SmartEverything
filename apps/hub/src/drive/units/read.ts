@@ -11,7 +11,7 @@ import {
   type DriveSort,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import type { DriveChildrenMark } from '../../store/repositories/drive-item-sort';
 import { storeUnit } from '../../store/host/unit';
@@ -28,7 +28,7 @@ import type {
 import { shortcutsInFolder } from './shortcuts';
 
 export type ReadStore = Pick<
-  Store,
+  HostStore,
   | 'driveRoots'
   | 'driveItems'
   | 'driveAlbums'
@@ -287,7 +287,7 @@ export interface ActorInput {
   readonly actor: DriveActor;
 }
 
-function rules(store: Store): DriveReadRules {
+function rules(store: HostStore): DriveReadRules {
   return new DriveReadRules(store);
 }
 
@@ -354,7 +354,7 @@ export const DRIVE_ITEM_VERSIONS_UNIT = storeUnit(
 );
 
 export function writableItemRootIn(
-  store: Pick<Store, 'driveRoots' | 'driveItems' | 'driveGrants'>,
+  store: Pick<HostStore, 'driveRoots' | 'driveItems' | 'driveGrants'>,
   actor: DriveActor,
   item: DriveItem,
 ): StoredDrive {

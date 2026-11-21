@@ -75,9 +75,9 @@ const OCCURRENCE = z.object({ status: z.string() });
 const TIMER = z.object({ id: z.uuid(), ends_at: MOMENT });
 const ALARM = z.object({ id: z.uuid() });
 
-function profileOf(ports: PlannerEffectPorts, person: string | undefined): string {
+async function profileOf(ports: PlannerEffectPorts, person: string | undefined): Promise<string> {
   const authority = currentExecutionAuthority();
-  const own = authority?.profile_id ?? ports.integration.ownerProfileId();
+  const own = authority?.profile_id ?? (await ports.integration.ownerProfileId());
   if (
     person !== undefined &&
     person !== own &&
@@ -96,20 +96,21 @@ function editArgs(
   return profileId === own ? args : { ...args, personId: profileId };
 }
 
-function ownerOf(ports: PlannerEffectPorts): string {
-  return currentExecutionAuthority()?.profile_id ?? ports.integration.ownerProfileId();
+async function ownerOf(ports: PlannerEffectPorts): Promise<string> {
+  return currentExecutionAuthority()?.profile_id ?? (await ports.integration.ownerProfileId());
 }
 
-function edit(
+async function edit(
   ports: PlannerEffectPorts,
   run: EffectRun,
   profileId: string,
   args: Readonly<Record<string, JsonValue>>,
 ): Promise<Readonly<Record<string, JsonValue>>> {
+  const own = await ownerOf(ports);
   return awaitRun(
     callTool(
       ports.integration.tools,
-      { profileId, tool: 'planner_edit', args: editArgs(profileId, ownerOf(ports), args) },
+      { profileId, tool: 'planner_edit', args: editArgs(profileId, own, args) },
       { plugin: null },
     ),
     run,
@@ -134,7 +135,7 @@ function addTask(ports: PlannerEffectPorts): EffectHandler {
     if (!checked.ok) return checked;
     const ask = checked.value;
     try {
-      const profileId = profileOf(ports, ask.person);
+      const profileId = await profileOf(ports, ask.person);
       const item = {
         collection_id: await taskCollection(ports.store, profileId),
         kind: 'task',
@@ -169,7 +170,7 @@ async function dueNow(
     window: {
       from: Temporal.Instant.fromEpochMilliseconds(Math.min(from, now.epochMilliseconds)),
       to: now,
-      timeZone: ports.store.settings.read().time_zone,
+      timeZone: ports.store.live.home.settings.read().time_zone,
     },
     now,
   });
@@ -189,7 +190,7 @@ function completeTask(ports: PlannerEffectPorts): EffectHandler {
     const checked = parsed(COMPLETE_TASK, params);
     if (!checked.ok) return checked;
     try {
-      const profileId = profileOf(ports, checked.value.person);
+      const profileId = await profileOf(ports, checked.value.person);
       const item = await ports.store.host.call(
         'plannerItems',
         'find',
@@ -219,7 +220,7 @@ function startTimer(ports: PlannerEffectPorts): EffectHandler {
     if (!checked.ok) return checked;
     const ask = checked.value;
     try {
-      const profileId = profileOf(ports, ask.person);
+      const profileId = await profileOf(ports, ask.person);
       const timer = TIMER.parse(
         await edit(ports, run, profileId, {
           action: 'timer_start',
@@ -237,7 +238,7 @@ function startTimer(ports: PlannerEffectPorts): EffectHandler {
 }
 
 function onceDate(ports: PlannerEffectPorts, time: string): string {
-  const zone = ports.store.settings.read().time_zone;
+  const zone = ports.store.live.home.settings.read().time_zone;
   const now = ports.clock.now();
   const today = Temporal.Instant.fromEpochMilliseconds(now.getTime())
     .toZonedDateTimeISO(zone)
@@ -267,7 +268,7 @@ function alarmOf(
 }
 
 function nextAt(ports: PlannerEffectPorts, alarm: PlannerAlarmRow): string | null {
-  const next = nextRing(alarm, ports.clock.now(), ports.store.settings.read().time_zone);
+  const next = nextRing(alarm, ports.clock.now(), ports.store.live.home.settings.read().time_zone);
   return next === null ? null : isoOf(Temporal.Instant.fromEpochMilliseconds(next.getTime()));
 }
 
@@ -277,7 +278,7 @@ function setAlarm(ports: PlannerEffectPorts): EffectHandler {
     if (!checked.ok) return checked;
     const ask = checked.value;
     try {
-      const profileId = profileOf(ports, ask.person);
+      const profileId = await profileOf(ports, ask.person);
       const created = ALARM.parse(
         await edit(ports, run, profileId, { action: 'alarm_set', alarm: alarmOf(ports, ask) }),
       );

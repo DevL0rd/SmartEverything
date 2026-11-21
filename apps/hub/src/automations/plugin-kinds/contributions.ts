@@ -93,12 +93,17 @@ export function registerDriverAutomation(
 }
 
 export interface LoadedPlugins {
-  readonly plugins: () => readonly Pick<PluginRow, 'id' | 'manifest'>[];
+  readonly plugins: () => Promise<readonly Pick<PluginRow, 'id' | 'manifest'>[]>;
   readonly loaded: (pluginId: string) => boolean;
   readonly changes: (listener: () => void) => () => void;
 }
 
-export type KindStatusWriter = (pluginId: string, detail: string) => void;
+export type KindStatusWriter = (pluginId: string, detail: string) => Promise<void>;
+
+export interface PluginKindFollow {
+  readonly settled: () => Promise<void>;
+  readonly stop: () => void;
+}
 
 interface Synced {
   readonly owner: string;
@@ -109,36 +114,52 @@ function printOf(manifest: PluginManifest): string {
   return JSON.stringify([manifest.version, manifest.contributes.automation]);
 }
 
-export function followPluginKinds(
+export async function followPluginKinds(
   catalog: Pick<PluginKindCatalog, 'replace' | 'remove'>,
   source: LoadedPlugins,
   writeDetail: KindStatusWriter,
-): () => void {
+  failed: (cause: unknown) => void,
+): Promise<PluginKindFollow> {
   const synced = new Map<string, Synced>();
+  let stopped = false;
   const unload = (pluginId: string, entry: Synced): void => {
     synced.delete(pluginId);
     catalog.remove(entry.owner);
   };
-  const sync = (): void => {
+  const sync = async (): Promise<void> => {
+    const rows = await source.plugins();
+    if (stopped) return;
     const live = new Map(
-      source
-        .plugins()
-        .filter((row) => source.loaded(row.id))
-        .map((row) => [row.id, row.manifest]),
+      rows.filter((row) => source.loaded(row.id)).map((row) => [row.id, row.manifest]),
     );
     for (const [pluginId, entry] of synced) if (!live.has(pluginId)) unload(pluginId, entry);
+    const details: [string, string][] = [];
     for (const [pluginId, manifest] of live) {
       const print = printOf(manifest);
       if (synced.get(pluginId)?.print === print) continue;
       const result = syncContribution(catalog, pluginContribution(manifest));
       synced.set(pluginId, { owner: result.owner, print });
-      if (result.statusDetail !== null) writeDetail(pluginId, result.statusDetail);
+      if (result.statusDetail !== null) details.push([pluginId, result.statusDetail]);
     }
+    for (const [pluginId, detail] of details) await writeDetail(pluginId, detail);
   };
-  sync();
-  const stop = source.changes(sync);
-  return (): void => {
-    stop();
-    for (const [pluginId, entry] of synced) unload(pluginId, entry);
+  let chain = sync();
+  const stopChanges = source.changes(() => {
+    chain = chain.then(sync, sync).catch(failed);
+  });
+  try {
+    await chain;
+  } catch (cause) {
+    stopped = true;
+    stopChanges();
+    throw cause;
+  }
+  return {
+    settled: () => chain,
+    stop: (): void => {
+      stopped = true;
+      stopChanges();
+      for (const [pluginId, entry] of synced) unload(pluginId, entry);
+    },
   };
 }

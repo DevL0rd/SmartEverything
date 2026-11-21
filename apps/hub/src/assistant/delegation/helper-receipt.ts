@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { ApiError, type AiChatRow, type AssistantMessageRow } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 interface ReceiptPayload {
   readonly text: string;
@@ -35,7 +35,7 @@ export function payloadHash(message: ReceiptPayload): string {
 }
 
 export function receiptOf(
-  store: Store,
+  store: HostStore,
   parent: AiChatRow,
   message: ReceiptPayload,
 ): AssistantMessageRow | undefined {
@@ -58,7 +58,7 @@ export function receiptOf(
 }
 
 export function assertOrdinaryMessageKey(
-  store: Store,
+  store: HostStore,
   parent: AiChatRow,
   clientMessage: string | undefined,
 ): void {

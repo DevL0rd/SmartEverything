@@ -15,8 +15,13 @@ export interface ToolResultRequest {
   readonly limit: number;
 }
 
-function toolOf(store: Store, chatId: string, callId: string): ChatTimelineTool | undefined {
-  const embeds = store.assistantChat.withToolCall(chatId, callId)?.embeds ?? [];
+async function toolOf(
+  store: Pick<Store, 'host'>,
+  chatId: string,
+  callId: string,
+): Promise<ChatTimelineTool | undefined> {
+  const row = await store.host.call('assistantChat', 'withToolCall', chatId, callId);
+  const embeds = row?.embeds ?? [];
   for (const embed of embeds) {
     const timeline = CHAT_TIMELINE_EMBED.safeParse(embed);
     if (!timeline.success) continue;
@@ -26,8 +31,11 @@ function toolOf(store: Store, chatId: string, callId: string): ChatTimelineTool 
   return undefined;
 }
 
-export function readToolResult(store: Store, request: ToolResultRequest): AiToolResultPage {
-  const tool = toolOf(store, request.chatId, request.callId);
+export async function readToolResult(
+  store: Pick<Store, 'host'>,
+  request: ToolResultRequest,
+): Promise<AiToolResultPage> {
+  const tool = await toolOf(store, request.chatId, request.callId);
   if (tool === undefined)
     throw new ApiError('not_found', `This chat has no tool call ${request.callId}.`);
   return toolResultPage(tool, request.field, request.cursor, request.limit);

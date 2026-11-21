@@ -1,7 +1,8 @@
 import type { DriveFeedOp, DriveItem } from '@smarteverything/domain';
 import type { DriveItemIdentity } from '../store/repositories/drive-items';
-import type { ChangeActor, ChangeStore } from './changes';
-import { announce, appendFeed } from './change-rows';
+import type { HostStore } from '../store/host/host-store';
+import type { ChangeActor } from './changes';
+import { announce, appendFeed } from './units/change-feed';
 import { DriveWriteError } from './write-error';
 import { DRIVE_PAGE_SIZE } from './page-size';
 
@@ -19,7 +20,7 @@ export interface RepathChange {
 }
 
 export interface RepathEnv {
-  readonly store: ChangeStore;
+  readonly store: Pick<HostStore, 'feed' | 'driveItems' | 'driveFeed' | 'write'>;
 }
 
 interface Repath extends RepathChange {

@@ -13,7 +13,7 @@ import type { EffectRun } from '../../../src/automations/effects/effect-run';
 import { performer } from '../../../src/automations/engine-v3-effects';
 import { pluginNodeEffects } from '../../../src/automations/plugin-kinds/perform';
 import { SignalBus } from '../../../src/signals/bus';
-import type { Store } from '../../../src/store/store';
+import type { SeededStore } from '../../support/store';
 import { testLogger } from '../../support/logs';
 import { testRun, type TestRun } from '../../automations-v3/effects/support';
 
@@ -107,7 +107,7 @@ class Listening {
   }
 }
 
-export function rig(store: Store, options: RigOptions = {}): Rig {
+export function rig(store: SeededStore, options: RigOptions = {}): Rig {
   const calls: Call[] = [];
   const events: EventInsert[] = [];
   const offered = ['post', 'find'];

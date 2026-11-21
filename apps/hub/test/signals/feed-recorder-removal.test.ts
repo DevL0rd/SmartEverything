@@ -15,6 +15,7 @@ let db: TestDatabase;
 let inventory: Inventory;
 let bus: SignalBus;
 let rows: EventInsert[];
+let signals: DeviceSignals;
 
 beforeEach(async () => {
   captureLogs();
@@ -30,7 +31,7 @@ beforeEach(async () => {
       },
     },
   });
-  const signals = new DeviceSignals({ store: db.store, signals: bus, now });
+  signals = new DeviceSignals({ store: db.store, signals: bus, now });
   inventory = new Inventory(db.database, {
     onlineChanged: (): void => undefined,
     devicesChanged: (): void => undefined,
@@ -63,10 +64,12 @@ describe('a device removal through the queued event chain', () => {
 
   it('stores the removal row with no device row named after the device is gone', async () => {
     await inventory.apply('xiaomi', [LAMP]);
+    await signals.settled();
     await router.settled();
     const lamp = inventory.deviceOf('xiaomi', 'lamp-1');
     if (lamp === undefined) throw new Error('The lamp was not in the inventory.');
     await inventory.remove('xiaomi', ['lamp-1']);
+    await signals.settled();
     await router.settled();
     const stored = db.store.events.list({ limit: 10 });
     expect(stored).toHaveLength(1);
@@ -78,12 +81,14 @@ describe('a device removal through the queued event chain', () => {
 describe('a device removal the store has already carried out', () => {
   it('stores the removal feed row with no device row named and keeps the device in its details', async () => {
     await inventory.apply('xiaomi', [LAMP]);
+    await signals.settled();
     const [added] = rows;
     if (added === undefined) throw new Error('The added lifecycle row was not recorded.');
     await db.database.insertEvents([added]);
     const lamp = inventory.deviceOf('xiaomi', 'lamp-1');
     if (lamp === undefined) throw new Error('The lamp was not in the inventory.');
     await inventory.remove('xiaomi', ['lamp-1']);
+    await signals.settled();
     expect(db.store.events.list({ limit: 10 })).toStrictEqual([]);
     const removal = rows[1];
     if (removal === undefined) throw new Error('The removed lifecycle row was not recorded.');

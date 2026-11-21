@@ -7,7 +7,7 @@ import {
 } from '@smarteverything/domain';
 import type { DriveAlbumCursor } from '../../store/repositories/drive-albums';
 import type { DriveItemWindow } from '../../store/repositories/drive-items';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { storeUnit } from '../../store/host/unit';
 import {
   canRead,
@@ -17,11 +17,11 @@ import {
   type DriveActor,
   type ItemAccess,
 } from '../access';
-import { readDriveSettings } from '../settings';
+import { readDriveSettings } from './settings';
 import type { ShareActor } from '../shares';
 
 type SharesStore = Pick<
-  Store,
+  HostStore,
   'driveShares' | 'driveItems' | 'driveRoots' | 'driveGrants' | 'driveAlbums' | 'settingsKv'
 >;
 
@@ -78,7 +78,7 @@ function visibleItem(store: SharesStore, actor: DriveActor, itemId: string): Dri
   return item;
 }
 
-export function linksAllowed(store: Pick<Store, 'settingsKv'>, actor: ShareActor): boolean {
+export function linksAllowed(store: Pick<HostStore, 'settingsKv'>, actor: ShareActor): boolean {
   return actor.owner || readDriveSettings(store).membersMayShare;
 }
 

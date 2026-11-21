@@ -8,15 +8,14 @@ export async function runMemoryTool(
   who: MemoryPrincipal,
   args: AiMemoryToolArguments,
 ): Promise<AiMemoryToolResult> {
-  if (!service.offered(who))
+  if (!(await service.offered(who)))
     throw new ApiError('forbidden', 'Memory is turned off for the person in this chat.');
   switch (args.action) {
     case 'view':
       return args.query === undefined
         ? {
-            memories: service
-              .list(who)
-              .memories.filter((memory) => args.scope === undefined || memory.scope === args.scope)
+            memories: (await service.list(who)).memories
+              .filter((memory) => args.scope === undefined || memory.scope === args.scope)
               .map((memory) => service.toolLine(memory)),
           }
         : {
@@ -31,11 +30,11 @@ export async function runMemoryTool(
     }
     case 'edit': {
       const { action: _action, id, ...patch } = args;
-      const changed = service.change(who, id, patch);
+      const changed = await service.change(who, id, patch);
       return { memory: service.toolLine(changed.memory), outcome: changed.outcome };
     }
     case 'delete':
-      service.remove(who, args.id);
+      await service.remove(who, args.id);
       return { deleted: args.id };
   }
 }

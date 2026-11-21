@@ -103,7 +103,7 @@ async function home(): Promise<Rig> {
   let gate: Promise<unknown> | null = null;
   const handlers = phoneEffects({
     store: db.store,
-    ownerProfileId: () => OWNER,
+    ownerProfileId: () => Promise.resolve(OWNER),
     tools: {
       check: (): Promise<ToolCheck> => Promise.resolve({ ok: true, tool: TOOL }),
       call: async (_name, args, caller): Promise<HubToolResult> => {

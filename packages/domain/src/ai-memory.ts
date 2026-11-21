@@ -217,9 +217,9 @@ export const AI_MEMORY_RECALL = z.strictObject({
 export type AiMemoryRecall = z.output<typeof AI_MEMORY_RECALL>;
 
 export interface AiMemoryAccess {
-  readonly offered: (sessionId: string) => boolean;
+  readonly offered: (sessionId: string) => Promise<boolean>;
   readonly prepare: (sessionId: string) => Promise<void>;
-  readonly recall: (sessionId: string) => AiMemoryRecall;
+  readonly recall: (sessionId: string) => Promise<AiMemoryRecall>;
   readonly call: (sessionId: string, args: AiMemoryToolArguments) => Promise<AiMemoryToolResult>;
 }
 

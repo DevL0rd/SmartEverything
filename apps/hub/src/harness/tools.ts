@@ -1,6 +1,5 @@
 import { bindHomeTools } from '@smarteverything/harness/process';
 import { openRouterSearchAvailable } from '../assistant/web-search-supplier';
-import { executionRole, eventAuthority } from '../assistant/turn-authority';
 import { reachesNativeBridge } from './native-bridge';
 import { z } from 'zod';
 import { ApiError, HARNESS_CENTRAL_RESULT, MCP_DISCOVERY_TOOLS } from '@smarteverything/domain';
@@ -8,7 +7,7 @@ import type { HARNESS_CENTRAL_CATALOGUE } from '@smarteverything/domain';
 import type { Context } from '@deepseek-ai/cordis';
 import { HubHomeTools } from './central-transport';
 import { withCentralToolAuthority } from './central-tool-authority';
-import { nativeMediaAuthority } from './native-media-authority';
+import { verifyNativeMedia } from './native-media-authority';
 import type { HarnessServerToolAccess, HarnessAuthority } from '@smarteverything/harness';
 import { toolAdmission, type ToolAdmission } from '../ai-tools/tool-admission';
 import { forwardedCall, type ToolHub } from '../ai-tools/tool-hub';
@@ -19,8 +18,9 @@ import {
   centralToolDeclarationNames,
 } from './tool-declarations';
 import { META_TOOL_NAMES } from '../ai-tools/tool-sets';
-import { effectiveTools, scopedHub } from '../assistant/tool-scope';
+import { scopedHub } from '../assistant/tool-scope';
 import type { HarnessService } from './service';
+import { hubSession, type HubSession } from './hub-session';
 
 const CHAT_FOLDER_TOOLS: ReadonlySet<string> = new Set(['project_read', 'project_edit']);
 export class HarnessHubTools implements HarnessServerToolAccess {
@@ -32,9 +32,8 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     this.admit = toolAdmission(service.store);
   }
   nativeAccess(id: string): boolean {
-    return (
-      this.service.storage.grant(id).target.kind === 'server' && this.caller(id).role === 'owner'
-    );
+    const session = this.session(id);
+    return session.server && session.caller.role === 'owner';
   }
   hubToolNames(_authority: HarnessAuthority): readonly string[] {
     return centralToolSpecs(this.tools).map((tool) => tool.name);
@@ -53,23 +52,22 @@ export class HarnessHubTools implements HarnessServerToolAccess {
   install(ctx: Context): void {
     ctx.effect(() => bindHomeTools(ctx, new HubHomeTools(this, this.tools)));
   }
-  catalogue(id?: string): z.infer<typeof HARNESS_CENTRAL_CATALOGUE> {
-    return centralToolCatalogue(id === undefined ? this.tools : this.scoped(id));
+  catalogue(session?: HubSession): z.infer<typeof HARNESS_CENTRAL_CATALOGUE> {
+    return centralToolCatalogue(session === undefined ? this.tools : this.restricted(session));
   }
-  declarationNames(id: string): readonly string[] {
-    return centralToolDeclarationNames(this.scoped(id));
+  declarationNames(session: HubSession): readonly string[] {
+    return centralToolDeclarationNames(this.restricted(session));
   }
   async authorizeCall(
-    id: string,
+    session: HubSession,
     name: string,
     args: Readonly<Record<string, unknown>>,
   ): Promise<{ readonly caller: ToolCaller; readonly hub: ToolHub }> {
-    const session = this.session(id);
     const hub = this.restricted(session);
     const target = forwardedCall(name, args);
     const checked = await hub.check(target.name, target.arguments, session.caller);
     if (!checked.ok) throw new HubCapabilityFailure(name, checked.reason);
-    return { caller: this.admit(target.name, target.arguments, session.caller), hub };
+    return { caller: await this.admit(target.name, target.arguments, session.caller), hub };
   }
   async call(
     id: string,
@@ -77,12 +75,17 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     args: Readonly<Record<string, unknown>>,
     callId?: string,
   ): Promise<HubToolResult> {
-    const { caller, hub } = await this.authorizeCall(id, name, args);
-    const claim = this.service.store.dshSessions.attached(id, caller.profileId);
-    const verifyWriter = (): void => {
+    const { caller, hub } = await this.authorizeCall(this.session(id), name, args);
+    const claim = await this.service.store.host.call(
+      'dshSessions',
+      'attached',
+      id,
+      caller.profileId,
+    );
+    const verifyWriter = async (): Promise<void> => {
       if (claim?.target.kind !== 'server')
         throw new ApiError('conflict', 'This native tool call has no active hub writer.');
-      nativeMediaAuthority(this.service, claim);
+      await verifyNativeMedia(this.service, claim);
     };
     const result = await withCentralToolAuthority(
       this.service,
@@ -114,12 +117,17 @@ export class HarnessHubTools implements HarnessServerToolAccess {
   caller(id: string): ToolCaller {
     return this.session(id).caller;
   }
-  private restricted({ caller, chatId, server }: HubSession): ToolHub {
-    const chat = this.service.store.aiChats.chat(chatId);
+  session(id: string): HubSession {
+    return hubSession(this.service.sessions.get(id));
+  }
+  async read(id: string): Promise<HubSession> {
+    return hubSession(await this.service.sessions.read(id));
+  }
+  restricted({ caller, chat, tools, server }: HubSession): ToolHub {
     const granted = caller.authority?.tools ?? null;
     const grantedNames = granted === null ? null : new Set(granted);
     const search = openRouterSearchAvailable(this.service, chat);
-    const hub = scopedHub(this.tools, effectiveTools(this.service.store, chat))?.restrict(
+    const hub = scopedHub(this.tools, tools)?.restrict(
       (tool) =>
         (tool.name !== 'web_search' || search) &&
         !(server && CHAT_FOLDER_TOOLS.has(tool.name)) &&
@@ -133,39 +141,6 @@ export class HarnessHubTools implements HarnessServerToolAccess {
       throw new ApiError('forbidden', 'This conversation has no available hub capabilities.');
     return hub;
   }
-  private session(id: string): HubSession {
-    const { store, storage } = this.service;
-    const grant = storage.grant(id);
-    const metadata = store.dshSessions.stat(id, grant.profile_id);
-    if (metadata === undefined)
-      throw new ApiError('not_found', 'Native tool conversation is absent.');
-    const authority =
-      grant.event_id === null
-        ? undefined
-        : eventAuthority(store, store.assistantEvents.event(grant.event_id));
-    return {
-      chatId: metadata.chat_id,
-      server: grant.target.kind === 'server',
-      caller: {
-        ...(authority === undefined ? {} : { authority }),
-        profileId: grant.profile_id,
-        role:
-          grant.role === 'owner' &&
-          (authority === undefined || executionRole(authority) === 'owner')
-            ? 'owner'
-            : 'member',
-        chatId: metadata.chat_id,
-        clientId: grant.client_id,
-        via: grant.authority.kind === 'trigger' ? 'automation' : 'chat',
-      },
-    };
-  }
-}
-
-interface HubSession {
-  readonly caller: ToolCaller;
-  readonly chatId: string;
-  readonly server: boolean;
 }
 
 class HubCapabilityFailure extends ApiError {

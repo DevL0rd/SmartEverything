@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { GoogleSyncCounts } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { TasksSync } from '../../src/planner/google/tasks-sync';
+import { TasksSync, type TasksSyncDeps } from '../../src/planner/google/tasks-sync';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
@@ -277,6 +277,48 @@ const titles = (): string[] =>
     .map((row) => row.title)
     .sort();
 
+function hostedItems(): TasksSyncDeps['items'] {
+  return {
+    find: (...args) => Promise.resolve(items.find(...args)),
+    list: (...args) => Promise.resolve(items.list(...args)),
+    trashed: (...args) => Promise.resolve(items.trashed(...args)),
+    update: (...args) => Promise.resolve(items.update(...args)),
+    insert: (...args) => Promise.resolve(items.insert(...args)),
+    byGoogle: (...args) => Promise.resolve(items.byGoogle(...args)),
+    trash: (...args) => Promise.resolve(items.trash(...args)),
+    purge: (...args): Promise<void> => {
+      items.purge(...args);
+      return Promise.resolve();
+    },
+    byId: (...args) => Promise.resolve(items.byId(...args)),
+  };
+}
+
+function hostedCollections(): TasksSyncDeps['collections'] {
+  return {
+    list: (...args) => Promise.resolve(collections.list(...args)),
+    byGoogle: (...args) => Promise.resolve(collections.byGoogle(...args)),
+    update: (...args) => Promise.resolve(collections.update(...args)),
+    insert: (...args) => Promise.resolve(collections.insert(...args)),
+  };
+}
+
+function hostedStates(): TasksSyncDeps['states'] {
+  return {
+    find: (...args) => Promise.resolve(states.find(...args)),
+    put: (...args) => Promise.resolve(states.put(...args)),
+  };
+}
+
+function hostedLog(): TasksSyncDeps['log'] {
+  return {
+    byId: (...args) => Promise.resolve(log.byId(...args)),
+    replaceChoice: (...args) => Promise.resolve(log.replaceChoice(...args)),
+    insert: (...args) => Promise.resolve(log.insert(...args)),
+    list: (...args) => Promise.resolve(log.list(...args)),
+  };
+}
+
 beforeEach(() => {
   captureLogs();
   clock = new Clock();
@@ -319,10 +361,10 @@ beforeEach(() => {
   sync = new TasksSync({
     fetch: remote.fetch,
     accessToken: (): Promise<string> => Promise.resolve('token'),
-    items,
-    collections,
-    states,
-    log,
+    items: hostedItems(),
+    collections: hostedCollections(),
+    states: hostedStates(),
+    log: hostedLog(),
     now: (): string => clock.iso(),
   });
 });

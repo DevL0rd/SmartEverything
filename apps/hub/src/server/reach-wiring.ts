@@ -44,19 +44,20 @@ export interface ReachWiring {
 function assistantOf(context: ServerContext): ReachAssistant {
   const { assistant, store } = context;
   return {
-    conversationChat: (profileId): string => assistant.chats.conversationChat(profileId).id,
-    turn: (chatId, text, origin): void => {
-      assistant.runTurn({
-        profileId: store.aiChats.chat(chatId).profile_id,
+    conversationChat: async (profileId): Promise<string> =>
+      (await assistant.chats.conversationChat(profileId)).id,
+    turn: async (chatId, text, origin): Promise<void> => {
+      await assistant.runTurn({
+        profileId: (await store.host.call('aiChats', 'chat', chatId)).profile_id,
         chatId,
         text,
         origin: outcomeOrigin(origin),
       });
     },
     message: noticeMessenger(context),
-    aiName: (): string => assistantLabel(store.assistantChat.settings()),
-    liveVideo: (): boolean => store.assistantChat.settings().voice.live_video,
-    muteMic: (): boolean => store.assistantChat.settings().voice.mute_mic_while_speaking,
+    aiName: (): string => assistantLabel(store.live.home.assistant.read()),
+    liveVideo: (): boolean => store.live.home.assistant.read().voice.live_video,
+    muteMic: (): boolean => store.live.home.assistant.read().voice.mute_mic_while_speaking,
   };
 }
 
@@ -78,7 +79,7 @@ function framingOf(context: ServerContext, log: Logger): CameraFraming {
   return new CameraFraming({
     store: context.store,
     submit: (commands): void => {
-      context.hub.submit(commands);
+      background(context.hub.submit(commands), 'reach.submit_failed');
     },
     log,
   });
@@ -144,8 +145,12 @@ function speechOf(context: ServerContext, options: ReachWiring, log: Logger): Ap
     online: (): ReadonlySet<string> => context.live.connectedClients(),
     toClient: (clientId, notice): Promise<number> =>
       context.live.deliver(clientId, notice, 'foreground'),
-    pushTargets: (): ReadonlySet<string> =>
-      new Set(context.store.personal.pushTargets().map((target) => target.client_id)),
+    pushTargets: async (): Promise<ReadonlySet<string>> =>
+      new Set(
+        (await context.store.host.call('personal', 'pushTargets')).map(
+          (target) => target.client_id,
+        ),
+      ),
     pushConfigured: (): boolean => context.secrets.read().pushServiceAccount !== null,
     push: context.pushCommands,
     clock: options.clock,
@@ -198,7 +203,7 @@ function startCameraWake(
     test: transcribing.wakeTest,
     speech: (cameraId, segment): void => {
       transcribing.wakeTest.segment({ kind: 'camera', key: cameraId }, segment);
-      if (context.store.cameras.find(cameraId)?.transcribe === true) {
+      if (context.store.live.home.cameras.find(cameraId)?.transcribe === true) {
         transcribing.listening.segment(cameraId, segment);
       }
     },

@@ -71,7 +71,7 @@ function setup(): {
       submit: (commands) => {
         const rows = opened.store.commands.insert(commands);
         submitted.push(...rows);
-        return rows;
+        return Promise.resolve(rows);
       },
     },
     { signal: new AbortController().signal },

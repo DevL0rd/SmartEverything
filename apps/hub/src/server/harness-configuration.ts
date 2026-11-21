@@ -1,10 +1,12 @@
 import { ApiError, type HarnessDesiredConfiguration } from '@smarteverything/domain';
 import type { HarnessDispatcher } from '@smarteverything/harness/process';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import type { HarnessService } from '../harness/service';
+import { CommandLanes } from '../commands/lanes';
 
 export class HubHarnessConfiguration {
   private dispatcher: HarnessDispatcher | null = null;
+  private readonly reports = new CommandLanes();
   private readonly log = new Logger('hub.harness-configuration');
   constructor(
     private readonly service: HarnessService,
@@ -17,11 +19,18 @@ export class HubHarnessConfiguration {
   }
 
   changed(): void {
-    if (this.dispatcher !== null) this.report(false);
+    if (this.dispatcher !== null) this.reported(false);
   }
 
   pending(): void {
-    this.report(true);
+    this.reported(true);
+  }
+
+  private reported(pending: boolean): void {
+    background(
+      this.reports.run('report', () => this.report(pending)),
+      'harness.configuration_report_failed',
+    );
   }
 
   configure(configuration: HarnessDesiredConfiguration): void {
@@ -30,20 +39,20 @@ export class HubHarnessConfiguration {
     void dispatcher.runtime
       .configure(configuration)
       .then(() => {
-        this.report(dispatcher.runtime.configurationState().pendingRevision !== null);
+        this.reported(dispatcher.runtime.configurationState().pendingRevision !== null);
       })
       .catch((cause: unknown) => {
         this.log.error('configuration.apply_failed', cause);
       });
   }
 
-  report(pending: boolean): void {
+  async report(pending: boolean): Promise<void> {
     const dispatcher = this.dispatcher;
     if (dispatcher === null) return;
     const state = dispatcher.runtime.configurationState();
     if (state.revision === null)
       throw new ApiError('conflict', 'Hub has no applied configuration.');
-    this.service.configuration.report(
+    await this.service.configuration.report(
       {
         target: { kind: 'server' },
         runtime_instance: this.identity.runtimeInstance,

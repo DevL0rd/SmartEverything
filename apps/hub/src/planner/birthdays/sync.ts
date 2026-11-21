@@ -1,9 +1,9 @@
 import type { PlannerCollectionRow, PlannerItemRow, ProfileRow } from '@smarteverything/domain';
 import type { PlannerItemInput } from '../../store/repositories/planner-items';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { allDayEvent } from '../feeds/all-day-event';
 
-export type BirthdayStore = Pick<Store, 'write' | 'profiles' | 'plannerItems'>;
+export type BirthdayStore = Pick<HostStore, 'write' | 'profiles' | 'plannerItems'>;
 
 export const BIRTHDAY_UID_PREFIX = 'birthday:';
 

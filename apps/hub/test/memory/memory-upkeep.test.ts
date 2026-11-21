@@ -7,6 +7,7 @@ import { retentionDays } from '../../src/memory/search';
 import { MemoryUpkeep, SWEEP_EVERY_MS } from '../../src/memory/upkeep';
 import type { MemorySplit } from '../../src/memory/manager-schema';
 import { MemoryWriter } from '../../src/memory/writer';
+import { hostMemoryChats, hostMemoryRows } from '../../src/store/host/hosted';
 import type { StoredMemory } from '../../src/store/repositories/ai-memories';
 import { TEST_ENGINE } from '../support/engine';
 import { captureLogs } from '../support/logs';
@@ -251,7 +252,12 @@ describe('the daily review', () => {
     return new MemoryReview({
       store: opened.store,
       model,
-      writer: new MemoryWriter(opened.store.aiMemories, opened.store.aiChats, embedder, null),
+      writer: new MemoryWriter(
+        hostMemoryRows(opened.store.host),
+        hostMemoryChats(opened.store.host),
+        embedder,
+        null,
+      ),
       principals: new Principals(opened.store, () => Promise.resolve(profileId)),
       clock: fakeClock,
       zone: (): string => 'UTC',

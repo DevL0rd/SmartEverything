@@ -33,7 +33,7 @@ export interface ImageRuntimeOptions {
 export interface ImageRuntime {
   readonly service: ImageOperationService;
   readonly configured: () => boolean;
-  readonly actor: (caller: Caller) => ImageActor;
+  readonly actor: (caller: Caller) => Promise<ImageActor>;
   readonly readCatalog: (
     caller: Caller,
     chatId?: string,
@@ -66,10 +66,9 @@ function serviceOf(
   client: OpenRouterClient,
   catalog: OpenRouterImageCatalog,
 ): ImageOperationService {
-  const settings = (): AssistantSettings => options.store.assistantChat.settings();
+  const settings = (): AssistantSettings => options.store.live.home.assistant.read();
   return new ImageOperationService({
     store: options.store,
-    repository: options.store.imageOperations,
     files: options.files,
     notes: options.notes,
     catalog,
@@ -93,15 +92,15 @@ export function createImageRuntime(options: ImageRuntimeOptions): ImageRuntime {
   const service = serviceOf(options, client, catalog);
   const configured = (): boolean => options.key() !== null;
   const gate = spendGate();
-  const actor = (caller: Caller): ImageActor =>
+  const actor = (caller: Caller): Promise<ImageActor> =>
     imageActorOf({ store: options.store, configured, spend: gate.check }, caller);
   return {
     service,
     configured,
     actor,
     readCatalog: async (caller, chatId, refresh): Promise<ImageProviderCatalog> => {
-      const readiness = imageReadiness(service, configured(), actor(caller), chatId);
-      const selected = options.store.assistantChat.settings().image_model;
+      const readiness = await imageReadiness(service, configured(), await actor(caller), chatId);
+      const selected = options.store.live.home.assistant.read().image_model;
       try {
         return { endpoints: [...(await catalog.list(refresh === true))], readiness, selected };
       } catch (cause) {

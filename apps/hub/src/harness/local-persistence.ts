@@ -17,17 +17,15 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
   constructor(private readonly service: HarnessService) {
     service.store.feed.subscribe((change) => {
       if (change.table !== 'clients' && change.table !== 'profiles') return;
-      for (const id of this.claims.keys()) {
-        try {
-          service.storage.grant(id);
-        } catch (cause) {
+      for (const id of this.claims.keys())
+        void service.storage.grant(id).catch((cause: unknown) => {
+          if (!this.claims.has(id)) return;
           this.log.warn('authority.revoked', {
             session_id: id,
             error_name: cause instanceof Error ? cause.name : 'unknown',
           });
           this.lose(id);
-        }
-      }
+        });
     });
   }
   bind(claim: DshWriterClaim): void {
@@ -56,7 +54,8 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
     return { ...snapshot(await this.metadata(id)), claim };
   }
   async stat(id: SessionId): Promise<NativeSessionSnapshot | undefined> {
-    if (this.service.store.dshSessions.ownerOf(id) === undefined) return undefined;
+    if ((await this.service.store.host.call('dshSessions', 'ownerOf', id)) === undefined)
+      return undefined;
     return snapshot(await this.readable(id));
   }
   async list(): Promise<readonly NativeSessionSnapshot[]> {
@@ -64,9 +63,9 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
       [...this.claims.keys()].map(async (id) => snapshot(await this.metadata(id))),
     );
   }
-  read(id: SessionId, range?: NativeSessionRange): Promise<unknown> {
-    const grant = this.service.storage.grant(this.reader(id));
-    return Promise.resolve(this.service.store.dshSessions.readAll(id, grant.profile_id, range));
+  async read(id: SessionId, range?: NativeSessionRange): Promise<unknown> {
+    const grant = await this.service.storage.grant(await this.reader(id));
+    return this.service.store.host.call('dshSessions', 'readAll', id, grant.profile_id, range);
   }
   async append(
     claim: DshWriterClaim,
@@ -75,7 +74,7 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
   ): Promise<void> {
     await this.service.store.live.dshSessions.append(
       { claim, operation_id: operationId, events },
-      this.principal(claim.session_id),
+      await this.principal(claim.session_id),
     );
   }
   async flush(claim: DshWriterClaim, expectedNextSeq: number): Promise<void> {
@@ -83,48 +82,48 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
       'dshSessions',
       'flush',
       { claim, expected_next_seq: expectedNextSeq },
-      this.principal(claim.session_id),
+      await this.principal(claim.session_id),
     );
   }
-  metadata(id: string): Promise<DshSessionMetadata> {
-    const grant = this.service.storage.grant(id);
-    const metadata = this.service.store.dshSessions.stat(id, grant.profile_id);
+  async metadata(id: string): Promise<DshSessionMetadata> {
+    return this.statOf(id, (await this.service.storage.grant(id)).profile_id);
+  }
+  private async readable(id: string): Promise<DshSessionMetadata> {
+    return this.statOf(id, (await this.service.storage.grant(await this.reader(id))).profile_id);
+  }
+  private async statOf(id: string, profileId: string): Promise<DshSessionMetadata> {
+    const metadata = await this.service.store.host.call('dshSessions', 'stat', id, profileId);
     if (metadata === undefined)
       throw new ApiError('not_found', 'Native session metadata is absent.');
-    return Promise.resolve(metadata);
+    return metadata;
   }
-  private readable(id: string): Promise<DshSessionMetadata> {
-    const grant = this.service.storage.grant(this.reader(id));
-    const metadata = this.service.store.dshSessions.stat(id, grant.profile_id);
-    if (metadata === undefined)
-      throw new ApiError('not_found', 'Native session metadata is absent.');
-    return Promise.resolve(metadata);
-  }
-  private reader(id: string): string {
+  private reader(id: string): Promise<string> {
     return this.service.storage.reader(
       id,
       this.service.directory.get({ kind: 'server' }).host.runtime_instance,
     );
   }
-  verify(claim: DshWriterClaim): Promise<DshWriterClaim> {
+  async verify(claim: DshWriterClaim): Promise<DshWriterClaim> {
     try {
-      return Promise.resolve(
-        this.service.store.dshSessions.verifyWriter(claim, this.principal(claim.session_id)),
+      return await this.service.store.host.call(
+        'dshSessions',
+        'verifyWriter',
+        claim,
+        await this.principal(claim.session_id),
       );
     } catch (cause) {
       this.lose(claim.session_id);
-      return Promise.reject(
-        cause instanceof Error
-          ? cause
-          : new ApiError(
-              'conflict',
-              'Native writer verification failed with an invalid error result.',
-            ),
-      );
+      throw cause instanceof Error
+        ? cause
+        : new ApiError(
+            'conflict',
+            'Native writer verification failed with an invalid error result.',
+          );
     }
   }
   lose(id: string): void {
     this.claims.delete(id);
+    this.service.sessions.forget(id);
     for (const listener of this.listeners) listener(id);
   }
   onOwnershipLost(listener: (id: string) => void): () => void {
@@ -145,14 +144,15 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
     const opened = await this.service.storage.adoptChild(
       native,
       inherited,
-      this.principal(parent),
+      await this.principal(parent),
       parentClaim,
     );
+    await this.service.sessions.load(opened.claim.session_id);
     this.bind(opened.claim);
     return { ...snapshot(opened.metadata), claim: opened.claim };
   }
-  private principal(id: string): ReturnType<HarnessService['hostPrincipal']> {
-    const grant = this.service.storage.grant(id);
+  private async principal(id: string): Promise<ReturnType<HarnessService['hostPrincipal']>> {
+    const grant = await this.service.storage.grant(id);
     const host = this.service.directory.get(grant.target).host;
     if (grant.target.kind !== 'server')
       throw new ApiError('forbidden', 'This hub runtime no longer owns the native conversation.');

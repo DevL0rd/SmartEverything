@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { sweepAutomationRetention } from '../../src/store/retention-automations';
+import { sweepAged } from '../support/retention-sweep';
 import { Sql } from '../../src/store/sql';
 import { captureLogs } from '../support/logs';
 import { automationOf, logLine, programRig, RIG_NOW, type ProgramRig } from './support/program-rig';
@@ -10,7 +10,7 @@ let automationId: string;
 
 beforeEach(async () => {
   captureLogs();
-  rig = programRig();
+  rig = await programRig();
   const made = await rig.service.create(rig.owner.caller, {
     name: 'Door',
     enabled: true,
@@ -20,8 +20,8 @@ beforeEach(async () => {
   automationId = made.id;
 });
 
-afterEach(() => {
-  rig.close();
+afterEach(async () => {
+  await rig.close();
 });
 
 function ask(
@@ -128,7 +128,7 @@ describe('the automation questions table', () => {
     rig.database
       .prepare('update automation_questions set created_at = ? where id in (?, ?)')
       .run(longAgo, old, waiting);
-    const swept = sweepAutomationRetention(new Sql(rig.database), RIG_NOW);
+    const swept = sweepAged(new Sql(rig.database), RIG_NOW, ['automation_questions']);
     expect(swept['automation_questions']).toBe(1);
     expect(rig.store.automationQuestions.find(old)).toBeUndefined();
     expect(rig.store.automationQuestions.find(waiting)).toBeDefined();

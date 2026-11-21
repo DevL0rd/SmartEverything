@@ -1,3 +1,4 @@
+import { hostMemoryChats, hostMemoryRows } from '../../src/store/host/hosted';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { latestPersonMessage, voiceMemory } from '../../src/assistant-voice/voice-memory';
 import type { MemoryPrincipal } from '../../src/memory/principal';
@@ -52,8 +53,8 @@ function personMessage(profileId: string, chat: string, text: string): NewAssist
   };
 }
 
-function relevantTexts(): string[] {
-  return service.recall(ida).relevant.map((memory) => memory.text);
+async function relevantTexts(): Promise<string[]> {
+  return (await service.recall(ida)).relevant.map((memory) => memory.text);
 }
 
 class RecordingEmbedder extends FakeMemoryEmbedder {
@@ -69,11 +70,16 @@ beforeEach(async () => {
   events = captureLogs().events;
   opened = await testStore();
   embedder = new RecordingEmbedder();
-  service = new MemoryService(opened.store.aiMemories, opened.store.aiChats, embedder, {
-    judge: null,
-    zone: (): string => 'UTC',
-    now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
-  });
+  service = new MemoryService(
+    hostMemoryRows(opened.store.host),
+    hostMemoryChats(opened.store.host),
+    embedder,
+    {
+      judge: null,
+      zone: (): string => 'UTC',
+      now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
+    },
+  );
   const member = opened.store.profiles.create({ name: 'Ida' }).id;
   chatId = chatOf(member);
   ida = { profileId: member, role: 'member', chatId, messageId: null };
@@ -92,7 +98,7 @@ describe('preparing a message with no wording', () => {
 
     expect(embedder.calls).toBe(calls);
     expect(events()).not.toContain('memory.relevance_failed');
-    expect(relevantTexts()).toStrictEqual([]);
+    expect(await relevantTexts()).toStrictEqual([]);
   });
 
   it('treats a whitespace-only message the same way', async () => {
@@ -103,19 +109,19 @@ describe('preparing a message with no wording', () => {
 
     expect(embedder.calls).toBe(calls);
     expect(events()).not.toContain('memory.relevance_failed');
-    expect(relevantTexts()).toStrictEqual([]);
+    expect(await relevantTexts()).toStrictEqual([]);
   });
 
   it('drops the relevance of the earlier message when the next message has no wording', async () => {
     await remember(service, ida, { scope: 'person', text: 'Rex is the dog' });
     await service.prepare(ida, { id: 'm1', text: 'dog' });
-    expect(relevantTexts()).toStrictEqual(['Rex is the dog']);
+    expect(await relevantTexts()).toStrictEqual(['Rex is the dog']);
     const calls = embedder.calls;
 
     await service.prepare(ida, { id: 'm2', text: '' });
 
     expect(embedder.calls).toBe(calls);
-    expect(relevantTexts()).toStrictEqual([]);
+    expect(await relevantTexts()).toStrictEqual([]);
   });
 
   it('drops an empty message from the voice entry point too', async () => {
@@ -128,7 +134,7 @@ describe('preparing a message with no wording', () => {
 
     expect(embedder.calls).toBe(calls);
     expect(events()).not.toContain('memory.relevance_failed');
-    expect(relevantTexts()).toStrictEqual([]);
+    expect(await relevantTexts()).toStrictEqual([]);
   });
 });
 
@@ -140,6 +146,6 @@ describe('preparing a message with surrounding whitespace', () => {
     await service.prepare(ida, { id: 'm1', text: '  dog  ' });
 
     expect(embedder.inputs.slice(before)).toStrictEqual(['dog']);
-    expect(relevantTexts()).toStrictEqual(['Rex is the dog']);
+    expect(await relevantTexts()).toStrictEqual(['Rex is the dog']);
   });
 });

@@ -98,9 +98,12 @@ export class ToolHub {
     args: Readonly<Record<string, unknown>>,
     caller: ToolCaller,
   ): Promise<HubToolResult> {
-    return this.settled(name, args, caller, () => {
+    return this.settled(name, args, caller, async () => {
       const target = forwardedCall(name, args);
-      const admitted = this.admission?.(target.name, target.arguments, caller) ?? caller;
+      const admitted =
+        this.admission === null
+          ? caller
+          : await this.admission(target.name, target.arguments, caller);
       return this.run(target.name, target.arguments, admitted);
     });
   }

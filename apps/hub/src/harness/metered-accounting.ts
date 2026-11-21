@@ -6,6 +6,8 @@ import { Logger } from '@smarteverything/logging';
 import type { HarnessService } from './service';
 import type { HarnessGrant } from './grant';
 import type { Store } from '../store/store';
+import type { StoredEvent } from '../store/repositories/assistant-events';
+import type { MeteredInputs } from './store-units';
 import type { Budget } from '../ledger/budget';
 import { assertModelAllowed } from '../server/person-scope';
 
@@ -26,12 +28,16 @@ export function meteredAccountingFetch(
   service: HarnessService,
   sessionId: string,
   fetcher: typeof fetch,
-  options: { readonly verify: () => void; readonly ordinary_request?: boolean },
+  options: { readonly verify: () => Promise<void>; readonly ordinary_request?: boolean },
 ): typeof fetch {
   return async (input, init): Promise<Response> => {
-    options.verify();
-    const grant = service.storage.grant(sessionId);
-    const entry = entryOf(service, grant);
+    await options.verify();
+    const grant = await service.storage.grant(sessionId);
+    const entry = entryOf(
+      service,
+      grant,
+      await service.store.host.read('harnessMeteredInputs', grant),
+    );
     assertModelAllowed(service.store, entry.profile_id, grant.route.model);
     meteredBudget(service.store).check(entry.work, {
       profileId: entry.profile_id,
@@ -52,8 +58,8 @@ export function meteredAccountingFetch(
     return observation.response(await fetcher(input, init));
   };
 }
-function entryOf(service: HarnessService, grant: HarnessGrant): UsageEntry {
-  const metadata = service.store.dshSessions.stat(grant.session_id, grant.profile_id);
+function entryOf(service: HarnessService, grant: HarnessGrant, inputs: MeteredInputs): UsageEntry {
+  const { metadata, delivery } = inputs;
   if (metadata === undefined)
     throw new ApiError('forbidden', 'Metered inference lost its initiating profile session.');
   const route = service.routes.selected(
@@ -63,8 +69,6 @@ function entryOf(service: HarnessService, grant: HarnessGrant): UsageEntry {
   );
   if (route.auth.provider !== 'openrouter' || route.billing !== 'metered')
     throw new ApiError('forbidden', 'Subscription routes cannot enter metered accounting.');
-  const delivery =
-    grant.event_id === null ? undefined : service.store.harnessDeliveries.find(grant.event_id);
   if (delivery !== undefined && delivery.session_id !== grant.session_id)
     throw new ApiError('forbidden', 'Metered delivery belongs to another native session.');
   return {
@@ -73,7 +77,7 @@ function entryOf(service: HarnessService, grant: HarnessGrant): UsageEntry {
     chat_id: metadata.chat_id,
     message_id: delivery?.state === 'admitted' ? delivery.reply_id : null,
     source: 'openrouter',
-    work: workOf(service, grant, metadata.chat_id),
+    work: workOf(grant, metadata.chat_id, inputs.event),
     model_id: grant.route.model,
     cost_micros: 0,
     cost_state: 'estimated',
@@ -85,9 +89,14 @@ function entryOf(service: HarnessService, grant: HarnessGrant): UsageEntry {
     },
   };
 }
-export function workOf(service: HarnessService, grant: HarnessGrant, chatId: string): UsageWork {
+export function workOf(
+  grant: HarnessGrant,
+  chatId: string,
+  event: StoredEvent | undefined,
+): UsageWork {
   if (grant.event_id === null) return 'chat';
-  const event = service.store.assistantEvents.event(grant.event_id);
+  if (event === undefined)
+    throw new ApiError('conflict', 'Metered accounting lost the event of its initiating turn.');
   if (event.profile_id !== grant.profile_id || event.chat_id !== chatId)
     throw new ApiError(
       'forbidden',

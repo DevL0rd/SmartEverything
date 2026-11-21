@@ -130,7 +130,7 @@ describe('switching machines when the chat is idle', () => {
     const after = rig.opened.store.aiChats.chat(chat.id);
     expect(rig.service.binding(after).session_id).toBe(before);
     expect(targetOf(chat)).toBe(harnessTargetKey(rig.desk.target));
-    const session = rig.service.state(rig.owner, chat.id);
+    const session = await rig.service.state(rig.owner, chat.id);
     expect(harnessTargetKey(session.target)).toBe(harnessTargetKey(rig.desk.target));
     expect(session.epoch).toBe(epoch + 1);
     expect(session.state).toBe('idle');
@@ -196,7 +196,7 @@ describe('switching machines when the chat is idle', () => {
 
     expect(rig.calls).toStrictEqual([]);
     expect(targetOf(chat)).toBe('server');
-    expect(rig.service.state(rig.owner, chat.id).state).toBe('idle');
+    expect((await rig.service.state(rig.owner, chat.id)).state).toBe('idle');
   });
 
   it('refuses a second change while one is still in progress', async () => {
@@ -251,7 +251,7 @@ describe('a machine change that goes wrong never strands the chat', () => {
 
     expect(rig.calls.at(-1)).toBe('hub:open');
     expect(targetOf(chat)).toBe('server');
-    const session = rig.service.state(rig.owner, chat.id);
+    const session = await rig.service.state(rig.owner, chat.id);
     expect(session.state).toBe('idle');
     expect(session.epoch).toBeGreaterThan(epoch);
   });
@@ -269,7 +269,7 @@ describe('a machine change that goes wrong never strands the chat', () => {
 
     expect(rig.calls).not.toContain('desk:open');
     expect(targetOf(chat)).toBe('server');
-    expect(rig.service.state(rig.owner, chat.id).state).toBe('idle');
+    expect((await rig.service.state(rig.owner, chat.id)).state).toBe('idle');
   });
 
   it('keeps the chat on its old machine, not switching, even when it cannot be reopened there', async () => {
@@ -289,7 +289,7 @@ describe('a machine change that goes wrong never strands the chat', () => {
 
     expect(opens).toBe(1);
     expect(targetOf(chat)).toBe('server');
-    expect(rig.service.state(rig.owner, chat.id).state).not.toBe('switching');
+    expect((await rig.service.state(rig.owner, chat.id)).state).not.toBe('switching');
   });
 
   it('moves a chat whose old machine is gone, without waiting for it', async () => {
@@ -308,16 +308,17 @@ describe('a machine change that goes wrong never strands the chat', () => {
 describe('a hub restart in the middle of a machine change', () => {
   it('ends the change as failed, so the chat is not left switching', async () => {
     const { chat } = await openOn(rig.hub);
-    const session = rig.service.state(rig.owner, chat.id);
+    const session = await rig.service.state(rig.owner, chat.id);
     rig.opened.store.harnessSessions.markSwitching(session.session_id);
-    expect(rig.service.state(rig.owner, chat.id).state).toBe('switching');
+    expect((await rig.service.state(rig.owner, chat.id)).state).toBe('switching');
 
     const restarted = new HarnessService(rig.opened.store, rig.service.routes, () => undefined, {
       layout: hubLayout(rig.opened.directory, {}),
       clock: systemClock,
     });
+    await restarted.start();
 
-    const after = restarted.state(rig.owner, chat.id);
+    const after = await restarted.state(rig.owner, chat.id);
     expect(after.state).toBe('failed');
     expect(after.failure?.message).toContain('hub restarted');
   });

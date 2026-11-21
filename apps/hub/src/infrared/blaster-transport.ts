@@ -10,7 +10,7 @@ import type { IrFrame } from './encoders';
 export interface BlasterTransportOptions {
   readonly store: Pick<Store, 'feed' | 'host'>;
   readonly clock: Clock;
-  readonly submit: (commands: readonly NewCommand[]) => readonly CommandRow[];
+  readonly submit: (commands: readonly NewCommand[]) => Promise<readonly CommandRow[]>;
 }
 
 function failureOf(frame: IrFrame, command: CommandRow | undefined, finished: boolean): ApiError {
@@ -34,17 +34,15 @@ export function blasterTransport(options: BlasterTransportOptions): IrTransport 
         clock: options.clock,
         waitMs: COMMAND_WAIT_MS,
         submit: (): Promise<readonly CommandRow[]> =>
-          Promise.resolve(
-            options.submit([
-              {
-                deviceId: blasterId,
-                capability: 'ir_send',
-                value: { format: frame.format, code: frame.code },
-                source: 'automation',
-                requestedBy: null,
-              },
-            ]),
-          ),
+          options.submit([
+            {
+              deviceId: blasterId,
+              capability: 'ir_send',
+              value: { format: frame.format, code: frame.code },
+              source: 'automation',
+              requestedBy: null,
+            },
+          ]),
         current: (id) => options.store.host.call('commands', 'byId', id),
       });
       const [command] = outcome.commands;

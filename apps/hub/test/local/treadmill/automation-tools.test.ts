@@ -227,7 +227,7 @@ describe('issuing a treadmill control through the hub', () => {
             rig.test.store.commands.finish(row.id, answer(row));
           });
         }
-        return rows;
+        return Promise.resolve(rows);
       },
     });
   }

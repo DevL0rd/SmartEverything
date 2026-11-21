@@ -124,8 +124,8 @@ export class SonicareRuntime implements BrandRuntime {
     return sonicareHandleView(context, this.snapshot);
   }
 
-  headTimeline(context: ViewContext): HeadTimeline {
-    return sonicareHeadTimeline(context, this.snapshot);
+  headTimeline(context: ViewContext): Promise<HeadTimeline> {
+    return Promise.resolve(sonicareHeadTimeline(context, this.snapshot));
   }
 
   diagnostics(context: ViewContext): DiagnosticsBrand {

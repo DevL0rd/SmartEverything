@@ -6,7 +6,7 @@ import {
   type PlannerSearchHit,
   type PlannerSearchPage,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { visibleCollections } from '../sharing/visibility';
 import { compare, decodeCursor, encodeCursor, type SearchPosition } from './cursor';
 import { guestTexts, matchedFields, type Searchable } from './fields';
@@ -21,7 +21,7 @@ import {
 } from './occurrence';
 
 export type SearchStore = SearchOccurrenceStore &
-  Pick<Store, 'plannerCollections' | 'plannerGuests' | 'plannerShares' | 'profiles'>;
+  Pick<HostStore, 'plannerCollections' | 'plannerGuests' | 'plannerShares' | 'profiles'>;
 
 export const SEARCH_PAGE_SIZE = 50;
 

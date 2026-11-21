@@ -1,6 +1,6 @@
 import { background } from '@smarteverything/logging';
-import { effectiveTools } from '../../tool-scope';
-import { effectiveClientById, hasOwnerDevice } from '../../../server/person-access';
+import { effectiveToolsOf } from '../../tool-scope';
+import { effectiveClientOf, ownerDeviceOf } from '../../../server/person-access';
 import { computerEngine, type ComputerEngine } from '../../engine-kind';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
@@ -13,7 +13,7 @@ import {
 } from '@smarteverything/domain';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import { TurnStream } from '../../conversation/stream';
-import { assertHelperDelivery, helperParentMessageId } from '../../delegation/helper-dialogue';
+import { assertHelperDelivery, helperParentMessageId } from '../../delegation/helper-delivery';
 import { admitExecutionTarget, eventAuthority, executionRole } from '../../turn-authority';
 import { turnCaller } from '../../conversation/turn-caller';
 import { ProviderReplies } from './replies';
@@ -21,26 +21,15 @@ import { providerGrant } from './tool-bridge';
 import { effectiveProviderEngine } from './options';
 import type { ComputerRunnerDeps, Turn } from './runner';
 
-export function openProviderTurn(
+export async function openProviderTurn(
   deps: ComputerRunnerDeps,
   event: StoredEvent,
   chat: AiChatRow,
-): Turn {
+): Promise<Turn> {
   const engine = computerEngine(chat.engine);
   if (engine === null) throw new ApiError('conflict', 'The provider binding changed.');
   const bound = { ...chat, engine };
-  const { store } = deps;
-  const caller = {
-    ...turnCaller({
-      chat,
-      event,
-      latest: event.message_id === null ? null : store.assistantChat.message(event.message_id),
-      client: event.client_id === null ? undefined : effectiveClientById(store, event.client_id),
-    }),
-    authority: eventAuthority(store, event),
-  };
-  if (caller.role !== 'owner' || !ownsNativeWork(store, caller))
-    throw new ApiError('forbidden', 'Only the home owner can use Claude or Codex on computers.');
+  const caller = await ownerCaller(deps.store, event, chat);
   let finish = (): void => {
     return;
   };
@@ -48,7 +37,7 @@ export function openProviderTurn(
     finish = resolve;
   });
   const { stream, replies } = providerOutput(deps, event, bound);
-  const grant = grantOf(deps, chat);
+  const grant = await grantOf(deps, chat);
   background(
     deps.conversation.stateOf(event.message_id, 'working'),
     'computer.message_state_failed',
@@ -71,25 +60,25 @@ export function openProviderTurn(
   };
 }
 
-export function assertProviderHelperDelivery(
+export async function assertProviderHelperDelivery(
   deps: ComputerRunnerDeps,
   turn: Turn,
   prepared?: ComputerRuntimeProviderTurn,
-): void {
+): Promise<void> {
   if (helperParentMessageId(turn.event) === null) return;
   const { store } = deps;
-  const current = store.aiChats.chat(turn.chat.id);
+  const current = await store.host.call('aiChats', 'chat', turn.chat.id);
   if (JSON.stringify(current.engine) !== JSON.stringify(turn.chat.engine))
     throw new ApiError(
       'conflict',
       'The helper’s provider binding changed before it could accept the message.',
     );
-  assertHelperDelivery(store, current, turn.event);
-  const authority = eventAuthority(store, turn.event);
+  await assertHelperDelivery(store, current, turn.event);
+  const authority = await eventAuthority(store, turn.event);
   admitExecutionTarget(store, current, authority);
   if (executionRole(authority) !== 'owner')
     throw new ApiError('forbidden', 'Only the home owner can start work with this helper.');
-  const grant = grantOf(deps, current);
+  const grant = await grantOf(deps, current);
   if (
     !isDeepStrictEqual(grant.names, turn.grant.names) ||
     !isDeepStrictEqual(grant.tools, turn.grant.tools)
@@ -127,16 +116,42 @@ function assertPreparedOptions(
     );
 }
 
-function ownsNativeWork(store: ComputerRunnerDeps['store'], caller: Turn['caller']): boolean {
+async function ownerCaller(
+  store: ComputerRunnerDeps['store'],
+  event: StoredEvent,
+  chat: AiChatRow,
+): Promise<Turn['caller']> {
+  const caller = {
+    ...turnCaller({
+      chat,
+      event,
+      latest:
+        event.message_id === null
+          ? null
+          : await store.host.call('assistantChat', 'message', event.message_id),
+      client:
+        event.client_id === null ? undefined : await effectiveClientOf(store, event.client_id),
+    }),
+    authority: await eventAuthority(store, event),
+  };
+  if (caller.role !== 'owner' || !(await ownsNativeWork(store, caller)))
+    throw new ApiError('forbidden', 'Only the home owner can use Claude or Codex on computers.');
+  return caller;
+}
+
+async function ownsNativeWork(
+  store: ComputerRunnerDeps['store'],
+  caller: Turn['caller'],
+): Promise<boolean> {
   return (
     caller.clientId !== null ||
     caller.pluginRequester !== undefined ||
-    hasOwnerDevice(store, caller.profileId)
+    (await ownerDeviceOf(store, caller.profileId))
   );
 }
 
-export function grantOf(deps: ComputerRunnerDeps, chat: AiChatRow): Turn['grant'] {
-  const allowed = effectiveTools(deps.store, chat);
+export async function grantOf(deps: ComputerRunnerDeps, chat: AiChatRow): Promise<Turn['grant']> {
+  const allowed = await effectiveToolsOf(deps.store, chat);
   return providerGrant(deps.tools(), { ...chat, tools: allowed === null ? null : [...allowed] });
 }
 

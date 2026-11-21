@@ -57,16 +57,17 @@ function commandOnLamp(source: 'app' | 'automation'): { deviceId: string; row: C
   return { deviceId, row };
 }
 
-function moveAfter(deviceId: string): SignalInput {
+async function moveAfter(deviceId: string): Promise<SignalInput> {
   clock.set('2026-10-18T10:00:03.000Z');
   signals.moved({ deviceId, capability: 'power', value: true, previous: false });
+  await signals.settled();
   const signal = heard.at(-1);
   if (signal === undefined) throw new Error('No signal was emitted.');
   return signal;
 }
 
 describe('the run behind a device state signal', () => {
-  it('carries the run, the automation and the depth stamped on the command that caused it', () => {
+  it('carries the run, the automation and the depth stamped on the command that caused it', async () => {
     const { deviceId, row } = commandOnLamp('automation');
     commandMetadata(opened.store).stamp(
       [row],
@@ -82,22 +83,22 @@ describe('the run behind a device state signal', () => {
       },
       clock.now().getTime(),
     );
-    const { data } = moveAfter(deviceId);
+    const { data } = await moveAfter(deviceId);
     expect(data['cause']).toBe('automation');
     expect(data['causeRunId']).toBe('run-a');
     expect(data['causeAutomationId']).toBe('automation-a');
     expect(data['causeDepth']).toBe(2);
   });
 
-  it('adds nothing when the command carries no stamp', () => {
+  it('adds nothing when the command carries no stamp', async () => {
     const { deviceId } = commandOnLamp('app');
-    const { data } = moveAfter(deviceId);
+    const { data } = await moveAfter(deviceId);
     expect(data['cause']).toBe('app');
     expect(Object.keys(data)).not.toContain('causeRunId');
   });
 
-  it('adds nothing for a physical change', () => {
-    const { data } = moveAfter(lamp());
+  it('adds nothing for a physical change', async () => {
+    const { data } = await moveAfter(lamp());
     expect(data['cause']).toBe('physical');
     expect(Object.keys(data)).not.toContain('causeAutomationId');
   });

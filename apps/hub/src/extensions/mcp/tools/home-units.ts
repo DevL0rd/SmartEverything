@@ -9,7 +9,7 @@ import {
   type IrRemoteRow,
   type RoomRow,
 } from '@smarteverything/domain';
-import { deviceIdReachable } from '../../../server/person-scope';
+import { deviceIdReachable } from '../../../server/person-scope-units';
 import { storeUnit } from '../../../store/host/unit';
 
 export interface HomeDevices {

@@ -38,7 +38,7 @@ const WATCHED: ReadonlySet<Wait['kind']> = new Set([
   'breakpoint',
 ]);
 
-type Phase = 'ready' | 'effect' | 'parked' | 'finished';
+type Phase = 'ready' | 'reading' | 'effect' | 'parked' | 'finished';
 
 export interface RunHooks {
   readonly schedule: (run: LiveRun) => void;
@@ -60,6 +60,9 @@ export class LiveRun implements Runnable {
   readonly name: string;
   private state: RunState;
   private readonly context: RunStart['context'];
+  private readonly reads: RunStart['reads'];
+  private replay: StepEvent | undefined;
+  private readToken = 0;
   private phase: Phase = 'ready';
   private begun: boolean;
   private resolution: NodeResult | undefined;
@@ -84,6 +87,7 @@ export class LiveRun implements Runnable {
     this.log = deps.log;
     this.state = start.state;
     this.context = start.context;
+    this.reads = start.reads;
     this.runId = start.state.runId;
     this.automationId = start.state.automationId;
     this.kind = start.kind;
@@ -151,6 +155,7 @@ export class LiveRun implements Runnable {
     this.disarm();
     this.effectToken += 1;
     this.parkToken += 1;
+    this.readToken += 1;
     this.resolution = undefined;
     this.phase = 'ready';
     this.hooks.schedule(this);
@@ -171,8 +176,16 @@ export class LiveRun implements Runnable {
   private advance(): boolean {
     const before = this.state.frames.at(-1);
     const started = this.ports.monotonic();
-    const result = step(this.context, this.state, this.nextEvent());
+    const event = this.replay ?? this.nextEvent();
+    this.replay = undefined;
+    const result = step(this.context, this.state, event);
     this.noteSlow(started, before === undefined ? 'run' : `${before.path}:${String(before.pc)}`);
+    if (result.outcome.kind === 'read') {
+      this.replay = event;
+      this.fetch();
+      return false;
+    }
+    this.reads.completed();
     this.state = result.state;
     this.records.push(...result.records);
     this.apply(result.outcome);
@@ -187,9 +200,25 @@ export class LiveRun implements Runnable {
     this.log.warn('automation.slow_node', { runId: this.runId, nodePath, ms });
   }
 
+  private fetch(): void {
+    this.phase = 'reading';
+    this.readToken += 1;
+    const token = this.readToken;
+    background(
+      this.reads.suspended().then(() => {
+        if (token !== this.readToken || this.phase !== 'reading') return;
+        this.phase = 'ready';
+        this.hooks.schedule(this);
+      }),
+      'automation.read_fetch_failed',
+      { runId: this.runId },
+    );
+  }
+
   private apply(outcome: Outcome): void {
     switch (outcome.kind) {
       case 'continue':
+      case 'read':
         return;
       case 'effect':
         this.dispatch(outcome.request);

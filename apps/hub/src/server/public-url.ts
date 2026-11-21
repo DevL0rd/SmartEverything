@@ -28,7 +28,7 @@ export class PublicUrlVerifier {
   }
 
   async verify(): Promise<PublicUrlCheck> {
-    const url = this.options.store.settings.read().public_url;
+    const url = this.options.store.live.home.settings.read().public_url;
     if (url === null) {
       throw new ApiError('conflict', 'No public URL is saved; save one before verifying it.');
     }
@@ -45,7 +45,10 @@ export class PublicUrlVerifier {
     } finally {
       this.pending.delete(nonce);
     }
-    const settings = this.options.store.settings.recordPublicUrlCheck(url, outcome);
+    const settings = await this.options.store.host.write('settingsRecordPublicUrlCheck', {
+      url,
+      outcome,
+    });
     this.options.log.info('public_url.checked', {
       verified: outcome.verified,
       durationMs: Math.round(performance.now() - startedAt),

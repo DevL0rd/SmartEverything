@@ -679,7 +679,7 @@ describe('very large files', () => {
 
   it('keeps an upload alive for as long as it receives bytes, counting expiry from the last chunk', async () => {
     const uploads = await startServer();
-    updateDriveSettings(opened.store, { uploadExpiryDays: 2 });
+    await updateDriveSettings(opened.store, { uploadExpiryDays: 2 });
     const location = await open(10);
     clock = new Date(START.getTime() + DAY_MS + DAY_MS / 2);
     const first = await patch(location, 0, 'hello');
@@ -919,7 +919,7 @@ describe('quota and free space', () => {
 describe('expiry and termination', () => {
   it('expires an open upload after the configured days and sweeps its file', async () => {
     const uploads = await startServer();
-    updateDriveSettings(opened.store, { uploadExpiryDays: 2 });
+    await updateDriveSettings(opened.store, { uploadExpiryDays: 2 });
     const created = await create(5);
     const location = `${origin}${created.headers.get('location') ?? ''}`;
     expect(new Date(created.headers.get('upload-expires') ?? '').getTime()).toBe(

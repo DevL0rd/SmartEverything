@@ -12,7 +12,7 @@ import type { AttachedRuntime, RuntimeJob } from './runtime-directory-types';
 import { dispatchPreparedCommand, commandReply } from './runtime-command-dispatch';
 export type NativeCommandStart = readonly [
   input: AiNativeCommandWrite,
-  authorize: () => void,
+  authorize: () => Promise<void>,
   configuration?: CodexCommandConfiguration,
 ];
 export type NativeCommandAdmission = Promise<AiNativeCommandReceipt>;
@@ -31,7 +31,7 @@ export interface CommandDirectory {
 export async function startRuntimeCommand(
   ports: CommandDirectory,
   input: AiNativeCommandWrite,
-  authorize: () => void,
+  authorize: () => Promise<void>,
   configuration?: CodexCommandConfiguration,
 ): Promise<AiNativeCommandReceipt> {
   const { target, source, request, key } = commandAdmission(ports, input, configuration);

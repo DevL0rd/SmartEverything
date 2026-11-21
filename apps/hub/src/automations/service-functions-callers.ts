@@ -20,7 +20,7 @@ import type { ConversationAuthority } from '../harness/authority-contract';
 import { type Caller } from '../server/auth';
 import { storeUnit } from '../store/host/unit';
 import { structuredProgram } from '../store/repositories/automation-trees';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { SpeechPrincipal } from '../transcripts/speech-principal';
 import type { ProgramData } from './program-data';
 import { unitKinds, type UnitKinds } from './program-kinds';
@@ -167,7 +167,7 @@ function prepare(env: AnalysisEnv, input: PrepareCallersInput): PreparedCallers 
 }
 
 function saveAutomation(
-  store: Store,
+  store: HostStore,
   kinds: UnitKinds,
   input: CommitCallersInput,
   target: CommitCallersInput['targets'][number] & { readonly automation: StoredCaller },
@@ -191,7 +191,7 @@ function saveAutomation(
 }
 
 function saveFunction(
-  store: Store,
+  store: HostStore,
   kinds: UnitKinds,
   caller: Caller,
   target: CallerTarget,
@@ -214,7 +214,7 @@ function saveFunction(
   ).latest_revision;
 }
 
-function commit(store: Store, input: CommitCallersInput): UpdatedCaller[] {
+function commit(store: HostStore, input: CommitCallersInput): UpdatedCaller[] {
   const kinds = unitKinds(store, input.kinds);
   return input.targets.map((target) => {
     const { automation } = target;

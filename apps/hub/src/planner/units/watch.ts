@@ -7,7 +7,7 @@ import {
   type WatchCalendarEvent,
 } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { composeRange } from '../range';
 import { withLink, type Settled } from '../watch-projection';
 
@@ -63,7 +63,7 @@ function remindOf(
 }
 
 function nearest(
-  store: Store,
+  store: HostStore,
   profileId: string,
   collections: readonly PlannerCollectionRow[],
   now: Date,
@@ -106,7 +106,7 @@ function eventOf(
 }
 
 function watchEvents(
-  store: Store,
+  store: HostStore,
   { profileId, nowMs }: { readonly profileId: string; readonly nowMs: number },
 ): WatchCalendarEvent[] {
   const now = new Date(nowMs);

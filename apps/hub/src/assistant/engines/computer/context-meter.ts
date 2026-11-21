@@ -7,7 +7,11 @@ export function contextPercentOf(event: ComputerEvent): number | null {
   return Math.round(event.context_percent);
 }
 
-export function noteContext(store: Store, chat: AiChatRow, event: ComputerEvent): void {
+export async function noteContext(
+  store: Pick<Store, 'host'>,
+  chat: AiChatRow,
+  event: ComputerEvent,
+): Promise<void> {
   const percent = contextPercentOf(event);
-  if (percent !== null) store.aiChats.noteContext(chat.id, percent);
+  if (percent !== null) await store.host.call('aiChats', 'noteContext', chat.id, percent);
 }

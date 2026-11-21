@@ -16,6 +16,7 @@ const BANNER =
   'import { createRequire as createServiceRequire } from "node:module"; const require = createServiceRequire(import.meta.url);';
 const HUB_MODULES = join(import.meta.dirname, '..', '..', 'node_modules');
 const BUNDLE_TIMEOUT_MS = 120_000;
+const CHECK_TIMEOUT_MS = 60_000;
 
 let scratch = '';
 
@@ -42,15 +43,16 @@ function lastLine(text: string): string {
   return text.trim().split('\n').at(-1) ?? '';
 }
 
-function createFixture(database: string): void {
-  openStore({
+async function createFixture(database: string): Promise<void> {
+  const store = await openStore({
     path: database,
     log: new Logger('tool.migration-fixture'),
     now: () => new Date(),
     systemTimeZone: 'UTC',
     driveFolders: null,
     host: testStoreHost(),
-  }).close();
+  });
+  await store.close();
 }
 
 function migrationCheck(database: string): {
@@ -69,7 +71,7 @@ function migrationCheck(database: string): {
 }
 
 describe('prebuilt update entries', () => {
-  it('builds all four entries into the update folder', () => {
+  it('builds every entry into the update folder', () => {
     for (const file of Object.values(UPDATE_ENTRY_FILES))
       expect(existsSync(join(scratch, UPDATE_ENTRY_DIRECTORY, file))).toBe(true);
   });
@@ -82,31 +84,39 @@ describe('prebuilt update entries', () => {
     expect(text).not.toContain('@smarteverything/hub');
   });
 
-  it('runs the migration check on a fixture database without touching it', () => {
-    const database = join(scratch, 'fixture.sqlite');
-    createFixture(database);
-    const before = new DatabaseSync(database, { readOnly: true })
-      .prepare('select max(version) as version from schema_version')
-      .get();
-    const result = migrationCheck(database);
-    expect(result.stderr).toBe('');
-    expect(result.status).toBe(0);
-    const reply: unknown = JSON.parse(lastLine(result.stdout));
-    expect(reply).toEqual({ from: before?.['version'], to: before?.['version'] });
-  });
+  it(
+    'runs the migration check on a fixture database without touching it',
+    async () => {
+      const database = join(scratch, 'fixture.sqlite');
+      await createFixture(database);
+      const before = new DatabaseSync(database, { readOnly: true })
+        .prepare('select max(version) as version from schema_version')
+        .get();
+      const result = migrationCheck(database);
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      const reply: unknown = JSON.parse(lastLine(result.stdout));
+      expect(reply).toEqual({ from: before?.['version'], to: before?.['version'] });
+    },
+    CHECK_TIMEOUT_MS,
+  );
 
-  it('exits non-zero when a newer server wrote the database', () => {
-    const database = join(scratch, 'broken.sqlite');
-    createFixture(database);
-    const handle = new DatabaseSync(database);
-    handle
-      .prepare('insert into schema_version (version, name, applied_at) values (?, ?, ?)')
-      .run(1_000_000, 'newer-server', '2026-11-14T00:00:00.000Z');
-    handle.close();
-    const result = migrationCheck(database);
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).not.toBe('');
-  });
+  it(
+    'exits non-zero when a newer server wrote the database',
+    async () => {
+      const database = join(scratch, 'broken.sqlite');
+      await createFixture(database);
+      const handle = new DatabaseSync(database);
+      handle
+        .prepare('insert into schema_version (version, name, applied_at) values (?, ?, ?)')
+        .run(1_000_000, 'newer-server', '2026-11-14T00:00:00.000Z');
+      handle.close();
+      const result = migrationCheck(database);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).not.toBe('');
+    },
+    CHECK_TIMEOUT_MS,
+  );
 
   it('fails when the database does not exist', () => {
     expect(migrationCheck(join(scratch, 'missing.sqlite')).status).not.toBe(0);

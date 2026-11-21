@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DevicesRepository } from '../../src/store/repositories/devices';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { TreadmillSessionsRepository } from '../../src/store/repositories/treadmill-sessions';
-import { sweepRetention } from '../../src/store/retention';
+import { sweepRetention } from '../support/retention-sweep';
 import { countedStore, type CountedStore } from '../support/counted-store';
 import { captureLogs } from '../support/logs';
 

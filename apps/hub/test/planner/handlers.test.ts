@@ -150,7 +150,7 @@ beforeEach(async () => {
   const context = { store: test.store };
   core = plannerCoreRoutes(context, {
     now: () => NOW,
-    preferencesOf: () => PREFERENCES,
+    preferencesOf: () => Promise.resolve(PREFERENCES),
     catalogueOf: () => catalogue,
     feeds: { registry: new FeedRegistry() },
   });

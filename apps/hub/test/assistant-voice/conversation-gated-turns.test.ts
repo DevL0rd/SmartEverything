@@ -154,7 +154,7 @@ async function phoneCall(pauseMs: 0 | 640): Promise<{ conversation: Conversation
     webSearch: (): boolean => false,
     window: (): null => null,
     record: (): void => undefined,
-    task: (): string => 'event',
+    task: (): Promise<string> => Promise.resolve('event'),
     run: (): Promise<never> => Promise.reject(new Error('no tools here')),
     ended: (): void => undefined,
     usage: (): void => undefined,

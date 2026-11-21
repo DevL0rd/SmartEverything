@@ -15,8 +15,8 @@ interface VoicePlace {
 
 export interface VoiceResponder {
   readonly ready: (chatId?: string) => string | null;
-  readonly chatForCall: (place: VoicePlace & { readonly chatId: string | null }) => string;
-  readonly request: (task: VoiceTask & { readonly chatId: string }) => string;
+  readonly chatForCall: (place: VoicePlace & { readonly chatId: string | null }) => Promise<string>;
+  readonly request: (task: VoiceTask & { readonly chatId: string }) => Promise<string>;
   readonly callEnded: (chatId: string, transcript: string, messageId: string) => void;
 }
 

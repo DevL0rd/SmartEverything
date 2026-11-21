@@ -5,13 +5,13 @@ import {
   type TalkMemberRow,
   type TalkMessageRow,
 } from '@smarteverything/domain';
-import { effectiveRow } from '../server/person-access';
-import { scopesOfClient } from '../server/person-scope';
+import { effectiveRow } from '../server/person-access-units';
+import { scopesOfClient } from '../server/person-scope-units';
 import { storeUnit } from '../store/host/unit';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { memberLabel, relabelledMembers } from './labels';
 
-function mayHear(store: Store, row: TalkMemberRow): boolean {
+function mayHear(store: HostStore, row: TalkMemberRow): boolean {
   if (row.member_kind !== 'client') return true;
   const client = store.clients.find(row.member_id);
   if (client === undefined) return false;
@@ -24,14 +24,14 @@ export interface TalkRoster {
   readonly members: readonly TalkMemberRow[];
 }
 
-function roster(store: Store, _input: null): TalkRoster {
+function roster(store: HostStore, _input: null): TalkRoster {
   return {
     channels: store.talk.channels(),
     members: store.talk.members().filter((row) => mayHear(store, row)),
   };
 }
 
-function relabel(store: Store, change: LiveChange): void {
+function relabel(store: HostStore, change: LiveChange): void {
   store.write(() => {
     relabelledMembers(store, change).forEach(([kind, id]) => {
       store.talk.relabel(kind, id, memberLabel(store, kind, id));
@@ -40,7 +40,7 @@ function relabel(store: Store, change: LiveChange): void {
 }
 
 function prune(
-  store: Store,
+  store: HostStore,
   input: { readonly channelId: string; readonly before: string },
 ): TalkMessageRow[] {
   return store.write(() => {
@@ -51,7 +51,7 @@ function prune(
 }
 
 function clearUnfinished(
-  store: Store,
+  store: HostStore,
   _input: null,
 ): { readonly removed: TalkMessageRow[]; readonly channels: TalkChannelRow[] } {
   return store.write(() => {

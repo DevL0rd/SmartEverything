@@ -69,10 +69,10 @@ function meteredRouteOf(runtime: AuxCompletionRuntime, profileId: string): AiMod
 
 function transportOf(runtime: AuxCompletionRuntime, route: AiModelRoute): MeteredRouteTransport {
   const { store } = runtime;
-  const chatOf = (sessionId: string | undefined): string => {
+  const chatOf = async (sessionId: string | undefined): Promise<string> => {
     if (sessionId === undefined)
       throw new ApiError('forbidden', 'Auxiliary completions require their initiating chat.');
-    const chat = store.aiChats.chat(sessionId);
+    const chat = await store.host.call('aiChats', 'chat', sessionId);
     if (chat.profile_id !== route.profile_id)
       throw new ApiError('forbidden', 'This chat belongs to another person.');
     return chat.id;
@@ -86,20 +86,22 @@ function transportOf(runtime: AuxCompletionRuntime, route: AiModelRoute): Metere
         );
       return Promise.resolve(key);
     },
-    authorize: (options): Promise<void> => {
-      chatOf(options.sessionId === undefined ? undefined : String(options.sessionId));
-      return Promise.resolve();
+    authorize: async (options): Promise<void> => {
+      await chatOf(options.sessionId === undefined ? undefined : String(options.sessionId));
     },
-    fetch: (options) =>
-      auxAccountingFetch(
-        store,
-        {
-          chatId: chatOf(options.sessionId === undefined ? undefined : String(options.sessionId)),
-          model: options.model,
-          sessionKey: sessionKeys.getStore(),
-        },
-        runtime.fetch,
-      ),
+    fetch: (options) => {
+      const sessionKey = sessionKeys.getStore();
+      return async (input, init): Promise<Response> => {
+        const chatId = await chatOf(
+          options.sessionId === undefined ? undefined : String(options.sessionId),
+        );
+        return auxAccountingFetch(
+          store,
+          { chatId, model: options.model, sessionKey },
+          runtime.fetch,
+        )(input, init);
+      };
+    },
   };
 }
 
@@ -122,8 +124,8 @@ export function installAuxCompletions(runtime: AuxCompletionRuntime): () => void
     return provider;
   };
   const unbind = auxCompletionsOf(runtime.store).bind({
-    complete: (input, signal) => {
-      const chat = runtime.store.aiChats.chat(input.chatId);
+    complete: async (input, signal) => {
+      const chat = await runtime.store.host.call('aiChats', 'chat', input.chatId);
       const provider = providerOf(meteredRouteOf(runtime, chat.profile_id));
       const run = (): Promise<string> =>
         completeAux(

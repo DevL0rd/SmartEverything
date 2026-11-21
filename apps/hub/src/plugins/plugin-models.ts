@@ -9,7 +9,7 @@ import {
   type ModelEntry,
   type ModelRejection,
 } from '../models/contributions';
-import type { ModelBatchResult, ModelCatalogService } from '../models/catalog-service';
+import type { ModelBatch, ModelBatchResult } from '../models/catalog-service';
 import { isPrivateIPv4 } from '../network/lan';
 import { PROBE_TIMEOUT_MS, readBodyLimited, readFileLimited } from './manifest-source';
 
@@ -191,13 +191,15 @@ export function statusDetailOf(rejections: readonly ModelRejection[]): string | 
 }
 
 export async function syncPluginModels(
-  service: Pick<ModelCatalogService, 'replace'>,
+  service: {
+    readonly replace: (batch: ModelBatch) => ModelBatchResult | Promise<ModelBatchResult>;
+  },
   pluginId: string,
   origin: PluginAssetOrigin,
   contributions: readonly PluginModelContribution[],
 ): Promise<ModelBatchResult> {
   const entries = await loadPluginModelEntries(origin, contributions);
-  const result = service.replace({ owner: `plugin:${pluginId}`, entries });
+  const result = await service.replace({ owner: `plugin:${pluginId}`, entries });
   log.info('plugin_models.synced', {
     plugin: pluginId,
     source: origin.kind,

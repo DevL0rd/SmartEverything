@@ -9,15 +9,16 @@ import {
   type TargetReadings,
   type TargetState,
 } from '@smarteverything/domain';
-import { deviceHidden, deviceIdReachable } from '../../../server/person-scope';
+import { deviceHidden } from '../../../server/person-scope';
+import { deviceIdReachable } from '../../../server/person-scope-units';
 import { storeUnit } from '../../../store/host/unit';
-import type { Store } from '../../../store/store';
+import type { HostStore } from '../../../store/host/host-store';
 
 export interface TargetSummary extends TargetEntry {
   readonly state: TargetState;
 }
 
-function readingsOf(store: Store): TargetReadings {
+function readingsOf(store: HostStore): TargetReadings {
   const byDevice = new Map<string, Record<string, { readonly value: JsonValue }>>();
   for (const row of store.state.list()) {
     const readings = byDevice.get(row.device_id) ?? {};
@@ -32,7 +33,7 @@ function compareNames(left: string, right: string): number {
 }
 
 export function deviceGroupSummaries(
-  store: Store,
+  store: HostStore,
   scope: DeviceScope | null,
 ): readonly TargetSummary[] {
   const devices = store.devices.list().filter((device) => !deviceHidden(scope, device));

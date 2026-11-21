@@ -19,6 +19,7 @@ class PendingInference {
   sequence = 0;
   terminal = false;
   cancelSent = false;
+  admitted: Promise<void> = Promise.resolve();
   private released = false;
   constructor(
     readonly request: SubscriptionInferenceRequest,
@@ -26,6 +27,13 @@ class PendingInference {
   ) {}
   advance(): void {
     this.sequence += 1;
+  }
+  refuse(cause: unknown): void {
+    this.error =
+      cause instanceof Error
+        ? cause
+        : new ApiError('forbidden', 'Supplier inference authority changed.');
+    this.abort.abort();
   }
   markCancelled(): void {
     this.cancelSent = true;
@@ -90,7 +98,7 @@ export class RemoteHarnessModels implements SubscriptionInferencePort {
     },
     private readonly ports: {
       readonly send: (frame: HubHarnessControl) => void;
-      readonly admit: (request: SubscriptionInferenceRequest) => void;
+      readonly admit: (request: SubscriptionInferenceRequest) => Promise<void>;
       readonly authenticate: () => void;
       readonly terminate: () => void;
     },
@@ -101,7 +109,7 @@ export class RemoteHarnessModels implements SubscriptionInferencePort {
   ): AsyncIterable<SubscriptionInferenceResult> {
     signal.throwIfAborted();
     if (this.stopped) throw new ApiError('conflict', 'Subscription inference supplier is offline.');
-    this.admit(request);
+    await this.admit(request);
     const id = randomUUID();
     const abort = new AbortController();
     const pending = new PendingInference(request, abort);
@@ -142,12 +150,12 @@ export class RemoteHarnessModels implements SubscriptionInferencePort {
   ): AsyncIterable<SubscriptionInferenceResult> {
     for (;;) {
       const result = await pending.take();
-      this.admit(pending.request);
+      await this.admit(pending.request);
       yield result;
       if (result.kind !== 'chunk' || result.chunk.type === 'finish') return;
       pending.assertActive();
       if (!pending.terminal) {
-        this.admit(pending.request);
+        await this.admit(pending.request);
         this.send({
           ...this.binding,
           type: 'harness_subscription_inference_credit',
@@ -167,22 +175,26 @@ export class RemoteHarnessModels implements SubscriptionInferencePort {
       throw new ApiError('forbidden', 'Supplier result has no dispatched inference request.');
     }
     if (pending.abort.signal.aborted) return;
-    this.admit(pending.request);
-    pending.accept(frame.result);
+    pending.admitted = pending.admitted
+      .then(() => this.admit(pending.request))
+      .then(
+        () => {
+          if (!pending.abort.signal.aborted) pending.accept(frame.result);
+        },
+        (cause: unknown) => {
+          this.refused(pending, cause);
+        },
+      );
   }
 
   revalidate(): void {
-    for (const pending of this.pending.values()) {
-      try {
-        this.admit(pending.request);
-      } catch (cause) {
-        pending.error =
-          cause instanceof Error
-            ? cause
-            : new ApiError('forbidden', 'Supplier inference authority changed.');
-        pending.abort.abort();
-      }
-    }
+    for (const pending of this.pending.values())
+      void this.admit(pending.request).catch((cause: unknown) => {
+        this.refused(pending, cause);
+      });
+  }
+  private refused(pending: PendingInference, cause: unknown): void {
+    pending.refuse(cause);
   }
   stop(): void {
     this.stopped = true;
@@ -209,9 +221,9 @@ export class RemoteHarnessModels implements SubscriptionInferencePort {
       if (oldest !== undefined) this.retired.delete(oldest);
     }
   }
-  private admit(request: SubscriptionInferenceRequest): void {
+  private async admit(request: SubscriptionInferenceRequest): Promise<void> {
     this.ports.authenticate();
-    this.ports.admit(request);
+    await this.ports.admit(request);
   }
   private send(frame: HubHarnessControl): void {
     const parsed = HUB_HARNESS_CONTROL.parse(frame);

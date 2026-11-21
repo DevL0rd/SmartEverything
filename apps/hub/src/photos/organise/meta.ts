@@ -1,7 +1,7 @@
 import { ApiError, type PhotoDateEdit, type PhotoMetaPatch } from '@smarteverything/domain';
 import type { StoreHost } from '../../store/host/host';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { PlaceRecords } from '../places-records';
 import type { PhotoMetaOverrideWrite } from '../../store/repositories/photo-meta-overrides';
 import type { DriveActor } from '../../drive/access';
@@ -13,7 +13,7 @@ import {
   type VisibleItem,
 } from './items';
 
-export type MetaStore = AnnounceStore & Pick<Store, 'context' | 'write' | 'photoMetaOverrides'>;
+export type MetaStore = AnnounceStore & Pick<HostStore, 'context' | 'write' | 'photoMetaOverrides'>;
 
 interface Moment {
   readonly takenAt: string;

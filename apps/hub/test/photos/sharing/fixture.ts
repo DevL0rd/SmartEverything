@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Store } from '../../../src/store/store';
+import type { SeededStore } from '../../support/store';
 import type { DriveActor } from '../../../src/drive/access';
 import { DriveAlbumsService } from '../../../src/drive/albums';
 import { AlbumActivityService } from '../../../src/photos/sharing/activity';
@@ -27,7 +27,7 @@ export interface Kit extends BaseKit {
   readonly album: (owner: DriveActor, itemIds: readonly string[]) => string;
 }
 
-function albumsOf(store: Store, time: { current: Date }): DriveAlbumsService {
+function albumsOf(store: SeededStore, time: { current: Date }): DriveAlbumsService {
   return new DriveAlbumsService({
     albums: store.driveAlbums,
     items: store.driveItems,

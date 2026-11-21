@@ -114,6 +114,10 @@ export class Ledger {
     return this.rows.pendingGenerations();
   }
 
+  spendRows(from: string): AiUsageRow[] {
+    return this.rows.spendRows(from);
+  }
+
   reconcile(id: string, stats: UsageReconcile): AiUsageRow {
     const change = USAGE_RECONCILE.parse(stats);
     return this.context.write(() => {

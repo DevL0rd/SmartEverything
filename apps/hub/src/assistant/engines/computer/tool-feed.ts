@@ -15,7 +15,7 @@ export function bridgeTool(
   turn: Turn,
   event: Extract<ComputerEvent, { kind: 'tool_call' }>,
 ): void {
-  const { deps, state, current, fail } = route;
+  const { deps, current, fail } = route;
   const item = toolItem(event);
   if ('origin' in event && event.origin !== 'hub') {
     turn.stream.tool(item, { input: event.input });
@@ -28,20 +28,7 @@ export function bridgeTool(
   }
   turn.calls.add(event.call_id);
   turn.stream.tool(item, { input: event.input });
-  const binding = state.bound(turn.chat);
-  void routeProviderTool(
-    {
-      directory: deps.directory,
-      deviceId: binding.device_id,
-      runtime: deps.runtime,
-      grant: turn.grant,
-      caller: turn.caller,
-      validate: providerToolValidation(deps, state, turn, current),
-      hubOsBan:
-        binding.managed_project !== undefined || binding.context?.managed_project !== undefined,
-    },
-    event,
-  )
+  void routeBridgedTool(route, turn, event)
     .then(({ failed, output }) => {
       if (!current()) {
         staleTool(turn.chat.id, event);
@@ -53,6 +40,37 @@ export function bridgeTool(
       deps.log.error('claude.tool_bridge_failed', cause, { chatId: turn.chat.id });
       fail(messageOf(cause));
     });
+}
+
+async function routeBridgedTool(
+  route: {
+    readonly deps: ComputerRunnerDeps;
+    readonly state: ProviderState;
+    readonly current: () => boolean;
+  },
+  turn: Turn,
+  event: Extract<ComputerEvent, { kind: 'tool_call' }>,
+): ReturnType<typeof routeProviderTool> {
+  const { deps, state, current } = route;
+  const binding = await state.bound(turn.chat);
+  const validation = await providerToolValidation(deps, state, turn, current);
+  try {
+    return await routeProviderTool(
+      {
+        directory: deps.directory,
+        deviceId: binding.device_id,
+        runtime: deps.runtime,
+        grant: turn.grant,
+        caller: turn.caller,
+        validate: validation.validate,
+        hubOsBan:
+          binding.managed_project !== undefined || binding.context?.managed_project !== undefined,
+      },
+      event,
+    );
+  } finally {
+    validation.stop();
+  }
 }
 
 export function receiveToolResult(

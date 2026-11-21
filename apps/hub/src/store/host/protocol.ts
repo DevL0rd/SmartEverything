@@ -48,6 +48,7 @@ export const HOST_EVENT = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('row'), change: z.unknown() }),
   z.strictObject({ kind: z.literal('notice'), notice: z.unknown() }),
   z.strictObject({ kind: z.literal('speech'), speech: COMMITTED_SPEECH }),
+  z.strictObject({ kind: z.literal('access') }),
 ]);
 
 export type HostEvent = z.output<typeof HOST_EVENT>;

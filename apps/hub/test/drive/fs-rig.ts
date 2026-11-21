@@ -15,13 +15,14 @@ import type { ConflictEnv } from '../../src/drive/conflicts';
 import { PosixScope, type PosixEnv } from '../../src/drive/posix/env';
 import type { OpenTarget } from '../../src/drive/posix/open';
 import { DrivePosix } from '../../src/drive/posix/service';
+import { hostQuotaSource } from '../../src/drive/quotas';
 import { DriveReadService } from '../../src/drive/service-read';
 import { DriveWriteService } from '../../src/drive/service-write';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DriveShares } from '../../src/drive/shares';
-import { ensureDrives, personalDrive, sharedDrive } from '../../src/drive/spaces';
+import { ensureDrives } from '../../src/drive/spaces';
+import { personalDrive, sharedDrive } from '../../src/drive/units/spaces';
 import { fileEnv, nodeFiles, stageBytes } from '../../src/drive/versions';
-import type { DriveQuotaStatus } from '../../src/store/repositories/drive-quotas';
 import type { StoredDrive } from '../../src/store/repositories/drive-roots';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
@@ -56,9 +57,6 @@ function envOf(opened: TestStore): () => ConflictEnv {
     ...fileEnv(opened.store, testLogger('drive'), () => NOW),
     store: opened.store,
     purge: { rearm: (): void => undefined },
-    conflicts: {
-      find: () => undefined,
-    },
   });
 }
 
@@ -82,7 +80,7 @@ function serviceOf(opened: TestStore, read: DriveReadService): DriveWriteService
       report: (input): Promise<DriveBackupReport> => store.host.write('driveBackupReport', input),
     },
     guard: {
-      status: (profileId): DriveQuotaStatus => store.driveQuotas.status(profileId),
+      status: hostQuotaSource(store),
       space: (): Promise<Pick<DriveDataSpace, 'totalBytes' | 'freeBytes'>> =>
         Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },
@@ -153,10 +151,10 @@ function posixOf(opened: TestStore, changeEnv: () => ConflictEnv): DrivePosix {
     Promise.resolve({ totalBytes: 2 * DISK_FREE, freeBytes: DISK_FREE });
   const env: PosixEnv = {
     change: { ...changeEnv(), store },
-    guard: { status: (profileId) => store.driveQuotas.status(profileId), space },
+    guard: { status: hostQuotaSource(store), space },
     space: {
       read: new DriveReadService(store),
-      quota: (profileId) => store.driveQuotas.status(profileId),
+      quota: hostQuotaSource(store),
       probe: { space },
       inodes: () => Promise.resolve({ files: 1000, free: 900 }),
     },

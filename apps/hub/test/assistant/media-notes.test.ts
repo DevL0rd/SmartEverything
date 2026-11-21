@@ -71,11 +71,11 @@ beforeEach(async () => {
   notes = new MediaNotes({
     provider,
     transcriptionProvider: transcription,
-    chat: test.store.assistantChat,
+    store: test.store.host,
     ledger: test.store.host,
     filesRoot: test.directory,
     describeImages: (): boolean => false,
-    inputModalities: (): readonly string[] | null => null,
+    inputModalities: (): Promise<readonly string[] | null> => Promise.resolve(null),
     log: testLogger('media-notes'),
   });
 });

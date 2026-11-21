@@ -34,7 +34,7 @@ import { structuredOf } from '@smarteverything/flow/graph/structured-of';
 import type { Program } from '@smarteverything/flow/program/walk';
 import type { FunctionRevisionRow, FunctionV4, ProgramV4 } from '@smarteverything/domain';
 import { StoreNotFoundError } from '../store/context';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { invalid } from '../server/invalid';
 import type { ProgramData } from './program-data';
 import { unitKinds, type UnitKinds } from './program-kinds';
@@ -46,14 +46,14 @@ export interface PendingCallee {
 }
 
 export interface AnalysisEnv {
-  readonly store: Store;
+  readonly store: HostStore;
   readonly secrets: ReadonlySet<string>;
   readonly kinds: UnitKinds;
   readonly pending: PendingCallee | null;
 }
 
 export function analysisEnv(
-  store: Store,
+  store: HostStore,
   data: ProgramData,
   pending: PendingCallee | null,
 ): AnalysisEnv {

@@ -1,4 +1,4 @@
-import { ApiError, type DriveZipEntry } from '@smarteverything/domain';
+import { ApiError, type DriveItem, type DriveZipEntry } from '@smarteverything/domain';
 import { messageOf } from '@smarteverything/logging';
 import { classify } from '../file-type';
 import { isFileItem } from '../file-item';
@@ -6,19 +6,14 @@ import { DrivePathError, resolveInRoot } from '../paths';
 import type { DriveExchange } from '../../server/drive-files';
 import { serveBytes } from '../../server/file-serve';
 import type { MediaLinks } from '../../server/media-links';
-import type { DriveItemsRepository } from '../../store/repositories/drive-items';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import { locateZipEntry, ZipEntryError, type ZipEntrySource } from './zip-index';
 import { ZipReadError } from './zip-file';
 import { isZipItem } from './zip-item';
 
 export interface ZipEntryServing {
-  readonly store: {
-    readonly driveItems: Pick<DriveItemsRepository, 'find'>;
-    readonly driveRoots: {
-      readonly find: (id: string) => Pick<StoredDrive, 'path'> | undefined;
-    };
-  };
+  readonly item: (itemId: string) => Promise<DriveItem | undefined>;
+  readonly root: (rootId: string) => Promise<Pick<StoredDrive, 'path'> | undefined>;
   readonly links: Pick<MediaLinks, 'verifyDrive'>;
   readonly now: () => Date;
 }
@@ -67,8 +62,8 @@ export async function serveZipEntry(
     throw new ApiError('invalid_request', 'The entry number is not a whole number.');
   }
   const link = serving.links.verifyDrive(exchange.url);
-  const item = serving.store.driveItems.find(target.itemId, null);
-  const root = item === undefined ? undefined : serving.store.driveRoots.find(item.rootId);
+  const item = await serving.item(target.itemId);
+  const root = item === undefined ? undefined : await serving.root(item.rootId);
   if (item === undefined || root === undefined || !isFileItem(item) || !isZipItem(item)) {
     throw new ApiError('not_found', 'There is no such archive.');
   }

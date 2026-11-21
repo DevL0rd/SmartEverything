@@ -12,7 +12,7 @@ import {
 } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
 import type { PlannerItemInput } from '../../store/repositories/planner-items';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { bookableSlots } from '../booking/slots';
 import { newGuestToken } from '../guests/guest-list';
 import { instantsOf, isoOf } from '../instants';
@@ -43,22 +43,22 @@ function localOf(instant: Temporal.Instant, zone: string): string {
   return instant.toZonedDateTimeISO(zone).toPlainDateTime().toString({ smallestUnit: 'minute' });
 }
 
-function zoneOf(store: Store): string {
+function zoneOf(store: HostStore): string {
   return store.settings.read().time_zone;
 }
 
-function nowOf(store: Store): Temporal.Instant {
+function nowOf(store: HostStore): Temporal.Instant {
   return Temporal.Instant.from(store.context.now());
 }
 
-function pageOf(store: Store, token: string): PlannerBookingPageRow {
+function pageOf(store: HostStore, token: string): PlannerBookingPageRow {
   if (!PLANNER_PUBLIC_TOKEN.safeParse(token).success) throw unavailable();
   const page = store.plannerBookingPages.byToken(token);
   if (page?.enabled !== true) throw unavailable();
   return page;
 }
 
-function viewOf(store: Store, token: string): PlannerBookingPageView {
+function viewOf(store: HostStore, token: string): PlannerBookingPageView {
   const page = pageOf(store, token);
   return PLANNER_BOOKING_PAGE_VIEW.parse({
     title: page.title,
@@ -72,7 +72,7 @@ function viewOf(store: Store, token: string): PlannerBookingPageView {
 }
 
 function slotsOf(
-  store: Store,
+  store: HostStore,
   page: PlannerBookingPageRow,
   from: Temporal.Instant,
   to: Temporal.Instant,
@@ -81,7 +81,7 @@ function slotsOf(
 }
 
 function slotsView(
-  store: Store,
+  store: HostStore,
   { token, window }: { readonly token: string; readonly window: BookingWindow },
 ): PlannerBookingSlots {
   const page = pageOf(store, token);
@@ -97,7 +97,7 @@ function slotsView(
 }
 
 function itemOf(
-  store: Store,
+  store: HostStore,
   page: PlannerBookingPageRow,
   request: PlannerBookingRequest,
   span: { readonly start: Temporal.Instant; readonly end: Temporal.Instant },
@@ -143,7 +143,7 @@ function itemOf(
   };
 }
 
-function reserve(store: Store, { token, request }: BookingReserve): BookingReserved {
+function reserve(store: HostStore, { token, request }: BookingReserve): BookingReserved {
   const page = pageOf(store, token);
   const start = Temporal.Instant.from(request.start);
   const end = start.add({ minutes: page.minutes });

@@ -95,7 +95,7 @@ export class DriveWriteService {
     return this.storage.setQuota(caller, set);
   }
 
-  updateSettings(caller: DriveCaller, update: DriveSettingsUpdate): DriveSettings {
+  updateSettings(caller: DriveCaller, update: DriveSettingsUpdate): Promise<DriveSettings> {
     return this.storage.updateSettings(caller, update);
   }
 

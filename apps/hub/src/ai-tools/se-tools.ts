@@ -74,7 +74,9 @@ export class SeTools implements ToolSource {
   constructor(private readonly options: SeToolsOptions) {}
 
   tools(): readonly HubTool[] {
-    const off = switchedOffTools(this.options.context.store.settings.read().mcp_disabled_tools);
+    const off = switchedOffTools(
+      this.options.context.store.live.home.settings.read().mcp_disabled_tools,
+    );
     return SE_TOOLS.filter((tool) => !off.has(tool.name));
   }
 

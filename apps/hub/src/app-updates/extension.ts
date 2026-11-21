@@ -68,13 +68,19 @@ interface OutcomeReport {
   readonly at: Date;
 }
 
-function reportOutcome({ updates, builds, caller, outcome, at }: OutcomeReport): void {
+async function reportOutcome({
+  updates,
+  builds,
+  caller,
+  outcome,
+  at,
+}: OutcomeReport): Promise<void> {
   const client = directClient(caller);
   if (client === undefined) {
     throw new ApiError('forbidden', 'Only a paired device can report its own update.');
   }
   updates.report(client, outcome);
-  builds.recordOutcome(client, outcome, at);
+  await builds.recordOutcome(client, outcome, at);
 }
 
 interface Endpoints {
@@ -104,14 +110,14 @@ function appUpdateEndpoints(parts: Endpoints): ExtensionRouteTable {
       return client === undefined ? null : builds.read(client);
     }),
     readAndroidAppBuilds: bound(E.readAndroidAppBuilds, async () => [
-      ...builds.paired(await context.store.host.call('clients', 'list')),
+      ...(await builds.paired(await context.store.host.call('clients', 'list'))),
     ]),
-    reportAndroidAppBuild: bound(E.reportAndroidAppBuild, ({ body, caller }) => {
-      builds.report(caller, body, context.store.now());
+    reportAndroidAppBuild: bound(E.reportAndroidAppBuild, async ({ body, caller }) => {
+      await builds.report(caller, body, context.store.now());
       return DONE_REPLY;
     }),
-    reportAppUpdate: bound(E.reportAppUpdate, ({ body, caller }) => {
-      reportOutcome({ updates, builds, caller, outcome: body, at: context.store.now() });
+    reportAppUpdate: bound(E.reportAppUpdate, async ({ body, caller }) => {
+      await reportOutcome({ updates, builds, caller, outcome: body, at: context.store.now() });
       return DONE_REPLY;
     }),
   };
@@ -129,7 +135,7 @@ export function appUpdatesExtension(): ServerExtension {
       () => context.store.now(),
       log,
     );
-    const builds = new AndroidBuilds(context.store.androidBuildObservations);
+    const builds = new AndroidBuilds(context.store);
     const watch = new AppUpdateWatch(folder, context.live, log);
     await watch.start();
     const signer = await ManifestSigner.start(folder.directory, log);

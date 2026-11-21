@@ -148,9 +148,10 @@ async function bench(): Promise<Bench> {
     rules,
     speakers: { forDevice: (): null => null },
     assistant: {
-      conversationChat: (): string => chat.id,
-      turn: (chatId, text): void => {
+      conversationChat: (): Promise<string> => Promise.resolve(chat.id),
+      turn: (chatId, text): Promise<void> => {
         parts.turns.push({ chatId, text });
+        return Promise.resolve();
       },
       message: (_asker, personId, notice): Promise<string> => {
         parts.notices.push({ personId, notice });
@@ -174,7 +175,7 @@ async function bench(): Promise<Bench> {
       return Promise.resolve({ end: () => Promise.resolve() });
     },
     app: {
-      refusal: (): null => null,
+      refusal: (): Promise<null> => Promise.resolve(null),
       play: (_client, notice): Promise<string | null> => {
         parts.delivered.push(notice);
         return Promise.resolve(parts.reachable ? null : 'The app is gone.');

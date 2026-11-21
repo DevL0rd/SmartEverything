@@ -80,11 +80,12 @@ function harness(
       return Promise.resolve(['192.168.50.61', '192.168.50.9']);
     },
     io: io(answers),
-    screens: () => [LIVE_TV],
-    isLinked: () => false,
-    isLinking: () => false,
+    screens: () => Promise.resolve([LIVE_TV]),
+    isLinked: () => Promise.resolve(false),
+    isLinking: () => Promise.resolve(false),
     learn: (deviceId, mac) => {
       learned.push([deviceId, mac]);
+      return Promise.resolve();
     },
     startLink: (host, deviceId) => {
       links.push([host, deviceId]);
@@ -97,7 +98,7 @@ function harness(
 
 describe('finding a television that is not linked directly', () => {
   it('scans nothing when the television is already linked', async () => {
-    const test = harness({ isLinked: () => true });
+    const test = harness({ isLinked: () => Promise.resolve(true) });
     expect(await findTelevision(test.options, 'live-tv')).toMatchObject({ outcome: 'linked' });
     expect(test.searches()).toBe(0);
     expect(test.links).toEqual([]);
@@ -113,14 +114,14 @@ describe('finding a television that is not linked directly', () => {
 
   it('links a television whose address is already entered without overwriting it', async () => {
     const entered: ScreenDevice = { ...LIVE_TV, macs: ['68:fc:ca:c1:52:e0'] };
-    const test = harness({ screens: () => [entered] });
+    const test = harness({ screens: () => Promise.resolve([entered]) });
     expect(await findTelevision(test.options, 'live-tv')).toMatchObject({ outcome: 'asking' });
     expect(test.learned).toEqual([]);
     expect(test.links).toEqual([['192.168.50.61', 'live-tv']]);
   });
 
   it('does not scan again while a link is waiting for Allow', async () => {
-    const test = harness({ isLinking: () => true });
+    const test = harness({ isLinking: () => Promise.resolve(true) });
     expect(await findTelevision(test.options, 'live-tv')).toMatchObject({ outcome: 'asking' });
     expect(test.searches()).toBe(0);
   });
@@ -135,7 +136,7 @@ describe('finding a television that is not linked directly', () => {
 
   it('says so plainly when a screen answers but is not this television', async () => {
     const other: ScreenDevice = { ...LIVE_TV, id: 'other', model: 'LS49CG954SEXXT' };
-    const test = harness({ screens: () => [other] });
+    const test = harness({ screens: () => Promise.resolve([other]) });
     const result = await findTelevision(test.options, 'other');
     expect(result.outcome).toBe('not_found');
     expect(result.message).toMatch(/could not be matched/);
@@ -146,7 +147,7 @@ describe('finding a television that is not linked directly', () => {
   it('names the real reason when the only screen that answers belongs to another television', async () => {
     const living: ScreenDevice = { ...LIVE_TV, macs: ['68:fc:ca:c1:52:e0'] };
     const bedroom: ScreenDevice = { ...LIVE_TV, id: 'bedroom', online: false, power: false };
-    const test = harness({ screens: () => [living, bedroom] });
+    const test = harness({ screens: () => Promise.resolve([living, bedroom]) });
     const result = await findTelevision(test.options, 'bedroom');
     expect(result.outcome).toBe('not_found');
     expect(result.message).toMatch(/Only another screen answered/);

@@ -21,7 +21,7 @@ import type { Caller } from '../server/auth';
 import type { Refusal } from '../server/person-access';
 import { storeUnit } from '../store/host/unit';
 import { flatAutomation } from '../store/repositories/automation-trees';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import type { SpeechPrincipal } from '../transcripts/speech-principal';
 import { freeName } from './free-name';
 import { pruneKeptData } from './kept-data-prune';
@@ -286,7 +286,7 @@ function prepared(env: AnalysisEnv, caller: Caller, change: Changed): PreparedPr
   };
 }
 
-function prepare(store: Store, input: PrepareProgramInput): PreparedProgram {
+function prepare(store: HostStore, input: PrepareProgramInput): PreparedProgram {
   const env = analysisEnv(store, input.data, null);
   const change = changeOf(env, input.caller, input.change);
   if ('ok' in change) return { kind: 'done', reply: change };
@@ -336,7 +336,7 @@ function checkProgram(
   };
 }
 
-function check(store: Store, input: CheckProgramInput): CheckedProgram {
+function check(store: HostStore, input: CheckProgramInput): CheckedProgram {
   const env = analysisEnv(store, input.data, null);
   const { request } = input;
   if (!('ops' in request)) return checkProgram(env, input.caller, request.definition, null);
@@ -357,7 +357,11 @@ interface Stamp {
   readonly author: ReturnType<typeof authorOf>;
 }
 
-function saveProgram(store: Store, input: CommitProgramInput, stamp: Stamp): StoredAutomationRow {
+function saveProgram(
+  store: HostStore,
+  input: CommitProgramInput,
+  stamp: Stamp,
+): StoredAutomationRow {
   const { save, program } = input;
   const kinds = unitKinds(store, input.kinds);
   const programs = store.automations;
@@ -377,7 +381,7 @@ function saveProgram(store: Store, input: CommitProgramInput, stamp: Stamp): Sto
   );
 }
 
-function commit(store: Store, input: CommitProgramInput): Basis {
+function commit(store: HostStore, input: CommitProgramInput): Basis {
   const planHash = store.automationPlans.put('automation', input.plan);
   const author = authorOf(input.caller);
   const saved = saveProgram(store, input, { planHash, origin: input.origin, author });

@@ -1,3 +1,4 @@
+import { HarnessSessionNotMirroredError } from '../../src/harness/session-mirror';
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { homeSearchProvider } from '../../src/assistant/web-search-supplier';
@@ -15,6 +16,7 @@ async function openSession(): Promise<string> {
   const chat = rig.newChat(rig.hub.target);
   const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
+  await rig.service.sessions.load(open.claim.session_id);
   return open.claim.session_id;
 }
 
@@ -62,6 +64,7 @@ async function openOpenRouterSession(effort: string | null): Promise<{
   });
   const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
+  await rig.service.sessions.load(open.claim.session_id);
   return { sessionId: open.claim.session_id, route };
 }
 
@@ -105,8 +108,12 @@ describe('the home web search provider', () => {
   });
 
   it('refuses a session that has no conversation grant', async () => {
-    await expect(
-      provider().search({ sessionId: randomUUID(), query: 'weather' }),
-    ).rejects.toMatchObject({ code: 'forbidden' });
+    const sessionId = randomUUID();
+    await expect(rig.service.sessions.load(sessionId)).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+    await expect(provider().search({ sessionId, query: 'weather' })).rejects.toThrow(
+      HarnessSessionNotMirroredError,
+    );
   });
 });

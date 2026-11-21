@@ -6,11 +6,11 @@ import {
   type PlannerStatsRange,
   type PlannerTimerRow,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { isoOf } from './instants';
 import { composeRange, type RangeReader } from './range';
 
-export type StatsReader = RangeReader & Pick<Store, 'plannerRings' | 'plannerTimers'>;
+export type StatsReader = RangeReader & Pick<HostStore, 'plannerRings' | 'plannerTimers'>;
 
 export interface StatsQuery {
   readonly profileId: string;

@@ -1,3 +1,4 @@
+import { openSeededStore, type SeededStore, testStore, type TestStore } from '../support/store';
 import {
   PLANNER_RING_NOTICE,
   PLANNER_SIGNAL,
@@ -12,10 +13,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SimulatedClock } from '../../src/clock/simulated';
 import { StopwatchService } from '../../src/planner/stopwatch';
 import { TimerService } from '../../src/planner/timers';
-import { openStore, type Store } from '../../src/store/store';
 import { advanceSettled } from '../support/host-settle';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 import { testStoreHost } from '../support/store-host';
 
 const START = '2026-11-07T08:00:00.000Z';
@@ -230,8 +229,8 @@ describe('survives a reload', () => {
   it('keeps stopwatch laps, a paused timer and a running timer after the store is reopened', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'planner-reload-'));
     const path = join(directory, 'reload.db');
-    const open = (): Store =>
-      openStore({
+    const open = async (): Promise<SeededStore> =>
+      await openSeededStore({
         host: testStoreHost(),
         path,
         log: testLogger('store'),
@@ -239,7 +238,7 @@ describe('survives a reload', () => {
         systemTimeZone: 'UTC',
         driveFolders: null,
       });
-    const first = open();
+    const first = await open();
     const owner = first.profiles.create({ name: 'Ann' }).id;
     const laps = new StopwatchService({ store: first, clock });
     await laps.begin(owner);
@@ -256,9 +255,9 @@ describe('survives a reload', () => {
     await service.pause(paused.id, owner);
     const running = await service.begin(owner, { durationMs: 90_000, label: 'Pasta', targets: [] });
     service.stop();
-    first.close();
+    await first.close();
 
-    const second = open();
+    const second = await open();
     const reloaded = second.plannerStopwatch.find(owner);
     expect(reloaded).toMatchObject({
       running: false,
@@ -273,7 +272,7 @@ describe('survives a reload', () => {
       state: 'running',
       ends_at: '2026-11-07T08:01:37.000Z',
     });
-    second.close();
+    await second.close();
     await rm(directory, { recursive: true, force: true });
   });
 });

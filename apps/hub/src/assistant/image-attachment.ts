@@ -16,6 +16,10 @@ export function imageAttachmentOf(
     if (cause instanceof StoreNotFoundError) return undefined;
     throw cause;
   }
+  return imageOnly(file);
+}
+
+export function imageOnly(file: StoredAttachment): StoredAttachment | undefined {
   return IMAGE_MIME.safeParse(file.mime).success ? file : undefined;
 }
 

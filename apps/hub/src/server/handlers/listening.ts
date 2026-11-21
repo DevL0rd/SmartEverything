@@ -28,7 +28,7 @@ export const listeningRoutes = (
 ) =>
   ({
     listSpeechSources: bound(E.listSpeechSources, ({ caller }) =>
-      readableSpeechSources(context.store, speechPrincipal(context.store, caller), registry),
+      readableSpeechSources(context.store, speechPrincipal(caller), registry),
     ),
     readListening: bound(E.readListening, ({ caller }) => registry.view(viewerOf(caller))),
     updateListeningSource: bound(E.updateListeningSource, ({ params, body, caller }) =>

@@ -18,7 +18,7 @@ export interface WakeTurnInput {
 }
 
 interface WakeTurns {
-  readonly run: (input: WakeTurnInput) => { readonly chatId: string };
+  readonly run: (input: WakeTurnInput) => Promise<{ readonly chatId: string }>;
 }
 
 export interface WakeRunnerOptions {
@@ -161,13 +161,17 @@ export class WakeRunner {
     if (batch === undefined) {
       return;
     }
+    background(this.started(batch), 'wake.flush_failed', { chatId: batch.chatId });
+  }
+
+  private async started(batch: Batch): Promise<void> {
     this.options.log.info('wake.flushing', {
       profileId: batch.profileId,
       chatId: batch.chatId,
       items: batch.items.length,
     });
     try {
-      const { chatId } = this.options.turns.run({
+      const { chatId } = await this.options.turns.run({
         profileId: batch.profileId,
         chatId: batch.chatId,
         title: batch.title,

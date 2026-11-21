@@ -38,7 +38,10 @@ import { changeVariable } from '@smarteverything/flow/nodes/state/var-change';
 import { resolveBudgets } from '@smarteverything/flow/state/budgets';
 import { localClock, minuteOfClock, zonedInstant } from '@smarteverything/domain';
 import { z } from 'zod';
+import { READ_PENDING, type ReadPending } from '@smarteverything/flow/interpret/read-pending';
 import type { Clock } from '../clock';
+import type { StoreHost } from '../store/host/host';
+import { ReadNotFetchedError, StepReads } from './world-v3/step-reads';
 import type { CalleeLookup } from './engine-v3-start';
 import type { PersistentVariables } from './world-v3/variables';
 import { ReadFailure, keptOf } from './world-v3/read-port';
@@ -51,6 +54,7 @@ export interface ContextPorts {
   readonly persistent: PersistentVariables;
   readonly stateMemory: StateMemoryPort;
   readonly kinds: NodeKindLookup;
+  readonly host: Pick<StoreHost, 'read'>;
 }
 
 export interface ContextSubject {
@@ -86,9 +90,10 @@ function withReferences(kinds: NodeKindLookup, kind: string, inputs: Outputs): O
 export function readPort(
   ports: Pick<ContextPorts, 'reads' | 'persistent' | 'kinds'>,
   automationId: string,
+  fetching: StepReads,
 ): ReadPort {
   return {
-    node: (request): NodeResult => {
+    node: (request): NodeResult | ReadPending => {
       try {
         const { outputs } = ports.reads.read(
           request.kind,
@@ -100,10 +105,13 @@ export function readPort(
             seed: request.seed,
             activation: request.activation,
             kept: keptOf(request.kept),
+            fetch: fetching.fetch,
+            now: fetching.now,
           },
         );
         return { ok: true, value: outputs };
       } catch (cause) {
+        if (cause instanceof ReadNotFetchedError) return READ_PENDING;
         if (cause instanceof ReadFailure) {
           return { ok: false, class: cause.errorClass, message: cause.message };
         }
@@ -194,7 +202,21 @@ function planFor(subject: ContextSubject): StepContext['plan'] {
   };
 }
 
-export function stepContext(subject: ContextSubject, ports: ContextPorts): StepContext {
+export interface RunContext {
+  readonly context: StepContext;
+  readonly reads: StepReads;
+}
+
+export function runContext(subject: ContextSubject, ports: ContextPorts): RunContext {
+  const reads = new StepReads(ports.host, ports.clock);
+  return { context: stepContext(subject, ports, reads), reads };
+}
+
+function stepContext(
+  subject: ContextSubject,
+  ports: ContextPorts,
+  fetching: StepReads,
+): StepContext {
   return {
     plan: planFor(subject),
     pure: pureEvaluators(
@@ -205,7 +227,7 @@ export function stepContext(subject: ContextSubject, ports: ContextPorts): StepC
       },
       ports.kinds,
     ),
-    reads: readPort(ports, subject.automationId),
+    reads: readPort(ports, subject.automationId, fetching),
     changeVar: changer,
     limits: resolveBudgets(subject.budgets),
     home: homeRoot(ports.zone),
@@ -217,7 +239,10 @@ export function stepContext(subject: ContextSubject, ports: ContextPorts): StepC
       ...RUN_OPS,
       ...callOps((ref) => subject.lookup.interface(ref)),
       ...waitOps({ nextOccurrence: nextOccurrence(ports.zone) }),
-      ...stateOps({ memory: ports.stateMemory, clock: stateClock(ports.zone) }),
+      ...stateOps({
+        memory: fetching.stateMemory(ports.stateMemory),
+        clock: stateClock(ports.zone),
+      }),
       ...CONCURRENT_EACH_OPS,
     }),
     frames: {

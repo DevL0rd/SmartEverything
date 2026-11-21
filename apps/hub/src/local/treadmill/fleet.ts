@@ -229,7 +229,7 @@ export class DeviceState {
 }
 
 export interface FleetOptions {
-  readonly store: Pick<Store, 'host' | 'feed' | 'settings'>;
+  readonly store: Pick<Store, 'host' | 'feed' | 'live'>;
   readonly log: Logger;
 }
 

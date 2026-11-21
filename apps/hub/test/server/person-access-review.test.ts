@@ -16,11 +16,8 @@ import { clientForToken } from '../../src/server/auth';
 import { clientSocketsOf } from '../../src/server/client-sockets';
 import { AccessLifecycle } from '../../src/server/access-lifecycle';
 import type { AccessService } from '../../src/server/access';
-import {
-  effectiveClientById,
-  hasOwnerDevice,
-  type AccessEntry,
-} from '../../src/server/person-access';
+import { type AccessEntry } from '../../src/server/person-access';
+import { effectiveClientById, hasOwnerDevice } from '../../src/server/person-access-units';
 import { Sql } from '../../src/store/sql';
 import { repairPersonAccess } from '../../src/store/person-access-repair';
 import { accessServiceFor } from '../support/access-service';

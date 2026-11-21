@@ -7,7 +7,6 @@ import {
   type AiShape,
   type JsonValue,
 } from '@smarteverything/domain';
-import type { PersonBudgets } from '../../ledger/person-budget';
 import type { ToolHub } from '../../ai-tools/tool-hub';
 import { messageOf } from '@smarteverything/logging';
 import { AgentCancelledError, DshAgentRun, type AgentHost } from './dsh-agent';
@@ -49,7 +48,7 @@ export interface OneShotDecision {
 export interface OneShotPorts {
   readonly agents: AgentHost;
   readonly tools: Pick<ToolHub, 'list'>;
-  readonly budgets: Pick<PersonBudgets, 'check'>;
+  readonly budgets: { readonly check: (profileId: string) => Promise<void> };
 }
 
 type Shaped = { ok: true; value: Record<string, JsonValue> } | { ok: false; problem: string };
@@ -84,7 +83,7 @@ export class OneShotModel {
     if (request.role !== 'owner' && request.tools.length > 0) {
       throw new IntegrationError('Forbidden', 'Only the owner can let an AI call use tools.');
     }
-    this.admit(request.profileId);
+    await this.admit(request.profileId);
     this.assertTools(request.tools);
     const run = new DshAgentRun(
       await this.ports.agents.open({
@@ -137,9 +136,9 @@ export class OneShotModel {
     }
   }
 
-  private admit(profileId: string): void {
+  private async admit(profileId: string): Promise<void> {
     try {
-      this.ports.budgets.check(profileId);
+      await this.ports.budgets.check(profileId);
     } catch (cause) {
       throw new IntegrationError('Refused', messageOf(cause));
     }

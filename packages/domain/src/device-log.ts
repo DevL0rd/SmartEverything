@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { signalViewOf } from './automation-v3/signal-view';
 import type { AutomationV3 } from './automation-v3/program';
+import type { AutomationRunSummary } from './automation-v3/rows';
 import type { TriggerNode } from './automation-v3/node';
 import { humanizeEnum } from './presentation/humanize';
 import type { DeviceFamily } from './presentation/types';
@@ -72,6 +73,23 @@ export function buttonActionTitle(action: string): string {
 }
 
 export const PRESS_EFFECT_WINDOW_MS = 5000;
+
+export const PRESS_RUN_CLOCK_LEAD_MS = 1000;
+
+export const RUN_EFFECT_OUTCOMES: Readonly<
+  Record<AutomationRunSummary['status'], DeviceLogEffect['outcome']>
+> = {
+  succeeded: 'ok',
+  failed: 'failed',
+  interrupted: 'failed',
+  ignored: 'skipped',
+  cancelled: 'skipped',
+  queued: 'running',
+  running: 'running',
+  waiting: 'running',
+  paused: 'running',
+  cancelling: 'running',
+};
 
 export const COMMAND_CAUSE_WINDOW_MS = 10_000;
 

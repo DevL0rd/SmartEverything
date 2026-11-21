@@ -7,7 +7,7 @@ import {
   type JsonValue,
 } from '@smarteverything/domain';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 
 export interface ValueChange {
   readonly valueId: string;
@@ -35,7 +35,7 @@ function operationOf(
 }
 
 export function applyValueChange(
-  store: Pick<Store, 'automationValues'>,
+  store: Pick<HostStore, 'automationValues'>,
   change: ValueChange,
 ): AutomationValueRow {
   const { content } = store.automationValues.byId(change.valueId);

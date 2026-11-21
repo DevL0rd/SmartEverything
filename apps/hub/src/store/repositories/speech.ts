@@ -18,11 +18,10 @@ export interface PluginSpeechReader {
     readonly name: string;
     readonly args: Readonly<Record<string, unknown>>;
   };
-  readonly admit: (caller: ToolCaller, sourceId?: string) => void;
+  readonly admit: (caller: ToolCaller, sourceId?: string) => Promise<void>;
   readonly sources: (
     caller: ToolCaller,
-  ) => readonly { readonly source: SpeechSource; readonly label: string }[];
-  readonly validate: (caller: ToolCaller, session?: TranscriptSession, sourceId?: string) => void;
+  ) => Promise<readonly { readonly source: SpeechSource; readonly label: string }[]>;
 }
 class DuplicateSpeechOccurrenceError extends Error {
   override readonly name = 'DuplicateSpeechOccurrenceError';

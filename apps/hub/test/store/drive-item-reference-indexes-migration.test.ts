@@ -52,7 +52,9 @@ it('indexes every column that references a Drive item so an item delete never sc
   const unindexed = tables.flatMap(({ name }) => {
     const leading = leadingColumns(name);
     return sql
-      .all(REFERENCE, 'select "table", "from" from pragma_foreign_key_list(:table)', { table: name })
+      .all(REFERENCE, 'select "table", "from" from pragma_foreign_key_list(:table)', {
+        table: name,
+      })
       .filter((reference) => reference.table === 'drive_items' && !leading.has(reference.from))
       .map((reference) => `${name}.${reference.from}`);
   });

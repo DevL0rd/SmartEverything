@@ -61,7 +61,7 @@ beforeEach(async () => {
     store,
     new AssistantFiles({
       layout: hubLayout(opened.directory, {}),
-      chat: store.assistantChat,
+      store: store,
       attachments: store.live.attachments,
       now,
     }),
@@ -86,10 +86,10 @@ afterEach(async () => {
   await opened.close();
 });
 
-function exchange(): { readonly event: StoredEvent; readonly replyId: string } {
-  const chat = chats.create(owner, { engine: TEST_ENGINE });
+async function exchange(): Promise<{ readonly event: StoredEvent; readonly replyId: string }> {
+  const chat = await chats.create(owner, { engine: TEST_ENGINE });
   const conversation = new ConversationLog(opened.store);
-  const person = conversation.person({
+  const person = await conversation.person({
     chat,
     clientId: null,
     author: 'Sam',
@@ -97,7 +97,11 @@ function exchange(): { readonly event: StoredEvent; readonly replyId: string } {
     files: [],
     origin: { source: 'app', plugin_id: null, device_id: null, name: null },
   });
-  const reply = conversation.responderInChat({ chat, text: 'They are on.', replyTo: person.id });
+  const reply = await conversation.responderInChat({
+    chat,
+    text: 'They are on.',
+    replyTo: person.id,
+  });
   const event: StoredEvent = {
     cursor: 1,
     id: 'event-1',
@@ -117,9 +121,7 @@ function exchange(): { readonly event: StoredEvent; readonly replyId: string } {
 }
 
 async function settled(): Promise<void> {
-  for (let round = 0; round < 10; round += 1) {
-    await Promise.resolve();
-  }
+  await suggestions.settled();
 }
 
 function embedKinds(replyId: string): string[] {
@@ -128,7 +130,7 @@ function embedKinds(replyId: string): string[] {
 
 describe('reply suggestions', () => {
   it('attaches suggestions to the latest reply of an app message on any engine', async () => {
-    const { event, replyId } = exchange();
+    const { event, replyId } = await exchange();
     await opened.store.live.home.load();
     await opened.store.live.home.assistant.save({
       ...opened.store.live.home.assistant.read(),
@@ -144,7 +146,7 @@ describe('reply suggestions', () => {
   });
 
   it('requests nothing when the setting is off', async () => {
-    const { event, replyId } = exchange();
+    const { event, replyId } = await exchange();
     await opened.store.live.home.load();
     await opened.store.live.home.assistant.save({
       ...opened.store.live.home.assistant.read(),
@@ -157,7 +159,7 @@ describe('reply suggestions', () => {
   });
 
   it('requests nothing for a failed turn', async () => {
-    const { event } = exchange();
+    const { event } = await exchange();
     await opened.store.live.home.load();
     await opened.store.live.home.assistant.save({
       ...opened.store.live.home.assistant.read(),

@@ -13,8 +13,10 @@ import {
   type WatchCandidate,
   type WatchCandidates,
   type WatchState,
+  type JsonValue,
   watchWorkoutStatusOf,
 } from '@smarteverything/domain';
+import { isDeepStrictEqual } from 'node:util';
 import type { Logger } from '@smarteverything/logging';
 import type { SecretStore } from '../secrets/store';
 import type { StateWriter } from '../state/state-writer';
@@ -36,6 +38,23 @@ export interface LocalWatchesOptions {
   readonly state: Pick<StateWriter, 'push'>;
   readonly now: () => Date;
   readonly log: Logger;
+}
+
+const STATE_HEARTBEAT_MS = 60_000;
+
+function onlyTimesChanged(
+  details: Readonly<Record<string, JsonValue>>,
+  values: Readonly<Record<string, JsonValue>>,
+  at: string,
+): boolean {
+  const last = details['reportedAt'];
+  if (typeof last !== 'string' || Date.parse(at) - Date.parse(last) >= STATE_HEARTBEAT_MS) {
+    return false;
+  }
+  return Object.entries(values).every(
+    ([key, value]) =>
+      key === 'lastSyncAt' || key === 'reportedAt' || isDeepStrictEqual(details[key], value),
+  );
 }
 
 function profileOf(entry: LocalDeviceEntry): string | null {
@@ -117,13 +136,18 @@ export class LocalWatches {
     if (state.phase === 'connected') {
       await this.bridges.pair(device, client);
     }
-    await this.options.local.observe(entry.externalId, {
+    const values: Record<string, JsonValue> = {
       ...rest,
       ...(config === undefined ? {} : { config }),
       ...(workout === undefined ? {} : { workout }),
       reportedAt: at,
       reportedBy: client.id,
-    });
+    };
+    if (workout === undefined && onlyTimesChanged(device.details, values, at)) {
+      this.options.log.debug('watch.state_unchanged', { device: device.id, by: client.id });
+      return;
+    }
+    await this.options.local.observe(entry.externalId, values);
     if (workout !== undefined) {
       this.options.state.push('local', {
         externalId: entry.externalId,

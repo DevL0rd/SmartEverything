@@ -25,7 +25,6 @@ import { keptSteps, type ReplyDone, type ReplyFailure, type ReplyStart } from '.
 import { noteMessage } from './note-message';
 import { ReplyQueue } from './reply-queue';
 import type { NativeAdmission, NativeCompletionRecord } from './reply-units';
-import { addConversationMessage } from './store-units';
 
 export interface PersonMessage {
   readonly chat: AiChatRow;
@@ -136,10 +135,6 @@ export class ConversationLog {
     this.replies = new ReplyQueue(() => store.host);
   }
 
-  private get messages(): Store['assistantChat'] {
-    return this.store.assistantChat;
-  }
-
   onMessage(chatId: string, listener: (messageId: string) => void): () => void {
     return this.store.feed.subscribe((change) => {
       if (
@@ -156,26 +151,31 @@ export class ConversationLog {
     row: NewAssistantMessage,
     files: readonly StoredAttachment[],
     messageId?: string,
-  ): AssistantMessageRow {
+  ): Promise<AssistantMessageRow> {
     const ids = files.map((file) => file.id);
     const message = {
       row,
       files: ids,
       ...(messageId === undefined ? {} : { messageId }),
     };
-    if (ids.length === 0) return addConversationMessage(this.store, message);
-    return this.store.live.attachments.attachNow(ids, () =>
-      addConversationMessage(this.store, message),
+    this.replies.flush();
+    if (ids.length === 0) return this.store.host.write('assistantMessageAdd', message);
+    return this.store.live.attachments.attach(ids, () =>
+      this.store.host.write('assistantMessageAdd', message),
     );
   }
 
-  person(input: PersonMessage): AssistantMessageRow {
+  private assistantName(): string {
+    return assistantLabel(this.store.live.home.assistant.read());
+  }
+
+  person(input: PersonMessage): Promise<AssistantMessageRow> {
     return this.add(personMessage(input), input.files, input.messageId);
   }
 
-  responderInChat(input: ResponderMessage): AssistantMessageRow {
+  responderInChat(input: ResponderMessage): Promise<AssistantMessageRow> {
     return this.add(
-      responderMessage(input, () => assistantLabel(this.messages.settings())),
+      responderMessage(input, () => this.assistantName()),
       input.files ?? [],
       input.messageId,
     );
@@ -232,7 +232,7 @@ export class ConversationLog {
     await this.replies.write({ kind: 'fail', id, failure, steps });
   }
 
-  originNote(chat: AiChatRow, origin: MessageOrigin): AssistantMessageRow {
+  originNote(chat: AiChatRow, origin: MessageOrigin): Promise<AssistantMessageRow> {
     const label = origin.name ?? origin.source;
     return this.add(
       {
@@ -261,11 +261,16 @@ export class ConversationLog {
     author: string,
     text: string,
     origin: MessageOrigin | null,
-  ): AssistantMessageRow {
+  ): Promise<AssistantMessageRow> {
     return this.add(noteMessage(chat, author, text, origin), []);
   }
 
-  compaction(chat: AiChatRow, summary: string, through: string): AssistantMessageRow {
+  async noteIn(chatId: string, author: string, text: string): Promise<AssistantMessageRow> {
+    const chat = await this.store.host.call('aiChats', 'chat', chatId);
+    return await this.note(chat, author, text, null);
+  }
+
+  compaction(chat: AiChatRow, summary: string, through: string): Promise<AssistantMessageRow> {
     return this.add(
       {
         ...NO_EXTRAS,
@@ -275,7 +280,7 @@ export class ConversationLog {
         chat_id: chat.id,
         role: 'system',
         kind: 'update',
-        author: assistantLabel(this.messages.settings()),
+        author: this.assistantName(),
         text: summary,
         attachments: [],
         state: null,

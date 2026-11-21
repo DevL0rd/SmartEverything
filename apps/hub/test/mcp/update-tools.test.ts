@@ -17,7 +17,8 @@ import { systemClock } from '../../src/clock';
 import { hubLayout } from '../../src/data-layout';
 import { trustedReleaseKeys } from '../../src/releases/trust';
 import { SecretStore } from '../../src/secrets/store';
-import { eventAuthority } from '../../src/assistant/turn-authority';
+import { authorityScope } from '../../src/assistant/turn-authority';
+import { issueEventAuthority } from '../../src/assistant/event-authority-issue';
 import type { ToolActor } from '../../src/extensions/mcp/tools/registry';
 import { TEST_ENGINE } from '../support/engine';
 import { testStore, type TestStore } from '../support/store';
@@ -184,7 +185,7 @@ describe('the update tools', () => {
       message_id: null,
       text: 'Repair',
     });
-    const authority = eventAuthority(store, event, undefined, event.id);
+    const authority = issueEventAuthority(store, event, authorityScope(undefined, event.id));
     const actor = { ...owner, chatId: chat.id, clientId: null, authority };
     expect(await ownerUpdateChat({ store, caller: null, actor })).toBe(chat.id);
     expect(

@@ -81,7 +81,7 @@ export class VideoEditService {
 
   constructor(private readonly deps: EditDeps) {
     this.jobs = new EditJobs(deps.env.now, (profileId, job) => {
-      deps.store.context.notice({ type: 'photos_edit_job', profileId, job });
+      deps.store.feed.notice({ type: 'photos_edit_job', profileId, job });
     });
   }
 

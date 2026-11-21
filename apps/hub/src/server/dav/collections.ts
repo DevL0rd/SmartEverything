@@ -2,7 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import type { DriveItem } from '@smarteverything/domain';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import { canWrite, type ItemAccess } from '../../drive/access';
-import { folderDraft, parentOf, recordItem } from '../../drive/changes';
+import { folderDraft, parentIn, recordItem } from '../../drive/changes';
 import { identityOf, isoOf } from '../../drive/change-rows';
 import { locate } from '../../drive/intents';
 import { DriveWriteError } from '../../drive/write-error';
@@ -81,7 +81,7 @@ export async function targetIn(
   location: { readonly rootId: string; readonly relPath: string },
 ): Promise<DavTarget> {
   const { rootId, relPath } = location;
-  const root = deps.store.driveRoots.find(rootId);
+  const root = await deps.store.host.call('driveRoots', 'find', rootId);
   if (root === undefined) throw missing();
   const found = await deps.store.host.read('davTarget', { root, relPath, actor: caller.actor });
   if (found.access === 'none') throw missing();
@@ -123,7 +123,7 @@ function hasBody(request: IncomingMessage): boolean {
 async function makeFolder(deps: DavDeps, caller: DavCaller, target: DavTarget): Promise<void> {
   const { env } = deps;
   const root = writableOf(target);
-  const parent = parentOf(env, root.id, target.relPath);
+  const parent = await parentIn(env, root.id, target.relPath);
   const path = await locate(root, target.relPath);
   if ((await env.files.stamp(path)) !== null) {
     throw new DriveWriteError('exists', 'A folder or file with that name is already on disk.');

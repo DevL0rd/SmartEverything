@@ -1,5 +1,6 @@
 import type { PortValue, TriggerNode } from '@smarteverything/domain';
 import type { Checked } from '@smarteverything/flow/interpret/frames';
+import { background } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../../clock';
 import type { TriggerFire } from './payload';
 import type { ConditionEntry, TriggerProblem } from './trigger-types';
@@ -14,7 +15,7 @@ export interface ConditionHost {
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly keysOf: (condition: PortValue) => readonly string[];
   readonly watch: (keys: readonly string[], changed: () => void) => Cancel;
-  readonly evaluate: (entry: ConditionEntry) => Checked<boolean>;
+  readonly evaluate: (entry: ConditionEntry) => Promise<Checked<boolean>>;
   readonly fire: (fire: TriggerFire) => void;
   readonly problem: (problem: TriggerProblem) => void;
 }
@@ -53,6 +54,8 @@ class ConditionWatch {
   private holding: Cancel | undefined;
   private failure: string | undefined;
   private readonly release: Cancel;
+  private checks: Promise<void> = Promise.resolve();
+  private stopped = false;
 
   constructor(
     private readonly entry: ConditionEntry,
@@ -68,6 +71,7 @@ class ConditionWatch {
   }
 
   stop(): void {
+    this.stopped = true;
     this.release();
     this.holding?.();
     this.holding = undefined;
@@ -75,6 +79,19 @@ class ConditionWatch {
 
   private check(): void {
     const result = this.host.evaluate(this.entry);
+    const next = this.checks.then(() => this.checked(result));
+    this.checks = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    background(next, 'automation.condition_check_failed', {
+      automationId: this.entry.automationId,
+    });
+  }
+
+  private async checked(pending: Promise<Checked<boolean>>): Promise<void> {
+    const result = await pending;
+    if (this.stopped) return;
     if (!result.ok) {
       this.report(result.message);
       this.settle(false);

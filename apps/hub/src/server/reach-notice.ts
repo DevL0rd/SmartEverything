@@ -70,13 +70,13 @@ function extrasOf(notice: PersonNotice): ReplyExtras {
 export function noticeMessenger(context: NoticeContext): ReachAssistant['message'] {
   const log = new ConversationLog(context.store);
   return async (asker, personId, notice): Promise<string> => {
-    const chat = context.assistant.chats.defaultChat(personId);
+    const chat = await context.assistant.chats.defaultChat(personId);
     const files =
       notice.image === undefined ? [] : [await pictureOf(context, asker, personId, notice.image)];
     const messageId = randomUUID();
     context.replyNotices.expect(messageId, extrasOf(notice));
     try {
-      log.responderInChat({
+      await log.responderInChat({
         chat,
         replyTo: null,
         text: notice.text,

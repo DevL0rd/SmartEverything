@@ -21,10 +21,10 @@ import {
 } from '../../planner/sharing/visibility';
 import { requireParent, withStepPosition } from '../../planner/steps';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { Caller } from '../auth';
 import { invalid } from '../invalid';
-import { plannerProfileOf } from './planner-profile';
+import { plannerProfileOf } from './planner-profile-units';
 
 export interface Asked<Q, B = undefined, P = undefined> {
   readonly caller: Caller;
@@ -50,7 +50,7 @@ function validated<T>(what: string, work: () => T): T {
 }
 
 function requireLinks(
-  store: Store,
+  store: HostStore,
   item: PlannerItemRow,
   links: {
     readonly collection_id?: string | undefined;
@@ -108,7 +108,7 @@ interface OccurrenceRequest {
   readonly need: ItemNeed;
 }
 
-function openItemOf(store: Store, request: OccurrenceRequest): PlannerItemRow {
+function openItemOf(store: HostStore, request: OccurrenceRequest): PlannerItemRow {
   const { item } = resolveItem(store, request.profileId, request.itemId, request.need);
   requireKey(item, request.key);
   return item;
@@ -123,7 +123,7 @@ const OPEN_OCCURRENCE = {
 } as const;
 
 function ownerOfNew(
-  store: Store,
+  store: HostStore,
   profileId: string,
   body: {
     readonly kind: PlannerItemRow['kind'];

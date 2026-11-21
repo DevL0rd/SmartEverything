@@ -117,7 +117,7 @@ function readChat(
   service: HarnessService,
   caller: Caller,
   chatId: string,
-): ReturnType<HarnessService['state']> | Promise<ReturnType<HarnessService['state']>> {
+): ReturnType<HarnessService['state']> {
   const owner = ownerOf(caller);
   if (
     caller.kind !== 'client' ||
@@ -129,16 +129,21 @@ function readChat(
   return readSession(service, { owner, chatId, clientId: caller.client.id });
 }
 
-function openChat(
+async function openChat(
   service: HarnessService,
   caller: Caller,
   chatId: string,
 ): ReturnType<typeof openConversation> {
   const owner = chatOwnerOf(caller);
-  service.own(owner, chatId);
-  new OwnEngineSelections(service).migrate(chatId);
+  await service.own(owner, chatId);
+  await new OwnEngineSelections(service).migrate(chatId);
   const authority = { kind: 'manual', profileId: owner.profileId } as const;
-  return openConversation(service, { owner, chatId, authority, clientId: clientOf(caller).id });
+  return await openConversation(service, {
+    owner,
+    chatId,
+    authority,
+    clientId: clientOf(caller).id,
+  });
 }
 
 const machineRoutes = (service: HarnessService) =>
@@ -153,15 +158,19 @@ const machineRoutes = (service: HarnessService) =>
 
 const readRoutes = (service: HarnessService) =>
   ({
-    readDshSession: bound(API_ENDPOINTS.readDshSession, ({ params, caller }) => {
-      const metadata = service.store.dshSessions.stat(params.sessionId, profileIdOf(caller));
+    readDshSession: bound(API_ENDPOINTS.readDshSession, async ({ params, caller }) => {
+      const metadata = await service.store.host.call(
+        'dshSessions',
+        'stat',
+        params.sessionId,
+        profileIdOf(caller),
+      );
       if (metadata === undefined)
         throw new ApiError('not_found', 'This native session does not exist.');
       return metadata;
     }),
-    listDshSessions: bound(API_ENDPOINTS.listDshSessions, ({ query, caller }) => {
-      const rows = service.store.dshSessions
-        .list(profileIdOf(caller))
+    listDshSessions: bound(API_ENDPOINTS.listDshSessions, async ({ query, caller }) => {
+      const rows = (await service.store.host.call('dshSessions', 'list', profileIdOf(caller)))
         .filter((row) => query.before === undefined || row.header.id < query.before)
         .sort((left, right) => right.header.id.localeCompare(left.header.id));
       const sessions = rows.slice(0, query.limit);
@@ -171,7 +180,7 @@ const readRoutes = (service: HarnessService) =>
       };
     }),
     readDshSessionEvents: bound(API_ENDPOINTS.readDshSessionEvents, ({ body, caller }) =>
-      service.store.dshSessions.read(body, profileIdOf(caller)),
+      service.store.host.call('dshSessions', 'read', body, profileIdOf(caller)),
     ),
     readAiRouteInfo: bound(API_ENDPOINTS.readAiRouteInfo, ({ query, caller }) =>
       service.routes.info(profileIdOf(caller), query),

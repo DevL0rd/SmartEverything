@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { API_ERROR, ApiError, DSH_SESSION_ID, type AiHarnessEvent } from '@smarteverything/domain';
+import { durableStoreUnit } from '../store/host/unit';
 import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
+
+type ApiErrorBody = ReturnType<ApiError['body']>;
 const CLAIM = z.strictObject({
   kind: z.literal('native-input-admission'),
   session_id: DSH_SESSION_ID,
@@ -17,7 +21,7 @@ function claimIdentity(event: AiHarnessEvent): z.infer<typeof CLAIM> {
     native_turn: event.native_turn,
   });
 }
-export function refusedNativeInput(store: Store, event: AiHarnessEvent): ApiError | undefined {
+export function refusedNativeInput(store: HostStore, event: AiHarnessEvent): ApiError | undefined {
   if (event.kind !== 'state' || event.delivery_id === undefined || event.native_turn === undefined)
     return undefined;
   const source = store.assistantEvents.find(event.delivery_id);
@@ -32,7 +36,7 @@ export function refusedNativeInput(store: Store, event: AiHarnessEvent): ApiErro
   }
   return retainedInputRefusal(store, event.delivery_id);
 }
-function retainedInputRefusal(store: Store, deliveryId: string): ApiError | undefined {
+function retainedInputRefusal(store: HostStore, deliveryId: string): ApiError | undefined {
   const receipt = store.harnessSessions.operation(deliveryId);
   if (
     receipt?.state !== 'completed' ||
@@ -40,13 +44,29 @@ function retainedInputRefusal(store: Store, deliveryId: string): ApiError | unde
     !CLAIM.safeParse(JSON.parse(receipt.request)).success
   )
     return undefined;
-  const result = API_ERROR.parse(JSON.parse(receipt.result));
-  return new ApiError(result.error.code, result.error.message, result.error.reason ?? null);
+  return refusalOf(API_ERROR.parse(JSON.parse(receipt.result)));
 }
-export function retainInputRefusal(store: Store, event: AiHarnessEvent, refusal: ApiError): void {
-  const id = z.uuid().parse(event.delivery_id);
-  store.durableWrite(() => {
-    store.harnessSessions.begin(id, event.session_id, claimIdentity(event));
-    store.harnessSessions.finish(id, refusal.body());
-  });
+function retainedRefusal(
+  store: HostStore,
+  input: { readonly event: AiHarnessEvent; readonly refusal: ApiErrorBody },
+): void {
+  const id = z.uuid().parse(input.event.delivery_id);
+  store.harnessSessions.begin(id, input.event.session_id, claimIdentity(input.event));
+  store.harnessSessions.finish(id, input.refusal);
+}
+
+export const INPUT_REFUSAL_RETAIN_UNIT = durableStoreUnit(retainedRefusal);
+
+export function retainInputRefusal(
+  store: Store,
+  event: AiHarnessEvent,
+  refusal: ApiError,
+): Promise<void> {
+  return store.host.write('harnessInputRefusalRetain', { event, refusal: refusal.body() });
+}
+
+export function refusalOf(body: ApiErrorBody | undefined): ApiError | undefined {
+  if (body === undefined) return undefined;
+  const result = API_ERROR.parse(body);
+  return new ApiError(result.error.code, result.error.message, result.error.reason ?? null);
 }

@@ -11,17 +11,11 @@ import { visibleDevices, visibleState } from '../../computers/computer-visibilit
 import { phoneViewerOfCaller } from '../../phones/phone-detail';
 import { visibleEvents, visibleRows } from '../../phones/phone-visibility';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { Caller } from '../auth';
 import type { Refusal, Subject } from '../person-access';
-import {
-  deviceHidden,
-  deviceIdReachable,
-  deviceReachWhy,
-  deviceScopeOf,
-  reachableRows,
-  subjectOf,
-} from '../person-scope';
+import { deviceHidden, deviceReachWhy, subjectOf } from '../person-scope';
+import { deviceIdReachable, deviceScopeOf, reachableRows } from '../person-scope-units';
 
 type DeviceChange = z.output<typeof E.updateDevice.body>;
 
@@ -30,13 +24,13 @@ export interface Asked<Q> {
   readonly query: Q;
 }
 
-function requireTelevision(store: Store, deviceId: string, what: string): void {
+function requireTelevision(store: HostStore, deviceId: string, what: string): void {
   if (store.devices.byId(deviceId).kind !== 'television') {
     throw new ApiError('invalid_request', `Only a television has ${what}.`);
   }
 }
 
-function changeDevice(store: Store, deviceId: string, change: DeviceChange): DeviceRow {
+function changeDevice(store: HostStore, deviceId: string, change: DeviceChange): DeviceRow {
   const { input_names: inputNames, wake_address: wakeAddress, ...patch } = change;
   if (patch.room_id !== undefined && patch.room_id !== null) {
     store.rooms.byId(patch.room_id);
@@ -69,7 +63,10 @@ export interface GroupSave {
   readonly input: DeviceGroupInput;
 }
 
-function saveGroup(store: Store, { caller, groupId, input }: GroupSave): Refused<DeviceGroupRow> {
+function saveGroup(
+  store: HostStore,
+  { caller, groupId, input }: GroupSave,
+): Refused<DeviceGroupRow> {
   const scope = deviceScopeOf(store, caller);
   const devices = input.device_ids.map((id) => store.devices.byId(id));
   const hidden = devices.find((device) => deviceHidden(scope, device));

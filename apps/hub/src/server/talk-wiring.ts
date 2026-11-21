@@ -14,7 +14,7 @@ import { ListeningBudget } from '../transcripts/listening-budget';
 import { ownerProfileOf } from '../transcripts/owner';
 import type { ServerContext } from './context';
 import type { Transcribing } from './transcribing';
-import { messageOf } from '@smarteverything/logging';
+import { background, messageOf } from '@smarteverything/logging';
 
 const CONTEXT_ROWS = 50;
 const REPLY_CHARACTERS_MAX = 1000;
@@ -58,17 +58,19 @@ function wakeTurn(
 ): (message: TalkHeard) => void {
   const { store, assistant } = context;
   const log = wiring.log.forArea('hub.talk');
-  return (message): void => {
-    const profileId = ownerProfileOf(store);
+  const woke = async (message: TalkHeard): Promise<void> => {
+    const profileId = await store.host.call('personAccess', 'homeOwner');
     const now = wiring.clock.now();
-    const rows = store.talk
-      .recentTranscripts(
+    const rows = (
+      await store.host.call(
+        'talk',
+        'recentTranscripts',
         message.channel.id,
         new Date(now.getTime() - CONTEXT_WINDOW_MS).toISOString(),
         CONTEXT_ROWS,
       )
-      .filter((row) => row.id !== message.messageId);
-    const chat = assistant.chats.conversationChat(profileId);
+    ).filter((row) => row.id !== message.messageId);
+    const chat = await assistant.chats.conversationChat(profileId);
     const text = talkWakeText({
       channel: message.channel,
       speaker: message.speaker.label,
@@ -76,12 +78,12 @@ function wakeTurn(
       transcript: message.transcript,
       context: talkContext(
         rows,
-        store.assistantChat.settings(),
-        store.settings.read().time_zone,
+        store.live.home.assistant.read(),
+        store.live.home.settings.read().time_zone,
         now,
       ),
     });
-    const { eventId } = assistant.runTurn({
+    const { eventId } = await assistant.runTurn({
       profileId,
       chatId: chat.id,
       title: chat.title,
@@ -91,6 +93,9 @@ function wakeTurn(
     pending.set(eventId, message.channel);
     dropWhenSuperseded(message, eventId, pending, log);
     log.info('talk.woke', { channelId: message.channel.id, eventId });
+  };
+  return (message): void => {
+    background(woke(message), 'talk.wake_failed', { channelId: message.channel.id });
   };
 }
 

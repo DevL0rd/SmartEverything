@@ -1,3 +1,4 @@
+import { openSeededStore, testStore, type TestStore } from '../support/store';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
@@ -10,7 +11,6 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { aiRepairRoutes } from '../../src/server/handlers/ai-repair';
-import { ConversationLog } from '../../src/assistant/conversation-log';
 import { RepairDispatch } from '../../src/assistant/repair-dispatch';
 import { startRepair } from '../../src/server/repair-wiring';
 import { hubLayout } from '../../src/data-layout';
@@ -22,10 +22,8 @@ import type {
   LogSourceInfo,
   StoredLogRecord,
 } from '../../src/store/repositories/runtime-log-types';
-import { openStore } from '../../src/store/store';
 import { TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore } from '../support/store';
 import { testStoreHost } from '../support/store-host';
 import { settleWithHost } from '../support/host-settle';
 
@@ -174,7 +172,7 @@ it('keeps its grouped evidence across an independent database open after its log
   const [group] = opened.store.aiRepairInbox.list({ limit: 1 }).groups;
   if (group === undefined) throw new Error('Expected a retained group.');
   expect(await retainedLogOf(opened.store, logs, group.fingerprint, owner.id)).toBeNull();
-  const reader = openStore({
+  const reader = await openSeededStore({
     host: testStoreHost(),
     path: join(opened.directory, 'test.db'),
     log,
@@ -188,7 +186,7 @@ it('keeps its grouped evidence across an independent database open after its log
     ]);
     expect(reader.settingsKv.read('ai-repair')).toBeNull();
   } finally {
-    reader.close();
+    await reader.close();
   }
 });
 
@@ -235,12 +233,12 @@ it('answers a repeated manual request even after its log evidence is purged', as
   const requestId = randomUUID();
   const eventId = repairEventId(group.fingerprint, requestId);
   const chatId = randomUUID();
-  const existing = vi.fn(() => ({ kind: 'existing', eventId, chatId }) as const);
+  const existing = vi.fn(() => Promise.resolve({ kind: 'existing', eventId, chatId } as const));
   const admit = vi.fn();
   const { diagnoseAiRepairGroup } = aiRepairRoutes(store, logs, hubLayout(opened.directory, {}), {
     admit,
     existing,
-    available: () => true,
+    available: () => Promise.resolve(true),
   });
   await logs.drop({ owner: true, profileId: owner.id }, undefined);
   await expect(
@@ -376,8 +374,7 @@ it('recovers visible unadmitted and legacy held errors once at startup without r
   });
   const repair = new RepairDispatch({
     store,
-    conversation: new ConversationLog(store),
-    repairChat: (): AiChatRow => chat,
+    repairChat: (): Promise<AiChatRow> => Promise.resolve(chat),
     added: (): undefined => undefined,
   });
   const context = { store, logs, log, assistant: { repair } };

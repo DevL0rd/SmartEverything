@@ -5,7 +5,7 @@ import {
   type PlannerAlarmRow,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { plannerPreferencesOf } from '../../src/planner/preferences';
+import { DEFAULT_PREFERENCES } from '../../src/planner/preferences';
 import type { plannerClockRoutes } from '../../src/server/handlers/planner-clock';
 import {
   buildClockHarness,
@@ -72,7 +72,9 @@ describe('alarm sound, limit, challenge and sunrise', () => {
 
   it('starts from the clock defaults for the limit and the sound', async () => {
     const made = await alarm(ann, { time: '07:00' });
-    const defaults = plannerPreferencesOf(test.store, ann.profileId).clock;
+    const defaults = (
+      test.store.plannerPreferences.find(ann.profileId)?.preferences ?? DEFAULT_PREFERENCES
+    ).clock;
     expect(made.snooze_limit).toBe(defaults.snooze_limit);
     expect(made.challenge).toEqual({ kind: 'none' });
     expect(made.sunrise).toBeNull();

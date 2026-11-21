@@ -19,7 +19,6 @@ import { finishCommitFromDisk } from '../drive/commit-recovery';
 import { recoverIntents, type DriveFiles } from '../drive/intents';
 import { nodeFiles } from '../drive/versions';
 import { assertPhotosFolderPrepared, migratePhotosFolder } from '../photos/folder-migration';
-import { DriveBackupRepository } from '../store/repositories/drive-backup';
 import { openStore, type Store, type StoreHostSetup } from '../store/store';
 import { removeUnlinkedFolders } from './unlinked-folders';
 
@@ -56,18 +55,19 @@ async function prepareStore(
   options: PreparationOptions,
 ): Promise<void> {
   const env = {
-    store: { ...store, driveBackup: new DriveBackupRepository(store.context) },
-    sql: store.context.sql,
+    store,
     files: options.files ?? nodeFiles,
     log,
     now: store.now,
     purge: { rearm: (): void => undefined },
   };
-  const roots = store.driveRoots.list().filter((root) => root.scope === 'person');
+  const roots = (await store.host.call('driveRoots', 'list')).filter(
+    (root) => root.scope === 'person',
+  );
   const recovery = await recoverIntents({ ...env, finishCommit: finishCommitFromDisk(env) }, roots);
   if (recovery.failed > 0)
     throw new Error('Drive intents could not be recovered before data preparation.');
-  await removeUnlinkedFolders(store.context.sql, layout, log);
+  await removeUnlinkedFolders(store.host, layout, log);
   await migratePhotosFolder(env, options.signal);
   await assertPhotosFolderPrepared(store.host);
   options.signal?.throwIfAborted();
@@ -83,7 +83,7 @@ export async function prepareHubData(
   await mkdir(dirname(layout.system.database.file), { recursive: true, mode: 0o700 });
   const lock = await lockDataDirectory(layout);
   try {
-    const store = openStore({
+    const store = await openStore({
       path: layout.system.database.file,
       log,
       now: () => new Date(),
@@ -96,7 +96,7 @@ export async function prepareHubData(
       await prepareStore(store, layout, log, options);
       log.info('service.data_preparation_finished');
     } finally {
-      store.close();
+      await store.close();
     }
   } finally {
     await lock.release();

@@ -3,11 +3,18 @@ import type { Logger } from '@smarteverything/logging';
 import type { GenerationStats } from '../openrouter/wire';
 import type { OpenRouterClient } from '../openrouter/client';
 import { settledGeneration } from '../openrouter/generation';
-import type { Ledger, Unsubscribe } from './ledger';
+import type { Unsubscribe } from './ledger';
+import type { UsageSpend } from './usage-spend';
 import { background, messageOf } from '@smarteverything/logging';
 
+export interface ReconcilerLedger {
+  readonly usage: Pick<UsageSpend, 'on'>;
+  readonly pending: () => Promise<readonly AiUsageRow[]>;
+  readonly reconcile: (id: string, stats: UsageReconcile) => Promise<AiUsageRow>;
+}
+
 export interface ReconcilerOptions {
-  readonly ledger: Ledger;
+  readonly ledger: ReconcilerLedger;
   readonly client: OpenRouterClient;
   readonly sleep: (milliseconds: number) => Promise<void>;
   readonly log: Logger;
@@ -41,12 +48,16 @@ export class Reconciler {
   private readonly unsubscribe: Unsubscribe;
 
   constructor(private readonly options: ReconcilerOptions) {
-    this.unsubscribe = options.ledger.on((row) => {
+    this.unsubscribe = options.ledger.usage.on((row) => {
       if (due(row)) {
         this.schedule(row);
       }
     });
-    for (const row of options.ledger.pendingGenerations()) if (due(row)) this.schedule(row);
+    background(this.resumed(), 'reconciler.pending_failed');
+  }
+
+  private async resumed(): Promise<void> {
+    for (const row of await this.options.ledger.pending()) if (due(row)) this.schedule(row);
   }
 
   private schedule(row: AiUsageRow & { generation_id: string }): void {
@@ -78,7 +89,7 @@ export class Reconciler {
         log.warn('ledger.reconcile_unavailable', { usageId: id, generationId });
         return;
       }
-      ledger.reconcile(id, reconcileOf(stats));
+      await ledger.reconcile(id, reconcileOf(stats));
     } catch (cause) {
       log.warn('ledger.reconcile_failed', {
         usageId: id,

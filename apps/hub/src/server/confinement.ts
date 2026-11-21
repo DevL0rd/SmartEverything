@@ -5,7 +5,6 @@ import {
   type EndpointName,
   type McpToolArea,
 } from '@smarteverything/domain';
-import { reachesChat } from '../assistant/chat-directory';
 import type { Store } from '../store/store';
 import { confinedChatOf, type Caller } from './auth';
 import type { OperationInput } from './operations';
@@ -39,12 +38,12 @@ function chatIdsOf(input: OperationInput): string[] {
   );
 }
 
-export function admitConfined(
-  store: Store,
+export async function admitConfined(
+  store: Pick<Store, 'host'>,
   name: EndpointName,
   caller: Caller,
   input: OperationInput,
-): void {
+): Promise<void> {
   const confinedTo = confinedChatOf(caller);
   if (confinedTo === undefined) return;
   if (
@@ -52,7 +51,7 @@ export function admitConfined(
     SHARED_PROFILE_AREAS.has(mcpOperationArea(API_ENDPOINTS[name]))
   )
     throw new ApiError('forbidden', 'Only the home owner can read this.');
-  for (const id of chatIdsOf(input))
-    if (!reachesChat(store, confinedTo, store.aiChats.chat(id)))
-      throw new ApiError('forbidden', 'That chat belongs to someone else.');
+  const chatIds = chatIdsOf(input);
+  if (chatIds.length > 0 && !(await store.host.read('confinedChats', { confinedTo, chatIds })))
+    throw new ApiError('forbidden', 'That chat belongs to someone else.');
 }

@@ -8,13 +8,13 @@ import {
   type BrushSessionRules,
   type BrushingSession,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import type { RetainedDraft } from './brand';
 import type { HomeClock } from './clock';
 import type { ObservedSession } from './session-machine';
 
 export interface LogDeps {
-  readonly store: Store;
+  readonly store: HostStore;
   readonly clock: HomeClock;
 }
 

@@ -40,7 +40,7 @@ function restartDesk(holdsSession: boolean): HarnessRuntimeRequest[] {
   return requests;
 }
 
-function attachedNow(chat: AiChatRow): boolean {
+function attachedNow(chat: AiChatRow): Promise<boolean> {
   return sessionAttached(rig.service, rig.service.binding(chat).session_id, rig.owner.profileId);
 }
 
@@ -48,28 +48,28 @@ describe('a chat attached to a machine', () => {
   it('stays attached while that machine still holds the session', async () => {
     const { chat } = await openOnDesk();
 
-    expect(attachedNow(chat)).toBe(true);
+    expect(await attachedNow(chat)).toBe(true);
   });
 
   it('is no longer attached when the machine came back as a new runtime without the session', async () => {
     const { chat } = await openOnDesk();
     restartDesk(false);
 
-    expect(attachedNow(chat)).toBe(false);
+    expect(await attachedNow(chat)).toBe(false);
   });
 
   it('is no longer attached once the machine goes offline', async () => {
     const { chat } = await openOnDesk();
     rig.service.directory.offline(rig.desk.target);
 
-    expect(attachedNow(chat)).toBe(false);
+    expect(await attachedNow(chat)).toBe(false);
   });
 
   it('is not attached to a restarted runtime that holds a session of that id until it is opened again', async () => {
     const { chat } = await openOnDesk();
     restartDesk(true);
 
-    expect(attachedNow(chat)).toBe(false);
+    expect(await attachedNow(chat)).toBe(false);
   });
 
   it('is attached again at the next epoch after the computer restarted, without waiting for anything', async () => {
@@ -125,7 +125,7 @@ describe('opening a chat in the app', () => {
 
   it('leaves a chat that is mid-change alone', async () => {
     const { chat } = await openOnDesk();
-    const session = rig.service.state(rig.owner, chat.id);
+    const session = await rig.service.state(rig.owner, chat.id);
     rig.opened.store.harnessSessions.markSwitching(session.session_id);
     restartDesk(false);
     rig.calls.length = 0;

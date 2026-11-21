@@ -1,9 +1,9 @@
 import type { DriveItem } from '@smarteverything/domain';
-import type { Store } from '../store/store';
+import type { HostStore } from '../store/host/host-store';
 import { isFileItem, type FileItem } from './file-item';
 
 export function namesSharing(
-  store: Pick<Store, 'driveInodes' | 'driveItems'>,
+  store: Pick<HostStore, 'driveInodes' | 'driveItems'>,
   existing: FileItem,
 ): readonly FileItem[] {
   const inode = store.driveInodes.ofItem(existing.id);
@@ -18,7 +18,7 @@ export function namesSharing(
 }
 
 export function carryBlocks(
-  store: Pick<Store, 'driveBlocks'>,
+  store: Pick<HostStore, 'driveBlocks'>,
   source: DriveItem,
   names: readonly DriveItem[],
 ): void {

@@ -7,7 +7,8 @@ import { AutomationComputersSlot } from '../../../src/automations/automation-com
 import { integrationEffects } from '../../../src/automations/integration-effects';
 import type { IntegrationPorts } from '../../../src/automations/integration-effects';
 import { WebhookReplies } from '../../../src/automations/effects/webhook-replies';
-import { directTimerRows, TimerWakes } from '../../../src/automations/timers/timer-wakes';
+import { TIMERS, TimerWakes, type TimerRows } from '../../../src/automations/timers/timer-wakes';
+import type { AutomationNodeStateRepository } from '../../../src/store/repositories/automation-node-state';
 import { WebhookGateway } from '../../../src/automations/webhooks/gateway';
 import type { WebhookCall } from '../../../src/automations/webhooks/gateway';
 import { stateMemoryFromRows } from '../../../src/automations/world-v3/node-memory';
@@ -22,6 +23,19 @@ import {
   wired,
 } from '../support/rig-v3';
 import type { RigV3 } from '../support/rig-v3';
+
+function directTimerRows(
+  rows: Pick<AutomationNodeStateRepository, 'dueSlots' | 'nextSlotWake' | 'clearWake'>,
+): TimerRows {
+  return {
+    due: (through) => Promise.resolve(rows.dueSlots(TIMERS, through)[0]),
+    next: () => Promise.resolve(rows.nextSlotWake(TIMERS)),
+    clear: (row): Promise<void> => {
+      rows.clearWake(row.automation_id, row.node_id, row.partition);
+      return Promise.resolve();
+    },
+  };
+}
 
 afterEach(closeSetups);
 
@@ -242,7 +256,7 @@ async function webhookRig(): Promise<{ rig: RigV3; replies: WebhookReplies }> {
     signals: { emit: (): void => undefined },
     replies,
     clock: { now: () => new Date('2026-10-08T12:00:00.000Z') },
-    ownerProfileId: () => 'owner',
+    ownerProfileId: () => Promise.resolve('owner'),
   };
   const rig = await rigV3({ extraEffects: integrationEffects(ports) });
   return { rig, replies };

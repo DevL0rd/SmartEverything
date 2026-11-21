@@ -66,6 +66,7 @@ function placeDesktop(clientId: string, room: string | null): void {
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   profileId = opened.store.profiles.first().id;
   phone = client('Pixel 9', 'android');
   desktop = client('Studio PC', 'desktop');
@@ -100,41 +101,43 @@ describe('the sender line', () => {
 });
 
 describe('the per-turn prompt of every engine', () => {
-  it('carries the line of the device that sent this turn and follows a device change', () => {
+  it('carries the line of the device that sent this turn and follows a device change', async () => {
     const row = chat();
     const tools = new ToolHub([]);
-    const fromPhone = turnPrompt(facts(opened.store, row, tools, { now: NOW, clientId: phone }));
+    const fromPhone = turnPrompt(
+      await facts(opened.store, row, tools, { now: NOW, clientId: phone }),
+    );
     const fromDesktop = turnPrompt(
-      facts(opened.store, row, tools, { now: NOW, clientId: desktop }),
+      await facts(opened.store, row, tools, { now: NOW, clientId: desktop }),
     );
     expect(fromPhone).toContain('From: Pixel 9 (phone).');
     expect(fromDesktop).toContain('From: Studio PC (computer).');
     expect(fromDesktop).not.toContain('Pixel 9');
   });
 
-  it('omits the line when no device sent the turn', () => {
+  it('omits the line when no device sent the turn', async () => {
     const text = turnPrompt(
-      facts(opened.store, chat(), new ToolHub([]), { now: NOW, clientId: null }),
+      await facts(opened.store, chat(), new ToolHub([]), { now: NOW, clientId: null }),
     );
     expect(text).not.toContain('From:');
   });
 
-  it('stays the same for the same device so the cached prefix is not disturbed', () => {
+  it('stays the same for the same device so the cached prefix is not disturbed', async () => {
     const row = chat();
     const tools = new ToolHub([]);
     const later = new Date('2026-10-08T10:00:42.000Z');
-    const line = (now: Date): string | undefined =>
-      turnPrompt(facts(opened.store, row, tools, { now, clientId: desktop }))
+    const line = async (now: Date): Promise<string | undefined> =>
+      turnPrompt(await facts(opened.store, row, tools, { now, clientId: desktop }))
         .split('\n')
         .find((entry) => entry.startsWith('From:'));
-    expect(line(NOW)).toBe(line(later));
+    expect(await line(NOW)).toBe(await line(later));
   });
 });
 
 describe('the guidance for the sender line', () => {
-  it('tells the AI in the stable prompt to use it for here and this room', () => {
+  it('tells the AI in the stable prompt to use it for here and this room', async () => {
     const stable = stablePrompt(
-      facts(opened.store, chat(), new ToolHub([]), { now: NOW, clientId: phone }),
+      await facts(opened.store, chat(), new ToolHub([]), { now: NOW, clientId: phone }),
     );
     expect(stable).toContain('The From line');
     expect(stable).toContain('this room');

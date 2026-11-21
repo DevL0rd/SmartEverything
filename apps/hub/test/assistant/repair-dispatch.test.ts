@@ -17,10 +17,11 @@ import { repairSourceDigest } from '../../src/assistant/repair-source';
 import {
   admitExecutionTool,
   currentExecutionAuthority,
-  eventAuthority,
   executionRole,
   withExecutionAuthority,
+  authorityScope,
 } from '../../src/assistant/turn-authority';
+import { issueEventAuthority } from '../../src/assistant/event-authority-issue';
 import type { StoredEvent } from '../../src/store/repositories/assistant-events';
 import { storedFromLog } from '../../src/store/repositories/runtime-log-types';
 import { CLAUDE_TEST_ENGINE, TEST_ENGINE } from '../support/engine';
@@ -68,8 +69,7 @@ beforeEach(async () => {
   conversation = new ConversationLog(store);
   repair = new RepairDispatch({
     store,
-    conversation,
-    repairChat: (): AiChatRow => fallback,
+    repairChat: (): Promise<AiChatRow> => Promise.resolve(fallback),
     added: (): undefined => undefined,
   });
   request = {
@@ -181,7 +181,7 @@ describe('repair through the selected chat engine', () => {
       fallback = chat;
       request = { ...request, recipient: { active: null, previousChatId: chat.id } };
       const { group } = await evidence();
-      expect(repair.admit(await retainedRequest(group.fingerprint))).toMatchObject({
+      expect(await repair.admit(await retainedRequest(group.fingerprint))).toMatchObject({
         kind: 'queued',
         chatId: chat.id,
       });
@@ -199,7 +199,7 @@ describe('repair through the selected chat engine', () => {
       expect(event.text).toContain(CRASH_STACK);
       expect(event.text).toContain('untrusted data');
       expect(event.text).toContain(`retained log ${String(group.latestLogId)}`);
-      const authority = eventAuthority(store, event);
+      const authority = issueEventAuthority(store, event, authorityScope());
       expect(authority).toMatchObject({
         kind: 'service',
         client_id: null,
@@ -215,21 +215,22 @@ describe('repair through the selected chat engine', () => {
       expect(() => {
         admitExecutionTool(store, 'device_set', authority);
       }).toThrow(/grant/u);
-      const deliver = vi.fn<Engine['deliver']>((input, target) => {
+      const deliver = vi.fn<Engine['deliver']>(async (input, target) => {
         expect(currentExecutionAuthority()?.repair_origin).toBe(request.id);
-        conversation.responderInChat({
+        await conversation.responderInChat({
           chat: target,
           replyTo: input.message_id,
           text: 'Verified the fix.',
         });
         store.assistantEvents.mark(input.id, 'answered_at');
-        return Promise.resolve();
       });
       const registry = new EngineRegistry(store);
       registry.attach(selectedEngine(chat.engine.kind, deliver));
       const worker = delivery(registry);
       worker.pump();
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.waitFor(() => {
+        expect(deliver).toHaveBeenCalled();
+      });
       expect(deliver).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ id: request.id }),
         expect.objectContaining({ id: chat.id }),
@@ -239,15 +240,15 @@ describe('repair through the selected chat engine', () => {
     },
   );
 
-  it('preserves the hub-local OS boundary for a linked native chat', () => {
+  it('preserves the hub-local OS boundary for a linked native chat', async () => {
     const { store } = opened;
     const local = newChat(true);
     fallback = local;
     store.live.computers.bindLocal(CLAUDE_TEST_ENGINE.device_id);
-    repair.admit({ ...request, recipient: { active: null, previousChatId: local.id } });
+    await repair.admit({ ...request, recipient: { active: null, previousChatId: local.id } });
     const registry = new EngineRegistry(store);
     registry.attach(selectedEngine('claude', () => Promise.resolve()));
-    const routing = registry.route(queuedEvent());
+    const routing = await registry.route(queuedEvent());
     expect(routing.kind).toBe('blocked');
     if (routing.kind !== 'blocked') throw new Error('Expected hub-local refusal');
     expect(routing.reason).toContain('Hub-originated work');
@@ -269,85 +270,90 @@ describe('repair through the selected chat engine', () => {
     const steer = vi.fn<NonNullable<Engine['steer']>>(() => Promise.resolve(true));
     const registry = new EngineRegistry(store);
     registry.attach({ ...engine, steer });
-    repair.admit(request);
+    await repair.admit(request);
     const worker = delivery(registry);
     worker.pump();
     await worker.settled();
     const next = randomUUID();
-    repair.admit({ ...request, id: next });
+    await repair.admit({ ...request, id: next });
     worker.pump();
     await worker.settled();
     expect(delivered).toEqual([request.id]);
     expect(steer).not.toHaveBeenCalled();
     release();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(delivered).toEqual([request.id, next]);
+    await vi.waitFor(() => {
+      expect(delivered).toEqual([request.id, next]);
+    });
     release();
     await vi.advanceTimersByTimeAsync(0);
     worker.stop();
   });
 
-  it('preserves source approvals without choosing a separate model or accepting changed snapshots', () => {
+  it('preserves source approvals without choosing a separate model or accepting changed snapshots', async () => {
     const source = {
       path: 'apps/hub/src/example.ts',
       text: 'export const ready = false;\n',
       digest: repairSourceDigest('export const ready = false;\n'),
     };
     const patch = { revision: 'a'.repeat(40), sources: [source] };
-    repair.admit({ ...request, patch });
+    await repair.admit({ ...request, patch });
     expect(queuedEvent().text).toContain(source.text.replace(/\n/gu, '\\n'));
     expect(queuedEvent().text).toContain(patch.revision);
     expect(queuedEvent().text).toContain('propose a source correction for review');
     expect(queuedEvent().text).not.toContain('commit and push the accepted SmartEverything fix');
     const approval = { requestId: randomUUID(), revision: patch.revision, paths: [source.path] };
-    expect(repair.existingPatch(request.id, profileId, approval)).toMatchObject({
+    expect(await repair.existingPatch(request.id, profileId, approval)).toMatchObject({
       kind: 'existing',
     });
-    expect(() =>
+    await expect(
       repair.existingPatch(request.id, profileId, { ...approval, revision: 'b'.repeat(40) }),
-    ).toThrow(/different source approval/u);
-    expect(() =>
+    ).rejects.toThrow(/different source approval/u);
+    await expect(
       repair.admit({
         ...request,
         id: randomUUID(),
         patch: { ...patch, sources: [{ ...source, text: 'changed' }] },
       }),
-    ).toThrow(/snapshot changed/u);
+    ).rejects.toThrow(/snapshot changed/u);
   });
 
   it('deduplicates automatic requests and leaves independent errors queued normally', async () => {
     const { store } = opened;
-    expect(repair.admit({ ...request, kind: 'automatic' })).toMatchObject({ reason: 'disabled' });
+    expect(await repair.admit({ ...request, kind: 'automatic' })).toMatchObject({
+      reason: 'disabled',
+    });
     store.settingsKv.save('ai-repair', { enabled: true });
     const { group } = await evidence();
     const automatic = { ...(await retainedRequest(group.fingerprint)), kind: 'automatic' as const };
-    expect(repair.admit(automatic)).toMatchObject({ kind: 'queued' });
-    expect(repair.admit(automatic)).toMatchObject({ kind: 'existing' });
-    expect(repair.admit({ ...automatic, id: randomUUID() })).toMatchObject({
+    expect(await repair.admit(automatic)).toMatchObject({ kind: 'queued' });
+    expect(await repair.admit(automatic)).toMatchObject({ kind: 'existing' });
+    expect(await repair.admit({ ...automatic, id: randomUUID() })).toMatchObject({
       kind: 'held',
       reason: 'evidence',
     });
-    expect(repair.admit({ ...request, id: randomUUID() })).toMatchObject({ kind: 'queued' });
+    expect(await repair.admit({ ...request, id: randomUUID() })).toMatchObject({ kind: 'queued' });
     expect(store.assistantEvents.pending()).toHaveLength(2);
   });
 
-  it('keeps owner isolation while admitting errors from repair and unknown origins', () => {
-    expect(repair.admit({ ...request, profileId: randomUUID() })).toMatchObject({
+  it('keeps owner isolation while admitting errors from repair and unknown origins', async () => {
+    expect(await repair.admit({ ...request, profileId: randomUUID() })).toMatchObject({
       reason: 'owner',
     });
-    expect(repair.admit({ ...request, origin: 'unknown' })).toMatchObject({ kind: 'queued' });
-    expect(repair.admit({ ...request, id: randomUUID(), origin: 'repair' })).toMatchObject({
+    expect(await repair.admit({ ...request, origin: 'unknown' })).toMatchObject({ kind: 'queued' });
+    expect(await repair.admit({ ...request, id: randomUUID(), origin: 'repair' })).toMatchObject({
       kind: 'queued',
     });
-    const authority = eventAuthority(opened.store, queuedEvent());
-    withExecutionAuthority(authority, () => {
-      expect(repair.admit({ ...request, id: randomUUID() })).toMatchObject({ kind: 'queued' });
+    const authority = issueEventAuthority(opened.store, queuedEvent(), authorityScope());
+    await withExecutionAuthority(authority, async () => {
+      expect(await repair.admit({ ...request, id: randomUUID() })).toMatchObject({
+        kind: 'queued',
+      });
       const child = opened.store.assistantEvents.add({
         ...queuedEvent(),
         id: randomUUID(),
         message_id: null,
       });
-      expect(eventAuthority(opened.store, child)).toMatchObject({
+      expect(issueEventAuthority(opened.store, child, authorityScope())).toMatchObject({
         repair_origin: request.id,
         role: 'owner',
         tools: ['log_read'],
@@ -356,15 +362,15 @@ describe('repair through the selected chat engine', () => {
     });
   });
 
-  it('always routes to the dedicated repair chat regardless of active and previous work', () => {
+  it('always routes to the dedicated repair chat regardless of active and previous work', async () => {
     const active = newChat();
     const recipient = {
       active: { chatId: active.id, expiresAt: '2026-10-08T11:00:00.000Z' },
       previousChatId: chat.id,
     };
-    expect(repair.admit({ ...request, recipient })).toMatchObject({ chatId: fallback.id });
+    expect(await repair.admit({ ...request, recipient })).toMatchObject({ chatId: fallback.id });
     expect(
-      repair.admit({
+      await repair.admit({
         ...request,
         id: randomUUID(),
         recipient: { active: null, previousChatId: randomUUID() },
@@ -392,24 +398,24 @@ describe('repair through the selected chat engine', () => {
     const { store } = opened;
     const { record, group } = await evidence();
     const input = await retainedRequest(group.fingerprint);
-    repair.admit(input);
+    await repair.admit(input);
     store.assistantEvents.mark(request.id, 'answered_at');
     store.aiRepairInbox.dismiss({ kind: 'inactive' });
-    expect(repair.admit(input)).toMatchObject({ kind: 'existing' });
+    expect(await repair.admit(input)).toMatchObject({ kind: 'existing' });
     const next = { ...input, id: randomUUID() };
-    expect(repair.admit(next)).toMatchObject({ reason: 'evidence' });
+    expect(await repair.admit(next)).toMatchObject({ reason: 'evidence' });
     await logs.append(
       [{ ...record, at: '2026-10-08T10:00:00.000Z' }],
       HUB_SOURCE,
       store.now().toISOString(),
     );
-    expect(repair.admit(next)).toMatchObject({ kind: 'queued' });
+    expect(await repair.admit(next)).toMatchObject({ kind: 'queued' });
   });
 
   it('uses normal retry and stop behavior and records the visible failure in the inbox', async () => {
     const { store } = opened;
     const { group } = await evidence();
-    repair.admit(await retainedRequest(group.fingerprint));
+    await repair.admit(await retainedRequest(group.fingerprint));
     const registry = new EngineRegistry(store);
     const deliver = vi.fn<Engine['deliver']>(() =>
       Promise.reject(new Error('Engine disconnected')),
@@ -417,8 +423,13 @@ describe('repair through the selected chat engine', () => {
     registry.attach(selectedEngine('dsh', deliver));
     const worker = delivery(registry);
     worker.pump();
+    await vi.waitFor(() => {
+      expect(deliver).toHaveBeenCalledTimes(1);
+    });
     await vi.advanceTimersByTimeAsync(DELIVERY_RETRY_MS);
-    expect(deliver).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => {
+      expect(deliver).toHaveBeenCalledTimes(2);
+    });
     expect(worker.stopChat(chat.id)).toBe(false);
     expect(worker.stopChat(fallback.id)).toBe(true);
     await vi.advanceTimersByTimeAsync(0);

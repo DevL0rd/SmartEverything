@@ -66,7 +66,6 @@ import { televisionFindRoutes } from './handlers/television-find';
 import { vacuumRoutes } from './handlers/vacuums';
 import { homeMapRoutes } from './handlers/home-map';
 import { homeMapSetRoutes } from './handlers/home-map-set';
-import { modelRouteServices } from './handlers/model-assets';
 import { modelRoutes } from './handlers/models';
 import { transcriptRoutes } from './handlers/transcripts';
 import { signalRoutes } from './handlers/signals';
@@ -242,7 +241,7 @@ function allDeviceRoutes(
   return {
     ...deviceRoutes(context),
     ...vacuumRoutes(context.hub.vacuums),
-    ...modelRoutes(modelRouteServices(context.store)),
+    ...modelRoutes(context.store),
     ...homeMapRoutes(context),
     ...homeMapSetRoutes(context),
     ...televisionRoutes(context),
@@ -340,6 +339,6 @@ function imageApiRoutes(context: ServerContext): ReturnType<typeof imageRoutes> 
     images: context.imageRuntime.service,
     imageActor: context.imageRuntime.actor,
     imageCatalog: context.imageRuntime.readCatalog,
-    selectedImageModel: () => context.store.assistantChat.settings().image_model,
+    selectedImageModel: () => context.store.live.home.assistant.read().image_model,
   });
 }

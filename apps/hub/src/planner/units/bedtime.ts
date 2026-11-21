@@ -1,6 +1,6 @@
 import type { PlannerSleepSound, PlannerSleepSource } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { personClockText } from '../../clock/person-clock';
+import { personClockText } from '../../clock/person-clock-units';
 import { storeUnit } from '../../store/host/unit';
 import { AlarmSounds } from '../alarm-sound';
 

@@ -16,7 +16,7 @@ import { trivial } from './trivial';
 const log = new Logger('hub.memory');
 
 export interface LearnerPorts {
-  readonly store: Pick<Store, 'aiChats' | 'assistantChat' | 'aiMemories' | 'personAccess' | 'host'>;
+  readonly store: Pick<Store, 'host'>;
   readonly memory: Pick<MemoryService, 'offered'>;
   readonly manager: Pick<MemoryManager, 'exchange'>;
 }
@@ -84,28 +84,33 @@ export class MemoryLearner {
     background(next, 'memory.learn_queue_failed');
   }
 
-  private principal(profileId: string, chatId: string, messageId: string): MemoryPrincipal | null {
-    const { aiChats, personAccess } = this.ports.store;
-    const { role } = personAccess.byProfile(profileId);
-    return role === 'guest' || aiChats.chat(chatId).kind === 'subagent'
+  private async principal(
+    profileId: string,
+    chatId: string,
+    messageId: string,
+  ): Promise<MemoryPrincipal | null> {
+    const { host } = this.ports.store;
+    const { role } = await host.call('personAccess', 'byProfile', profileId);
+    return role === 'guest' || (await host.call('aiChats', 'chat', chatId)).kind === 'subagent'
       ? null
       : { profileId, role, chatId, messageId };
   }
 
-  private mark(chatId: string, at: string): void {
-    const { aiMemories } = this.ports.store;
-    const through = aiMemories.learnedThrough(chatId);
-    if (through === undefined || through < at) aiMemories.setLearnedThrough(chatId, at);
+  private async mark(chatId: string, at: string): Promise<void> {
+    const { host } = this.ports.store;
+    const through = await host.call('aiMemories', 'learnedThrough', chatId);
+    if (through === undefined || through < at)
+      await host.call('aiMemories', 'setLearnedThrough', chatId, at);
   }
 
   private async learnTurn(event: StoredEvent, messageId: string, reply: string): Promise<void> {
     const person = await this.ports.store.host.call('assistantChat', 'message', messageId);
     const who = isPersonText(person)
-      ? this.principal(event.profile_id, event.chat_id, person.id)
+      ? await this.principal(event.profile_id, event.chat_id, person.id)
       : null;
     if (who === null) return;
-    if (this.ports.memory.offered(who)) await this.catchUp(who, person, reply);
-    else this.mark(event.chat_id, person.created_at);
+    if (await this.ports.memory.offered(who)) await this.catchUp(who, person, reply);
+    else await this.mark(event.chat_id, person.created_at);
   }
 
   private async catchUp(
@@ -113,16 +118,18 @@ export class MemoryLearner {
     person: AssistantMessageRow,
     reply: string,
   ): Promise<void> {
-    const { assistantChat, aiMemories } = this.ports.store;
+    const { host } = this.ports.store;
     const chatId = person.chat_id;
-    const through = aiMemories.learnedThrough(chatId);
+    const through = await host.call('aiMemories', 'learnedThrough', chatId);
     if (through !== undefined && person.created_at <= through) return;
     const unlearned =
       through === undefined
         ? [person]
-        : assistantChat.since(chatId, through).filter((row) => row.created_at <= person.created_at);
+        : (await host.call('assistantChat', 'since', chatId, through)).filter(
+            (row) => row.created_at <= person.created_at,
+          );
     for (const message of unlearned.filter(isPersonText)) {
-      const text = message.id === person.id ? reply : this.answered(message.id);
+      const text = message.id === person.id ? reply : await this.answered(message.id);
       const done =
         text === null ||
         (await this.learn(
@@ -130,36 +137,35 @@ export class MemoryLearner {
           { person: message.text, reply: text },
         ));
       if (!done) return;
-      this.mark(chatId, message.created_at);
+      await this.mark(chatId, message.created_at);
     }
   }
 
   private async learnCall(chatId: string, messageId: string): Promise<void> {
     const call = await this.ports.store.host.call('assistantChat', 'find', messageId);
     if (call?.chat_id !== chatId || call.kind !== 'call') return;
-    const who = this.principal(call.profile_id, chatId, call.id);
+    const who = await this.principal(call.profile_id, chatId, call.id);
     if (who === null) return;
     const transcript = CALL_TRANSCRIPT_EMBED.safeParse(
       call.embeds.find((embed) => embed.kind === 'call_transcript'),
     );
-    if (this.ports.memory.offered(who) && transcript.success) {
+    if ((await this.ports.memory.offered(who)) && transcript.success) {
       for (const exchange of callExchanges(transcript.data.turns)) {
         if (!(await this.learn(who, exchange))) return;
       }
     }
-    this.mark(chatId, call.created_at);
+    await this.mark(chatId, call.created_at);
   }
 
-  private answered(messageId: string): string | null {
-    const reply = this.ports.store.assistantChat
-      .repliesTo(messageId)
+  private async answered(messageId: string): Promise<string | null> {
+    const reply = (await this.ports.store.host.call('assistantChat', 'repliesTo', messageId))
       .filter((row) => row.state === 'answered')
       .at(-1);
     return reply?.text ?? null;
   }
 
   private async learn(who: MemoryPrincipal, exchange: Exchange): Promise<boolean> {
-    if (trivial(exchange.person) || who.chatId === null || !this.ports.memory.offered(who))
+    if (trivial(exchange.person) || who.chatId === null || !(await this.ports.memory.offered(who)))
       return true;
     try {
       await this.ports.manager.exchange(who, who.chatId, exchange.person, exchange.reply);

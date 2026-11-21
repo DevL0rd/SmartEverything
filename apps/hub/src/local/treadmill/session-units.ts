@@ -7,9 +7,9 @@ import {
   type TreadmillSession,
   type TreadmillSettings,
 } from '@smarteverything/domain';
-import { effectiveRow } from '../../server/person-access';
+import { effectiveRow } from '../../server/person-access-units';
 import { storeUnit } from '../../store/host/unit';
-import type { Store } from '../../store/store';
+import type { HostStore } from '../../store/host/host-store';
 import { NoteLog, type UnitNote } from '../unit-notes';
 import { reconcileRecord, type Reconciled, type RecordFacts } from './backfill';
 import { contextOf, figuresOf } from './figures';
@@ -73,7 +73,7 @@ export interface MaintenanceRead {
 }
 
 export function weightOf(
-  store: Pick<Store, 'bodyReadings'>,
+  store: Pick<HostStore, 'bodyReadings'>,
   profileId: string | null,
 ): number | null {
   if (profileId === null) {
@@ -85,7 +85,7 @@ export function weightOf(
 }
 
 function watchHeartRate(
-  store: Pick<Store, 'devices'>,
+  store: Pick<HostStore, 'devices'>,
   profileId: string | null,
   now: Date,
 ): number | null {
@@ -107,7 +107,7 @@ function watchHeartRate(
   return typeof rate === 'number' && rate > 0 && fresh ? rate : null;
 }
 
-function walkerOf(store: Store, query: Omit<WalkerQuery, 'now'>): string | null {
+function walkerOf(store: HostStore, query: Omit<WalkerQuery, 'now'>): string | null {
   if (query.chosen !== null) {
     return query.chosen;
   }

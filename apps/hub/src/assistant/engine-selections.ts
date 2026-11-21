@@ -61,7 +61,7 @@ export class EngineSelections {
       throw new ApiError('not_found', `The hub doesn’t know a model called ${model}.`);
   }
   hasComputerProvider(runtime: ComputerAiRuntime = 'claude'): boolean {
-    return this.store.devices
+    return this.store.live.home.devices
       .list()
       .some(
         (device) =>
@@ -76,14 +76,14 @@ export class EngineSelections {
     if (computer !== null) validateComputerEngine(this.store, this.directory, computer, user.role);
     if (user.role !== 'owner') assertModelAllowed(this.store, user.profileId, engine.model);
   }
-  catalogue(profileId: string, role: Role): AiRuntimeEngineCatalogue {
+  async catalogue(profileId: string, role: Role): Promise<AiRuntimeEngineCatalogue> {
     return {
       default:
         role === 'owner'
           ? defaultEngine(this.store, profileId)
           : meteredEngine(profileId, { model: null, effort: null }, meteredCatalogue(this.store)),
-      preferences: this.store.aiRuntimeProvider.preferences(),
-      computers: this.store.devices
+      preferences: await this.store.host.call('aiRuntimeProvider', 'preferences'),
+      computers: this.store.live.home.devices
         .list()
         .filter((device) => device.kind === 'computer')
         .flatMap((device) => RUNTIMES.map((runtime) => this.computer(device, runtime, role))),

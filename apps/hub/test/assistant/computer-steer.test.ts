@@ -61,13 +61,17 @@ function rig(
     log: { info: vi.fn() },
     finished,
     store: {
-      assistantChat: {
-        attachmentsOf: () =>
-          Array.from({ length: options.attachments ?? 0 }, () => ({
-            name: 'photo.png',
-            mime: 'image/png',
-            transcript: null,
-          })),
+      host: {
+        call: (repository: string, method: string): Promise<unknown[]> => {
+          expect([repository, method]).toEqual(['assistantChat', 'attachmentsOf']);
+          return Promise.resolve(
+            Array.from({ length: options.attachments ?? 0 }, () => ({
+              name: 'photo.png',
+              mime: 'image/png',
+              transcript: null,
+            })),
+          );
+        },
       },
     },
     files: { pathOf: () => join(folder, 'photo.png') },
@@ -80,11 +84,12 @@ function rig(
     },
   });
   const state = loose<ProviderState>({
-    read: () => ({
-      device_id: DEVICE,
-      job_id: JOB,
-      state: options.working === false ? 'completed' : 'working',
-    }),
+    read: () =>
+      Promise.resolve({
+        device_id: DEVICE,
+        job_id: JOB,
+        state: options.working === false ? 'completed' : 'working',
+      }),
   });
   const turn = loose<Turn>({
     jobId: JOB,

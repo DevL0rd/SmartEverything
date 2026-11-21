@@ -73,9 +73,9 @@ function source(
     durable_seq: events.length - 1,
   };
   return {
-    own: () => ({ id: CHAT, profile_id: PROFILE }),
+    own: () => Promise.resolve({ id: CHAT, profile_id: PROFILE }),
     binding: () => ({ session_id: sessionId, execution_target: target }),
-    store: { dshSessions: { stat: () => metadata, readAll: () => events } },
+    sessionLog: () => Promise.resolve({ metadata, events }),
   };
 }
 

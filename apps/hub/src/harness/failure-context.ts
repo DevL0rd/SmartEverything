@@ -7,16 +7,21 @@ type FailureInput = Parameters<FailureContext>[0];
 type FailureWriter = Parameters<FailureContext>[1];
 
 export function harnessFailureContext(
-  store: Pick<Store, 'harnessRecovery'>,
-): (input: FailureInput, write: FailureWriter) => void {
-  return ({ sessionId, turn, publicationFailed }, work): void => {
+  store: Pick<Store, 'host'>,
+): (input: FailureInput, write: FailureWriter) => Promise<void> {
+  return async ({ sessionId, turn, publicationFailed }, work): Promise<void> => {
     if (publicationFailed === true) {
       withExecutionAuthority(undefined, () => {
         work(true);
       });
       return;
     }
-    const authorities = store.harnessRecovery.turnAuthorities(sessionId, turn);
+    const authorities = await store.host.call(
+      'harnessRecovery',
+      'turnAuthorities',
+      sessionId,
+      turn,
+    );
     const authority =
       authorities.find((source) => source.repair_origin !== undefined) ?? authorities[0];
     withExecutionAuthority(authority, work);

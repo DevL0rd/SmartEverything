@@ -189,7 +189,9 @@ function partsOf(context: ExtensionContext, options: McpOptions): Parts {
           context.live.announce(notice, 'owners');
         },
         requested: (request): void => {
-          options.alerts.raise(mcpConsentPush(request, context.store.settings.read().home_name));
+          options.alerts.raise(
+            mcpConsentPush(request, context.store.live.home.settings.read().home_name),
+          );
         },
       }),
       log: context.log.forArea('hub.oauth'),

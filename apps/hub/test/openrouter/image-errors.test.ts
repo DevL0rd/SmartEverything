@@ -44,7 +44,7 @@ async function generationFailure(transport: typeof fetch): Promise<unknown> {
       inputs: [],
       signal: new AbortController().signal,
       submitted: (): void => undefined,
-      usage: (): void => undefined,
+      usage: (): Promise<void> => Promise.resolve(),
       preview: () => Promise.resolve(),
     })
     .then(
