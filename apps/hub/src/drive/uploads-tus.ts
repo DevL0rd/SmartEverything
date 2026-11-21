@@ -3,7 +3,7 @@ import { open, type FileHandle } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { messageOf } from '@smarteverything/logging';
 import { fsCode } from '../fs-code';
-import type { DriveItem, DriveUpload } from '@smarteverything/domain';
+import type { DriveUpload } from '@smarteverything/domain';
 import { commitContent } from './changes';
 import { locate, TMP_DIRECTORY, type DriveWriteRoot } from './intents';
 import { checkDriveFreeSpace, loadedQuotaCheck } from './quotas';
@@ -39,7 +39,6 @@ import type { DataSpaceProbe } from './data-space';
 
 export interface TusEnv extends StagedEnv {
   readonly space: DataSpaceProbe['space'];
-  readonly completed: (item: DriveItem) => Promise<void>;
   readonly activity: Pick<DriveActivity, 'around'>;
   readonly authenticate: (request: IncomingMessage) => Promise<TusCaller | null>;
 }
@@ -374,7 +373,7 @@ export class TusUploads {
         await host.call('driveUploads', 'expectedHash', upload.id),
       );
       const relPath = await relPathOf(this.env, destination, upload.name);
-      const written = await commitContent(this.env, {
+      await commitContent(this.env, {
         root: destination.root,
         staged,
         relPath,
@@ -382,9 +381,9 @@ export class TusUploads {
         alongside: [
           ...(blocks === null ? [] : [{ kind: 'blocks', ...blocks } as const]),
           { kind: 'uploadComplete', uploadId: upload.id },
+          { kind: 'backupSettle' },
         ],
       });
-      await this.env.completed(written.item);
       return await this.completed(upload.id);
     } catch (cause) {
       await this.discard(upload);

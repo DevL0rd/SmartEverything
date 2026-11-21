@@ -367,6 +367,6 @@ export const PHOTO_BACKUP_TOUCH_UNIT = storeUnit(
   },
 );
 
-export const PHOTO_BACKUP_SETTLE_UNIT = storeUnit((store, input: { readonly item: DriveItem }) =>
-  recordsOf(store).settleItem(input.item),
-);
+export function settleBackupIn(store: Store, item: DriveItem): number {
+  return recordsOf(store).settleItem(item);
+}

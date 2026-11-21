@@ -97,6 +97,10 @@ function runner(): BackupRunner {
       checkBackup: (input) =>
         opened.store.host.write('photoBackupCheck', { profileId, request: input }),
       resolveTarget: (deviceId, takenAt) => service.backupTarget(profileId, deviceId, takenAt),
+      folderCopies: (input) =>
+        opened.store.host.read('photoBackupCopies', { profileId, request: input }),
+      origins: (input) =>
+        opened.store.host.read('photoBackupOrigins', { profileId, request: input }),
     },
   });
 }
@@ -113,9 +117,17 @@ async function snapshot(): Promise<unknown> {
   };
 }
 
+function resentAt(before: unknown, at: string): unknown {
+  const stamped = JSON.stringify(before).replace(
+    new RegExp(`"(at|last_seen_at|lastSeenAt|lastBackupAt)":"${UPLOADED_AT}"`, 'g'),
+    `"$1":"${at}"`,
+  );
+  return JSON.parse(stamped);
+}
+
 describe('legacy backup identity lookup against the actual backup service', () => {
   it.each([true, false])(
-    'preserves all backup state and notices when the canonical copy exists: %s',
+    'keeps the backup state and resends only the folder of a canonical copy that exists: %s',
     async (held) => {
       const itemId = held ? addHeldItem() : null;
       seedLegacy(itemId);
@@ -126,8 +138,14 @@ describe('legacy backup identity lookup against the actual backup service', () =
       });
       await runner().request();
       off();
-      expect(await snapshot()).toEqual(before);
-      expect(notices).toEqual([]);
+      expect(await snapshot()).toEqual(
+        held ? resentAt(before, fixture.opened.store.now().toISOString()) : before,
+      );
+      expect(notices).toEqual(
+        held
+          ? [expect.objectContaining({ type: 'drive_changed', rootIds: [fixture.root.id] })]
+          : [],
+      );
       expect(local.native.hashed).toEqual([]);
       expect(local.upload.started).toEqual([]);
       expect(backupStatus.get()).toMatchObject({ total: 0, done: 0, failed: 0, bytesLeft: 0 });

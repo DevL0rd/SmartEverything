@@ -40,10 +40,6 @@ export class BackupService {
     return await this.manualTarget(profileId);
   }
 
-  settle(item: DriveItem): Promise<number> {
-    return this.env.store.host.write('photoBackupSettle', { item });
-  }
-
   manualTarget(profileId: string): Promise<BackupTarget> {
     return this.serialized(() => this.ensure(profileId, [PHOTOS_FOLDER]));
   }

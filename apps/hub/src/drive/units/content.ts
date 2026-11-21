@@ -11,6 +11,7 @@ import type { DriveItemDraft } from '../../store/repositories/drive-items';
 import type { DriveInodeAttributes, DriveInodeTimes } from '../../store/repositories/drive-inodes';
 import type { Store } from '../../store/store';
 import { storeUnit } from '../../store/host/unit';
+import { settleBackupIn } from '../../photos/backup-records';
 import type { ChangeActor, ContentResult, ItemRecord } from '../changes';
 import {
   announce,
@@ -31,6 +32,7 @@ import { carryBlocks, namesSharing } from '../shared-names';
 export type ContentAlongside =
   | { readonly kind: 'blocks'; readonly blockSize: number; readonly hashes: Uint8Array }
   | { readonly kind: 'uploadComplete'; readonly uploadId: string }
+  | { readonly kind: 'backupSettle' }
   | { readonly kind: 'conflict'; readonly conflict: Omit<DriveConflict, 'conflictItemId'> }
   | {
       readonly kind: 'adoptInode';
@@ -189,7 +191,7 @@ function adoptInode(
 }
 
 function runAlongside(
-  store: SettleStore,
+  store: Store,
   item: DriveItem,
   alongside: readonly ContentAlongside[],
 ): DriveConflict[] {
@@ -207,6 +209,9 @@ function runAlongside(
         break;
       case 'uploadComplete':
         store.driveUploads.complete(spec.uploadId, item);
+        break;
+      case 'backupSettle':
+        settleBackupIn(store, item);
         break;
       case 'conflict': {
         const conflict = DRIVE_CONFLICT.parse({ ...spec.conflict, conflictItemId: item.id });
@@ -228,7 +233,7 @@ function runAlongside(
   return conflicts;
 }
 
-export function settleContentIn(store: SettleStore, input: SettleInput): SettledContent {
+export function settleContentIn(store: Store, input: SettleInput): SettledContent {
   const call: SettleCall = { ...input, store };
   const { root, actor, existing, committed, mode } = input;
   const version = captureRow(call);

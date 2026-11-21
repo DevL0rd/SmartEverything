@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import http from 'node:http';
 import { join } from 'node:path';
-import type { DriveItem, DriveRoot } from '@smarteverything/domain';
+import type { DriveRoot } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { folderDraft, recordItem, type ChangeEnv } from '../../../apps/hub/src/drive/changes';
 import { DriveActivity } from '../../../apps/hub/src/drive/activity';
@@ -169,16 +169,9 @@ async function closeServer(server: http.Server, opened: TestStore): Promise<void
   await opened.close();
 }
 
-export async function protocolFixture(
-  completed: (item: DriveItem, service: BackupService) => Promise<void> = async (
-    item,
-    service,
-  ): Promise<void> => {
-    await service.settle(item);
-  },
-): Promise<ProtocolFixture> {
+export async function protocolFixture(): Promise<ProtocolFixture> {
   const storage = await storageFixture();
-  const { env, opened, profileId, clientId, service } = storage;
+  const { env, opened, profileId, clientId } = storage;
   const hashWorker = await bundleHashWorker();
   const hasher = new ContentHasher(hashWorker.script);
   const uploads = new TusUploads({
@@ -191,7 +184,6 @@ export async function protocolFixture(
           ? { profileId, owner: false, clientId, nodeId: null }
           : null,
       ),
-    completed: (item: DriveItem): Promise<void> => completed(item, service),
     activity: new DriveActivity(),
     hasher,
   });

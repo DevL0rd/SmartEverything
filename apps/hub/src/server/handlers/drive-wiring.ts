@@ -36,7 +36,6 @@ import { DriveActivity } from '../../drive/activity';
 import { DriveRootLanes } from '../../drive/root-lanes';
 import { extrasOf, iconsOf, placementsOf, textOf, type DriveExtras } from './drive-extras';
 import { actorOf, type DriveListings, type DriveServices } from './drive-services';
-import { photoBackupService } from './photos-hub';
 import { tusAuthentication } from './drive-tus-auth';
 
 export interface DriveParts {
@@ -280,14 +279,10 @@ function uploadsOf(
   activity: DriveActivity,
   hasher: Pick<ContentHasher, 'hash'>,
 ): TusUploads {
-  const backup = photoBackupService({ store: deps.store, env });
   const tus: TusEnv = {
     ...env,
     store: deps.store,
     space: deps.probe.space,
-    completed: async (item): Promise<void> => {
-      await backup.settle(item);
-    },
     activity,
     authenticate: tusAuthentication(deps.store, deps.nodes),
     hasher,

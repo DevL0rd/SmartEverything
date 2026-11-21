@@ -156,11 +156,12 @@ describe('the actual app upload runner against real tus HTTP', () => {
   });
 
   it('rolls back item, receipt, backup verification and notices when settlement fails', async () => {
-    await fixture.close();
-    fixture = await protocolFixture(async (item, service): Promise<void> => {
-      await service.settle(item);
-      throw new Error('Isolated settlement failure');
-    });
+    fixture.opened.store.context.sql.run(
+      'fail the backup settlement inside the upload commit',
+      `create trigger isolated_settle_failure before update on drive_backup_assets
+       when new.state = 'verified'
+       begin select raise(abort, 'Isolated settlement failure'); end`,
+    );
     await rememberPhoto();
     const notices: unknown[] = [];
     const unsubscribe = fixture.opened.store.feed.subscribeNotices((notice) => {

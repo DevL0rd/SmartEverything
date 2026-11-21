@@ -34,7 +34,6 @@ import {
 } from '../../src/drive/uploads-tus-wire';
 import { isMissing } from '../../src/fs-util';
 import { nodeFiles, stageBytes } from '../../src/drive/versions';
-import { BackupService } from '../../src/photos/backup';
 import { BackupRecords } from '../../src/photos/backup-records';
 import { DriveBackupRepository } from '../../src/store/repositories/drive-backup';
 import { captureLogs, testLogger } from '../support/logs';
@@ -83,14 +82,10 @@ function caller(profileId: string, clientId: string): TusCaller {
   return { profileId, clientId, nodeId: null };
 }
 
-async function startServer(
-  writeAt: PositionalWrite = writeAtPosition,
-  completed: (item: DriveItem) => Promise<void> = (): Promise<void> => Promise.resolve(),
-): Promise<TusUploads> {
+async function startServer(writeAt: PositionalWrite = writeAtPosition): Promise<TusUploads> {
   const env: TusEnv = {
     ...changeEnv(),
     store: opened.store,
-    completed,
     activity,
     hasher,
     space: () => Promise.resolve({ totalBytes: 1e12, freeBytes: 1e12 }),
@@ -232,7 +227,6 @@ async function interrupted(location: string, payload: Buffer, sent: number): Pro
 }
 
 function registeredBackup(): {
-  readonly service: BackupService;
   readonly records: BackupRecords;
   readonly phoneId: string;
 } {
@@ -243,7 +237,6 @@ function registeredBackup(): {
     store: { ...opened.store, driveBackup: backups },
     sql: opened.store.context.sql,
   };
-  const service = new BackupService(env);
   const records = new BackupRecords(env);
   const [phone] = opened.store.devices.upsert([
     {
@@ -274,7 +267,7 @@ function registeredBackup(): {
       includeVideos: true,
     },
   });
-  return { service, records, phoneId: phone.id };
+  return { records, phoneId: phone.id };
 }
 
 beforeAll(async () => {
@@ -850,7 +843,6 @@ describe('quota and free space', () => {
     const env: TusEnv = {
       ...changeEnv(),
       store: opened.store,
-      completed: (): Promise<void> => Promise.resolve(),
       activity,
       hasher,
       space: () => Promise.resolve({ totalBytes: 100, freeBytes: 5 }),
@@ -905,7 +897,6 @@ describe('quota and free space', () => {
     const env: TusEnv = {
       ...failing,
       store: opened.store,
-      completed: (): Promise<void> => Promise.resolve(),
       activity,
       hasher,
       space: () => Promise.resolve({ totalBytes: 1e12, freeBytes: 1e12 }),
@@ -972,7 +963,7 @@ describe('recovery of the partial file', () => {
 
 describe('camera roll backup through tus', () => {
   it('settles the actual committed hash and repeats a backup without sending bytes', async () => {
-    const { service, records, phoneId } = registeredBackup();
+    const { records, phoneId } = registeredBackup();
     const assets = [
       {
         localId: 'content://photo',
@@ -983,9 +974,7 @@ describe('camera roll backup through tus', () => {
     expect(records.checkHashes(robin, { deviceId: phoneId, assets }).missing).toEqual([
       'content://photo',
     ]);
-    await startServer(writeAtPosition, async (item): Promise<void> => {
-      await service.settle(item);
-    });
+    await startServer();
     const location = await open(5, 'photo.jpg');
     const rejected = await patch(location, 0, 'other', {
       extra: { 'Upload-Checksum': `sha256 ${sha('photo')}` },
