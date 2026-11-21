@@ -16,7 +16,6 @@ import {
   harnessPlatform,
 } from '@smarteverything/domain';
 import type {
-  AiSubscriptionHostStatus,
   ComputerServiceConfig,
   HarnessPlatform,
   HubHarnessControl,
@@ -26,6 +25,7 @@ import {
   createComputerHarness,
   hostCapabilities,
   type ComputerHarness,
+  type SubscriptionPublication,
 } from '@smarteverything/harness/process';
 import { harnessFailure } from './harness-failure';
 import type { Logger } from '@smarteverything/logging';
@@ -176,7 +176,8 @@ export class NodeHarnessRuntime {
       },
       this.calls,
       {
-        publishSubscription: (status): Promise<void> => this.publishSubscription(frame, status),
+        publishSubscription: (publication): Promise<void> =>
+          this.publishSubscription(frame, publication),
         ...(this.options.transport?.fetch === undefined
           ? {}
           : { fetch: this.options.transport.fetch }),
@@ -196,18 +197,15 @@ export class NodeHarnessRuntime {
       this.options.log.error('harness.cleanup_unknown', cause);
     }
   }
-  private publishSubscription(binding: Welcome, status: AiSubscriptionHostStatus): Promise<void> {
+  private publishSubscription(
+    binding: Welcome,
+    publication: SubscriptionPublication,
+  ): Promise<void> {
     const socket = this.connection.socket;
     if (socket === null || socket.readyState !== socket.OPEN)
       return Promise.reject(new NodeHarnessError('Subscription supplying host disconnected.'));
     socket.send(
-      JSON.stringify(
-        NODE_HARNESS_FRAME.parse({
-          ...frameBinding(binding),
-          type: 'harness_subscription_status',
-          status,
-        }),
-      ),
+      JSON.stringify(NODE_HARNESS_FRAME.parse({ ...frameBinding(binding), ...publication })),
     );
     return Promise.resolve();
   }

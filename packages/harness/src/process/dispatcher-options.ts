@@ -26,5 +26,5 @@ export interface HarnessDispatcherOptions extends Pick<
     sessionId: string,
     ids: readonly string[],
   ) => AsyncIterable<HarnessAttachment>;
-  readonly authority?: (id: string) => HarnessAuthority;
+  readonly authority?: (id: string) => HarnessAuthority | Promise<HarnessAuthority>;
 }

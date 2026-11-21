@@ -19,7 +19,7 @@ import {
   retryAfterMs,
   withTransientFailures,
 } from '../providers/transient-retry';
-import { MeteredRefusals } from './metered-refusal';
+import { MeteredRefusals, ROUTE_UNAVAILABLE_CODE } from './metered-refusal';
 import { piUsageChunks } from '../providers/pi-usage';
 
 export interface MeteredRouteTransport {
@@ -98,7 +98,7 @@ export class MeteredRouteAdapter extends LlmAdapter {
       this.route.billing !== 'metered' ||
       this.route.state !== 'ready'
     )
-      throw new LlmError('Explicit metered route is unavailable.', 'ROUTE_UNAVAILABLE');
+      throw new LlmError('Explicit metered route is unavailable.', ROUTE_UNAVAILABLE_CODE);
   }
   private delegate(
     fetcher: typeof fetch = fetch,
@@ -153,7 +153,7 @@ export class MeteredRouteAdapter extends LlmAdapter {
       },
       getModels: () => models,
       stream: (): never => {
-        throw new LlmError('Use the native simple stream adapter.', 'ROUTE_UNAVAILABLE');
+        throw new LlmError('Use the native simple stream adapter.', ROUTE_UNAVAILABLE_CODE);
       },
       streamSimple: (model, context, options) =>
         native.streamSimple(model, context, {

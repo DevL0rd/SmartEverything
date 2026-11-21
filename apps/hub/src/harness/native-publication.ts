@@ -2,10 +2,10 @@ import { ApiError } from '@smarteverything/domain';
 import type { HarnessTransportRequest } from '@smarteverything/domain';
 import type { HarnessService } from './service';
 
-export function acceptPublication(
+export async function acceptPublication(
   service: HarnessService,
   input: HarnessTransportRequest,
-): { readonly ok: true } {
+): Promise<{ readonly ok: true }> {
   const request = input.request;
   if (request.operation !== 'publish')
     throw new ApiError('invalid_request', 'Expected a native publication.');
@@ -14,13 +14,20 @@ export function acceptPublication(
     service.subscriptions.frame(publication);
     return { ok: true };
   }
+  if (publication.type === 'harness_subscription_routes') {
+    service.subscriptions.reported(publication);
+    return { ok: true };
+  }
   const frame = publication.frame;
-  service.storage.principal(frame.session_id, input);
-  if (service.store.harnessSessions.state(frame.session_id)?.epoch !== frame.epoch)
+  await service.storage.principal(frame.session_id, input);
+  if (
+    (await service.store.host.call('harnessSessions', 'state', frame.session_id))?.epoch !==
+    frame.epoch
+  )
     throw new ApiError(
       'forbidden',
       'The native frame does not belong to this profile or writer epoch.',
     );
-  service.native(frame);
+  await service.native(frame);
   return { ok: true };
 }

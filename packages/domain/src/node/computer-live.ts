@@ -7,6 +7,7 @@ import { COMPUTER_SESSION } from './computer-session-state';
 import {
   CPU_PART,
   DISKS_PART,
+  DISK_USAGE_PART,
   GPU_PART,
   MEMORY_PART,
   NETWORK_PART,
@@ -27,6 +28,7 @@ export const SAMPLE_TOPICS = [
   'gpu',
   'memory',
   'disks',
+  'disk_usage',
   'network',
   'sensors',
   'power',
@@ -107,6 +109,7 @@ export const SAMPLE_PARTS = z.strictObject({
   gpu: GPU_PART.optional(),
   memory: MEMORY_PART.optional(),
   disks: DISKS_PART.optional(),
+  disk_usage: DISK_USAGE_PART.optional(),
   network: NETWORK_PART.optional(),
   sensors: SENSORS_PART.optional(),
   power: POWER_PART.optional(),

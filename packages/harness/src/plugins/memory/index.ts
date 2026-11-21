@@ -15,8 +15,6 @@ export const name = 'memory';
 
 const RECALL_CONTEXT = 'smarteverything-memory';
 
-const RECALL_ORDER = 300;
-
 export class MemoryPlugin extends Service {
   static readonly inject = ['tools', 'systemPrompt'];
 
@@ -29,23 +27,16 @@ export class MemoryPlugin extends Service {
   }
 
   private install(ctx: Context): void {
-    ctx.effect(() =>
-      ctx.systemPrompt.context({
-        name: RECALL_CONTEXT,
-        order: RECALL_ORDER,
-        interpolate: false,
-        text: (assembly) => {
-          const agent = assembly.agent;
-          if (this.access === undefined || agent === undefined) return '';
-          return renderRecall(this.access.recall(agent.id), new Date());
-        },
-      }),
-    );
     ctx.on('system-prompt/assemble', async (_assembly, assembly, next) => {
       const agent = assembly.agent;
-      if (this.access !== undefined && agent !== undefined) await this.access.prepare(agent.id);
+      const access = this.access;
+      if (access === undefined || agent === undefined) return next();
+      await access.prepare(agent.id);
+      const recall = renderRecall(await access.recall(agent.id), new Date());
       const result = await next();
-      if (this.access !== undefined && agent !== undefined && !this.access.offered(agent.id))
+      if (recall !== '')
+        result.contexts.push({ name: RECALL_CONTEXT, text: recall, interpolate: false });
+      if (!(await access.offered(agent.id)))
         result.tools = result.tools.filter((tool) => tool.name !== MEMORY_TOOL);
       return result;
     });

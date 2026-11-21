@@ -18,7 +18,7 @@ import type {
   HubHarnessControl,
   NodeHarnessFrame,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import type { HarnessService } from '../harness/service';
 import type { ComputerNodeAccess } from '../computers/node-access';
@@ -28,6 +28,7 @@ import { ComputerConnection, ComputerSockets } from './computer-socket';
 import { apiErrorFor } from './errors';
 import { issuesOf } from './issues';
 import { withSignal } from './request-signal';
+import { CommandLanes } from '../commands/lanes';
 type RemoteHarnessSubscriptionsControl = RemoteHarness['subscriptions']['control'];
 
 const CLOSE_POLICY = 1008;
@@ -42,6 +43,7 @@ class HarnessSocket extends ComputerConnection implements ResidenceLink {
   residence: HarnessResidence | null = null;
   readonly calls = new Map<string, AbortController>();
   helloed = false;
+  readonly reports = new CommandLanes();
   configurationSync = false;
   subscriptionControl = false;
 
@@ -114,10 +116,17 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
     }
     if (this.receiveSupplier(connection, residence, frame)) return;
     if (frame.type === 'harness_configuration_report') {
-      this.service.configuration.report(
-        frame.report,
-        frame.manifest,
-        this.service.directory.bound(frame.device_id, frame.generation, frame.runtime_instance),
+      const bound = this.service.directory.bound(
+        frame.device_id,
+        frame.generation,
+        frame.runtime_instance,
+      );
+      background(
+        connection.reports.run('report', async () => {
+          await this.service.configuration.report(frame.report, frame.manifest, bound);
+        }),
+        'harness.configuration_report_failed',
+        { deviceId: frame.device_id },
       );
       return;
     }
@@ -140,14 +149,14 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
         (value): HarnessCallResult => ({ ok: true, value }),
         (cause: unknown): HarnessCallResult => ({ ok: false, error: this.failure(cause) }),
       )
-      .then((result) => {
+      .then(async (result) => {
         if (
           result.ok &&
           request.operation === 'publish' &&
           request.frame.type === 'harness_native' &&
           (request.frame.frame.kind === 'open' || request.frame.frame.kind === 'close')
         )
-          connection.residence?.remote.acceptedChildFrame(request.frame.frame);
+          await connection.residence?.remote.acceptedChildFrame(request.frame.frame);
         this.log.debug('harness.call_finished', () => ({
           socketId: connection.id,
           callId: id,
@@ -207,6 +216,12 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
     residence: HarnessResidence,
     frame: NodeHarnessFrame,
   ): boolean {
+    if (frame.type === 'harness_subscription_routes') {
+      if (!connection.subscriptionControl || !connection.helloed)
+        throw new ApiError('forbidden', 'Subscription control was not negotiated on this host.');
+      this.service.subscriptions.reported(frame);
+      return true;
+    }
     if (
       frame.type === 'harness_subscription_status' ||
       frame.type === 'harness_subscription_failure'

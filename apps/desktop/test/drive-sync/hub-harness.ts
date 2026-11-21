@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Duplex } from 'node:stream';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ApiError, type DriveConflict, type DrivePlacementSet } from '@smarteverything/domain';
+import { ApiError, type DrivePlacementSet } from '@smarteverything/domain';
 import { Logger, messageOf } from '@smarteverything/logging';
 import WebSocket from 'ws';
 import { ComputerNodeAccess } from '../../../hub/src/computers/node-access';
@@ -103,11 +103,7 @@ function routeOf(
   return undefined;
 }
 
-function syncEnv(
-  opened: TestStore,
-  conflicts: Map<string, DriveConflict>,
-  hasher: ContentHasher,
-): SyncEnv {
+function syncEnv(opened: TestStore, hasher: ContentHasher): SyncEnv {
   return {
     files: nodeFiles,
     store: opened.store,
@@ -115,9 +111,6 @@ function syncEnv(
     now: (): Date => NOW,
     purge: { rearm: (): void => undefined },
     posix: syncPosixOf(opened.store, () => NOW),
-    conflicts: {
-      find: (id): DriveConflict | undefined => conflicts.get(id),
-    },
     hasher,
     space: (): ReturnType<SyncEnv['space']> =>
       Promise.resolve({ totalBytes: Number.MAX_SAFE_INTEGER, freeBytes: Number.MAX_SAFE_INTEGER }),
@@ -257,7 +250,7 @@ export async function startFakeHub(): Promise<FakeHub> {
   const opened = await driveTestStore(() => NOW);
   const ownerId = opened.store.profiles.first().id;
   const hashWorker = await bundleHashWorker();
-  const sync = createDriveSync(syncEnv(opened, new Map(), new ContentHasher(hashWorker.script)));
+  const sync = createDriveSync(syncEnv(opened, new ContentHasher(hashWorker.script)));
   const hub = new DriveSyncServer(
     opened.store,
     new ComputerNodeAccess(opened.store, () => NOW),

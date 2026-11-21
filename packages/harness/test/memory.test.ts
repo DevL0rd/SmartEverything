@@ -72,12 +72,12 @@ class FakeMemory implements AiMemoryAccess {
     return Promise.resolve();
   }
 
-  offered(sessionId: string): boolean {
-    return !this.hidden.has(sessionId);
+  offered(sessionId: string): Promise<boolean> {
+    return Promise.resolve(!this.hidden.has(sessionId));
   }
 
-  recall(sessionId: string): AiMemoryRecall {
-    return this.recalls.get(sessionId) ?? recallOf([]);
+  recall(sessionId: string): Promise<AiMemoryRecall> {
+    return Promise.resolve(this.recalls.get(sessionId) ?? recallOf([]));
   }
 
   call(sessionId: string, args: AiMemoryToolArguments): Promise<AiMemoryToolResult> {

@@ -179,9 +179,15 @@ const HARNESS_SUBSCRIPTION_STATUS_FRAME = z.strictObject({
   id: z.uuid().optional(),
   status: AI_SUBSCRIPTION_HOST_STATUS,
 });
+const HARNESS_SUBSCRIPTION_ROUTES_FRAME = z.strictObject({
+  ...BOUND,
+  type: z.literal('harness_subscription_routes'),
+  route_ids: z.array(z.uuid()),
+});
 export const HARNESS_PUBLICATION = z.discriminatedUnion('type', [
   HARNESS_NATIVE_PUBLICATION,
   HARNESS_SUBSCRIPTION_STATUS_FRAME,
+  HARNESS_SUBSCRIPTION_ROUTES_FRAME,
 ]);
 export const HARNESS_CALL_REQUEST = z.discriminatedUnion('operation', [
   z.strictObject({ operation: z.literal('stat'), session_id: DSH_SESSION_ID }),
@@ -270,6 +276,7 @@ export const NODE_HARNESS_FRAME = z.discriminatedUnion('type', [
     manifest: AI_HARNESS_MANIFEST,
   }),
   HARNESS_SUBSCRIPTION_STATUS_FRAME,
+  HARNESS_SUBSCRIPTION_ROUTES_FRAME,
   z.strictObject({
     ...BOUND,
     type: z.literal('harness_subscription_failure'),

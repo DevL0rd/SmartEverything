@@ -5,6 +5,11 @@ import { Logger } from '@smarteverything/logging';
 import type { LogPayload } from '@smarteverything/logging';
 
 export const METERED_REFUSED_CODE = 'METERED_REFUSED';
+export const ROUTE_UNAVAILABLE_CODE = 'ROUTE_UNAVAILABLE';
+
+function refusalCode(refusal: ApiError): string {
+  return refusal.reason === 'model_unavailable' ? ROUTE_UNAVAILABLE_CODE : METERED_REFUSED_CODE;
+}
 
 const log = new Logger('hub.harness');
 
@@ -24,7 +29,7 @@ export class MeteredRefusals {
 
   refused(cause: unknown): unknown {
     this.record(cause);
-    return cause instanceof ApiError ? new LlmError(cause.message, METERED_REFUSED_CODE) : cause;
+    return cause instanceof ApiError ? new LlmError(cause.message, refusalCode(cause)) : cause;
   }
 
   async *surfaced(chunks: AsyncIterable<StreamChunk>): AsyncGenerator<StreamChunk> {
@@ -43,7 +48,7 @@ export class MeteredRefusals {
       ...chunk,
       reason: {
         kind: 'error',
-        failure: { message: refusal.message, code: METERED_REFUSED_CODE },
+        failure: { message: refusal.message, code: refusalCode(refusal) },
       },
     };
   }

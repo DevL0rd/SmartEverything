@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
-import { ApiError, AI_SUBSCRIPTION_HOST_STATUS } from '@smarteverything/domain';
+import {
+  ApiError,
+  AI_SUBSCRIPTION_HOST_STATUS,
+  AI_SUBSCRIPTION_PROVIDER,
+} from '@smarteverything/domain';
 import type {
   AiSubscriptionHostStatus,
   AiSubscriptionProvider,
@@ -9,17 +13,22 @@ import type {
 } from '@smarteverything/domain';
 import type { HarnessConnection, HarnessDirectory } from './directory';
 import type { HarnessRoutes } from './routes';
-import {
-  modelSubscriptionScope,
-  type AiWeeklySubscriptionHistory,
-} from '../store/repositories/ai-weekly-subscription-history';
+import { background } from '@smarteverything/logging';
+import type { HostedRepository } from '../store/host/hosted';
+import { modelSubscriptionScope } from '../store/repositories/ai-weekly-subscription-history';
+import { CommandLanes } from '../commands/lanes';
 
 export class HarnessSubscriptions {
   private readonly statuses = new Map<string, AiSubscriptionHostStatus>();
+  private readonly observing = new CommandLanes();
   constructor(
     private readonly directory: HarnessDirectory,
     private readonly routes: HarnessRoutes,
-    private readonly history: AiWeeklySubscriptionHistory,
+    private readonly history: HostedRepository<
+      'aiWeeklySubscriptionHistory',
+      'observe' | 'changed'
+    >,
+    private readonly paired: () => Promise<readonly string[]>,
   ) {
     directory.onRegister((connection) => {
       routes.offline(connection.host.target);
@@ -70,6 +79,54 @@ export class HarnessSubscriptions {
     this.admitSupplier(connection);
     this.accept(frame.status, { kind: 'device', device_id: frame.device_id });
   }
+  reported(frame: Extract<NodeHarnessFrame, { type: 'harness_subscription_routes' }>): void {
+    const connection = this.directory.bound(
+      frame.device_id,
+      frame.generation,
+      frame.runtime_instance,
+    );
+    this.admitSupplier(connection);
+    this.routes.report({ kind: 'device', device_id: frame.device_id }, frame.route_ids);
+  }
+  async settle(profileId: string, routeId: string): Promise<void> {
+    if (this.known(profileId, routeId)) return;
+    const supplier = this.supplierOf(profileId, routeId, await this.paired());
+    if (supplier === undefined) return;
+    await new Promise<void>((resolve) => {
+      const stop = this.routes.onChange(() => {
+        if (this.pending(profileId, routeId, supplier)) return;
+        stop();
+        resolve();
+      });
+      if (this.pending(profileId, routeId, supplier)) return;
+      stop();
+      resolve();
+    });
+  }
+  private known(profileId: string, routeId: string): boolean {
+    return this.routes.list(profileId).some((route) => route.id === routeId);
+  }
+  private pending(profileId: string, routeId: string, supplier: AiHarnessTarget): boolean {
+    if (this.known(profileId, routeId)) return false;
+    const report = this.routes.reported(supplier);
+    return report === undefined || report.has(routeId);
+  }
+  private supplierOf(
+    profileId: string,
+    routeId: string,
+    paired: readonly string[],
+  ): AiHarnessTarget | undefined {
+    for (const deviceId of paired) {
+      const target: AiHarnessTarget = { kind: 'device', device_id: deviceId };
+      if (
+        AI_SUBSCRIPTION_PROVIDER.options.some(
+          (provider) => subscriptionRouteId(profileId, target, provider) === routeId,
+        )
+      )
+        return target;
+    }
+    return undefined;
+  }
   private acceptReply(
     status: AiSubscriptionHostStatus,
     request: HarnessSubscriptionRequest,
@@ -118,23 +175,27 @@ export class HarnessSubscriptions {
       return;
     this.statuses.set(status.route_id, status);
     this.routes.publish(status.route);
-    this.observeUsage(status, previous);
+    background(
+      this.observing.run('usage', () => this.observeUsage(status, previous)),
+      'harness.subscription_usage_failed',
+      { routeId: status.route_id },
+    );
   }
 
-  private observeUsage(
+  private async observeUsage(
     status: AiSubscriptionHostStatus,
     previous: AiSubscriptionHostStatus | undefined,
-  ): void {
+  ): Promise<void> {
     const scope = modelSubscriptionScope(status.route);
     const usage = status.route.usage;
     if (
       scope !== undefined &&
       usage?.runtime === status.provider &&
-      this.history.observe(scope, usage)
+      (await this.history.observe(scope, usage))
     )
       return;
     if (routeUsageChanged(previous?.route, status.route))
-      this.history.changed(status.profile_id, 'route');
+      await this.history.changed(status.profile_id, 'route');
   }
 }
 
@@ -147,7 +208,7 @@ function routeUsageChanged(
     previous?.credential_generation !== current.credential_generation
   );
 }
-function subscriptionRouteId(
+export function subscriptionRouteId(
   profileId: string,
   target: AiHarnessTarget,
   provider: AiSubscriptionProvider,

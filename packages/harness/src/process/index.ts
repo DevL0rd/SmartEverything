@@ -31,6 +31,7 @@ export type {
   HomeToolTransport,
 } from '../plugins/home-tools';
 export { createComputerHarness, ComputerHarness } from './computer';
+export type { SubscriptionPublication } from './subscriptions';
 export type { HarnessCallPort } from './http';
 export { readNativeHistory, forkNativeHistory } from './history';
 export { nativeToolOutput, toolSummary } from './tool-result-output';

@@ -27,7 +27,7 @@ import { RELAY_HUB_FRAMES, RELAY_NODE_FRAMES } from './relay-frames';
 
 export const NODE_HEARTBEAT_MS = 30_000;
 
-export const NODE_PROTOCOL_VERSION = 2;
+export const NODE_PROTOCOL_VERSION = 3;
 
 export const NODE_INTERFACE = z.object({
   name: z.string().min(1),

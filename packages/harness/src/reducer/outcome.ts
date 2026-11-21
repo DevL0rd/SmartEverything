@@ -21,6 +21,7 @@ const PROVIDER_FAILURES: ReadonlyMap<string, AiHarnessFailure['code']> = new Map
   ['AUTH', 'route_unavailable'],
   ['MISSING_CREDENTIAL', 'route_unavailable'],
   ['INVALID_CREDENTIAL', 'route_unavailable'],
+  ['ROUTE_UNAVAILABLE', 'route_unavailable'],
   ['QUOTA', 'quota_exhausted'],
   ['ACCOUNT_QUOTA', 'quota_exhausted'],
 ]);

@@ -14,6 +14,10 @@ import { SubscriptionEnrollmentInteraction } from './subscription-interaction';
 import { subscriptionStatus } from './subscription-status';
 import type { HarnessBoot } from './boot';
 
+export type SubscriptionPublication =
+  | { readonly type: 'harness_subscription_status'; readonly status: AiSubscriptionHostStatus }
+  | { readonly type: 'harness_subscription_routes'; readonly route_ids: readonly string[] };
+
 export class ProcessSubscriptions {
   private readonly requests = new Map<string, HarnessSubscriptionRequest>();
   private readonly states = new Map<string, AiSubscriptionHostStatus>();
@@ -27,14 +31,14 @@ export class ProcessSubscriptions {
     readonly admission: SubscriptionBillingAdmission,
     private readonly boot: HarnessBoot,
     private readonly ports: {
-      readonly publish: (status: AiSubscriptionHostStatus) => Promise<void>;
+      readonly publish: (publication: SubscriptionPublication) => Promise<void>;
       readonly fetcher: typeof fetch;
     },
   ) {}
   static async open(
     boot: HarnessBoot,
     storage: SubscriptionStorage,
-    publish: (status: AiSubscriptionHostStatus) => Promise<void>,
+    publish: (publication: SubscriptionPublication) => Promise<void>,
     fetcher: typeof fetch = fetch,
   ): Promise<ProcessSubscriptions> {
     await storage.exclusive(() => Promise.resolve());
@@ -48,10 +52,11 @@ export class ProcessSubscriptions {
     );
   }
   async reconnect(): Promise<void> {
+    const requests: HarnessSubscriptionRequest[] = [];
     for (const id of await this.authorization.credentials.routes()) {
       const credential = await this.authorization.credentials.read(id);
       if (credential?.subscriberProfileId === undefined) continue;
-      const request: HarnessSubscriptionRequest = {
+      requests.push({
         profile_id: credential.subscriberProfileId,
         route_id: id,
         provider:
@@ -61,8 +66,15 @@ export class ProcessSubscriptions {
               ? 'chatgpt-codex'
               : 'chatgpt',
         command: { kind: 'status' },
-      };
-      this.requests.set(id, request);
+      });
+    }
+    if (this.stopped) return;
+    await this.ports.publish({
+      type: 'harness_subscription_routes',
+      route_ids: requests.map((request) => request.route_id),
+    });
+    for (const request of requests) {
+      this.requests.set(request.route_id, request);
       await this.refresh(request);
     }
     this.unsubscribe = this.authorization.credentials.onChanged((id) => {
@@ -342,7 +354,7 @@ export class ProcessSubscriptions {
   }
   private async emit(status: AiSubscriptionHostStatus): Promise<AiSubscriptionHostStatus> {
     this.states.set(status.route_id, status);
-    if (!this.stopped) await this.ports.publish(status);
+    if (!this.stopped) await this.ports.publish({ type: 'harness_subscription_status', status });
     return status;
   }
   private track(task: Promise<void>): void {

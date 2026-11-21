@@ -1,4 +1,5 @@
-import { ApiError, type AiChatRow } from '@smarteverything/domain';
+import { ApiError, type AiChatRow, type AssistantReasonCode } from '@smarteverything/domain';
+import { isModelUnavailable } from '../harness/model-unavailable';
 import type { Logger } from '@smarteverything/logging';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
@@ -34,11 +35,11 @@ export function hostedDeliveryEvents(store: Pick<Store, 'host'>): DeliveryEvents
 
 export interface DeliveryOptions {
   readonly events: DeliveryEvents;
-  readonly frozen?: (chatId: string) => boolean;
-  readonly admit?: (event: StoredEvent) => boolean;
-  readonly route: (event: StoredEvent) => Routing;
+  readonly frozen?: (chatId: string) => Promise<boolean>;
+  readonly admit?: (event: StoredEvent) => Promise<boolean>;
+  readonly route: (event: StoredEvent) => Promise<Routing>;
   readonly delivered: (event: StoredEvent) => void;
-  readonly failed: (event: StoredEvent, reason: string) => void;
+  readonly failed: (event: StoredEvent, reason: string, code: AssistantReasonCode) => void;
   readonly retrying: (event: StoredEvent, active: boolean) => void;
   readonly stopped: (event: StoredEvent) => void;
   readonly log: Logger;
@@ -111,11 +112,11 @@ export class AssistantDelivery {
   }
 
   private async consider(event: StoredEvent): Promise<void> {
-    if (this.steerable(event)) {
-      this.steer(event);
+    if (await this.steerable(event)) {
+      await this.steer(event);
       return;
     }
-    if (this.frozen(event.chat_id)) {
+    if (await this.frozen(event.chat_id)) {
       this.options.log.trace('assistant.delivery_deferred', () => ({
         ...eventFields(event),
         busy: this.busy.has(event.chat_id),
@@ -124,7 +125,7 @@ export class AssistantDelivery {
       return;
     }
     if (!(await this.admitted(event))) return;
-    const routing = this.options.route(event);
+    const routing = await this.options.route(event);
     if (routing.kind === 'waiting') {
       this.options.log.debug('assistant.delivery_waiting', () => eventFields(event));
     } else if (routing.kind === 'blocked') {
@@ -132,8 +133,8 @@ export class AssistantDelivery {
         ...eventFields(event),
         reason: routing.reason,
       });
-      await this.give(event, routing.reason);
-    } else if (this.options.admit?.(event) !== false) this.start(event, routing);
+      await this.give(event, routing.reason, 'unknown');
+    } else if ((await this.options.admit?.(event)) !== false) this.start(event, routing);
     else this.options.log.debug('assistant.delivery_held', () => eventFields(event));
   }
 
@@ -142,19 +143,19 @@ export class AssistantDelivery {
     await this.options.events.mark(id, 'answered_at');
   }
 
-  private steerable(event: StoredEvent): boolean {
+  private async steerable(event: StoredEvent): Promise<boolean> {
     return (
       this.busy.has(event.chat_id) &&
       !this.unsteerableChats.has(event.chat_id) &&
       !this.suspended.has(event.chat_id) &&
-      this.options.frozen?.(event.chat_id) !== true &&
       !this.steering.has(event.id) &&
-      !this.unsteerable.has(event.id)
+      !this.unsteerable.has(event.id) &&
+      (await this.options.frozen?.(event.chat_id)) !== true
     );
   }
 
-  private steer(event: StoredEvent): void {
-    const routing = this.options.route(event);
+  private async steer(event: StoredEvent): Promise<void> {
+    const routing = await this.options.route(event);
     if (routing.kind === 'waiting') return;
     const steer =
       routing.kind === 'engine' && routing.authority?.repair_origin === undefined
@@ -199,8 +200,12 @@ export class AssistantDelivery {
     );
   }
 
-  private frozen(chat: string): boolean {
-    return this.busy.has(chat) || this.suspended.has(chat) || this.options.frozen?.(chat) === true;
+  private async frozen(chat: string): Promise<boolean> {
+    return (
+      this.busy.has(chat) ||
+      this.suspended.has(chat) ||
+      (await this.options.frozen?.(chat)) === true
+    );
   }
   async suspend(chatIds: readonly string[], remove: () => Promise<void>): Promise<void> {
     if (chatIds.some((id) => this.suspended.has(id)))
@@ -295,6 +300,12 @@ export class AssistantDelivery {
         return;
       } catch (cause) {
         const reason = messageOf(cause);
+        if (isModelUnavailable(cause)) {
+          this.blocked.delete(event.chat_id);
+          if (attempt > 1) this.options.retrying(event, false);
+          await this.give(event, reason, 'model_unavailable');
+          return;
+        }
         this.blocked.set(event.chat_id, reason);
         trace.failed(attempt, cause, reason);
         if (this.stopped) return;
@@ -330,7 +341,7 @@ export class AssistantDelivery {
 
   private async retired(event: StoredEvent): Promise<boolean> {
     if (this.removed.has(event.chat_id)) return true;
-    if (this.options.frozen?.(event.chat_id) === true) return true;
+    if ((await this.options.frozen?.(event.chat_id)) === true) return true;
     return !(await this.admitted(event));
   }
   private async admitted(event: StoredEvent): Promise<boolean> {
@@ -342,9 +353,9 @@ export class AssistantDelivery {
     await this.answer(event.id);
     return false;
   }
-  private async give(event: StoredEvent, reason: string): Promise<void> {
-    this.options.log.warn('assistant.delivery_given_up', { ...eventFields(event), reason });
+  private async give(event: StoredEvent, reason: string, code: AssistantReasonCode): Promise<void> {
+    this.options.log.warn('assistant.delivery_given_up', { ...eventFields(event), reason, code });
     await this.answer(event.id);
-    this.options.failed(event, reason);
+    this.options.failed(event, reason, code);
   }
 }

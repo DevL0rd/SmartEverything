@@ -3,7 +3,7 @@ import type {
   SubscriptionInferenceRequest,
   SubscriptionInferenceResult,
 } from '@smarteverything/domain';
-import { ProcessSubscriptions } from './subscriptions';
+import { ProcessSubscriptions, type SubscriptionPublication } from './subscriptions';
 import { ComputerModelRoutes } from './computer-models';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -143,7 +143,7 @@ export class ComputerHarness {
   }
 }
 export interface ComputerHarnessOptions {
-  readonly publishSubscription?: (status: AiSubscriptionHostStatus) => Promise<void>;
+  readonly publishSubscription?: (publication: SubscriptionPublication) => Promise<void>;
   readonly fetch?: typeof fetch;
 }
 export async function createComputerHarness(
@@ -192,7 +192,7 @@ export async function createComputerHarness(
 }
 async function openSupply(
   boot: HarnessBoot,
-  publish: (status: AiSubscriptionHostStatus) => Promise<void>,
+  publish: (publication: SubscriptionPublication) => Promise<void>,
   fetcher: typeof fetch,
 ): Promise<SubscriptionSupply | null> {
   const storage = HOST_PLATFORM[boot.platform].subscriptionStorage;
@@ -277,16 +277,12 @@ function computerHello(
 
 function subscriptionPublisher(
   http: HarnessHub,
-): (status: AiSubscriptionHostStatus) => Promise<void> {
-  return async (status): Promise<void> => {
+): (publication: SubscriptionPublication) => Promise<void> {
+  return async (publication): Promise<void> => {
     await http.call(
       {
         operation: 'publish',
-        frame: HARNESS_PUBLICATION.parse({
-          ...http.identity(),
-          type: 'harness_subscription_status',
-          status,
-        }),
+        frame: HARNESS_PUBLICATION.parse({ ...http.identity(), ...publication }),
       },
       DONE,
     );

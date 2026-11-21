@@ -1,4 +1,7 @@
 import {
+  AI_MODEL_ROUTE,
+  type AiHarnessTarget,
+  type AiModelRoute,
   type AiModelRow,
   DEFAULT_AI_HARNESS_PERMISSION,
   DSH_ENGINE_REQUEST,
@@ -11,6 +14,7 @@ import { systemClock } from '../../src/clock';
 import { OwnEngineSelections } from '../../src/harness/own-selection';
 import { HarnessRoutes } from '../../src/harness/routes';
 import { HarnessService } from '../../src/harness/service';
+import { subscriptionRouteId } from '../../src/harness/subscriptions';
 import { Catalogue } from '../../src/openrouter/catalogue';
 import {
   completeEngine,
@@ -62,6 +66,7 @@ const CLAUDE_ROW: AiModelRow = {
 
 let opened: TestStore;
 let selections: OwnEngineSelections;
+let routes: HarnessRoutes;
 let ownerId: string;
 let memberId: string;
 
@@ -102,7 +107,7 @@ beforeEach(async () => {
   });
   await catalogue.start();
   catalogue.stop();
-  const routes = new HarnessRoutes(catalogue, () => true);
+  routes = new HarnessRoutes(catalogue, () => true);
   selections = new OwnEngineSelections(
     new HarnessService(store, routes, () => undefined, {
       layout: hubLayout(opened.directory, {}),
@@ -130,21 +135,21 @@ function chatOf(profileId: string, stored: DshEngine): string {
 }
 
 describe('a dsh chat carrying another profile’s model route', () => {
-  it('gets its own profile’s route when its first turn is admitted', () => {
+  it('gets its own profile’s route when its first turn is admitted', async () => {
     const ownerRoute = select(ownerId, MODEL);
     if (ownerRoute.kind !== 'dsh') throw new Error('The owner route did not resolve.');
     const chatId = chatOf(memberId, ownerRoute);
 
-    selections.migrate(chatId);
+    await selections.migrate(chatId);
 
     const admitted = opened.store.aiChats.chat(chatId).engine;
     expect(admitted).toMatchObject({ kind: 'dsh' });
     expect(admitted).not.toEqual(ownerRoute);
-    selections.migrate(chatId);
+    await selections.migrate(chatId);
     expect(opened.store.aiChats.chat(chatId).engine).toEqual(admitted);
   });
 
-  it('keeps a route its profile already has, with its target and session', () => {
+  it('keeps a route its profile already has, with its target and session', async () => {
     const own = select(ownerId, MODEL);
     if (own.kind !== 'dsh') throw new Error('The owner route did not resolve.');
     const onDevice: DshEngine = {
@@ -153,17 +158,115 @@ describe('a dsh chat carrying another profile’s model route', () => {
     };
     const chatId = chatOf(ownerId, onDevice);
 
-    selections.migrate(chatId);
+    await selections.migrate(chatId);
 
     expect(opened.store.aiChats.chat(chatId).engine).toEqual(onDevice);
   });
 
-  it('refuses a route that belongs to no supplier it can replace', () => {
+  it('refuses a route that belongs to no supplier it can replace', async () => {
     const chatId = chatOf(ownerId, engine('00000000-0000-4000-8000-000000000000'));
 
-    expect(() => {
-      selections.migrate(chatId);
-    }).toThrow('there is no account or paid fallback');
+    await expect(selections.migrate(chatId)).rejects.toThrow(
+      'there is no account or paid fallback',
+    );
+  });
+});
+
+describe('a subscription chat after a Hub restart', () => {
+  function pairComputer(): AiHarnessTarget {
+    const [row] = opened.store.devices.upsert([
+      {
+        provider: 'local',
+        externalId: 'computer:machine-1',
+        parentId: null,
+        kind: 'computer',
+        name: 'Workstation',
+        model: 'm',
+        manufacturer: 'm',
+        providerRoom: null,
+        roomId: null,
+        online: true,
+        capabilities: [],
+        details: {},
+      },
+    ]);
+    if (row === undefined) throw new Error('The computer device was not stored.');
+    opened.store.computerNodes.bind({
+      deviceId: row.id,
+      machineId: 'machine-1',
+      tokenHash: 'node-hash',
+      hubUrl: 'https://hub.example',
+      windowClientId: null,
+    });
+    return { kind: 'device', device_id: row.id };
+  }
+
+  function subscriptionRoute(target: AiHarnessTarget, id: string): AiModelRoute {
+    return AI_MODEL_ROUTE.parse({
+      id,
+      profile_id: ownerId,
+      supplier: target,
+      subscriber_id: ownerId,
+      auth: { provider: 'anthropic', kind: 'claude-subscription-oauth' },
+      billing: 'subscription-only',
+      fallback: 'none',
+      background_authorized: true,
+      capability_revision: 'r1',
+      models: [
+        {
+          id: MODEL,
+          name: 'Claude',
+          capabilities: {
+            revision: 'r1',
+            input_modalities: ['text'],
+            output_modalities: ['text'],
+            reasoning: false,
+            efforts: [],
+            default_effort: null,
+            local_tools: true,
+            context_tokens: null,
+            max_output_tokens: null,
+            discovered_at: '2026-10-08T10:00:00.000Z',
+          },
+        },
+      ],
+      state: 'ready',
+    });
+  }
+
+  it('waits for its computer’s route report instead of failing, then keeps its route', async () => {
+    const target = pairComputer();
+    const routeId = subscriptionRouteId(ownerId, target, 'claude');
+    const stored = engine(routeId);
+    const chatId = chatOf(ownerId, stored);
+    let settled = false;
+
+    const migrated = selections.migrate(chatId).then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+
+    routes.report(target, [routeId]);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+
+    routes.publish(subscriptionRoute(target, routeId));
+    await migrated;
+
+    expect(opened.store.aiChats.chat(chatId).engine).toEqual(stored);
+  });
+
+  it('fails with model_unavailable once its computer reported without the route', async () => {
+    const target = pairComputer();
+    const chatId = chatOf(ownerId, engine(subscriptionRouteId(ownerId, target, 'claude')));
+
+    const migrated = selections.migrate(chatId);
+    await new Promise((resolve) => setImmediate(resolve));
+    routes.report(target, []);
+
+    await expect(migrated).rejects.toMatchObject({ reason: 'model_unavailable' });
   });
 });
 
@@ -185,7 +288,7 @@ describe('paid Claude and OpenAI models on the metered OpenRouter route', () => 
 });
 
 describe('a chat on a computer engine', () => {
-  it('is left alone', () => {
+  it('is left alone', async () => {
     const codex = {
       kind: 'codex',
       device_id: '11111111-1111-4111-8111-111111111111',
@@ -203,7 +306,7 @@ describe('a chat on a computer engine', () => {
       engine: codex,
     });
 
-    selections.migrate(chat.id);
+    await selections.migrate(chat.id);
 
     expect(opened.store.aiChats.chat(chat.id).engine).toEqual(codex);
   });

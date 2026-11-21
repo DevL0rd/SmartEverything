@@ -108,6 +108,21 @@ export const DISKS_PART = z.strictObject({ disks: z.array(DISK_SNAPSHOT) });
 
 export type DisksPart = z.infer<typeof DISKS_PART>;
 
+export const DISK_USAGE = DISK_SNAPSHOT.pick({
+  mount: true,
+  device: true,
+  label: true,
+  filesystem: true,
+  usedBytes: true,
+  totalBytes: true,
+});
+
+export type DiskUsage = z.infer<typeof DISK_USAGE>;
+
+export const DISK_USAGE_PART = z.strictObject({ disks: z.array(DISK_USAGE) });
+
+export type DiskUsagePart = z.infer<typeof DISK_USAGE_PART>;
+
 export const INTERFACE_KINDS = ['wifi', 'ethernet', 'vpn', 'bridge', 'other'] as const;
 
 export type InterfaceKind = (typeof INTERFACE_KINDS)[number];

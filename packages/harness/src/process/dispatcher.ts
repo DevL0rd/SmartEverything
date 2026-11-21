@@ -284,7 +284,7 @@ export class HarnessDispatcher {
         'Native session belongs to another shared conversation.',
       );
     this.options.persistence.bind(input.claim);
-    const authority = this.options.authority?.(input.claim.session_id);
+    const authority = await this.options.authority?.(input.claim.session_id);
     try {
       await this.ports.forward.open(input);
       this.ports.opened.set(input.claim.session_id, input);
