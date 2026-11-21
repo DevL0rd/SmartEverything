@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { background } from '@smarteverything/logging';
 import type { AssistantVoice } from '../assistant-voice/assistant-voice';
 import type { HostedCall } from '../assistant-voice/outreach';
 import type { TurnSession } from '../assistant-voice/turn-session';
@@ -167,7 +168,7 @@ export function startTranscribing(
   const { store, clock } = options;
   const log = options.log.forArea('hub.transcripts');
   const transcripts = new Transcripts({ store, clock, log });
-  transcripts.start();
+  background(transcripts.start(), 'transcripts.start_failed');
   const transcriber = new Transcriber({
     provider: new OpenRouterTranscription(context.openRouter.client, options.layout.tmp),
     ledger: store.host,

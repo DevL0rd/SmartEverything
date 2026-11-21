@@ -14,7 +14,7 @@ import {
   type TranscriptSettingsChange,
   type TranscriptSource,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import type { Store } from '../store/store';
 import { LineLevels } from './line-levels';
@@ -22,7 +22,7 @@ import { collapseHeard } from './merged-read';
 import { TranscriptSettingsStore } from './transcript-settings';
 
 export interface TranscriptsOptions {
-  readonly store: Pick<Store, 'transcripts' | 'settingsKv' | 'speech' | 'live'>;
+  readonly store: Pick<Store, 'host' | 'transcripts' | 'settingsKv' | 'speech' | 'live'>;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
 }
@@ -51,17 +51,17 @@ export class Transcripts {
     this.saved = new TranscriptSettingsStore(options.store);
   }
 
-  start(): void {
-    const { transcripts } = this.options.store;
+  async start(): Promise<void> {
+    const { host } = this.options.store;
     const at = this.now().toISOString();
-    const closed = TRANSCRIPT_SOURCES.reduce(
-      (total, source) => total + transcripts.closeOpen(source, at),
-      0,
+    const closed = await Promise.all(
+      TRANSCRIPT_SOURCES.map((source) => host.call('transcripts', 'closeOpen', source, at)),
     );
-    if (closed > 0) {
-      this.options.log.info('transcripts.unfinished_closed', { count: closed });
+    const count = closed.reduce((total, each) => total + each, 0);
+    if (count > 0) {
+      this.options.log.info('transcripts.unfinished_closed', { count });
     }
-    this.prune();
+    await this.prune();
   }
 
   stop(): void {
@@ -76,7 +76,7 @@ export class Transcripts {
   updateSettings(change: TranscriptSettingsChange): TranscriptSettings {
     const settings = this.saved.save(change);
     this.options.log.info('transcripts.settings_changed', { ...settings });
-    this.prune();
+    background(this.prune(), 'transcripts.prune_failed');
     return settings;
   }
 
@@ -167,8 +167,10 @@ export class Transcripts {
     this.options.store.transcripts.removeLine(sessionId, lineId);
   }
 
-  private prune(): void {
-    const removed = this.options.store.transcripts.prune(
+  private async prune(): Promise<void> {
+    const removed = await this.options.store.host.call(
+      'transcripts',
+      'prune',
       this.now().toISOString(),
       this.saved.read().retention_days,
     );
@@ -187,7 +189,7 @@ export class Transcripts {
     }
     this.timer = this.options.clock.at(new Date(next), () => {
       this.timer = null;
-      this.prune();
+      background(this.prune(), 'transcripts.prune_failed');
     });
   }
 
