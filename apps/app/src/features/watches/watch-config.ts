@@ -17,14 +17,17 @@ export type ConfigState =
   | { readonly kind: 'ready'; readonly config: WatchConfig };
 
 export function configOf(watch: Device): ConfigState {
-  const raw = watch.details['config'];
+  return configFrom(watch.id, watch.details['config']);
+}
+
+export function configFrom(deviceId: string, raw: unknown): ConfigState {
   if (raw === undefined || raw === null) {
     return { kind: 'none' };
   }
   const parsed = WATCH_CONFIG.safeParse(raw);
   if (!parsed.success) {
     log.warn('watch.config_invalid', {
-      deviceId: watch.id,
+      deviceId,
       issues: parsed.error.issues.map((issue) => issue.path.join('.')),
     });
   }

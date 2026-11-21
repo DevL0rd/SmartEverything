@@ -11,7 +11,7 @@ import { readLiveSnapshot } from './live-snapshot';
 import { platformStreams } from './live-streams';
 import type { EntityStore } from './entity-store';
 import { loadOwnerConsents } from './live-consents';
-import { attachWatches, detachWatches } from './live-watches';
+import { attachWatches, detachWatches, refusedWatch } from './live-watches';
 import { rejectedTables } from './live-subscription';
 import { UnreadableChangeError } from './live-reducers';
 import type { SyncProblem } from './state';
@@ -28,6 +28,7 @@ import { LogTally, logEnabled } from '../design/log-tally';
 
 const log = new Logger('app.live');
 export const LINK_DEADLINE_MS = 20_000;
+const POLICY_VIOLATION = 1008;
 type Phase = 'closed' | 'buffering' | 'live';
 const traffic = new LogTally(log, 'live.summarised', 5000);
 type ActivityNotice = Extract<LiveWireMessage, { type: 'chat_activity' | 'chat_stream' }>;
@@ -53,6 +54,7 @@ export class LiveSync {
   private unsupportedTables: ReadonlySet<string> = new Set();
   private sentTables: readonly LiveTable[] = [];
   private suspended = false;
+  private refusedClose = false;
   private phaseSince = Date.now();
 
   constructor(
@@ -160,7 +162,7 @@ export class LiveSync {
   }
 
   private answered(): void {
-    if (this.suspended || this.retry === null) return;
+    if (this.suspended || this.retry === null || this.refusedClose) return;
     log.info('live.hub_answered', { ...this.ids(), retryPending: true });
     clearTimeout(this.retry);
     this.open();
@@ -216,7 +218,7 @@ export class LiveSync {
       this.failures.unreadableChange(received.table, received.reason);
       return;
     }
-    if (this.dropUnsupported(received.message)) return;
+    if (this.dropUnsupported(received.message) || refusedWatch(received.message)) return;
     recordNotice();
     if (logEnabled('debug')) {
       traffic.bump(
@@ -402,7 +404,8 @@ export class LiveSync {
     this.enter('closed');
     this.snapshotRun += 1;
     this.store.setSync({ status: 'interrupted' });
-    log.info('live.closed', { code, reason });
+    this.refusedClose = code === POLICY_VIOLATION;
+    log.info('live.closed', { code, reason, refused: this.refusedClose });
     if (code === TOKEN_WITHDRAWN) {
       connectionRefused(this.connection);
       return;

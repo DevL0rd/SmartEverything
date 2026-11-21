@@ -72,11 +72,26 @@ export function routerFace(snapshot: RouterSnapshot, owner = false): Face {
           system: snapshot.system,
           network: snapshot.network,
           stations: snapshot.stations,
+          radios: snapshot.radios.map(
+            ({ band, noiseDbm, temperatureCelsius, airtimeBusyPercent }) => ({
+              band,
+              noiseDbm,
+              temperatureCelsius,
+              airtimeBusyPercent,
+            }),
+          ),
         },
         'router.snapshot': {
           at: snapshot.at,
           info: snapshot.info,
-          radios: snapshot.radios,
+          radios: snapshot.radios.map(
+            ({
+              noiseDbm: _noise,
+              temperatureCelsius: _temperature,
+              airtimeBusyPercent: _busy,
+              ...radio
+            }) => radio,
+          ),
           clients: snapshot.clients,
           people: snapshot.people,
         },

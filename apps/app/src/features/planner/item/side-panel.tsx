@@ -17,7 +17,7 @@ import { useMinute } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import type { StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
-import { useMyWatch } from '../../watches';
+import { useHasMyWatch } from '../../watches';
 import { usePlannerPreferences, usePlannerRange, type PlannerPerson } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { LIST_DOT } from './composer-tokens';
@@ -79,7 +79,7 @@ function usePanelData(
   const views = usePlannerRange(person, window.from, window.to, null).data?.occurrences ?? [];
   const view = day === null ? null : occurrenceIn(views, item.id, selection.occurrenceKey);
   const push = usePlannerPreferences(person).data?.watch.watch_calendar_push ?? false;
-  const watch = useMyWatch() !== null && person === null;
+  const watch = useHasMyWatch() && person === null;
   return { view, views, timeZone, now, watchLine: onWatchCalendar({ view, push, watch, now }) };
 }
 

@@ -29,6 +29,7 @@ export function useOpenRouterAccount(keySet: boolean): UseQueryResult<OpenRouter
     queryKey: OPENROUTER_ACCOUNT_KEY,
     queryFn: ({ signal }) => api().call(M.readOpenRouterAccount, {}, { signal }),
     enabled: owner && keySet,
+    refetchOnMount: 'always',
   });
 }
 

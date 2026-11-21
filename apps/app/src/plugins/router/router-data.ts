@@ -53,11 +53,25 @@ function withTraffic(
   return updated.every((client, index) => client === clients[index]) ? clients : updated;
 }
 
+const UNREPORTED_TELEMETRY = {
+  noiseDbm: null,
+  temperatureCelsius: null,
+  airtimeBusyPercent: null,
+} as const;
+
+function withTelemetry(
+  radios: RouterInventory['radios'],
+  telemetry: RouterLive['radios'],
+): RouterSnapshot['radios'] {
+  const byBand = new Map(telemetry.map(({ band, ...readings }) => [band, readings] as const));
+  return radios.map((radio) => ({ ...radio, ...(byBand.get(radio.band) ?? UNREPORTED_TELEMETRY) }));
+}
+
 function routerSnapshotOf(live: RouterLive, inventory: RouterInventory): RouterSnapshot {
   return {
     ...live,
     info: inventory.info,
-    radios: inventory.radios,
+    radios: withTelemetry(inventory.radios, live.radios),
     clients: withTraffic(inventory.clients, live.stations),
     people: inventory.people,
   };

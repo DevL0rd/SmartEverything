@@ -7,9 +7,9 @@ import { EmptyState } from '../../components/empty-state';
 import { ListRow } from '../../components/list-row';
 import { NavRow } from '../../components/rows';
 import { List } from '../../components/section';
-import { useDevices } from '../../store/selectors';
 import type { Device } from '../../store/state';
 import { usePresence } from './presence-data';
+import { useDeviceLinks } from './zone-devices';
 import { ReauthPrompt } from './reauth-prompt';
 import { lightText, zoneCount, zoneState } from './presence-model';
 import { lightWord, Swatch, useZoneColours, zoneName } from './room-map-legend';
@@ -34,14 +34,14 @@ function ZoneList({
   readonly sensor: ShellyDevice;
   readonly device: Device;
 }): ReactNode {
-  const devices = useDevices({ includeHidden: true });
+  const links = useDeviceLinks();
   const colours = useZoneColours(sensor);
   const room = href.settings.device(device.id, 'presence-room');
   const reason = addZoneReason(sensor);
   return (
     <List inset title="Zones">
       {sensor.zones.map((zone) => {
-        const child = devices.find((item) => item.external_id === zone.externalId);
+        const child = links.get(zone.externalId);
         return (
           <ListRow
             key={zone.key}

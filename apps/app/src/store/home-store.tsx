@@ -110,7 +110,7 @@ function synchronized(
   if (!frames.some((change) => change.table === 'device_effect_targets')) {
     refreshDeviceEffects(client);
   }
-  refreshChatMeterHistory(client, replayed);
+  refreshChatMeterHistory(client, replayed, frames);
   refreshHarness(client);
   refreshTranscriptReaders(client);
   refreshImageOperations(client);

@@ -132,8 +132,7 @@ describe('inspect in the shared renderer', () => {
     const gl: LiveGl = {
       autoClear: true,
       info: { programs: [] },
-      setPixelRatio: () => undefined,
-      setSize: () => undefined,
+      setDrawingBufferSize: () => undefined,
       setScissorTest: () => undefined,
       setScissor: () => undefined,
       setViewport: () => undefined,

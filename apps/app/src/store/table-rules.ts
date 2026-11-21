@@ -180,11 +180,6 @@ export const RULES: Rules = {
     order: newest((row) => row.created_at),
     keep: ALL,
   },
-  ai_usage: {
-    idOf: (row) => row.id,
-    order: newest((row) => row.at),
-    keep: 500,
-  },
   plugins: { idOf: (row) => row.id, order: alphabetical((row) => row.manifest.name), keep: ALL },
   plugin_streams: {
     idOf: (row) => pluginStreamKey(row.plugin_id, row.stream),

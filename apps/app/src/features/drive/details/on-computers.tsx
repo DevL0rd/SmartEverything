@@ -9,7 +9,7 @@ import type { ColourRole } from '../../../design/tokens';
 import { sameJson } from '../../../store/same-json';
 import type { StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
-import { useDriveItems, useDrivePlacementRows, useDriveRoots } from '../data';
+import { useDriveItems, useDrivePlacementRows, useDriveRootBytes } from '../data';
 import {
   RING_SIZE,
   RING_THICKNESS,
@@ -36,7 +36,7 @@ function computerNamesIn(
 }
 
 function useComputerRings(rootId: string, item: DriveItem): readonly ComputerRing[] {
-  const root = useDriveRoots().find((one) => one.id === rootId) ?? null;
+  const rootBytes = useDriveRootBytes(rootId);
   const placements = useDrivePlacementRows().filter((placement) => placement.rootId === rootId);
   const folderIds = placements.flatMap((placement) =>
     placement.folderItemId === null ? [] : [placement.folderItemId],
@@ -53,8 +53,8 @@ function useComputerRings(rootId: string, item: DriveItem): readonly ComputerRin
   return placements.flatMap((placement, index) => {
     const folder = folderOf(placement);
     if (folder === undefined || !coversItem(folder?.relPath ?? null, item.relPath)) return [];
-    const placedBytes = folder === null ? root?.bytes : folder.bytes;
-    if (placedBytes === undefined) return [];
+    const placedBytes = folder === null ? rootBytes : folder.bytes;
+    if (placedBytes === null) return [];
     const name = names[index] ?? null;
     if (name === null) {
       log.warn('placement.device_unknown', {

@@ -46,8 +46,10 @@ interface AutomationListStub {
   readonly rejected: number;
 }
 
+vi.mock('./editor-devices', () => ({
+  useEditorDevices: (): readonly DeviceStub[] => world.devices,
+}));
 vi.mock('../../../store/selectors', () => ({
-  useDevices: (): readonly DeviceStub[] => world.devices,
   useRooms: (): readonly never[] => world.empty,
   useRows: (): readonly never[] => world.empty,
   useIsOwner: (): boolean => true,

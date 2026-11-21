@@ -4,8 +4,8 @@ import { View } from 'react-native';
 import type { IconName } from '../../../components/icon';
 import { ListRow } from '../../../components/list-row';
 import { SwitchRow } from '../../../components/rows';
-import { useRows } from '../../../store/selectors';
-import type { Device, RowOf } from '../../../store/state';
+import { sameJson } from '../../../store/same-json';
+import { rowsOf, type Device, type RowOf, type StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
 import { deviceIcon } from '../../device-visuals';
 import { WatchStateLines } from '../../planner';
@@ -36,14 +36,27 @@ export function isPersonWatch(device: Device, profileId: string | null): boolean
   return isLocalWatch(device) && device.details['profileId'] === profileId;
 }
 
+export type RingClient = Pick<
+  RowOf<'clients'>,
+  'id' | 'name' | 'kind' | 'platform' | 'built_in' | 'profile_id'
+>;
+
+export interface RingDevice {
+  readonly id: string;
+  readonly label: string;
+  readonly kind: string;
+  readonly icon: IconName;
+  readonly personWatch: boolean;
+}
+
 export interface RingSources {
-  readonly clients: readonly RowOf<'clients'>[];
-  readonly devices: readonly Device[];
+  readonly clients: readonly RingClient[];
+  readonly devices: readonly RingDevice[];
   readonly selfId: string | null;
   readonly profileId: string | null;
 }
 
-function clientPlace(client: RowOf<'clients'>, selfId: string | null): RingPlace {
+function clientPlace(client: RingClient, selfId: string | null): RingPlace {
   const kind = isRingingKind(client.kind) ? RINGING_CLIENTS[client.kind] : null;
   return {
     target: { kind: 'client', clientId: client.id },
@@ -53,10 +66,10 @@ function clientPlace(client: RowOf<'clients'>, selfId: string | null): RingPlace
   };
 }
 
-function devicePlace(device: Device, links: readonly PlannerWatchLink[]): RingPlace {
+function devicePlace(device: RingDevice, links: readonly PlannerWatchLink[]): RingPlace {
   return {
     target: { kind: 'device', deviceId: device.id },
-    icon: isLocalWatch(device) ? 'watch' : deviceIcon(device),
+    icon: device.icon,
     name: device.label,
     link: links.find((link) => link.deviceId === device.id) ?? null,
   };
@@ -87,7 +100,7 @@ function offeredTargets(sources: RingSources): readonly PlannerRingTarget[] {
     )
     .map((client) => ({ kind: 'client' as const, clientId: client.id }));
   const watches = sources.devices
-    .filter((device) => isPersonWatch(device, sources.profileId))
+    .filter((device) => device.personWatch)
     .map((device) => ({ kind: 'device' as const, deviceId: device.id }));
   return [...clients, ...watches];
 }
@@ -101,11 +114,38 @@ export function ringPlacesOf(
   return [...offered, ...extra].map((target) => targetPlace(target, sources, alarm.watch));
 }
 
+function ringDeviceOf(device: Device, profileId: string | null): RingDevice {
+  return {
+    id: device.id,
+    label: device.label,
+    kind: device.kind,
+    icon: isLocalWatch(device) ? 'watch' : deviceIcon(device),
+    personWatch: isPersonWatch(device, profileId),
+  };
+}
+
+function ringClientOf(client: RowOf<'clients'>): RingClient {
+  return {
+    id: client.id,
+    name: client.name,
+    kind: client.kind,
+    platform: client.platform,
+    built_in: client.built_in,
+    profile_id: client.profile_id,
+  };
+}
+
+function ringSourcesIn(state: StoreState, profileId: string | null): RingSources {
+  return {
+    clients: rowsOf(state.tables.clients).map(ringClientOf),
+    devices: rowsOf(state.tables.devices).map((device) => ringDeviceOf(device, profileId)),
+    selfId: state.session?.client.id ?? null,
+    profileId,
+  };
+}
+
 export function useRingSources(profileId: string | null): RingSources {
-  const clients = useRows('clients');
-  const devices = useRows('devices');
-  const selfId = useStoreSelector((state) => state.session?.client.id ?? null);
-  return { clients, devices, selfId, profileId };
+  return useStoreSelector((state) => ringSourcesIn(state, profileId), sameJson, [profileId]);
 }
 
 export function reachesPhone(sources: RingSources, targets: readonly PlannerRingTarget[]): boolean {
@@ -117,7 +157,7 @@ export function reachesPhone(sources: RingSources, targets: readonly PlannerRing
 }
 
 export function hasPersonWatch(sources: RingSources): boolean {
-  return sources.devices.some((device) => isPersonWatch(device, sources.profileId));
+  return sources.devices.some((device) => device.personWatch);
 }
 
 export interface RingTargetsProps {

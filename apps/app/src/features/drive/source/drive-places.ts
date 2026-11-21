@@ -2,7 +2,6 @@ import type {
   DriveFolderPlace,
   DriveGrantRole,
   DriveItem,
-  DriveRoot,
   DriveSharedWithMeEntry,
 } from '@smarteverything/domain';
 import type { FileLocation, FilePlace } from '../../files';
@@ -15,6 +14,7 @@ import {
   ownDriveOf,
   sharedDriveOf,
   type DriveAccess,
+  type DriveRootPlace,
 } from '../model/drive-access';
 
 export const DRIVE_PLACES = {
@@ -31,7 +31,7 @@ const SHARED_LABEL = 'Shared with me';
 const TRASH_LABEL = 'Trash';
 
 export interface DriveWorld {
-  readonly roots: readonly DriveRoot[];
+  readonly roots: readonly DriveRootPlace[];
   readonly viewerId: string | null;
   readonly shared: readonly DriveSharedWithMeEntry[];
 }
@@ -49,7 +49,7 @@ export function drivePlaceKeyOf(place: string): DrivePlaceKey | null {
 }
 
 export function drivePlacesOf(
-  roots: readonly DriveRoot[],
+  roots: readonly DriveRootPlace[],
   viewerId: string | null,
 ): readonly FilePlace[] {
   const mine = ownDriveOf(roots, viewerId);
@@ -70,16 +70,16 @@ function placeOf(key: DrivePlaceKey, label: string, kind: FilePlace['kind']): Fi
 
 export function rootOfPlace(
   place: string,
-  roots: readonly DriveRoot[],
+  roots: readonly DriveRootPlace[],
   viewerId: string | null,
-): DriveRoot | null {
+): DriveRootPlace | null {
   if (place === DRIVE_PLACES.myDrive) return ownDriveOf(roots, viewerId);
   return place === DRIVE_PLACES.sharedDrive ? sharedDriveOf(roots) : null;
 }
 
 export function folderPlaceOf(
   location: FileLocation,
-  roots: readonly DriveRoot[],
+  roots: readonly DriveRootPlace[],
   viewerId: string | null,
 ): DriveFolderPlace | null {
   if (location.folder !== null) return { kind: 'folder', folderId: location.folder };
@@ -122,7 +122,7 @@ export function accessOfItem(world: DriveWorld, item: Placed): DriveAccess {
 }
 
 export function isForeignRoot(
-  roots: readonly DriveRoot[],
+  roots: readonly DriveRootPlace[],
   rootId: string,
   viewerId: string | null,
 ): boolean {

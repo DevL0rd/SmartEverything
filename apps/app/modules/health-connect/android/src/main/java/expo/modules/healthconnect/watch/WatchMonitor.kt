@@ -64,6 +64,13 @@ data class WatchSnapshot(
   )
 }
 
+object SyncReports {
+  const val HEARTBEAT_MS = 60_000L
+
+  fun due(previousSyncError: String?, lastReportAt: Long, now: Long): Boolean =
+    previousSyncError != null || now - lastReportAt >= HEARTBEAT_MS
+}
+
 object WatchSnapshots {
   private val current = ConcurrentHashMap<String, WatchSnapshot>()
 
@@ -223,7 +230,8 @@ class WatchMonitor(
         val outcome = WatchUpload.upload(context, watch.deviceId, files)
         NativeLog.info(SCOPE, "upload.finished", NativeLog.elapsedMs(started)) { mapOf("device" to watch.deviceId, "files" to files.size, "kept" to outcome.keep.size) }
         val text = listOfNotNull(outcome.text, captured.text).joinToString("; ")
-        update("sync_finished", text, report = true) {
+        val due = SyncReports.due(WatchSnapshots.of(watch).syncError, lastReportAt, System.currentTimeMillis())
+        update("sync_finished", text, report = due) {
           copy(syncing = false, syncDetail = text, syncError = null, lastSyncAt = Instant.now().toString())
         }
         if (captured.saved) outcome.keep else files.map { it.key }.toSet()

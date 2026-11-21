@@ -1,4 +1,4 @@
-import { Children, use, useReducer, type ReactNode } from 'react';
+import { Children, useContext, useReducer, type ReactNode } from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
 import { cn } from '../../design/cn';
 import { useIdiom } from '../../design/platform';
@@ -89,7 +89,7 @@ function useBandItems(children: ReactNode): {
   readonly tail: ReactNode;
   readonly empty: boolean;
 } {
-  const tail = use(Tail);
+  const tail = useContext(Tail);
   const items = Children.toArray(children);
   return {
     items,

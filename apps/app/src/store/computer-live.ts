@@ -23,6 +23,7 @@ const PART_NAMES = [
   'gpu',
   'memory',
   'disks',
+  'disk_usage',
   'network',
   'sensors',
   'power',

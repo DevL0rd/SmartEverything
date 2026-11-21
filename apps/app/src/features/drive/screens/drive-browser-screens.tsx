@@ -1,12 +1,13 @@
 import { useEffect, useEffectEvent, useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import type { DriveRoot } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { Skeleton } from '../../../components/skeleton';
+import { percent } from '../../../format/number';
 import { useIsOwner, useLoaded, useSyncStatus } from '../../../store/selectors';
+import { useStoreSelector } from '../../../store/store-context';
 import {
   type BrowserHeader,
   type FileBrowserHandle,
@@ -17,15 +18,22 @@ import {
   useFileBrowser,
   type FileLocation,
 } from '../../files';
-import { useDriveItem, useDriveRoots, useMyDrive, useSharedDrive, useViewerId } from '../data';
+import {
+  useDriveItem,
+  useDriveRoot,
+  useDriveRootPlaces,
+  useDriveUsage,
+  useViewerId,
+} from '../data';
 import { DriveFrame, type DriveFrameProps } from '../components/drive-frame';
 import { useByName } from '../components/use-by-name';
 import { mayRescanOf } from '../home/banner-model';
 import { useDriveBanner } from '../home/drive-banner';
 import { HeroSkeleton } from '../home/drive-hero';
 import { DriveTop } from '../home/drive-top';
-import { ROOM, quotaLevelOf } from '../home/hero-model';
-import { useDriveUse } from '../home/use-drive-use';
+import { ROOM, quotaLevelOf, type QuotaLevel } from '../home/hero-model';
+import { driveUseOf, useDriveUse } from '../home/use-drive-use';
+import { ownDriveOf, sharedDriveOf } from '../model/drive-access';
 import type { DriveSection } from '../model/section-routes';
 import type { DriveOrigin } from '../source/drive-node';
 import { DRIVE_PLACES } from '../source/drive-places';
@@ -101,19 +109,48 @@ function useRevealItem(browser: FileBrowserHandle<DriveOrigin>): void {
   }, [key]);
 }
 
+function sameQuota(left: QuotaLevel, right: QuotaLevel): boolean {
+  if (left.kind === 'near' && right.kind === 'near') {
+    return percent(left.share) === percent(right.share);
+  }
+  return left.kind === right.kind;
+}
+
+function useQuotaLevel(location: FileLocation, rootId: string | null): QuotaLevel {
+  const viewerId = useViewerId();
+  const usage = useDriveUsage().data;
+  const mine = location.place === DRIVE_PLACES.myDrive ? rootId : null;
+  return useStoreSelector(
+    (state) => {
+      if (mine === null) return ROOM;
+      const root = state.tables.drive_roots.byId[mine] ?? NO_DRIVE;
+      return quotaLevelOf(driveUseOf({ root, viewerId, usage }));
+    },
+    sameQuota,
+    [mine, viewerId, usage],
+  );
+}
+
+function BrowserTop({ rootId }: { readonly rootId: string }): ReactNode {
+  const root = useDriveRoot(rootId);
+  const use = useDriveUse(root ?? NO_DRIVE);
+  return root === null ? null : <DriveTop root={root} use={use} />;
+}
+
 function useTop(
   location: FileLocation,
-  root: DriveRoot | null,
+  rootId: string | null,
   filtering: boolean,
 ): {
   readonly top: ReactNode;
   readonly banner: ReactNode | undefined;
 } {
-  const use = useDriveUse(root ?? NO_DRIVE);
   const online = useSyncStatus().status === 'live';
   const viewerId = useViewerId();
   const owner = useIsOwner();
-  const quota = location.place === DRIVE_PLACES.myDrive ? quotaLevelOf(use) : ROOM;
+  const places = useDriveRootPlaces();
+  const quota = useQuotaLevel(location, rootId);
+  const root = places.find((place) => place.id === rootId) ?? null;
   const banner = useDriveBanner({
     online,
     root,
@@ -121,8 +158,8 @@ function useTop(
     quota,
   });
   const top =
-    location.folder === null && root !== null && !filtering ? (
-      <DriveTop root={root} use={use} />
+    location.folder === null && rootId !== null && !filtering ? (
+      <BrowserTop rootId={rootId} />
     ) : null;
   return { top, banner };
 }
@@ -156,13 +193,13 @@ function headerPartsOf(header: BrowserHeader): Partial<DriveFrameProps> {
 
 function DriveBrowser({
   location,
-  root,
+  rootId,
 }: {
   readonly location: FileLocation;
-  readonly root: DriveRoot | null;
+  readonly rootId: string | null;
 }): ReactNode {
   const browser = useDriveFileBrowser(location);
-  const { top, banner } = useTop(location, root, browser.filter.active);
+  const { top, banner } = useTop(location, rootId, browser.filter.active);
   const slots = useBrowserPanels(browser, { from: 'Drive', top });
   const shellParts = useBrowserShellParts(browser);
   const { header } = browser;
@@ -172,7 +209,7 @@ function DriveBrowser({
       title={header.title}
       actions={header.actions}
       iconRail={browser.state.panels.has('details')}
-      reconcileRootId={root?.id ?? null}
+      reconcileRootId={rootId}
       scroll={false}
       {...shellParts}
       {...headerPartsOf(header)}
@@ -200,8 +237,8 @@ const SHARED_DRIVE: FileLocation = { place: DRIVE_PLACES.sharedDrive, folder: nu
 
 export function MyDriveScreen(): ReactNode {
   const loaded = useLoaded();
-  const mine = useMyDrive();
-  if (mine !== null) return <DriveBrowser location={MY_DRIVE} root={mine} />;
+  const mine = ownDriveOf(useDriveRootPlaces(), useViewerId());
+  if (mine !== null) return <DriveBrowser location={MY_DRIVE} rootId={mine.id} />;
   if (!loaded) return <BrowserLoading section="index" title="My Drive" />;
   return (
     <NotReady
@@ -221,8 +258,8 @@ export function MyDriveScreen(): ReactNode {
 
 export function SharedDriveScreen(): ReactNode {
   const loaded = useLoaded();
-  const shared = useSharedDrive();
-  if (shared !== null) return <DriveBrowser location={SHARED_DRIVE} root={shared} />;
+  const shared = sharedDriveOf(useDriveRootPlaces());
+  if (shared !== null) return <DriveBrowser location={SHARED_DRIVE} rootId={shared.id} />;
   if (!loaded) return <BrowserLoading section="shared-drive" title="Shared Drive" />;
   return (
     <NotReady
@@ -237,17 +274,11 @@ export function SharedDriveScreen(): ReactNode {
 export function DriveFolderScreen(): ReactNode {
   const { folderId } = useLocalSearchParams<{ folderId: string }>();
   const folder = useDriveItem(folderId, null);
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const viewerId = useViewerId();
   if (folder.data?.kind === 'folder') {
     const location = folderLocationOf(roots, folder.data, viewerId);
-    return (
-      <DriveBrowser
-        key={folder.data.id}
-        location={location}
-        root={roots.find((root) => root.id === folder.data?.rootId) ?? null}
-      />
-    );
+    return <DriveBrowser key={folder.data.id} location={location} rootId={folder.data.rootId} />;
   }
   if (folder.isPending) return <BrowserLoading section="index" title="Folder" />;
   return (

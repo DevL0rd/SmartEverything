@@ -11,7 +11,7 @@ import {
 import { driveChipsOf, type DriveChipOf } from '../model/drive-chip';
 import { flattenPages } from './pages';
 import { useSharedWithMe } from './queries';
-import { useDriveGrantRows, useDriveRoots } from './tables';
+import { useDriveGrantRows, useDriveRootPlaces, useDriveRoots } from './tables';
 
 export function useViewerId(): string | null {
   return useSession().client.profile_id;
@@ -32,7 +32,7 @@ export function useDriveOf(
   ancestorIds: readonly string[] = [],
 ): DriveOfItem {
   const viewerId = useViewerId();
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const grants = useDriveGrantRows();
   const profiles = useProfiles();
   if (item === null) return NO_DRIVE;
@@ -41,7 +41,7 @@ export function useDriveOf(
 
 export function useDriveChips(): DriveChipOf {
   const viewerId = useViewerId();
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const profiles = useProfiles();
   const shared = useSharedWithMe().data;
   return useMemo(() => {

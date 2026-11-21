@@ -1,8 +1,10 @@
-import { createElement, type ReactNode } from 'react';
+import { act, createElement, type ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlanSymbolOf } from '../plan/symbols';
 import { isoHouse, isoObject } from './iso-fixture';
+import type * as IsoModel from './model';
 import type { IsoStillInput } from './model';
 
 interface Props {
@@ -33,9 +35,13 @@ vi.mock('uniwind', () => ({ useUniwind: (): { theme: string } => ({ theme: 'ligh
 vi.mock('../../../design/colour', () => ({
   useColourResolver: (): ((role: string) => string) => (role) => `#${role}`,
 }));
+vi.mock('./model', async (importOriginal) => {
+  const real = await importOriginal<typeof IsoModel>();
+  return { ...real, buildIsoSolids: vi.fn(real.buildIsoSolids) };
+});
 
 const { IsoStill, IsoStillCanvas } = await import('./iso-still');
-const { buildIsoStill } = await import('./model');
+const { buildIsoSolids, buildIsoStill } = await import('./model');
 
 const symbolOf: PlanSymbolOf = (item) =>
   item.modelId === 'cat.living.sofa'
@@ -61,6 +67,8 @@ function render(input: IsoStillInput): readonly { readonly kind: string; readonl
 }
 
 const viewport = { width: 400, height: 240 };
+
+const OCCUPIED_OPACITY = 0.28;
 
 describe('buildIsoStill', () => {
   it('paints furniture over the back walls and under the cut front walls', () => {
@@ -186,6 +194,62 @@ describe('IsoStillCanvas', () => {
   it('draws no pool layer when every light is off', () => {
     const drawn = render(base);
     expect(drawn.some((entry) => entry.kind === 'RadialGradient')).toBe(false);
+  });
+});
+
+describe('IsoStillCanvas updates', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the built solids when only room occupancy or zones change', () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.stubGlobal('window', {
+      event: undefined,
+      document: { activeElement: null, body: null },
+      HTMLIFrameElement: Date,
+    });
+    const root = createRoot({
+      nodeType: 1,
+      tagName: 'DIV',
+      ownerDocument: null,
+      addEventListener: (): void => undefined,
+    });
+    const draw = (input: IsoStillInput): readonly unknown[] => {
+      seen.length = 0;
+      act(() => {
+        root.render(createElement(IsoStillCanvas, { input, width: 400, height: 240 }));
+      });
+      return seen.filter(
+        (entry) => entry.kind === 'Path' && entry.props['fillOpacity'] === OCCUPIED_OPACITY,
+      );
+    };
+    const zone = {
+      id: 'z',
+      deviceId: 'shelly',
+      occupied: true,
+      polygons: [
+        {
+          outer: [
+            { x: 5, y: 1 },
+            { x: 6, y: 1 },
+            { x: 6, y: 2 },
+          ],
+          holes: [],
+        },
+      ],
+    };
+    vi.mocked(buildIsoSolids).mockClear();
+    expect(draw({ ...base })).toHaveLength(0);
+    expect(draw({ ...base, activeRoomIds: ['b'] })).toHaveLength(1);
+    expect(draw({ ...base, activeRoomIds: ['a', 'b'], zones: [zone] })).toHaveLength(2);
+    expect(draw({ ...base, zones: [{ ...zone, occupied: false }] })).toHaveLength(0);
+    expect(buildIsoSolids).toHaveBeenCalledTimes(1);
+    draw({ ...base, litDeviceIds: ['lamp-a'] });
+    expect(buildIsoSolids).toHaveBeenCalledTimes(2);
+    act(() => {
+      root.unmount();
+    });
   });
 });
 

@@ -1,7 +1,8 @@
 import type { AiChatRow, ProfileRow } from '@smarteverything/domain';
 import { useActiveProfile, useProfiles } from '../../../store/people';
-import { useDevices, useIsOwner, useRows } from '../../../store/selectors';
+import { useIsOwner, useRows } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
+import { useEditorDevices } from '../hosts/editor-devices';
 import type { Names } from './describe-names';
 
 export interface Catalog {
@@ -23,7 +24,7 @@ function useWakeProfileId(): string | null {
 }
 
 export function useCatalog(): Catalog {
-  const devices = useDevices({ includeHidden: true });
+  const devices = useEditorDevices();
   const people = useProfiles();
   const chats = useRows('ai_chats').filter(
     (chat) => chat.archived_at === null && WAKEABLE_KINDS.has(chat.kind),

@@ -14,7 +14,7 @@ import { Text } from '../../../components/text';
 import { ACCENT_LABELS, ACCENT_SWATCH } from '../../../design/tokens';
 import { joinParts, plural } from '../../../format/text';
 import { PREFS, savePref } from '../../../store/prefs';
-import { useDevices, useRooms, useSettings } from '../../../store/selectors';
+import { useDeviceCount, useRoomCount, useSettings } from '../../../store/selectors';
 import { useEntityStore, useStoreSelector } from '../../../store/store-context';
 import { appearanceOf, appearanceRead } from './appearance-pref';
 
@@ -85,8 +85,8 @@ export function AccentRow(): ReactNode {
 
 export function AppearancePreview(): ReactNode {
   const settings = useSettings();
-  const devices = useDevices();
-  const rooms = useRooms();
+  const deviceCount = useDeviceCount();
+  const roomCount = useRoomCount();
   const [on, setOn] = useState(true);
   return (
     <Card title="Preview" icon="palette">
@@ -97,10 +97,10 @@ export function AppearancePreview(): ReactNode {
               {settings.home_name}
             </Text>
             <Text variant="callout" tone="variant">
-              {joinParts([plural(devices.length, 'device'), plural(rooms.length, 'room')])}
+              {joinParts([plural(deviceCount, 'device'), plural(roomCount, 'room')])}
             </Text>
           </View>
-          <Figure value={String(devices.length)} size="m" />
+          <Figure value={String(deviceCount)} size="m" />
         </View>
         <View className="flex-row items-center justify-between gap-3">
           <Badge label="Accent" tone="primary" />

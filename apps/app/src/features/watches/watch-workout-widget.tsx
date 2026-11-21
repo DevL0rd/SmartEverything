@@ -90,7 +90,7 @@ function WorkoutFrame({
 }
 
 function WorkoutContent({ watch }: { readonly watch: Device }): ReactNode {
-  const view = useWatchWorkout(watch);
+  const view = useWatchWorkout(watch.id);
   const command = useWatchCommand(watch);
   const widgetFace = useWidgetFace();
   const tile = isTile(widgetFace.cls);

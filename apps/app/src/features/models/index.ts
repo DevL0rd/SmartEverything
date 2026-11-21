@@ -19,7 +19,12 @@ export { VIEW_LOD } from './bake/bake-layers';
 export type { BakeAnchor, BakeRect } from './bake/bake-protocol';
 export type { LiveModelKey } from './live/model-cache';
 export { ASSET_IDLE, type ModelAssetState } from './data/asset-loader';
-export { useModelCatalog, useModelOverrides } from './data/catalog';
+export {
+  modelCatalogOf,
+  modelOverrideIndexOf,
+  useModelCatalog,
+  useModelOverrides,
+} from './data/catalog';
 export {
   familySubjectOf,
   modelSubjectOf,

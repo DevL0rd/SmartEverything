@@ -20,6 +20,16 @@ export function automationsUsing(
   return automationsUsingRows(automationRowsOf(rows, kinds).rows, referenceId, context);
 }
 
+export function sameUses(left: readonly AutomationUse[], right: readonly AutomationUse[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((use, index) => {
+      const other = right[index];
+      return other?.id === use.id && other.name === use.name && other.enabled === use.enabled;
+    })
+  );
+}
+
 export function referenceIdOf(target: DeviceTarget): string | null {
   switch (target.kind) {
     case 'group':

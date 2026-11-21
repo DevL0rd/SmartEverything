@@ -1,4 +1,4 @@
-import { use, type ReactNode } from 'react';
+import { useContext, type ReactNode } from 'react';
 import { RefreshControl, View, type LayoutChangeEvent, type ViewStyle } from 'react-native';
 import Animated, {
   useAnimatedReaction,
@@ -24,7 +24,7 @@ export interface ShellRefresh {
 }
 
 function useScrollLayoutEvent(): () => void {
-  const scroll = use(ScreenScrollContext);
+  const scroll = useContext(ScreenScrollContext);
   return (): void => {
     scroll?.layout.set((current) => current + 1);
   };

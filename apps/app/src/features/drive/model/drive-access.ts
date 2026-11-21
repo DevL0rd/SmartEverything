@@ -2,6 +2,13 @@ import type { DriveGrant, DriveGrantRole, DriveItem, DriveRoot } from '@smarteve
 
 export type DriveAccess = 'own' | 'shared' | 'edit' | 'view' | 'none';
 
+export type DriveRootPlace = Pick<
+  DriveRoot,
+  'id' | 'scope' | 'ownerProfileId' | 'state' | 'stateReason' | 'versions'
+>;
+
+type DriveOwnership = Pick<DriveRoot, 'scope' | 'ownerProfileId'>;
+
 export const MY_DRIVE_LABEL = 'My Drive';
 export const SHARED_DRIVE_LABEL = 'Shared Drive';
 
@@ -12,26 +19,32 @@ export function isDriveOwner(
   return viewerId !== null && root.ownerProfileId === viewerId;
 }
 
-export function ownDriveOf(roots: readonly DriveRoot[], viewerId: string | null): DriveRoot | null {
+export function ownDriveOf<R extends DriveOwnership>(
+  roots: readonly R[],
+  viewerId: string | null,
+): R | null {
   return roots.find((root) => root.scope === 'person' && isDriveOwner(root, viewerId)) ?? null;
 }
 
-export function sharedDriveOf(roots: readonly DriveRoot[]): DriveRoot | null {
+export function sharedDriveOf<R extends Pick<DriveRoot, 'scope'>>(roots: readonly R[]): R | null {
   return roots.find((root) => root.scope === 'home') ?? null;
 }
 
-export function driveOfRootId(roots: readonly DriveRoot[], rootId: string): DriveRoot | null {
+export function driveOfRootId<R extends Pick<DriveRoot, 'id'>>(
+  roots: readonly R[],
+  rootId: string,
+): R | null {
   return roots.find((root) => root.id === rootId) ?? null;
 }
 
-export function driveOfItem(
-  roots: readonly DriveRoot[],
+export function driveOfItem<R extends Pick<DriveRoot, 'id'>>(
+  roots: readonly R[],
   item: Pick<DriveItem, 'rootId'>,
-): DriveRoot | null {
+): R | null {
   return driveOfRootId(roots, item.rootId);
 }
 
-export function driveLabelOf(root: DriveRoot, viewerId: string | null): string | null {
+export function driveLabelOf(root: DriveOwnership, viewerId: string | null): string | null {
   if (root.scope === 'home') return SHARED_DRIVE_LABEL;
   return isDriveOwner(root, viewerId) ? MY_DRIVE_LABEL : null;
 }
@@ -67,7 +80,7 @@ export function grantRoleOf(
 }
 
 export function driveAccessOf(
-  root: DriveRoot,
+  root: DriveOwnership,
   viewerId: string | null,
   grantRole: DriveGrantRole | null,
 ): DriveAccess {
@@ -101,14 +114,14 @@ export function placementReadOnly(access: DriveAccess): boolean {
 }
 
 export interface DriveOfItem {
-  readonly root: DriveRoot | null;
+  readonly root: DriveRootPlace | null;
   readonly label: string | null;
   readonly access: DriveAccess;
   readonly grantRole: DriveGrantRole | null;
 }
 
 export interface DriveOfItemInput {
-  readonly roots: readonly DriveRoot[];
+  readonly roots: readonly DriveRootPlace[];
   readonly grants: readonly DriveGrant[];
   readonly profiles: readonly { readonly id: string; readonly name: string }[];
   readonly viewerId: string | null;

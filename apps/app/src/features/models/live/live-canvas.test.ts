@@ -171,6 +171,29 @@ describe('the web live canvas', () => {
     running.dispose();
   });
 
+  it('keeps the drawing buffer while the only view scrolls away and back on a focused screen', () => {
+    const { canvas, surface, setup, tick, gl } = harness({ speed: 0 });
+    const running = startCanvas(canvas, setup);
+    tick();
+    expect(gl.size()).toEqual([400, 800]);
+    const allocations = gl.allocations();
+    for (let pass = 0; pass < 5; pass += 1) {
+      surface.set.report('fan', { onScreen: false });
+      tick();
+      expect(surface.isDrawn('fan')).toBe(false);
+      surface.set.report('fan', { onScreen: true });
+      tick();
+      expect(surface.isDrawn('fan')).toBe(true);
+    }
+    expect(gl.allocations()).toBe(allocations);
+    expect(gl.size()).toEqual([400, 800]);
+    surface.set.report('fan', { screenFocused: false });
+    tick();
+    expect(gl.size()).toEqual([1, 1]);
+    expect(gl.allocations()).toBe(allocations + 1);
+    running.dispose();
+  });
+
   it('schedules no frame on scroll or layout changes while no view is live', () => {
     const { canvas, surface, setup, tick, gl, frames, moved } = harness({ speed: 0 });
     const running = startCanvas(canvas, setup);

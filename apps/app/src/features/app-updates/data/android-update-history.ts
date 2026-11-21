@@ -45,6 +45,18 @@ function currentPosition(offer: AndroidHistoryOffer): CurrentPosition | null {
   };
 }
 
+async function readHistory(
+  position: CurrentPosition,
+  signal: AbortSignal,
+): Promise<AndroidUpdateHistory> {
+  const { query, embeddedId } = position;
+  if (embeddedId === undefined)
+    return api().call(E.readAndroidUpdateHistory, { query }, { signal });
+  const { manifest } = await import('expo-updates');
+  const embeddedAt = embeddedReleaseDate(manifest, embeddedId);
+  return api().call(E.readAndroidUpdateHistory, { query: { ...query, embeddedAt } }, { signal });
+}
+
 export function useAndroidUpdateHistory(
   offer: AndroidHistoryOffer,
 ): UseQueryResult<AndroidUpdateHistory> | null {
@@ -56,19 +68,10 @@ export function useAndroidUpdateHistory(
     enabled: position !== null,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
-    queryFn: async ({ signal }) => {
+    queryFn: ({ signal }) => {
       if (position === null)
         throw new Error('The Android update history needs a running app build.');
-      const { query, embeddedId } = position;
-      if (embeddedId === undefined)
-        return api().call(E.readAndroidUpdateHistory, { query }, { signal });
-      const { manifest } = await import('expo-updates');
-      const embeddedAt = embeddedReleaseDate(manifest, embeddedId);
-      return api().call(
-        E.readAndroidUpdateHistory,
-        { query: { ...query, embeddedAt } },
-        { signal },
-      );
+      return readHistory(position, signal);
     },
   });
   return position === null ? null : query;

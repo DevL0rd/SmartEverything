@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { NavRow, SelectRow, SwitchRow } from '../../../components/rows';
-import { useRows } from '../../../store/selectors';
+import { useAutomationNames } from '../../../store/selectors';
 import {
   DEFAULT_WAKE_LEAD_MINUTES,
   wakeEdit,
@@ -87,10 +87,8 @@ export function WakeRoutine(
   props: WakeProps & { readonly defaultAutomationId: string | null },
 ): ReactNode {
   const { draft, compact, disabled, onChange, defaultAutomationId } = props;
-  const automations = useRows('automations').map((automation) => ({
-    value: automation.id,
-    label: automation.name,
-  }));
+  const names = useAutomationNames();
+  const automations = Array.from(names, ([value, label]) => ({ value, label }));
   const on = draft.wake_automation_id !== null;
   const first = automations.find((entry) => entry.value === defaultAutomationId) ?? automations[0];
   const chosen = automations.find((entry) => entry.value === draft.wake_automation_id);

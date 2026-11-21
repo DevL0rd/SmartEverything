@@ -2,7 +2,8 @@ import { deviceFamily, type PlannerCompletion } from '@smarteverything/domain';
 import { useMemo, useState, type ReactNode } from 'react';
 import { ListRow } from '../../../components/list-row';
 import { useDevices } from '../../../store/selectors';
-import { deviceGroupsOf, useAttachmentNames, type PickEntry } from './attachment-chips';
+import { deviceGroupsOf, type PickEntry } from './attachment-chips';
+import { useAttachmentNames } from './attachment-names';
 import { familyRuleOf, hasFamilyRule, sameRule, type RuleDevice } from './completion-rule-row';
 
 export type RuleDevices = ReadonlyMap<string, RuleDevice>;

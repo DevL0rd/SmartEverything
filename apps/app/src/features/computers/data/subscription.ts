@@ -86,6 +86,56 @@ function refreshCatalogue(client: QueryClient): void {
     'catalogue.invalidate_failed',
   );
 }
+interface ControlContext {
+  readonly binding: Binding;
+  readonly client: QueryClient;
+  readonly status: AiSubscriptionHostStatus | null;
+  readonly alive: () => boolean;
+  readonly busy: { current: boolean };
+  readonly accepted: { current: string | null };
+  readonly setStatus: (status: AiSubscriptionHostStatus) => void;
+  readonly setPending: (pending: boolean) => void;
+  readonly setError: (error: string | null) => void;
+  readonly setCompleted: (completed: Command['kind']) => void;
+  readonly setInputRevision: (next: (revision: number) => number) => void;
+  readonly setAcknowledgement: (acknowledgement: string | null) => void;
+}
+async function runControl(context: ControlContext, command: Command): Promise<void> {
+  const { binding, client, status, alive, busy, accepted } = context;
+  if (busy.current || !alive()) return;
+  const identity = answerIdentity(command, status);
+  if (!answerAdmitted(command, identity, accepted.current)) {
+    rejectAnswer(binding, command, context.setError);
+    return;
+  }
+  if (command.kind !== 'status') context.setInputRevision((revision) => revision + 1);
+  const startedAt = Date.now();
+  busy.current = true;
+  context.setPending(true);
+  context.setError(null);
+  try {
+    const result = await subscriptionResponse(binding, command);
+    if (!alive()) return;
+    accepted.current = nextAcknowledgement({
+      command,
+      identity,
+      accepted: accepted.current,
+      result,
+    });
+    context.setAcknowledgement(accepted.current);
+    logControl('subscription.control_succeeded', binding, command, { startedAt });
+    context.setStatus(result);
+    context.setCompleted(command.kind);
+    binding.changed(result);
+    refreshCatalogue(client);
+  } catch (error) {
+    logControl('subscription.control_failed', binding, command, { startedAt, error });
+    if (alive()) context.setError(subscriptionError(error));
+  } finally {
+    busy.current = false;
+    if (alive()) context.setPending(false);
+  }
+}
 export function useSubscriptionControl(binding: Binding): SubscriptionControl {
   const client = useQueryClient();
   const [status, setStatus] = useState<AiSubscriptionHostStatus | null>(null);
@@ -97,46 +147,28 @@ export function useSubscriptionControl(binding: Binding): SubscriptionControl {
   const accepted = useRef<string | null>(null);
   const alive = useAlive();
   const busy = useRef(false);
-  const control = async (command: Command): Promise<void> => {
-    if (busy.current || !alive()) return;
-    const identity = answerIdentity(command, status);
-    if (!answerAdmitted(command, identity, accepted.current)) {
-      rejectAnswer(binding, command, setError);
-      return;
-    }
-    if (command.kind !== 'status') setInputRevision((revision) => revision + 1);
-    const startedAt = Date.now();
-    busy.current = true;
-    setPending(true);
-    setError(null);
-    try {
-      const result = await subscriptionResponse(binding, command);
-      if (!alive()) return;
-      accepted.current = nextAcknowledgement({
-        command,
-        identity,
-        accepted: accepted.current,
-        result,
-      });
-      setAcknowledgement(accepted.current);
-      logControl('subscription.control_succeeded', binding, command, { startedAt });
-      setStatus(result);
-      setCompleted(command.kind);
-      binding.changed(result);
-      refreshCatalogue(client);
-    } catch (error) {
-      logControl('subscription.control_failed', binding, command, { startedAt, error });
-      if (alive()) setError(subscriptionError(error));
-    } finally {
-      busy.current = false;
-      if (alive()) setPending(false);
-    }
-  };
+  const control = (command: Command): Promise<void> =>
+    runControl(
+      {
+        binding,
+        client,
+        status,
+        alive,
+        busy,
+        accepted,
+        setStatus,
+        setPending,
+        setError,
+        setCompleted,
+        setInputRevision,
+        setAcknowledgement,
+      },
+      command,
+    );
   useSubscriptionRefresh(control);
   const acknowledged = acknowledgedStatus(status, acknowledgement);
   return { status, pending, error, completed, inputRevision, control, acknowledged };
 }
-
 function nextAcknowledgement({
   command,
   identity,

@@ -8,10 +8,14 @@ import { isCountable, useCountUp } from './use-count-up';
 
 export interface LiveFigureProps extends FigureProps {
   readonly widest?: string;
-  readonly align?: 'start' | 'center';
+  readonly align?: 'start' | 'center' | 'baseline';
 }
 
-const ALIGN = { start: 'relative self-start', center: 'relative self-center' } as const;
+const ALIGN = {
+  start: 'relative self-start',
+  center: 'relative self-center',
+  baseline: 'relative self-baseline',
+} as const;
 
 const COUNT_MIN_CHANGE = 0.1;
 

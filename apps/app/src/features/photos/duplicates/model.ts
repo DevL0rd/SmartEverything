@@ -30,7 +30,7 @@ export function sourceColourOf(index: number): ColourRole {
 export const UNKNOWN_DRIVE = 'Shared with you';
 
 export interface DriveLabelInput {
-  readonly roots: readonly DriveRoot[];
+  readonly roots: readonly Pick<DriveRoot, 'id' | 'scope' | 'ownerProfileId'>[];
   readonly profiles: readonly { readonly id: string; readonly name: string }[];
   readonly viewerId: string | null;
 }

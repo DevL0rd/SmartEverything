@@ -4,31 +4,25 @@ import { ChoiceChip } from '../../../components/choice-chip';
 import { FlatChoice } from '../../../components/flat-choice';
 import { HScroller } from '../../../components/h-scroller';
 import { count } from '../../../format/number';
-import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
-import {
-  DEFAULT_VIEW,
-  SEARCH_FROM,
-  SORTS,
-  type FilterChoice,
-  type View as ListView,
-} from './list-view';
-import type { AutomationsList } from './use-list';
+import { DEFAULT_VIEW, SORTS, type FilterChoice, type FilterId, type SortId } from './list-view';
 
 const INLINE_FILTER_MIN = 520;
 const SORT_OPTIONS = SORTS.map(({ id, label }) => ({ value: id, label }));
 
 export interface FiltersProps {
   readonly choices: readonly FilterChoice[];
-  readonly view: ListView;
-  readonly onChange: (view: ListView) => void;
+  readonly filter: FilterId;
+  readonly sort: SortId;
+  readonly onFilter: (filter: FilterId) => void;
+  readonly onSort: (sort: SortId) => void;
 }
 
 function StatusFilters({
   choices,
-  view,
-  onChange,
+  filter,
+  onFilter,
   narrow,
-}: Pick<FiltersProps, 'choices' | 'view' | 'onChange'> & {
+}: Pick<FiltersProps, 'choices' | 'filter' | 'onFilter'> & {
   readonly narrow: boolean;
 }): ReactNode {
   if (narrow) {
@@ -41,11 +35,9 @@ function StatusFilters({
             value: choice.id,
             label: `${choice.label} · ${count(choice.count)}`,
           }))}
-          value={view.filter}
+          value={filter}
           all={DEFAULT_VIEW.filter}
-          onChange={(filter) => {
-            onChange({ ...view, filter });
-          }}
+          onChange={onFilter}
         />
       </View>
     );
@@ -63,10 +55,9 @@ function StatusFilters({
             role="radio"
             label={choice.label}
             count={choice.count}
-            active={choice.id === view.filter}
-            onPress={() => {
-              onChange({ ...view, filter: choice.id });
-            }}
+            active={choice.id === filter}
+            value={choice.id}
+            onSelect={onFilter}
           />
         ))}
       </View>
@@ -74,18 +65,7 @@ function StatusFilters({
   );
 }
 
-export function listSearchOf(list: AutomationsList): ShellSearchConfig | undefined {
-  if (list.entries.length < SEARCH_FROM) return undefined;
-  return {
-    value: list.view.query,
-    onChange: (query): void => {
-      list.setView({ ...list.view, query });
-    },
-    placeholder: 'Find an automation',
-  };
-}
-
-export function Filters({ choices, view, onChange }: FiltersProps): ReactNode {
+export function Filters({ choices, filter, sort, onFilter, onSort }: FiltersProps): ReactNode {
   const [width, setWidth] = useState(0);
   return (
     <View
@@ -97,8 +77,8 @@ export function Filters({ choices, view, onChange }: FiltersProps): ReactNode {
       <View className="min-w-0 flex-1">
         <StatusFilters
           choices={choices}
-          view={view}
-          onChange={onChange}
+          filter={filter}
+          onFilter={onFilter}
           narrow={width < INLINE_FILTER_MIN}
         />
       </View>
@@ -107,11 +87,9 @@ export function Filters({ choices, view, onChange }: FiltersProps): ReactNode {
           label="Sort automations"
           icon="list"
           options={SORT_OPTIONS}
-          value={view.sort}
+          value={sort}
           all={DEFAULT_VIEW.sort}
-          onChange={(sort) => {
-            onChange({ ...view, sort });
-          }}
+          onChange={onSort}
         />
       </View>
     </View>

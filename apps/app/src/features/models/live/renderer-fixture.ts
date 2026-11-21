@@ -15,6 +15,7 @@ export interface FakeGl {
   readonly programs: CompiledProgram[];
   readonly pixelRatio: () => number;
   readonly size: () => readonly number[];
+  readonly allocations: () => number;
   readonly scissor: () => readonly number[];
 }
 
@@ -25,15 +26,15 @@ export function fakeGl(): FakeGl {
   let scissor: readonly number[] = [];
   let size: readonly number[] = [];
   let clears = 0;
+  let allocations = 0;
   const programs: CompiledProgram[] = [];
   const gl: LiveGl = {
     autoClear: true,
     info: { programs },
-    setPixelRatio: (value) => {
-      pixelRatio = value;
-    },
-    setSize: (width, height) => {
+    setDrawingBufferSize: (width, height, ratio) => {
+      allocations += 1;
       size = [width, height];
+      pixelRatio = ratio;
     },
     setScissorTest: () => undefined,
     setScissor: (x, y, width, height) => {
@@ -56,6 +57,7 @@ export function fakeGl(): FakeGl {
     clears: (): number => clears,
     pixelRatio: (): number => pixelRatio,
     size: (): readonly number[] => size,
+    allocations: (): number => allocations,
     scissor: (): readonly number[] => scissor,
   };
 }

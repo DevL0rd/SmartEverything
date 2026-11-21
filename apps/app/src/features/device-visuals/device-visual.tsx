@@ -1,6 +1,6 @@
 import { deviceFamily, type DeviceFamily } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
-import { use } from 'react';
+import { use, useContext } from 'react';
 import { View } from 'react-native';
 import { cn } from '../../design/cn';
 import type { Device } from '../../store/state';
@@ -49,7 +49,7 @@ function VisualView(props: VisualViewProps): ReactNode {
 }
 
 export function useVisualDrawn(device: Device, family: DeviceFamily): boolean {
-  const models = use(WidgetModelsContext);
+  const models = useContext(WidgetModelsContext);
   return family === 'camera' || (models !== null && models.planFor(device, family) !== null);
 }
 

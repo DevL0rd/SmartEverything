@@ -7,9 +7,9 @@ import { Icon, type IconName } from './icon';
 import { Interactive, type InteractiveProps } from './interactive';
 import { Text } from './text';
 
-interface FlatChoiceProps extends Pick<
+interface FlatChoiceBase extends Pick<
   InteractiveProps,
-  'href' | 'navigation' | 'onPress' | 'ref' | 'expanded' | 'disabled'
+  'href' | 'navigation' | 'ref' | 'expanded' | 'disabled'
 > {
   readonly label: string;
   readonly spoken?: string | undefined;
@@ -22,7 +22,21 @@ interface FlatChoiceProps extends Pick<
   readonly role?: 'tab' | 'checkbox' | 'button' | 'radio' | undefined;
 }
 
-const CHECKED_ROLES = new Set<FlatChoiceProps['role']>(['checkbox', 'radio']);
+interface PressChoice {
+  readonly onPress?: InteractiveProps['onPress'];
+  readonly value?: never;
+  readonly onSelect?: never;
+}
+
+interface SelectChoice<V extends string> {
+  readonly value: V;
+  readonly onSelect: (value: V) => void;
+  readonly onPress?: never;
+}
+
+type FlatChoiceProps<V extends string> = FlatChoiceBase & (PressChoice | SelectChoice<V>);
+
+const CHECKED_ROLES = new Set<FlatChoiceBase['role']>(['checkbox', 'radio']);
 
 function choiceName(label: string, quantity: string | undefined): string {
   return quantity === undefined ? label : `${label}, ${quantity}`;
@@ -49,7 +63,7 @@ function ChoiceLabel({
   swatchClassName,
   trailing,
   active,
-}: Pick<FlatChoiceProps, 'label' | 'icon' | 'swatchClassName' | 'trailing' | 'active'> & {
+}: Pick<FlatChoiceBase, 'label' | 'icon' | 'swatchClassName' | 'trailing' | 'active'> & {
   readonly quantity: string | undefined;
 }): ReactNode {
   const tone = active ? 'primary' : 'variant';
@@ -78,7 +92,7 @@ function ChoiceLabel({
   );
 }
 
-export function FlatChoice({
+function ChoiceFace({
   label,
   spoken,
   icon,
@@ -89,7 +103,7 @@ export function FlatChoice({
   role,
   menu = false,
   ...action
-}: FlatChoiceProps): ReactNode {
+}: FlatChoiceBase & PressChoice): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const quantity = count === undefined ? undefined : formatCount(count);
   const checkedRole = CHECKED_ROLES.has(role);
@@ -118,5 +132,25 @@ export function FlatChoice({
         active={active}
       />
     </Interactive>
+  );
+}
+
+export function FlatChoice<V extends string>({
+  onPress,
+  value,
+  onSelect,
+  ...face
+}: FlatChoiceProps<V>): ReactNode {
+  return (
+    <ChoiceFace
+      {...face}
+      onPress={
+        onSelect === undefined
+          ? onPress
+          : (): void => {
+              onSelect(value);
+            }
+      }
+    />
   );
 }

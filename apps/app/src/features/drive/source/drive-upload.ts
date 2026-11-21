@@ -1,4 +1,4 @@
-import type { DriveRoot, DriveUploadTarget } from '@smarteverything/domain';
+import type { DriveUploadTarget } from '@smarteverything/domain';
 import { rawErrorText } from '../../../format/errors';
 import type {
   FileLocation,
@@ -15,10 +15,11 @@ import {
   type UploadOutcome as TusOutcome,
   type UploadRequest,
 } from '../upload/transport';
+import type { DriveRootPlace } from '../model/drive-access';
 import { folderPlaceOf } from './drive-places';
 
 export interface DriveUploadEnv {
-  readonly roots: readonly DriveRoot[];
+  readonly roots: readonly DriveRootPlace[];
   readonly viewerId: string | null;
   readonly start: (request: UploadRequest) => TusHandle;
   readonly watch: (id: string, progress: (sent: number) => void) => () => void;
@@ -56,7 +57,7 @@ export function failureText(failure: UploadFailure): string {
 
 export function uploadTargetOf(
   location: FileLocation,
-  roots: readonly DriveRoot[],
+  roots: readonly DriveRootPlace[],
   viewerId: string | null,
 ): DriveUploadTarget | null {
   return folderPlaceOf(location, roots, viewerId);

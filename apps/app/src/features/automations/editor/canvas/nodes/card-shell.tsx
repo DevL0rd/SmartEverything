@@ -1,4 +1,4 @@
-import { use, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { useContext, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import type {
   GraphSceneNode,
   PinGroup,
@@ -167,7 +167,7 @@ export function ExecRows({
 }
 
 export function useShownPins(pins: readonly ScenePin[]): readonly ScenePin[] {
-  const fold = use(FoldContext);
+  const fold = useContext(FoldContext);
   return fold ? pins.filter((pin) => pin.wired) : pins;
 }
 

@@ -1,4 +1,4 @@
-import { use, useState, type ReactNode } from 'react';
+import { useContext, useState, type ReactNode } from 'react';
 import {
   ScrollView,
   View,
@@ -13,7 +13,7 @@ import { SheetRevealContext } from './sheet-reveal-context';
 type Reveal = (node: View | null) => void;
 
 export function useSheetReveal(): Reveal {
-  const reveal = use(SheetRevealContext);
+  const reveal = useContext(SheetRevealContext);
   if (reveal === null) {
     throw new Error('useSheetReveal is only available inside a scrolling sheet body.');
   }

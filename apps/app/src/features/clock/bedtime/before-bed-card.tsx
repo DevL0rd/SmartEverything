@@ -6,7 +6,7 @@ import { Banner } from '../../../components/banner';
 import { Card } from '../../../components/card';
 import { NavRow, SelectRow, SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
-import { useRows } from '../../../store/selectors';
+import { useAutomationNames } from '../../../store/selectors';
 import { openSystemSetting, useAlarmPhone } from '../../setup';
 import { OFF, leadOf, leadOptionsOf } from './schedule-model';
 import { NOISES, NOISE_LABELS, sleepSoundTitleOf } from './sleep-sound-model';
@@ -54,7 +54,8 @@ function soundOf(value: string, chosen: PlannerSleepSound | null): PlannerSleepS
 }
 
 function AutomationRow({ card }: { readonly card: BeforeBedProps }): ReactNode {
-  const automations = useRows('automations').map((row) => ({ value: row.id, label: row.name }));
+  const names = useAutomationNames();
+  const automations = Array.from(names, ([value, label]) => ({ value, label }));
   const { bedtime } = card;
   if (automations.length === 0) {
     return (

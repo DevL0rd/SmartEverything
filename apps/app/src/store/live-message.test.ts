@@ -14,7 +14,6 @@ describe('LIVE_WIRE_MESSAGE', () => {
       seq: 4,
       key: { device_id: CHAT, capability: 'power' },
       set: { value: true, observed_at: '2026-10-17T10:00:00.000Z' },
-      previous: { value: false, observed_at: '2026-10-17T09:00:00.000Z' },
     });
     expect(read.ok).toBe(true);
   });

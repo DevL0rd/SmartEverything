@@ -1,4 +1,4 @@
-import { use, type ReactNode } from 'react';
+import { useContext, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useIdiom } from '../../../design/platform';
@@ -80,7 +80,7 @@ class NoNodeListFrameError extends Error {
 }
 
 export function useSelectionDocked(): boolean {
-  const docked = use(DockedContext);
+  const docked = useContext(DockedContext);
   if (docked === null) throw new NoNodeListFrameError();
   return docked;
 }

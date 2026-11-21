@@ -4,7 +4,7 @@ import { useDOMImperativeHandle } from 'expo/dom';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { background } from '@smarteverything/logging';
 import { useStableCallback } from '../../../design/use-stable-callback';
-import { bakeDriver, type BakeDriver, type BakeEvents } from './bake-engines';
+import { bakeDriver, refuseBake, type BakeDriver, type BakeEvents } from './bake-engines';
 import { BAKE_MESSAGE, type BakerDomProps, type BakerHandle } from './bake-protocol';
 
 const FRAME = { width: '100%', height: '100%', overflow: 'hidden' } as const;
@@ -58,11 +58,14 @@ export default function Baker(props: BakerDomProps): ReactNode {
     () => ({
       bake: (...args): void => {
         const [text] = BAKE_MESSAGE.parse(args);
-        if (driver.current === null) throw new Error('the baker has no engine');
+        if (driver.current === null) {
+          refuseBake(events, text, 'the baker has no driver');
+          return;
+        }
         driver.current.send(text);
       },
     }),
-    [driver],
+    [driver, events],
   );
   return (
     <div style={FRAME} aria-hidden>

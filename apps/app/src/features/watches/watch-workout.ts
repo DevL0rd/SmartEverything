@@ -5,8 +5,10 @@ import {
   type WatchWorkout,
 } from '@smarteverything/domain';
 import type { IconName } from '../../components/icon';
-import type { Device } from '../../store/state';
-import { configOf } from './watch-config';
+import { sameJson } from '../../store/same-json';
+import type { StoreState } from '../../store/state';
+import { useStoreSelector } from '../../store/store-context';
+import { configFrom } from './watch-config';
 import { usePhoneWatch } from './watch-link';
 
 export const SPORT_ICONS: Readonly<Record<WatchSport, IconName>> = {
@@ -53,17 +55,32 @@ function phoneReading(json: string): WorkoutReading {
 
 const NO_WORKOUT: WatchWorkoutView = { sports: [], reading: { kind: 'ready', workout: null } };
 
-export function useWatchWorkout(watch: Device | null): WatchWorkoutView {
-  const phone = usePhoneWatch(watch?.id ?? '');
-  if (watch === null) {
+interface WorkoutDetails {
+  readonly config: unknown;
+  readonly workout: unknown;
+}
+
+function workoutDetailsOf(state: StoreState, deviceId: string | null): WorkoutDetails | null {
+  const device = deviceId === null ? undefined : state.tables.devices.byId[deviceId];
+  return device === undefined
+    ? null
+    : { config: device.details['config'], workout: device.details['workout'] };
+}
+
+export function useWatchWorkout(deviceId: string | null): WatchWorkoutView {
+  const phone = usePhoneWatch(deviceId ?? '');
+  const details = useStoreSelector((state) => workoutDetailsOf(state, deviceId), sameJson, [
+    deviceId,
+  ]);
+  if (deviceId === null || details === null) {
     return NO_WORKOUT;
   }
-  const config = configOf(watch);
+  const config = configFrom(deviceId, details.config);
   const offered = config.kind === 'ready' ? config.config.sports : [];
   const json = phone?.workoutJson ?? null;
   return {
     sports: WATCH_SPORTS.filter((sport) => offered.includes(sport)),
-    reading: json === null ? readingOf(watch.details['workout']) : phoneReading(json),
+    reading: json === null ? readingOf(details.workout) : phoneReading(json),
   };
 }
 

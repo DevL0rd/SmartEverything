@@ -27,7 +27,7 @@ const seen = vi.hoisted((): Seen => ({
 }));
 
 vi.mock('../../../store/selectors', () => ({
-  useDevices: (): readonly Device[] => seen.devices,
+  useComputers: (): readonly Device[] => seen.devices,
   useIsOwner: (): boolean => seen.owner,
   useLoaded: (): boolean => seen.loaded,
   useSyncStatus: (): unknown => ({ status: seen.status }),
@@ -37,7 +37,10 @@ vi.mock('../../computers', () => ({
   computersOf: (devices: readonly Device[]): readonly Device[] =>
     devices.filter((device) => device.kind === 'computer'),
 }));
-vi.mock('../data', () => ({ useDrivePlacementRows: (): readonly never[] => [] }));
+vi.mock('../data', () => ({
+  useDrivePlacementsByDevice: (): ReadonlyMap<string, never> => new Map<string, never>(),
+  placementsOf: (): readonly never[] => [],
+}));
 vi.mock('./this-computer', () => ({
   useThisComputer: (): null => null,
   useDesktopDrive: (): null => null,

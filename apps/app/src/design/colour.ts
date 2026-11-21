@@ -1,4 +1,4 @@
-import { use } from 'react';
+import { useContext } from 'react';
 import { MissingPaletteError, PaletteContext, colourVariable, type Palette } from './colour-roles';
 import { isNative } from './platform';
 import type { ColourRole } from './tokens';
@@ -31,10 +31,10 @@ function resolveColour(palette: Palette | null, role: ColourRole): string {
 }
 
 export function useColour(role: ColourRole): string {
-  return resolveColour(use(PaletteContext), role);
+  return resolveColour(useContext(PaletteContext), role);
 }
 
 export function useColourResolver(): (role: ColourRole) => string {
-  const palette = use(PaletteContext);
+  const palette = useContext(PaletteContext);
   return (role) => resolveColour(palette, role);
 }

@@ -112,7 +112,9 @@ function useLayerWire(
     };
     const sync = (): void => {
       const views = layer.surface.live();
-      handle.current?.sync(JSON.stringify(wireSync(generation, views, sent)));
+      handle.current?.sync(
+        JSON.stringify(wireSync(generation, views, sent, layer.surface.set.focused())),
+      );
       sent = activeSpecKeys(views);
       if (views.some(({ id }) => !current.has(id))) place();
       current = new Set(views.map(({ id }) => id));

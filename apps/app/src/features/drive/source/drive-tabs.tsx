@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { DriveItem } from '@smarteverything/domain';
-import { useDriveRoots, useViewerId } from '../data';
+import { useDriveRootPlaces, useViewerId } from '../data';
 import { detailsSubjectOf, type DetailsSubject } from '../details/details-model';
 import { ActivityTab } from '../details/activity-tab';
 import { VersionsTab } from '../details/versions-tab';
@@ -30,7 +30,7 @@ export function useDriveSubject(node: DriveNode): DetailsSubject | null {
 }
 
 export function useItemSubject(item: DriveItem | null): DetailsSubject | null {
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const viewerId = useViewerId();
   const foreign = item !== null && isForeignRoot(roots, item.rootId, viewerId);
   const shared = useAllShared(foreign);

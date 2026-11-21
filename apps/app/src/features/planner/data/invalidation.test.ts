@@ -13,7 +13,7 @@ const LAST = '2026-11-08T23:59:59.000Z';
 
 function deletion(table: 'planner_items' | 'planner_alarms' | 'google_accounts'): LiveWireChange {
   const key = table === 'google_accounts' ? { profile_id: PERSON } : { id: PERSON };
-  return { type: 'change', table, operation: 'UPDATE', key, set: {}, previous: {}, seq: 1 };
+  return { type: 'change', table, operation: 'UPDATE', key, set: {}, seq: 1 };
 }
 
 function seeded(): QueryClient {

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Button } from '../../../components/button';
 import { ListRow } from '../../../components/list-row';
 import { FilePickerSheet, type FileLocation } from '../../files';
-import { useDriveRoots, useViewerId } from '../data';
+import { useDriveRootPlaces, useViewerId } from '../data';
 import { DRIVE_PLACES, rootOfPlace } from '../source/drive-places';
 import { useDriveSource } from '../source/drive-source';
 import { pickedFolderOf, type PickedFolder } from './placement-model';
@@ -38,7 +38,7 @@ export function DriveFolderPickerSheet({
   readonly onPick: (picked: PickedFolder) => void;
 }): ReactNode {
   const source = useDriveSource();
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const viewerId = useViewerId();
   return (
     <FilePickerSheet

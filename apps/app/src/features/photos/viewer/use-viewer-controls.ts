@@ -5,7 +5,7 @@ import type { AppHref } from '../../../components/app-href';
 import type { MediaTile } from '../../../components/media-grid/tiles';
 import type { MenuItem } from '../../../components/menu';
 import { usePref, PREFS } from '../../../store/prefs';
-import { openHrefOf, useDriveAlbums, useDriveRoots } from '../../drive';
+import { openHrefOf, useDriveAlbums, useDriveRootPlaces } from '../../drive';
 import { useViewerActions, type ViewerActions } from './actions';
 import { useAddedBy } from './added-by';
 import { useAskAbout } from './ask';
@@ -92,7 +92,7 @@ export function useViewerControls(input: ViewerControlsInput): ViewerControls {
   const albums = albumMenuItems(useDriveAlbums('photos'), actions.addToAlbum, () => {
     openNewAlbum([item.id]);
   });
-  const driveHref = openHrefOf(item, useDriveRoots());
+  const driveHref = openHrefOf(item, useDriveRootPlaces());
   const archived = usePhotoArchived(item.id).data?.archived ?? null;
   const info = useInfoContent(input, albums, driveHref, archived === true);
   const more = moreMenuItems({

@@ -18,8 +18,48 @@ function split(snapshot: RouterSnapshot): {
   readonly live: unknown;
   readonly inventory: unknown;
 } {
-  const { info, radios, clients, people, ...live } = snapshot;
-  return { live, inventory: { at: snapshot.at, info, radios, clients, people } };
+  const { info, radios, clients, people, ...rest } = snapshot;
+  return {
+    live: {
+      ...rest,
+      radios: radios.map(({ band, noiseDbm, temperatureCelsius, airtimeBusyPercent }) => ({
+        band,
+        noiseDbm,
+        temperatureCelsius,
+        airtimeBusyPercent,
+      })),
+    },
+    inventory: {
+      at: snapshot.at,
+      info,
+      radios: radios.map(
+        ({
+          noiseDbm: _noise,
+          temperatureCelsius: _temperature,
+          airtimeBusyPercent: _busy,
+          ...radio
+        }) => radio,
+      ),
+      clients,
+      people,
+    },
+  };
+}
+
+function radio(airtimeBusyPercent: number): RouterSnapshot['radios'][number] {
+  return {
+    band: '5 GHz',
+    ssid: 'Home',
+    enabled: true,
+    txPower: 20,
+    channel: 36,
+    width: '80 MHz',
+    noiseDbm: -92,
+    temperatureCelsius: 51,
+    airtimeBusyPercent,
+    dfs: null,
+    clients: 3,
+  };
 }
 
 function row(stream: string, value: unknown, at: string): PluginStreamRow {
@@ -79,6 +119,27 @@ describe('the merged router snapshot', () => {
     expect(
       merged.value.clients.filter((client) => client.trafficBytesPerSecond !== null),
     ).toHaveLength(1);
+  });
+
+  it('shows the radio telemetry from the live part while the inventory stays parsed once', () => {
+    const inventoryParse = vi.spyOn(ROUTER_INVENTORY, 'safeParse');
+    inventoryParse.mockClear();
+    const liveParser = new StreamParser(ROUTER_LIVE);
+    const inventoryParser = new StreamParser(ROUTER_INVENTORY);
+    const first = split(routerSnapshot({ state: 'online' }, { radios: [radio(12)] }));
+    const later = split(routerSnapshot({ state: 'online' }, { radios: [radio(64)] }));
+    const inventoryRow = row('router.snapshot', first.inventory, 'a');
+    const readings = [first, later].map((parts, second) => {
+      const merged = mergeRouterStreams(
+        liveParser.read(row('router.live', parts.live, String(second))),
+        inventoryParser.read(inventoryRow),
+      );
+      if (merged.state !== 'ready') throw new Error('not ready');
+      return merged.value.radios;
+    });
+    expect(inventoryParse).toHaveBeenCalledTimes(1);
+    expect(readings.map((radios) => radios[0]?.airtimeBusyPercent)).toEqual([12, 64]);
+    expect(readings[1]?.[0]).toEqual(radio(64));
   });
 
   it('waits until both parts have arrived', () => {

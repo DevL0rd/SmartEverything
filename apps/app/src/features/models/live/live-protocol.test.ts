@@ -26,29 +26,30 @@ const live: LiveViewModel = {
 
 describe('live overlay protocol', () => {
   it('round trips views and sends each spec once', () => {
-    const first = LIVE_SYNC.parse(JSON.parse(JSON.stringify(wireSync(4, [live], new Set()))));
+    const first = LIVE_SYNC.parse(JSON.parse(JSON.stringify(wireSync(4, [live], new Set(), true))));
     expect(first.generation).toBe(4);
+    expect(first.focused).toBe(true);
     expect(Object.keys(first.specs)).toEqual([specKeyOf(live)]);
     const known = new Map<string, ModelSpec>();
     const [view] = readSync(first, known);
     expect(view).toMatchObject({ id: 'fan', view: 'card', signals: { speed: 0.5 } });
-    const again = wireSync(4, [live], new Set([specKeyOf(live)]));
+    const again = wireSync(4, [live], new Set([specKeyOf(live)]), true);
     expect(again.specs).toEqual({});
     expect(readSync(LIVE_SYNC.parse(again), known)).toHaveLength(1);
   });
 
   it('drops views whose spec never arrived', () => {
-    const sync = wireSync(4, [live], new Set([specKeyOf(live)]));
+    const sync = wireSync(4, [live], new Set([specKeyOf(live)]), true);
     expect(readSync(LIVE_SYNC.parse(sync), new Map())).toEqual([]);
   });
 
   it('releases recycled specs and resends them when the view comes back', () => {
     const known = new Map<string, ModelSpec>();
-    readSync(wireSync(4, [live], new Set()), known);
+    readSync(wireSync(4, [live], new Set(), true), known);
     expect(known.size).toBe(1);
-    readSync(wireSync(4, [], activeSpecKeys([live])), known);
+    readSync(wireSync(4, [], activeSpecKeys([live]), true), known);
     expect(known.size).toBe(0);
-    const returning = wireSync(4, [live], activeSpecKeys([]));
+    const returning = wireSync(4, [live], activeSpecKeys([]), true);
     expect(readSync(returning, known)).toHaveLength(1);
     expect(known.size).toBe(1);
   });

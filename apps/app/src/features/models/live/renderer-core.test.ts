@@ -164,16 +164,15 @@ describe('shared live renderer', () => {
     expect(fake.pixelRatio()).toBe(2);
   });
 
-  it('keeps a 1x1 buffer and clears it only once while no view is placed', () => {
+  it('keeps the drawing buffer and clears it only once while a focused surface places no view', () => {
     const { fake, renderer } = setup(0);
     expect(renderer.draw(0)).toEqual({ moving: false, drawn: [] });
-    expect(fake.size()).toEqual([1, 1]);
-    expect(fake.pixelRatio()).toBe(1);
+    expect(fake.allocations()).toBe(0);
     expect(fake.clears()).toBe(1);
     renderer.resize(800, 1200, 2);
     renderer.draw(16);
     renderer.draw(32);
-    expect(fake.size()).toEqual([1, 1]);
+    expect(fake.allocations()).toBe(0);
     expect(fake.clears()).toBe(1);
     syncLive(renderer, [view('w0')]);
     const rect = { x: 0, y: 0, width: 80, height: 80 };
@@ -181,12 +180,53 @@ describe('shared live renderer', () => {
     expect(renderer.draw(48).drawn).toEqual(['w0']);
     expect(fake.size()).toEqual([800, 1200]);
     expect(fake.pixelRatio()).toBe(2);
+    expect(fake.allocations()).toBe(1);
     syncLive(renderer, []);
     const cleared = fake.clears();
     renderer.draw(64);
     renderer.draw(80);
-    expect(fake.size()).toEqual([1, 1]);
+    expect(fake.size()).toEqual([800, 1200]);
+    expect(fake.pixelRatio()).toBe(2);
+    expect(fake.allocations()).toBe(1);
     expect(fake.clears()).toBe(cleared + 1);
+  });
+
+  it('allocates the buffer once while scrolling empties and refills the placed views', () => {
+    const { fake, renderer, views } = setup(1);
+    renderer.draw(0);
+    for (let pass = 1; pass <= 10; pass += 1) {
+      syncLive(renderer, []);
+      renderer.draw(pass * 32);
+      syncLive(renderer, views);
+      const rect = { x: 0, y: 0, width: 80, height: 80 };
+      renderer.place('w0', rect, rect);
+      expect(renderer.draw(pass * 32 + 16).drawn).toEqual(['w0']);
+    }
+    expect(fake.allocations()).toBe(1);
+    expect(fake.size()).toEqual([400, 4000]);
+  });
+
+  it('shrinks to a 1x1 buffer on release and allocates again on the next placed draw', () => {
+    const { fake, renderer, views } = setup(1);
+    renderer.draw(0);
+    syncLive(renderer, []);
+    renderer.release();
+    expect(fake.size()).toEqual([1, 1]);
+    expect(fake.pixelRatio()).toBe(1);
+    expect(fake.allocations()).toBe(2);
+    const cleared = fake.clears();
+    renderer.draw(16);
+    renderer.draw(24);
+    renderer.release();
+    expect(fake.clears()).toBe(cleared + 1);
+    expect(fake.allocations()).toBe(2);
+    syncLive(renderer, views);
+    const rect = { x: 0, y: 0, width: 80, height: 80 };
+    renderer.place('w0', rect, rect);
+    expect(renderer.draw(32).drawn).toEqual(['w0']);
+    expect(fake.size()).toEqual([400, 4000]);
+    expect(fake.pixelRatio()).toBe(2);
+    expect(fake.allocations()).toBe(3);
   });
 
   it('intersects rectangles', () => {

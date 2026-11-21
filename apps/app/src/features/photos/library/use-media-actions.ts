@@ -3,7 +3,7 @@ import { background } from '@smarteverything/logging';
 import { changeDrive } from '../../../api/drive';
 import type { MenuItem } from '../../../components/menu';
 import { useLastChat } from '../../assistant';
-import { useDriveAlbums, useDriveRoots, shownDriveChange } from '../../drive';
+import { useDriveAlbums, useDriveRootPlaces, shownDriveChange } from '../../drive';
 import { dropPhotoItems } from '../data';
 import { openNewAlbum } from '../albums/new-album-host';
 import { NO_CHAT_HINT } from '../model/ask-actions';
@@ -35,7 +35,7 @@ async function trashShown(client: QueryClient, ids: Ids, onMoved: () => void): P
 
 export function useMediaActions(): MediaActions {
   const albums = useDriveAlbums('photos');
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const last = useLastChat();
   const client = useQueryClient();
   const change = shownDriveChange(client, changeDrive);

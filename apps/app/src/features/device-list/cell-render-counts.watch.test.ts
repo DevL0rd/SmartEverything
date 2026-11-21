@@ -48,5 +48,5 @@ const WATCH: Face = {
 
 budgetCase('watch', WATCH, {
   S: { nodes: 43, hooks: 84, subscriptions: 13 },
-  M: { nodes: 69, hooks: 124, subscriptions: 23 },
+  M: { nodes: 69, hooks: 120, subscriptions: 21 },
 });

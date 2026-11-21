@@ -16,7 +16,9 @@ import { shellLayoutOf } from '../../../components/page-shell/layout';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { SettingsPageBody } from '../../../settings/settings-page';
 import { useIsOwner, useSyncStatus } from '../../../store/selectors';
-import { flattenPages, useDriveRoots, useDriveSettings, useViewerId } from '../../drive';
+import { rowsOf } from '../../../store/state';
+import { useStoreSelector } from '../../../store/store-context';
+import { flattenPages, useDriveSettings, useViewerId } from '../../drive';
 import { PHOTOS_DUPLICATES_PAGE } from '../settings';
 import { usePhotoDuplicates, usePhotoDuplicateStats, usePhotoInsights } from '../data';
 import { DuplicateGroupCard, type GroupHandlers } from './duplicate-group';
@@ -152,7 +154,12 @@ function useDuplicatesData(): DuplicatesData {
   const stats = usePhotoDuplicateStats();
   const library = usePhotoInsights('all_time').data;
   const settings = useDriveSettings().data;
-  const share = hashedShareOf(useDriveRoots(), useViewerId());
+  const viewerId = useViewerId();
+  const share = useStoreSelector(
+    (state) => hashedShareOf(rowsOf(state.tables.drive_roots), viewerId),
+    Object.is,
+    [viewerId],
+  );
   return {
     pages,
     stats,

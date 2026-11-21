@@ -248,16 +248,16 @@ describe('vacuum widget face stage', () => {
     expect(liveFaces()).toHaveLength(2);
   });
 
-  it('unmounts the live map off screen and mounts it again when visible', () => {
+  it('keeps the live map mounted off screen behind the still and does not rebuild it when visible again', () => {
     probe.scene = { name: 'Flat', robot: null };
     render([face('a')]);
     probe.visible = false;
     render([face('a')]);
-    expect(probe.mapsOpen).toBe(0);
+    expect(probe.mapsOpen).toBe(1);
     expect(probe.stills.length).toBeGreaterThan(0);
     probe.visible = true;
     render([face('a')]);
-    expect(probe.mapMounts).toBe(2);
+    expect(probe.mapMounts).toBe(1);
     expect(probe.mapsOpen).toBe(1);
   });
 

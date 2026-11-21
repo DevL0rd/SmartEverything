@@ -16,16 +16,18 @@ export interface DriveBannerModel {
 
 export interface DriveBannerInput {
   readonly online: boolean;
-  readonly root: DriveRoot | null;
+  readonly root: DriveBannerRoot | null;
   readonly mayRescan: boolean;
   readonly quota: QuotaLevel;
 }
 
-function nameOf(root: DriveRoot): string {
+type DriveBannerRoot = Pick<DriveRoot, 'id' | 'scope' | 'state' | 'stateReason'>;
+
+function nameOf(root: Pick<DriveRoot, 'scope'>): string {
   return root.scope === 'home' ? 'The Shared Drive' : 'Your drive';
 }
 
-function stateBanner(root: DriveRoot, mayRescan: boolean): DriveBannerModel | null {
+function stateBanner(root: DriveBannerRoot, mayRescan: boolean): DriveBannerModel | null {
   const action = mayRescan ? 'rescan' : null;
   if (root.state === 'error') {
     return {
@@ -77,7 +79,7 @@ function quotaBanner(quota: QuotaLevel): DriveBannerModel | null {
 }
 
 export function mayRescanOf(
-  root: DriveRoot | null,
+  root: Pick<DriveRoot, 'scope' | 'ownerProfileId'> | null,
   viewerId: string | null,
   owner: boolean,
 ): boolean {

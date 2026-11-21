@@ -14,7 +14,7 @@ import { useStoreSelector } from '../../../store/store-context';
 import type { VisualState } from '../types';
 import { useVacuumFinish } from './vacuum-finish';
 import { visualStateOf } from './visual-state';
-import { useTodaySteps, type StepsReading } from './watch-steps';
+import { useTodaySteps, type StepsReading, type TodaySteps } from './watch-steps';
 
 interface Figure {
   readonly value: number;
@@ -142,18 +142,40 @@ function liveFields(
   };
 }
 
-export function useWatchVisualState(device: Device, live: WatchLive | null = null): VisualState {
-  const steps = useTodaySteps(device, live?.steps ?? null);
-  const goal = effectiveFitnessGoals(
-    useActiveProfile()?.fitness_goals ?? UNSET_FITNESS_GOALS,
-  ).steps;
-  const watch = { ...useDeviceVisualState(device), ...liveFields(device, live) };
+export interface WatchStepsGoal {
+  readonly steps: TodaySteps | null;
+  readonly stepsGoal: number;
+}
+
+function watchStateOf(
+  base: VisualState,
+  device: Device,
+  live: WatchLive | null,
+  { steps, stepsGoal }: WatchStepsGoal,
+): VisualState {
+  const watch = { ...base, ...liveFields(device, live) };
   if (steps === null) {
     return watch;
   }
   return {
     ...watch,
     reading: { text: count(steps.value), unit: 'steps', at: steps.at },
-    progress: Math.min(1, steps.value / goal),
+    progress: Math.min(1, steps.value / stepsGoal),
   };
+}
+
+export function useWatchVisualState(device: Device, live: WatchLive | null = null): VisualState {
+  const steps = useTodaySteps(device, live?.steps ?? null);
+  const stepsGoal = effectiveFitnessGoals(
+    useActiveProfile()?.fitness_goals ?? UNSET_FITNESS_GOALS,
+  ).steps;
+  return watchStateOf(useDeviceVisualState(device), device, live, { steps, stepsGoal });
+}
+
+export function useGlanceVisualState(
+  device: Device,
+  live: WatchLive,
+  glance: WatchStepsGoal,
+): VisualState {
+  return watchStateOf(useDeviceVisualState(device), device, live, glance);
 }

@@ -67,8 +67,7 @@ interface BandArc {
   readonly colour: ColourRole;
 }
 
-function bandArcs(props: GaugeProps): BandArc[] {
-  const { min, max, bands } = props;
+function bandArcs(min: number, max: number, bands: readonly GaugeBand[]): BandArc[] {
   const span = max - min;
   const angleOf = (value: number): number =>
     span === 0 ? 0 : ((clamp(value, { min, max }) - min) / span) * SWEEP;
@@ -105,12 +104,13 @@ function GaugeArcs(props: GaugeProps & { readonly thickness: number }): ReactNod
   const shown = clamp(value, { min, max });
   const share = max === min ? 0 : (shown - min) / (max - min);
   const drawn = useDraw(share, !useMotion().reduced, ticking);
+  const resolve = useColourResolver();
   const ring = { cx: centre, cy: centre, r: radius };
   const full = arcPath(ring, START, START + SWEEP);
   const length = arcLength(radius, SWEEP);
   const frame = { size, thickness, min, max };
-  const arcs = bandArcs(props);
-  const shades = shadesOf(arcs, useColourResolver());
+  const arcs = bandArcs(min, max, props.bands);
+  const shades = shadesOf(arcs, resolve);
   return (
     <Svg width={size} height={size} style={StyleSheet.absoluteFill} pointerEvents="none">
       {arcs.map((band) =>

@@ -40,6 +40,7 @@ const PLACEMENT = z.strictObject({ rect: RECT, clip: RECT });
 
 export const LIVE_SYNC = z.strictObject({
   generation: z.number().int().nonnegative(),
+  focused: z.boolean(),
   specs: z.record(z.string(), MODEL_SPEC),
   views: z.array(WIRE_VIEW),
 });
@@ -95,6 +96,7 @@ export function wireSync(
   generation: number,
   views: readonly LiveViewModel[],
   sent: ReadonlySet<string>,
+  focused: boolean,
 ): LiveSync {
   const specs: Record<string, ModelSpec> = {};
   const wire = views.map((view): WireView => {
@@ -105,7 +107,7 @@ export function wireSync(
     const wired = { id, specKey, model: { ...model }, view: view.view, theme, signals, reduced };
     return inspect === undefined ? wired : { ...wired, inspect: { ...inspect } };
   });
-  return { generation, specs, views: wire };
+  return { generation, focused, specs, views: wire };
 }
 
 export function readSync(sync: LiveSync, known: Map<string, ModelSpec>): LiveViewModel[] {

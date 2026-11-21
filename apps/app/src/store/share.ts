@@ -118,7 +118,6 @@ export function shareTables(previous: Tables, next: Tables): Tables {
     assistant_messages: shareTable(previous.assistant_messages, next.assistant_messages),
     ai_chats: shareTable(previous.ai_chats, next.ai_chats),
     scheduled_actions: shareTable(previous.scheduled_actions, next.scheduled_actions),
-    ai_usage: shareTable(previous.ai_usage, next.ai_usage),
     plugins: shareTable(previous.plugins, next.plugins),
     plugin_streams: shareTable(previous.plugin_streams, next.plugin_streams),
     plugin_ui: shareTable(previous.plugin_ui, next.plugin_ui),

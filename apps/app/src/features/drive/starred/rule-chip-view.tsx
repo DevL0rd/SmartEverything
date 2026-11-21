@@ -5,13 +5,13 @@ import { Badge } from '../../../components/badge';
 import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
-import { useDriveChips, useDriveItem, useDriveRoots } from '../data';
+import { useDriveChips, useDriveItem, useDriveRootPlaces } from '../data';
 import { leafIcon, leafLabel, placeOfSources, type PlaceOf } from './rule-labels';
 import type { RuleChip } from './rule-chips';
 
 export function usePlaceOf(extra: ReadonlyMap<string, string>): PlaceOf {
   const chipOf = useDriveChips();
-  const rootIds = new Set(useDriveRoots().map((root) => root.id));
+  const rootIds = new Set(useDriveRootPlaces().map((root) => root.id));
   return placeOfSources({ extra, rootIds, rootLabel: (id) => chipOf(id).label });
 }
 

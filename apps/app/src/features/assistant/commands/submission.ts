@@ -372,6 +372,18 @@ function currentNativeJob(
   );
 }
 
+async function runPending(
+  mark: (pending: boolean) => void,
+  work: () => Promise<boolean>,
+): Promise<boolean> {
+  mark(true);
+  try {
+    return await work();
+  } finally {
+    mark(false);
+  }
+}
+
 function useCommandPending(): {
   readonly current: () => boolean;
   readonly run: (work: () => Promise<boolean>) => Promise<boolean>;
@@ -379,14 +391,10 @@ function useCommandPending(): {
   const pending = useRef(false);
   return {
     current: (): boolean => pending.current,
-    run: async (work): Promise<boolean> => {
-      pending.current = true;
-      try {
-        return await work();
-      } finally {
-        pending.current = false;
-      }
-    },
+    run: (work): Promise<boolean> =>
+      runPending((next) => {
+        pending.current = next;
+      }, work),
   };
 }
 function acceptedArguments(command: CommandDescriptor, line: string): string {

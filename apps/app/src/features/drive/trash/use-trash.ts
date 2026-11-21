@@ -4,7 +4,13 @@ import { useScreenPaused } from '../../../design/screen-pause';
 import { useDayKey } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
 import { useIsOwner, useSession } from '../../../store/selectors';
-import { flattenPages, useDriveChips, useDriveRoots, useDriveTrash, useViewerId } from '../data';
+import {
+  flattenPages,
+  useDriveChips,
+  useDriveRootPlaces,
+  useDriveTrash,
+  useViewerId,
+} from '../data';
 import type { DriveChipOf } from '../model/drive-chip';
 import { trashNodeOf, type DriveNode } from '../source/drive-node';
 import { deletedByOf, type DeletedByShare } from './deleted-by';
@@ -67,7 +73,7 @@ export function useTrash(): TrashView {
   const items = useMemo(() => trashItemsOf(entries, today, people), [entries, today, people]);
   const owner = useIsOwner();
   const viewerId = useViewerId();
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const nodeOf = useMemo(() => {
     const rights = { owner, viewerId, roots };
     return new Map(entries.map((entry) => [entry.itemId, trashNodeOf(entry, rights)]));

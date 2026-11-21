@@ -4,7 +4,7 @@ import { Text } from '../../components/text';
 import { count } from '../../format/number';
 import { useRow } from '../../store/selectors';
 import type { Device } from '../../store/state';
-import { DeviceVisual, useWatchVisualState, type VisualState } from '../device-visuals';
+import { DeviceVisual, useGlanceVisualState, type VisualState } from '../device-visuals';
 import {
   GenericCardFace,
   WIDE_VISUAL_PX,
@@ -37,7 +37,7 @@ import { FindWatchButton } from './watch-find';
 import { useWatchGlance, type WatchGlance } from './watch-glance';
 import { beatingBpm, type HeartView } from './watch-heart';
 import { useRinging } from './watch-ringing';
-import { useInstantClock } from '../../store/clock-format';
+import { useInstantClock, type InstantClock } from '../../store/clock-format';
 
 const HEART_HEIGHT: Readonly<Record<WideClass, number>> = { m: 34, w: 52, l: 120, xl: 120 };
 
@@ -53,6 +53,7 @@ interface WatchCardData {
   readonly sync: SyncControl;
   readonly line: string;
   readonly state: VisualState;
+  readonly instant: InstantClock;
   readonly neverReported: boolean;
   readonly ringing: boolean;
 }
@@ -62,7 +63,7 @@ function useWatchCardData(device: Device): WatchCardData {
   const { heart, lastSeen } = useWatchPulse(device, phone);
   const ringing = useRinging(device.id);
   const owner = useRow('profiles', textOf(device.details['profileId']))?.name ?? null;
-  const state = useWatchVisualState(device, { ...live, heartRate: beatingBpm(heart) });
+  const state = useGlanceVisualState(device, { ...live, heartRate: beatingBpm(heart) }, glance);
   const instant = useInstantClock();
   return {
     glance,
@@ -72,6 +73,7 @@ function useWatchCardData(device: Device): WatchCardData {
     headline: headlineOf(glance, lastSeen, instant),
     sync: syncControlOf(glance, owner),
     line: stateLineOf({ facts: glance, lastSeen, owner, ringing, instant }),
+    instant,
     neverReported: !glance.onThisPhone && textOf(device.details['reportedAt']) === null,
     ringing,
   };
@@ -89,7 +91,9 @@ function onWrist(data: WatchCardData): boolean {
 function figuresOf(device: Device, data: WatchCardData): readonly ReactNode[] {
   const stale = data.lastSeen !== null;
   return [
-    data.heart === null ? null : <HeartFigure key="heart" view={data.heart} stale={stale} />,
+    data.heart === null ? null : (
+      <HeartFigure key="heart" view={data.heart} stale={stale} instant={data.instant} />
+    ),
     <StepsFigure key="steps" glance={data.glance} stale={stale} />,
     onWrist(data) ? (
       <BatteryAndOxygen key="battery" device={device} battery={data.glance.battery} />

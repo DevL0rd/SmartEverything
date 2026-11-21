@@ -20,7 +20,7 @@ import {
   useAccessRequest,
   useDriveAccessRequestRows,
   useDriveOpenItem,
-  useDriveRoots,
+  useDriveRootPlaces,
   useViewerId,
   type AccessAsk,
 } from '../data';
@@ -224,7 +224,7 @@ function Sent({
 }
 
 function Opening({ item }: { readonly item: DriveItem }): ReactNode {
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   useEffect(() => {
     router.replace(openHrefOf(item, roots));
   }, [item, roots]);

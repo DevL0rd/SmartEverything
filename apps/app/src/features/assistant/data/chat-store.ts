@@ -162,7 +162,8 @@ export function useLiveTurn(chatId: string, intervalMs: number, enabled: boolean
     const unsubscribe = store.subscriptions.add({
       reads: new Set([turnsSlice(chatId)]),
       wake: () => {
-        timer ??= setTimeout(flush, Math.max(0, flushedAt + gap - Date.now()));
+        if (timer !== null) return;
+        timer = setTimeout(flush, Math.max(0, flushedAt + gap - Date.now()));
       },
     });
     return (): void => {

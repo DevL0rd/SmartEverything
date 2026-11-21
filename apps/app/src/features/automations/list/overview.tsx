@@ -288,9 +288,7 @@ export function Overview({
     <RunsCard
       size={layout === 'stacked' ? 'compact' : 'roomy'}
       health={list.health}
-      onFilter={(filter) => {
-        list.setView({ ...list.view, filter });
-      }}
+      onFilter={list.setFilter}
     />
   );
   const next = <TimelineBand events={list.events} links={links} timeZone={list.timeZone} />;

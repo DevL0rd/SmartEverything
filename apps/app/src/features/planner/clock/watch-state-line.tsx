@@ -3,15 +3,18 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { useRow } from '../../../store/selectors';
+import { useDeviceLabel } from '../../../store/selectors';
 import { watchLineOf } from './alarm-text';
 
-export function useWatchName(deviceId: string): string {
-  return useRow('devices', deviceId)?.label ?? 'Watch';
+export const REMOVED_WATCH = 'Removed watch';
+
+export function useWatchName(deviceId: string): string | null {
+  return useDeviceLabel(deviceId);
 }
 
 export function WatchStateLine({ link }: { readonly link: PlannerWatchLink }): ReactNode {
-  const line = watchLineOf(link, useWatchName(link.deviceId));
+  const name = useWatchName(link.deviceId);
+  const line = watchLineOf(link, name ?? REMOVED_WATCH);
   return (
     <View
       accessibilityRole="summary"

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
-import type { PhotoAiStatus, PhotoGroup, PhotoPeople } from '@smarteverything/domain';
+import type { PhotoAiStatus, PhotoGroup } from '@smarteverything/domain';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { Arc, SegmentBar } from '../../../components/charts';
@@ -11,16 +11,13 @@ import { count, percent } from '../../../format/number';
 import { sentenceCase } from '../../../format/text';
 import { usePeopleActions } from './actions';
 import { FaceAvatar } from './face-avatar';
-import { GroupGrid } from './group-tile';
 import {
   faceProgressOf,
   groupingProgressOf,
-  mergeCandidatesOf,
   namingLineOf,
   pairLineOf,
-  speciesChipsOf,
-  suggestionKey,
   type Naming,
+  type SpeciesChip,
 } from './model';
 
 export function FaceRing({
@@ -162,7 +159,11 @@ function MergeButtons({ pair }: { readonly pair: readonly [PhotoGroup, PhotoGrou
   );
 }
 
-function MergeCard({ pair }: { readonly pair: readonly [PhotoGroup, PhotoGroup] }): ReactNode {
+export function MergeCard({
+  pair,
+}: {
+  readonly pair: readonly [PhotoGroup, PhotoGroup];
+}): ReactNode {
   const [first, second] = pair;
   const noun = first.kind === 'pet' ? 'pet' : 'person';
   return (
@@ -192,59 +193,28 @@ function MergeCard({ pair }: { readonly pair: readonly [PhotoGroup, PhotoGroup] 
   );
 }
 
-export function MergeSuggestions({ people }: { readonly people: PhotoPeople }): ReactNode {
-  const pairs = mergeCandidatesOf(people.mergeSuggestions, people.groups);
-  if (pairs.length === 0) return null;
-  return (
-    <View className="flex-row flex-wrap gap-3">
-      {pairs.map((pair) => {
-        const key = suggestionKey({ groupIds: [pair[0].id, pair[1].id], similarity: 0 });
-        return <MergeCard key={key} pair={pair} />;
-      })}
-    </View>
-  );
-}
-
-function SectionHead({
+export function SectionTitle({
   title,
   detail,
-}: {
-  readonly title: string;
-  readonly detail: string | null;
-}): ReactNode {
-  return (
-    <View className="flex-row items-baseline gap-2 pb-1">
-      <Text variant="title-3">{title}</Text>
-      {detail === null ? null : (
-        <Text variant="footnote" tone="variant" className="tabular-nums">
-          {detail}
-        </Text>
-      )}
-    </View>
-  );
-}
-
-export function GroupSection({
-  title,
-  groups,
-  size,
   note,
 }: {
   readonly title: string;
-  readonly groups: readonly PhotoGroup[];
-  readonly size: number;
-  readonly note?: string;
+  readonly detail: string;
+  readonly note: string | null;
 }): ReactNode {
-  if (groups.length === 0) return null;
   return (
     <View className="gap-1">
-      <SectionHead title={title} detail={count(groups.length)} />
-      {note === undefined ? null : (
+      <View className="flex-row items-baseline gap-2 pb-1">
+        <Text variant="title-3">{title}</Text>
+        <Text variant="footnote" tone="variant" className="tabular-nums">
+          {detail}
+        </Text>
+      </View>
+      {note === null ? null : (
         <Text variant="footnote" tone="variant">
           {note}
         </Text>
       )}
-      <GroupGrid groups={groups} size={size} />
     </View>
   );
 }
@@ -255,53 +225,41 @@ function speciesIconOf(species: string): IconName {
   return 'dog';
 }
 
-export function PetsSection({
-  all,
-  pets,
+export function SpeciesChips({
+  chips,
   species,
-  size,
   onSpecies,
 }: {
-  readonly all: readonly PhotoGroup[];
-  readonly pets: readonly PhotoGroup[];
+  readonly chips: readonly SpeciesChip[];
   readonly species: string | null;
-  readonly size: number;
   readonly onSpecies: (species: string | null) => void;
 }): ReactNode {
-  const chips = speciesChipsOf(all);
-  if (chips.length === 0) return null;
   return (
-    <View className="gap-2">
-      <SectionHead title="Pets" detail={count(chips.reduce((sum, chip) => sum + chip.count, 0))} />
-      {chips.length < 2 ? null : (
-        <View className="flex-row flex-wrap gap-2">
-          <FilterChip
-            label="Pets"
-            value="All pets"
-            icon="dog"
-            active={species === null}
-            singleChoice
-            onPress={() => {
-              onSpecies(null);
-            }}
-          />
-          {chips.map((chip) => (
-            <FilterChip
-              key={chip.species}
-              label="Pets"
-              value={sentenceCase(chip.species)}
-              icon={speciesIconOf(chip.species)}
-              count={chip.count}
-              active={species === chip.species}
-              singleChoice
-              onPress={() => {
-                onSpecies(species === chip.species ? null : chip.species);
-              }}
-            />
-          ))}
-        </View>
-      )}
-      <GroupGrid groups={pets} size={size} />
+    <View className="flex-row flex-wrap gap-2">
+      <FilterChip
+        label="Pets"
+        value="All pets"
+        icon="dog"
+        active={species === null}
+        singleChoice
+        onPress={() => {
+          onSpecies(null);
+        }}
+      />
+      {chips.map((chip) => (
+        <FilterChip
+          key={chip.species}
+          label="Pets"
+          value={sentenceCase(chip.species)}
+          icon={speciesIconOf(chip.species)}
+          count={chip.count}
+          active={species === chip.species}
+          singleChoice
+          onPress={() => {
+            onSpecies(species === chip.species ? null : chip.species);
+          }}
+        />
+      ))}
     </View>
   );
 }

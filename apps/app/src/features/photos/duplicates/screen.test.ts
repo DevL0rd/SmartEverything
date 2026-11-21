@@ -74,6 +74,10 @@ vi.mock('../../../store/selectors', () => ({
     status: seen.live ? 'live' : 'interrupted',
   }),
 }));
+vi.mock('../../../store/store-context', () => ({
+  useStoreSelector: <T>(select: (state: unknown) => T): T =>
+    select({ tables: { drive_roots: { rows: [] } } }),
+}));
 vi.mock('../../../design/size-class', async (original) => ({
   ...(await original<object>()),
   useAreaWidth: (): number => seen.width,
@@ -98,7 +102,6 @@ vi.mock('../../drive', () => ({
     data: { readonly pages: readonly P[] } | undefined,
     items: (page: P) => readonly T[],
   ): readonly T[] => (data?.pages ?? []).flatMap(items),
-  useDriveRoots: (): readonly unknown[] => [],
   useViewerId: (): string => 'me',
   useDriveSettings: (): unknown => ({
     data: seen.hashing === undefined ? undefined : { duplicatesHashing: seen.hashing },

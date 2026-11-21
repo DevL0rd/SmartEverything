@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { canvasPixelRatio } from './render-core-renderer';
 import {
+  followFocus,
   sharedPool,
   sharedSurface,
   stagePool,
@@ -79,7 +80,7 @@ describe('shared small-stage renderer', () => {
     expect(pool.users).toBe(2);
   });
 
-  it('keeps the renderer across scroll-off and scroll-back remounts', () => {
+  it('keeps the renderer across remounts and frees its buffer once no screen is focused', () => {
     const create = vi.fn(fakeRenderer);
     const pool = sharedPool(create);
     const shown = sharedSurface(fakeTarget(), pool);
@@ -94,6 +95,60 @@ describe('shared small-stage renderer', () => {
       again.release();
     }
     expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the shared buffer size through a release and acquire on a focused screen', () => {
+    const pool = sharedPool(fakeRenderer);
+    pool.setFocused(true);
+    const first = sharedSurface(fakeTarget(), pool);
+    first.resize(400, 300);
+    first.frame(() => null);
+    const renderer = first.renderer;
+    first.release();
+    const second = sharedSurface(fakeTarget(), pool);
+    second.resize(400, 300);
+    second.frame(() => null);
+    expect(renderer.setSize).not.toHaveBeenCalledWith(1, 1, false);
+    expect(renderer.setSize).toHaveBeenCalledTimes(1);
+    second.release();
+    expect(renderer.setSize).not.toHaveBeenCalledWith(1, 1, false);
+    pool.setFocused(false);
+    expect(renderer.setSize).toHaveBeenLastCalledWith(1, 1, false);
+  });
+
+  it('frees the buffer of a still used renderer only after its last stage leaves an unfocused screen', () => {
+    const pool = sharedPool(fakeRenderer);
+    pool.setFocused(true);
+    const shown = sharedSurface(fakeTarget(), pool);
+    pool.setFocused(false);
+    expect(shown.renderer.setSize).not.toHaveBeenCalled();
+    shown.release();
+    expect(shown.renderer.setSize).toHaveBeenLastCalledWith(1, 1, false);
+  });
+
+  it('follows the focus of the visibility source', () => {
+    const pool = sharedPool(fakeRenderer);
+    const listeners = new Set<() => void>();
+    let focused = true;
+    const stop = followFocus(pool, {
+      hasFocusedStage: () => focused,
+      subscribe(listener) {
+        listeners.add(listener);
+        return (): void => {
+          listeners.delete(listener);
+        };
+      },
+    });
+    const surface = sharedSurface(fakeTarget(), pool);
+    surface.release();
+    expect(surface.renderer.setSize).not.toHaveBeenCalledWith(1, 1, false);
+    focused = false;
+    listeners.forEach((listener) => {
+      listener();
+    });
+    expect(surface.renderer.setSize).toHaveBeenLastCalledWith(1, 1, false);
+    stop();
+    expect(listeners.size).toBe(0);
   });
 
   it('replaces the renderer only after its context is lost', () => {

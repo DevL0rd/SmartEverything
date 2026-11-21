@@ -84,6 +84,9 @@ export class VisibilityRegistry {
   readonly liveStageIds = (): readonly string[] =>
     [...this.stages].filter(([, entry]) => entry.state.live).map(([id]) => id);
 
+  readonly hasFocusedStage = (): boolean =>
+    [...this.stages.values()].some((entry) => entry.state.focused);
+
   readonly subscribeStage = (id: string, listener: () => void): (() => void) => {
     const listeners = this.stageListeners.get(id) ?? new Set<() => void>();
     listeners.add(listener);

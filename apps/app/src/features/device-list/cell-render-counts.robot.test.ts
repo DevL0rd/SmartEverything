@@ -49,7 +49,7 @@ const ROBOT: Face = {
 
 const BUDGETS: Readonly<Record<'S' | 'M', Budget>> = {
   S: { nodes: 29, hooks: 75, subscriptions: 9 },
-  M: { nodes: 67, hooks: 123, subscriptions: 13 },
+  M: { nodes: 67, hooks: 115, subscriptions: 12 },
 };
 
 budgetCase('robot', ROBOT, BUDGETS);

@@ -9,11 +9,14 @@ import { roomColourOf, useRoomColours, type RoomColours } from '../plan/room-col
 import { mapAspectClass } from '../plan/aspect';
 import { describePlan } from '../plan/rooms';
 import {
-  buildIsoStill,
+  buildIsoSolids,
+  isoOccupancy,
   type IsoMark,
+  type IsoOccupancy,
+  type IsoPoolGroup,
   type IsoSolid,
   type IsoStillInput,
-  type IsoStillModel,
+  type IsoStillScene,
 } from './model';
 import { ellipsePath, isoFloorFill } from './project';
 
@@ -153,15 +156,15 @@ function SolidMark({
 }
 
 function PoolsLayer({
-  model,
+  pools,
   colours,
   id,
 }: {
-  readonly model: IsoStillModel;
+  readonly pools: readonly IsoPoolGroup[];
   readonly colours: IsoColours;
   readonly id: string;
 }): ReactNode {
-  if (model.pools.length === 0) return null;
+  if (pools.length === 0) return null;
   return (
     <>
       <Defs>
@@ -169,7 +172,7 @@ function PoolsLayer({
           <Stop offset="0" stopColor={colours.pool} stopOpacity={0.55} />
           <Stop offset="1" stopColor={colours.pool} stopOpacity={0} />
         </RadialGradient>
-        {model.pools.map((group, index) =>
+        {pools.map((group, index) =>
           group.clip === null ? null : (
             <ClipPath key={String(index)} id={`${id}-clip-${String(index)}`}>
               <Path d={group.clip} fillRule="evenodd" />
@@ -177,7 +180,7 @@ function PoolsLayer({
           ),
         )}
       </Defs>
-      {model.pools.map((group, index) => (
+      {pools.map((group, index) => (
         <G
           key={String(index)}
           {...(group.clip === null ? {} : { clipPath: `url(#${id}-clip-${String(index)})` })}
@@ -197,14 +200,30 @@ export interface IsoStillCanvasProps {
   readonly height: number;
 }
 
+function useIsoScene({ input, width, height }: IsoStillCanvasProps): {
+  readonly scene: IsoStillScene;
+  readonly occupancy: IsoOccupancy;
+} {
+  const { floor, robot, litDeviceIds, wallStyle, view, look, activeRoomIds, zones } = input;
+  const scene = useMemo(
+    () => buildIsoSolids({ floor, robot, litDeviceIds, wallStyle, view, look }, { width, height }),
+    [floor, robot, litDeviceIds, wallStyle, view, look, width, height],
+  );
+  const occupancy = useMemo(
+    () => isoOccupancy(scene, { activeRoomIds, zones }),
+    [scene, activeRoomIds, zones],
+  );
+  return { scene, occupancy };
+}
+
 export function IsoStillCanvas({ input, width, height }: IsoStillCanvasProps): ReactNode {
   const colours = useIsoColours();
   const theme: StructureTheme = useUniwind().theme === 'light' ? 'light' : 'dark';
   const id = `iso${useId().replace(/[^a-z0-9]/giu, '')}`;
-  const model = useMemo(() => buildIsoStill(input, { width, height }), [input, width, height]);
+  const { scene, occupancy } = useIsoScene({ input, width, height });
   return (
     <Svg width={width} height={height}>
-      {model.rooms.map((room) => (
+      {occupancy.rooms.map((room) => (
         <G key={room.id}>
           <Path
             d={room.d}
@@ -223,7 +242,7 @@ export function IsoStillCanvas({ input, width, height }: IsoStillCanvasProps): R
           ) : null}
         </G>
       ))}
-      {model.zones.map((zone, index) => (
+      {occupancy.zones.map((zone, index) => (
         <Path
           key={String(index)}
           d={zone.d}
@@ -234,8 +253,8 @@ export function IsoStillCanvas({ input, width, height }: IsoStillCanvasProps): R
           strokeOpacity={zone.occupied ? 0 : 0.6}
         />
       ))}
-      <PoolsLayer model={model} colours={colours} id={id} />
-      {model.solids.map((solid) => (
+      <PoolsLayer pools={scene.pools} colours={colours} id={id} />
+      {scene.solids.map((solid) => (
         <SolidMark key={solid.id} solid={solid} colours={colours} />
       ))}
     </Svg>

@@ -11,7 +11,7 @@ import { TYPE_SCALE, type ColourRole } from '../../../design/tokens';
 import { decimal, withUnit } from '../../../format/number';
 import { plural, joinParts } from '../../../format/text';
 import { DAY_MS, localDayKey } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
+import { useDayNow } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { useHome } from '../data/home-data';
@@ -299,7 +299,7 @@ export function FitnessTodayWidget(): ReactNode {
   const face = useWidgetFace();
   const fitness = useHome((view) => view.fitness);
   const zone = useSettings().time_zone;
-  const now = useMinute();
+  const now = useDayNow(zone);
   const ready = useFitnessReady();
   if (!ready) {
     return <FitnessSetupWidget title="Fitness" />;

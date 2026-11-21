@@ -12,7 +12,8 @@ import { percentOf } from '../../../format/percent';
 import { dayBoundsOf, localDayKey } from '../../../format/time';
 import { useInstantClock, type InstantClock } from '../../../store/clock-format';
 import { usePlannerTools, usePlannerWrites, type PlannerPerson } from '../data';
-import { AttachmentChips, useAttachmentNames, withoutAttachment } from './attachment-chips';
+import { AttachmentChips, withoutAttachment } from './attachment-chips';
+import { useAttachmentNames } from './attachment-names';
 import { AttachmentPicker } from './attachment-picker';
 import { dayLabelOf, whenTextOf, type FieldsToday } from './item-history';
 import {

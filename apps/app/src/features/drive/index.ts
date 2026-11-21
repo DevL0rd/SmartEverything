@@ -1,6 +1,6 @@
 export { DRIVE_SECTION_ROUTES, DRIVE_SECTIONS, type DriveSection } from './model/section-routes';
 export { openHrefOf } from './recent/recent-model';
-export { driveLabelOf, isDriveOwner } from './model/drive-access';
+export { driveLabelOf, isDriveOwner, type DriveRootPlace } from './model/drive-access';
 export * from './data';
 export * from './upload/transport';
 export { makeShareLink } from './share/share-data';

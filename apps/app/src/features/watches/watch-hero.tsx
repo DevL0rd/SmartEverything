@@ -7,7 +7,7 @@ import { Grid } from '../../components/grid';
 import { useRow } from '../../store/selectors';
 import { useMinute } from '../../store/clock';
 import type { Device } from '../../store/state';
-import { DeviceVisual, useWatchVisualState } from '../device-visuals';
+import { DeviceVisual, useGlanceVisualState } from '../device-visuals';
 import { useOwnWatch, useWatchPulse } from './use-watch-heart';
 import { syncControlOf } from './watch-card-model';
 import { BatteryAndOxygen, SetupAction, SyncAction } from './watch-card-parts';
@@ -49,7 +49,7 @@ export function WatchHero({ device }: { readonly device: Device }): ReactNode {
   const now = useMinute();
   const { glance, live, phone } = useWatchGlance(device);
   const { heart, lastSeen } = useWatchPulse(device, phone);
-  const state = useWatchVisualState(device, { ...live, heartRate: beatingBpm(heart) });
+  const state = useGlanceVisualState(device, { ...live, heartRate: beatingBpm(heart) }, glance);
   const own = useOwnWatch(device);
   const facts = factsOf(glance, now, true);
   return (

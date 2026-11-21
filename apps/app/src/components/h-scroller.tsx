@@ -1,25 +1,12 @@
-import {
-  Children,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-  type ReactNode,
-  type RefObject,
-} from 'react';
-import {
-  ScrollView,
-  View,
-  type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from 'react-native';
+import { Children, useRef, type ReactNode } from 'react';
+import { ScrollView, View } from 'react-native';
 import { cn } from '../design/cn';
 import { useIdiom } from '../design/platform';
-import { revealOffset, scrollStepOf, type RevealRange } from './h-scroller-step';
+import { scrollStepOf, type RevealRange } from './h-scroller-step';
+import { usePointerHover, useScrollBy, type ScrollEdges } from './h-scroller-scroll';
+import { IconButton } from './icon-button';
 
 export type { RevealRange } from './h-scroller-step';
-import { IconButton } from './icon-button';
 
 function Arrows({
   scrollBy,
@@ -28,7 +15,7 @@ function Arrows({
 }: {
   readonly scrollBy: (delta: number) => void;
   readonly step: number;
-  readonly edges: ScrollMetrics['edges'];
+  readonly edges: ScrollEdges;
 }): ReactNode {
   return (
     <>
@@ -58,96 +45,6 @@ function Arrows({
       ) : null}
     </>
   );
-}
-
-interface ScrollMetrics {
-  viewport: number;
-  content: number;
-  offset: number;
-  edges: { readonly overflow: boolean; readonly start: boolean; readonly end: boolean };
-}
-
-function useReveal(
-  ref: RefObject<ScrollView | null>,
-  metrics: RefObject<ScrollMetrics>,
-  reveal: RevealRange | null,
-): { readonly revealPending: () => void; readonly retarget: () => void } {
-  const pending = useRef<RevealRange | null>(null);
-  const target = useRef<RevealRange | null>(null);
-  const revealPending = (): void => {
-    const range = pending.current;
-    const { viewport, offset, content } = metrics.current;
-    if (range === null || viewport === 0 || content < range.x + range.width) return;
-    pending.current = null;
-    const next = revealOffset(range, offset, viewport);
-    if (next !== null) ref.current?.scrollTo({ x: next, animated: true });
-  };
-  const queue = useEffectEvent((range: RevealRange | null): void => {
-    target.current = range;
-    pending.current = range;
-    revealPending();
-  });
-  useEffect(() => {
-    queue(reveal);
-  }, [reveal]);
-  return {
-    revealPending,
-    retarget: (): void => {
-      pending.current = target.current;
-      revealPending();
-    },
-  };
-}
-
-function useScrollBy(reveal: RevealRange | null): {
-  readonly ref: RefObject<ScrollView | null>;
-  readonly onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
-  readonly onLayout: (event: LayoutChangeEvent) => void;
-  readonly onContentSizeChange: (width: number) => void;
-  readonly scrollBy: (delta: number) => void;
-  readonly edges: ScrollMetrics['edges'];
-} {
-  const ref = useRef<ScrollView>(null);
-  const [edges, setEdges] = useState({ overflow: false, start: false, end: false });
-  const metrics = useRef<ScrollMetrics>({ viewport: 0, content: 0, offset: 0, edges });
-  const { revealPending, retarget } = useReveal(ref, metrics, reveal);
-  const updateEdges = (): void => {
-    const current = metrics.current;
-    const overflow = current.content > current.viewport + 2;
-    const start = overflow && current.offset > 2;
-    const end = overflow && current.content > current.viewport + current.offset + 2;
-    const same =
-      current.edges.overflow === overflow &&
-      current.edges.start === start &&
-      current.edges.end === end;
-    if (same) return;
-    current.edges = { overflow, start, end };
-    setEdges(current.edges);
-  };
-  return {
-    ref,
-    edges,
-    onScroll: (event): void => {
-      metrics.current.offset = event.nativeEvent.contentOffset.x;
-      updateEdges();
-    },
-    onLayout: (event): void => {
-      const { width } = event.nativeEvent.layout;
-      const resized = width !== metrics.current.viewport;
-      metrics.current.viewport = width;
-      updateEdges();
-      if (resized) retarget();
-      else revealPending();
-    },
-    onContentSizeChange: (width): void => {
-      metrics.current.content = width;
-      updateEdges();
-      revealPending();
-    },
-    scrollBy: (delta): void => {
-      ref.current?.scrollTo({ x: Math.max(0, metrics.current.offset + delta), animated: true });
-    },
-  };
 }
 
 const SNAP_CLASS = 'web:snap-x web:snap-mandatory';
@@ -192,12 +89,12 @@ interface HScrollerProps {
   readonly reveal?: RevealRange | null;
 }
 
-function fadeClassOf(fade: boolean | undefined, edges: ScrollMetrics['edges']): string {
+export function fadeClassOf(fade: boolean | undefined, edges: ScrollEdges): string {
   if (fade !== true) return '';
   return cn(edges.start && 'mask-l-from-88%', edges.end && 'mask-r-from-88%');
 }
 
-function ScrollArrows({
+export function ScrollArrows({
   edges,
   arrows = true,
   pointerHover,
@@ -205,7 +102,7 @@ function ScrollArrows({
   snapTo,
   scrollBy,
 }: Pick<HScrollerProps, 'arrows' | 'scrollStep'> & {
-  readonly edges: ScrollMetrics['edges'];
+  readonly edges: ScrollEdges;
   readonly pointerHover: boolean;
   readonly snapTo: number | undefined;
   readonly scrollBy: (delta: number) => void;
@@ -226,22 +123,16 @@ export function HScroller({
   ...appearance
 }: HScrollerProps): ReactNode {
   const [frame, scroller, content] = SCROLLER_LAYOUT[fill ? 'fill' : 'fit'];
-  const pointer = useIdiom() === 'pointer';
-  const { edges, scrollBy, ...scrollerProps } = useScrollBy(reveal);
-  const [hovered, setHovered] = useState(false);
+  const ref = useRef<ScrollView>(null);
+  const { edges, scrollBy, ...scrollerProps } = useScrollBy((x) => {
+    ref.current?.scrollTo({ x, animated: true });
+  }, reveal);
+  const { pointerHover, ...hover } = usePointerHover(useIdiom() === 'pointer');
   return (
-    <View
-      accessibilityLabel={label}
-      className={frame}
-      onPointerEnter={() => {
-        setHovered(true);
-      }}
-      onPointerLeave={() => {
-        setHovered(false);
-      }}
-    >
+    <View accessibilityLabel={label} className={frame} {...hover}>
       <ScrollView
         {...scrollerProps}
+        ref={ref}
         horizontal
         showsHorizontalScrollIndicator={false}
         decelerationRate="fast"
@@ -255,7 +146,7 @@ export function HScroller({
       <ScrollArrows
         {...appearance}
         edges={edges}
-        pointerHover={pointer ? hovered : false}
+        pointerHover={pointerHover}
         snapTo={snapTo}
         scrollBy={scrollBy}
       />

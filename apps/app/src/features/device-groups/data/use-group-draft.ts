@@ -32,8 +32,45 @@ function messageOf(error: unknown): string {
   return error instanceof Error && error.message !== '' ? error.message : 'The group did not save.';
 }
 
+interface RunOp {
+  readonly groupId: string | null;
+  readonly members: number;
+  readonly nameLength: number;
+}
+
+interface RunHandlers {
+  readonly onClose: (result: EditorResult) => void;
+  readonly setBusy: (busy: boolean) => void;
+  readonly setError: (error: string | null) => void;
+}
+
+async function runEdit(
+  op: RunOp,
+  handlers: RunHandlers,
+  action: () => Promise<EditorResult>,
+): Promise<void> {
+  handlers.setBusy(true);
+  handlers.setError(null);
+  const startedAt = Date.now();
+  try {
+    const result = await action();
+    log.info('group_edit.saved', { ...op, durationMs: Date.now() - startedAt });
+    handlers.onClose(result);
+  } catch (failure) {
+    log.warn('group_edit.failed', {
+      ...op,
+      durationMs: Date.now() - startedAt,
+      errorName: failure instanceof Error ? failure.name : typeof failure,
+    });
+    handlers.setError(messageOf(failure));
+    notify({ message: 'The device group did not save', error: failure, tone: 'critical' });
+  } finally {
+    handlers.setBusy(false);
+  }
+}
+
 function useRunner(
-  op: { readonly groupId: string | null; readonly members: number; readonly nameLength: number },
+  op: RunOp,
   onClose: (result: EditorResult) => void,
 ): {
   readonly busy: boolean;
@@ -42,26 +79,8 @@ function useRunner(
 } {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const run = async (action: () => Promise<EditorResult>): Promise<void> => {
-    setBusy(true);
-    setError(null);
-    const startedAt = Date.now();
-    try {
-      const result = await action();
-      log.info('group_edit.saved', { ...op, durationMs: Date.now() - startedAt });
-      onClose(result);
-    } catch (failure) {
-      log.warn('group_edit.failed', {
-        ...op,
-        durationMs: Date.now() - startedAt,
-        errorName: failure instanceof Error ? failure.name : typeof failure,
-      });
-      setError(messageOf(failure));
-      notify({ message: 'The device group did not save', error: failure, tone: 'critical' });
-    } finally {
-      setBusy(false);
-    }
-  };
+  const run = (action: () => Promise<EditorResult>): Promise<void> =>
+    runEdit(op, { onClose, setBusy, setError }, action);
   return { busy, error, run };
 }
 

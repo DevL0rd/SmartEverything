@@ -1,6 +1,6 @@
 import type { PlannerDay, PlannerItemRow, PlannerOccurrenceView } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { use, useState, type ReactNode } from 'react';
+import { useContext, useState, type ReactNode } from 'react';
 import { notify } from '../../../components/toast-store';
 import { dayBoundsOf } from '../../../format/time';
 import { useInstantClock } from '../../../store/clock-format';
@@ -35,7 +35,7 @@ class OutsideTodayActions extends Error {
 }
 
 export function useTodayActions(): TodayActionsValue {
-  const value = use(TodayActionsContext);
+  const value = useContext(TodayActionsContext);
   if (value === null) throw new OutsideTodayActions();
   return value;
 }

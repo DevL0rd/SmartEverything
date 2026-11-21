@@ -19,7 +19,7 @@ import { cn } from '../../../design/cn';
 import { DETAIL_MIN_WIDTH, MASTER_WIDTH, useSizeClass } from '../../../design/size-class';
 import { SettingsFrame } from '../../../settings/settings-frame';
 import { SettingsPageBody } from '../../../settings/settings-page';
-import { useDevices } from '../../../store/selectors';
+import { useDeviceNames } from '../../../store/selectors';
 import { useHomeMap } from '../data/home-map-query';
 import {
   useHomeMapSet,
@@ -286,15 +286,11 @@ function LoadedMaps({
   readonly selectedId: string | undefined;
 }): ReactNode {
   const feeds = useRobotMapFeeds();
-  const devices = useDevices();
+  const labels = useDeviceNames('label');
   const add = useAddMap(maps);
   const order = useMapOrder();
   const fedLineOf = (mapId: string): string | null =>
-    mapFedLine(
-      mapId,
-      feeds ?? [],
-      (deviceId) => devices.find((device) => device.id === deviceId)?.label ?? null,
-    );
+    mapFedLine(mapId, feeds ?? [], (deviceId) => labels.get(deviceId) ?? null);
   return (
     <MapsList maps={maps} fedLineOf={fedLineOf} selectedId={selectedId} add={add} order={order} />
   );

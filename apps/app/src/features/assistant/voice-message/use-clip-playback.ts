@@ -104,8 +104,9 @@ function useClipSessions(speed: ClipSpeed): ClipSessions {
   return {
     player: () => session.current?.player,
     open: (url: string, onStatus: (status: AudioStatus) => void): AudioPlayer => {
-      session.current ??= sessionOf(url, speed, onStatus);
-      return session.current.player;
+      const current = session.current ?? sessionOf(url, speed, onStatus);
+      session.current = current;
+      return current.player;
     },
     release,
   };

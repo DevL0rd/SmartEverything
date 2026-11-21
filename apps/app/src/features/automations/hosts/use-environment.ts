@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useContext, useMemo } from 'react';
 import { skipToken, useQueries } from '@tanstack/react-query';
 import {
   FLOW_SCOPE_OUTPUTS,
@@ -17,7 +17,7 @@ import { Logger } from '@smarteverything/logging';
 import { useStableValue } from '../../../components/use-stable-value';
 import { deepEqual } from '../model/editor/deep-equal';
 import { useProfiles } from '../../../store/people';
-import { useDevices, useIsOwner, useRooms, useRows, useSettings } from '../../../store/selectors';
+import { useIsOwner, useRooms, useRows, useSettings } from '../../../store/selectors';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useAutomationsSource } from '../data/source';
 import { automationKeys } from '../data/keys';
@@ -28,11 +28,20 @@ import type {
   ReferenceCatalogue,
   ReferenceOption,
 } from '../editor/inspector/values/value-services';
+import { AutomationHomeContext } from './automation-home-context';
+import { useEditorDevices } from './editor-devices';
 import { computersOf, phonesOf, referenceOptions } from './option-devices';
 import { loadOptionRows, OptionsUnavailable } from './option-loaders';
 import { remoteNeedOf } from './option-remote';
 import { resolveOptions } from './option-sources';
-import type { HomeData, OptionContext, OptionResult, OptionRow, RemoteState } from './option-types';
+import type {
+  HomeData,
+  Named,
+  OptionContext,
+  OptionResult,
+  OptionRow,
+  RemoteState,
+} from './option-types';
 
 const NO_FUNCTIONS: readonly AutomationFunctionSummary[] = [];
 
@@ -98,15 +107,31 @@ function zoneList(): readonly string[] | null {
   return 'supportedValuesOf' in Intl ? ['UTC', ...Intl.supportedValuesOf('timeZone')] : null;
 }
 
+export function sameNamed(kept: readonly Named[], next: readonly Named[]): boolean {
+  return (
+    kept.length === next.length &&
+    kept.every((row, index) => {
+      const other = next[index];
+      return row.id === other?.id && row.name === other.name;
+    })
+  );
+}
+
+function useNamedAutomations(): readonly Named[] {
+  const { rows } = useAutomations();
+  const named = useMemo(() => rows.map((row) => ({ id: row.id, name: row.name })), [rows]);
+  return useStableValue(named, sameNamed);
+}
+
 export function useAutomationHome(): HomeData {
-  const devices = useDevices({ includeHidden: true });
+  const devices = useEditorDevices();
   const rooms = useRooms();
   const groups = useRows('device_groups');
   const values = useRows('automation_values');
   const chats = useRows('ai_chats');
   const channels = useRows('talk_channels');
   const people = useProfiles();
-  const automations = useAutomations().rows;
+  const automations = useNamedAutomations();
   return useMemo(
     () => ({
       devices,
@@ -183,9 +208,16 @@ export function useRefNames(): RefNames {
 
 const log = new Logger('app.automations');
 
-export function useReferenceCatalogue(): ReferenceCatalogue {
+function useProvidedHome(): HomeData {
+  const home = useContext(AutomationHomeContext);
+  if (home === null) {
+    throw new Error('An option picker was rendered outside AutomationHomeContext');
+  }
+  return home;
+}
+
+export function useReferenceCatalogue(home: HomeData): ReferenceCatalogue {
   const tables = useNameTables();
-  const home = useAutomationHome();
   return useMemo(
     (): ReferenceCatalogue => ({
       options: (of, capabilities: readonly string[] = []): readonly ReferenceOption[] => {
@@ -220,7 +252,7 @@ function remoteStateOf(
 }
 
 export function useOptionSource(source: OptionSourceId, context: OptionContext): OptionResult {
-  const home = useAutomationHome();
+  const home = useProvidedHome();
   const need = remoteNeedOf(source, context);
   const fetch = need.kind === 'fetch' ? need.fetch : null;
   const query = useScreenQuery({

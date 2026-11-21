@@ -15,7 +15,7 @@ import type { AppHref } from '../../../components/app-href';
 import { OverflowButton, type MenuItem } from '../../../components/menu';
 import { Text } from '../../../components/text';
 import { bytes } from '../../../format/number';
-import { useDriveItem, useDriveRoots, useViewerId } from '../data';
+import { useDriveItem, useDriveRootBytes, useDriveRootPlaces, useViewerId } from '../data';
 import { mountOpenable } from './mount-summary';
 import { usePlacementWrites, type PlacementWrites } from './placement-change';
 import { changedBodyOf, drivePathOf, locationOf, type DriveNames } from './placement-model';
@@ -36,14 +36,14 @@ export interface PlacedFolder {
 }
 
 export function useDriveNames(): DriveNames {
-  return { roots: useDriveRoots(), viewerId: useViewerId() };
+  return { roots: useDriveRootPlaces(), viewerId: useViewerId() };
 }
 
 export function usePlacedFolder(placement: DrivePlacement): PlacedFolder {
   const names = useDriveNames();
   const folder = useDriveItem(placement.folderItemId, placement.rootId).data ?? null;
-  const root = names.roots.find((candidate) => candidate.id === placement.rootId);
-  const size = placement.folderItemId === null ? (root?.bytes ?? null) : (folder?.bytes ?? null);
+  const rootBytes = useDriveRootBytes(placement.folderItemId === null ? placement.rootId : null);
+  const size = placement.folderItemId === null ? rootBytes : (folder?.bytes ?? null);
   return { path: drivePathOf(placement, folder, names), folder, bytes: size };
 }
 

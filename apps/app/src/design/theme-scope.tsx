@@ -1,11 +1,11 @@
-import { use, type ReactNode } from 'react';
+import { useContext, type ReactNode } from 'react';
 import { ScopedTheme } from 'uniwind';
 import { ColourPalette } from './colour-palette';
 import { ScopedThemeName } from './theme-scope-context';
 import type { ThemeName } from './tokens';
 
 export function useScopedTheme(): ThemeName | null {
-  return use(ScopedThemeName);
+  return useContext(ScopedThemeName);
 }
 
 export function ThemeScope({

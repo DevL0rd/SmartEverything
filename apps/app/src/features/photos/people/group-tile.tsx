@@ -1,15 +1,11 @@
-import { useState, type ReactNode } from 'react';
-import { View, type LayoutChangeEvent } from 'react-native';
+import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import type { PhotoGroup } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { FaceAvatar } from './face-avatar';
 import { groupCaptionOf, groupLabelOf, photosText } from './model';
-
-export function groupColumnsOf(width: number, size: number): number {
-  return Math.max(1, Math.floor(width / (size + 16)));
-}
 
 export function GroupTile({
   group,
@@ -50,24 +46,19 @@ export function GroupTile({
   );
 }
 
-export function GroupGrid({
+export function GroupRow({
   groups,
   size,
+  width,
 }: {
   readonly groups: readonly PhotoGroup[];
   readonly size: number;
+  readonly width: number;
 }): ReactNode {
-  const [width, setWidth] = useState<number | null>(null);
-  const tile = width === null ? size + 16 : width / groupColumnsOf(width, size);
   return (
-    <View
-      className="-mx-2 flex-row flex-wrap"
-      onLayout={(event: LayoutChangeEvent) => {
-        setWidth(event.nativeEvent.layout.width);
-      }}
-    >
+    <View className="-mx-2 flex-row">
       {groups.map((group) => (
-        <GroupTile key={group.id} group={group} size={size} width={tile} />
+        <GroupTile key={group.id} group={group} size={size} width={width} />
       ))}
     </View>
   );

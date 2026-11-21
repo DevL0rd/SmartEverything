@@ -38,7 +38,7 @@ export {
 export { RobotMapFeed, robotMapsHref } from './components/robot-map-feed';
 export { useHomeMapLive, type HomeMapLive, type HomeMapLiveRequest } from './data/live-feed';
 export { useHomeMapDemand } from './data/map-demand';
-export { useHomeMapScene } from './data/map-scene';
+export { useAllHomeMapSceneLive, useHomeMapScene } from './data/map-scene';
 export { useHomeMapSet, useRobotMapFeeds } from './data/map-set-query';
 export { useChosenHomeMap, useStageMaps } from './data/stage-maps';
 export { useHomeMap, useHomeMapEditing, type HomeMapState } from './data/home-map-query';

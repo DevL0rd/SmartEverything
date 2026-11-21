@@ -1,4 +1,4 @@
-import { createContext, use, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { CUSTOM_SETTINGS_SCREENS } from './custom-screens';
 import { useSitemap, type SitemapType } from 'expo-router';
 import { hasSettingsOn } from './registry';
@@ -50,7 +50,7 @@ export function BuiltSettingsPages({ children }: { readonly children: ReactNode 
 }
 
 export function useBuiltSettingsPages(): ReadonlySet<string> {
-  const built = use(BuiltPagesContext);
+  const built = useContext(BuiltPagesContext);
   if (built === null) {
     throw new NoBuiltPagesError();
   }

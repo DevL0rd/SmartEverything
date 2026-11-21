@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { z } from 'zod';
 import { useStoreSelector } from '../../store/store-context';
 import { pluginStreamRow } from '../../store/subscriptions';
-import { useSectionFailure } from '../../store/selectors';
+import { sectionFailureOf } from '../../store/selectors';
 import type { SectionFailure } from '../../store/state';
 import { LogTally } from '../../design/log-tally';
 import { pluginLog } from './plugin-log';
@@ -27,6 +27,24 @@ export function unreadableStream(failure: SectionFailure): {
     state: 'invalid',
     reason: `This app can’t read plugin streams from your server: ${failure.reason}. Update the app.`,
   };
+}
+
+const unreadableByFailure = new WeakMap<SectionFailure, ReturnType<typeof unreadableStream>>();
+
+function unreadableOf(failure: SectionFailure): ReturnType<typeof unreadableStream> {
+  const known = unreadableByFailure.get(failure);
+  if (known !== undefined) return known;
+  const stream = unreadableStream(failure);
+  unreadableByFailure.set(failure, stream);
+  return stream;
+}
+
+type StreamInput = readonly [PluginStreamRow | undefined, SectionFailure | null];
+
+const NO_INPUT: StreamInput = [undefined, null];
+
+function sameInput(left: StreamInput, right: StreamInput): boolean {
+  return left[0] === right[0] && left[1] === right[1];
 }
 
 function issuePath(path: readonly PropertyKey[]): string {
@@ -86,23 +104,26 @@ export function usePluginStream<T>(
   enabled = true,
 ): PluginStream<T> {
   const key = pluginStreamKey(pluginId, stream);
-  const row = useStoreSelector(
-    (state) => (enabled ? pluginStreamRow(state, key) : undefined),
-    Object.is,
+  const [row, failure] = useStoreSelector(
+    (state): StreamInput =>
+      enabled
+        ? [pluginStreamRow(state, key), sectionFailureOf(state.sync, PLUGIN_STREAMS_SECTION)]
+        : NO_INPUT,
+    sameInput,
     [key, enabled],
   );
   const parser = useMemo(
     () => (source instanceof StreamParser ? source : new StreamParser(source)),
     [source],
   );
-  const failure = useSectionFailure(PLUGIN_STREAMS_SECTION);
-  const unreadable = useMemo(
-    () => (failure === null ? null : unreadableStream(failure)),
-    [failure],
-  );
-  const value = enabled && unreadable !== null ? unreadable : parser.read(row);
+  const value = failure === null ? parser.read(row) : unreadableOf(failure);
   useStreamTrace({ pluginId, stream, enabled, row, value });
   return value;
+}
+
+interface StreamSeen {
+  readonly row: PluginStreamRow | undefined;
+  readonly state: PluginStream<unknown>['state'];
 }
 
 function useStreamTrace<T>({
@@ -118,7 +139,7 @@ function useStreamTrace<T>({
   readonly row: PluginStreamRow | undefined;
   readonly value: PluginStream<T>;
 }): void {
-  const previous = useRef<PluginStream<T>['state'] | null>(null);
+  const previous = useRef<StreamSeen | null>(null);
   useEffect(() => {
     if (!enabled) return undefined;
     pluginLog.info('plugin_stream.subscribed', { pluginId, stream });
@@ -127,16 +148,15 @@ function useStreamTrace<T>({
       previous.current = null;
     };
   }, [pluginId, stream, enabled]);
-  useEffect(() => {
-    if (!enabled) return;
-    rowTally.bump(`${pluginId}/${stream}`);
-  }, [row, enabled, pluginId, stream]);
   const state = value.state;
   const reason = value.state === 'invalid' ? value.reason : '';
   useEffect(() => {
-    if (!enabled || previous.current === state) return;
-    const from = previous.current;
-    previous.current = state;
+    if (!enabled) return;
+    const last = previous.current;
+    previous.current = { row, state };
+    if (last === null || last.row !== row) rowTally.bump(`${pluginId}/${stream}`);
+    if (last !== null && last.state === state) return;
+    const from = last === null ? null : last.state;
     if (state === 'invalid') {
       pluginLog.warn('plugin_stream.invalid', {
         pluginId,
@@ -147,5 +167,5 @@ function useStreamTrace<T>({
       return;
     }
     pluginLog.info('plugin_stream.state_changed', { pluginId, stream, from, to: state });
-  }, [enabled, state, reason, pluginId, stream]);
+  }, [enabled, row, state, reason, pluginId, stream]);
 }

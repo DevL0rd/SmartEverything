@@ -3,21 +3,20 @@ import { SHELLY_PAGES } from '@smarteverything/shelly';
 import { List } from '../../components/section';
 import { NavRow } from '../../components/rows';
 import { href } from '../../app-shell/hrefs';
-import { useDevices } from '../../store/selectors';
+import { useRow } from '../../store/selectors';
 import type { Device } from '../../store/state';
 import { PRESENCE_PAGE_ICONS } from './presence-pages';
 import { usePresence } from './presence-data';
 
 export function PresenceSettings({ device }: { readonly device: Device }): ReactNode {
-  const devices = useDevices({ includeHidden: true });
+  const parent = useRow('devices', device.parent_id);
   const stream = usePresence(device);
   if (device.parent_id !== null) {
-    const parent = devices.find((item) => item.id === device.parent_id);
     const zone =
       stream.state === 'ready'
         ? stream.value.zones.find((item) => item.externalId === device.external_id)
         : undefined;
-    if (parent === undefined || zone === undefined) return null;
+    if (parent === null || zone === undefined) return null;
     return (
       <List title="Shelly zone">
         <NavRow

@@ -33,13 +33,13 @@ import { mountOn } from './placement-model';
 import { PlacementRow, type PlacementReach } from './placement-row';
 import { PlacementSheet, type PlacementSheetTarget } from './placement-sheet';
 
-const DISKS = ['disks'] as const;
+const DISK_USAGE = ['disk_usage'] as const;
 const MOUNT_TOPICS = ['drive_mounts'] as const;
 
 function HomeBar({ device, home }: { readonly device: Device; readonly home: string }): ReactNode {
   const usage = useComputerSelect(
     device.id,
-    (parts) => (parts.disks === undefined ? null : homeUsageOf(parts.disks.disks, home)),
+    (parts) => (parts.disk_usage === undefined ? null : homeUsageOf(parts.disk_usage.disks, home)),
     sameJson,
   );
   if (usage === null) return null;
@@ -72,7 +72,7 @@ function DiskBar({ device }: { readonly device: Device }): ReactNode {
   const home = usePlacesData(device.id, device.online).data?.home;
   if (home === undefined || !device.online) return null;
   return (
-    <DemandRegion deviceId={device.id} topics={DISKS}>
+    <DemandRegion deviceId={device.id} topics={DISK_USAGE}>
       <HomeBar device={device} home={home} />
     </DemandRegion>
   );

@@ -73,13 +73,12 @@ const ALL_DEVICES: DeviceFilter = {};
 const allSceneNames = (state: StoreState): HomeMapSceneNames =>
   homeMapSceneNamesOf(state, ALL_DEVICES);
 
-export function useHomeMapScene(map: HomeMap | null): RenderScene | null {
+export function useAllHomeMapSceneLive(): HomeMapSceneLive {
   const names = useStoreSelector(allSceneNames, sameHomeMapSceneNames);
-  return useMemo(
-    () =>
-      map === null
-        ? null
-        : homeMapRenderScene({ map, live: homeMapSceneLive(names.rooms, names.devices) }),
-    [map, names],
-  );
+  return useMemo(() => homeMapSceneLive(names.rooms, names.devices), [names]);
+}
+
+export function useHomeMapScene(map: HomeMap | null): RenderScene | null {
+  const live = useAllHomeMapSceneLive();
+  return useMemo(() => (map === null ? null : homeMapRenderScene({ map, live })), [map, live]);
 }

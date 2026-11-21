@@ -37,7 +37,6 @@ function otherChange(): LiveWireChange {
     operation: 'UPDATE',
     key: { id: 1 },
     set: {},
-    previous: {},
     seq: 2,
   };
 }

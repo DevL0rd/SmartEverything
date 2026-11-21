@@ -3,8 +3,8 @@ import { View } from 'react-native';
 import { WATCH_SPORT_LABELS, type WatchWorkout } from '@smarteverything/domain';
 import { Button } from '../../components/button';
 import { confirm } from '../../components/confirm-store';
-import { Figure } from '../../components/figure';
 import { IconButton } from '../../components/icon-button';
+import { LiveFigure } from '../../components/live-figure';
 import { Text } from '../../components/text';
 import { count, kilometres } from '../../format/number';
 import { playTime } from '../../format/time';
@@ -50,7 +50,7 @@ export function WorkoutClock({
   if (compact) {
     return (
       <View className="flex-row items-center gap-3">
-        <Figure value={elapsed} size="m" tone={tone} />
+        <LiveFigure value={elapsed} size="m" tone={tone} align="center" />
         <View className="min-w-0 flex-1">
           <Text variant="footnote" tone="variant" numberOfLines={1}>
             {statusOf(workout)}
@@ -67,7 +67,7 @@ export function WorkoutClock({
       <Text variant="footnote" tone="variant" numberOfLines={1}>
         {statusOf(workout)}
       </Text>
-      <Figure value={elapsed} size="xl" tone={tone} />
+      <LiveFigure value={elapsed} size="xl" tone={tone} />
       <Text variant="callout" numberOfLines={1}>
         {readingsOf(workout)}
       </Text>

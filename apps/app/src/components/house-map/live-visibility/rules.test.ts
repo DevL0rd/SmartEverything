@@ -33,45 +33,52 @@ describe('isVisible', () => {
 describe('stageState', () => {
   it('mounts and goes live as soon as the stage is visible, even before its still is ready', () => {
     const state = stageState(STAGE_NOT_REGISTERED, { ...visible, stillReady: false });
-    expect(state).toEqual({ live: true, mounted: true, showStill: false });
+    expect(state).toEqual({ live: true, mounted: true, showStill: false, focused: true });
   });
 
   it('never mounts a stage that has not been visible', () => {
     const state = stageState(STAGE_NOT_REGISTERED, { ...visible, onScreen: false });
-    expect(state).toEqual({ live: false, mounted: false, showStill: true });
+    expect(state).toEqual({ live: false, mounted: false, showStill: true, focused: true });
   });
 
   it('pauses a modal-covered stage but keeps its DOM component', () => {
     const live = stageState(STAGE_NOT_REGISTERED, visible);
     const covered = stageState(live, { ...visible, modalCovered: true });
-    expect(covered).toEqual({ live: false, mounted: true, showStill: true });
+    expect(covered).toEqual({ live: false, mounted: true, showStill: true, focused: true });
   });
 
   it.each([
-    ['scrolled out of view', { onScreen: false }],
     ['screen blurred', { screenFocused: false }],
     ['app in background', { appForeground: false }],
   ])('pauses and unmounts when %s once the still is ready', (_name, change) => {
     const live = stageState(STAGE_NOT_REGISTERED, visible);
     const gone = stageState(live, { ...visible, ...change });
-    expect(gone).toEqual({ live: false, mounted: false, showStill: true });
+    expect(gone).toEqual({ live: false, mounted: false, showStill: true, focused: false });
+  });
+
+  it('pauses but keeps the live layer of a stage scrolled out of view on a focused screen', () => {
+    const live = stageState(STAGE_NOT_REGISTERED, visible);
+    const away = stageState(live, { ...visible, onScreen: false });
+    expect(away).toEqual({ live: false, mounted: true, showStill: true, focused: true });
+    const blurred = stageState(away, { ...visible, onScreen: false, screenFocused: false });
+    expect(blurred).toEqual({ live: false, mounted: false, showStill: true, focused: false });
   });
 
   it('pauses but stays mounted while the still is not drawn yet', () => {
     const live = stageState(STAGE_NOT_REGISTERED, { ...visible, stillReady: false });
     const gone = stageState(live, { ...visible, stillReady: false, onScreen: false });
-    expect(gone).toEqual({ live: false, mounted: true, showStill: true });
+    expect(gone).toEqual({ live: false, mounted: true, showStill: true, focused: true });
   });
 
   it('unmounts when another screen shows, even with the still not drawn yet', () => {
     const live = stageState(STAGE_NOT_REGISTERED, { ...visible, stillReady: false });
     const gone = stageState(live, { ...visible, stillReady: false, screenFocused: false });
-    expect(gone).toEqual({ live: false, mounted: false, showStill: true });
+    expect(gone).toEqual({ live: false, mounted: false, showStill: true, focused: false });
   });
 
   it('releases a mounted stage on a blurred screen in the foreground whose still never reports ready', () => {
     const gone = stageState(
-      { live: false, mounted: true, showStill: true },
+      { live: false, mounted: true, showStill: true, focused: true },
       { ...visible, screenFocused: false, stillReady: false, appForeground: true },
     );
     expect(gone.mounted).toBe(false);
@@ -80,28 +87,28 @@ describe('stageState', () => {
   it('unmounts at once when the app goes to the background, even with the still not drawn yet', () => {
     const live = stageState(STAGE_NOT_REGISTERED, { ...visible, stillReady: false });
     const gone = stageState(live, { ...visible, stillReady: false, appForeground: false });
-    expect(gone).toEqual({ live: false, mounted: false, showStill: true });
+    expect(gone).toEqual({ live: false, mounted: false, showStill: true, focused: false });
   });
 
   it('mounts a fresh component after a background return', () => {
     const live = stageState(STAGE_NOT_REGISTERED, visible);
     const backgrounded = stageState(live, { ...visible, appForeground: false });
     const back = stageState(backgrounded, visible);
-    expect(back).toEqual({ live: true, mounted: true, showStill: false });
+    expect(back).toEqual({ live: true, mounted: true, showStill: false, focused: true });
   });
 
-  it('unmounts once the still becomes ready while the stage stays hidden', () => {
+  it('stays mounted once the still becomes ready while the stage is scrolled away on a focused screen', () => {
     const live = stageState(STAGE_NOT_REGISTERED, { ...visible, stillReady: false });
     const hidden = stageState(live, { ...visible, stillReady: false, onScreen: false });
     const ready = stageState(hidden, { ...visible, stillReady: true, onScreen: false });
-    expect(ready.mounted).toBe(false);
+    expect(ready).toEqual({ live: false, mounted: true, showStill: true, focused: true });
   });
 
   it('mounts again when it becomes visible', () => {
     const live = stageState(STAGE_NOT_REGISTERED, visible);
     const gone = stageState(live, { ...visible, onScreen: false });
     const back = stageState(gone, visible);
-    expect(back).toEqual({ live: true, mounted: true, showStill: false });
+    expect(back).toEqual({ live: true, mounted: true, showStill: false, focused: true });
   });
 
   it('does not unmount a stage that returns from a modal cover', () => {

@@ -1,4 +1,5 @@
 import type { WebGLRenderer } from 'three';
+import { visibilityRegistry } from '../live-visibility/registry';
 import {
   applyPixelRatio,
   canvasPixelRatio,
@@ -43,7 +44,13 @@ export interface SurfaceTarget<S> {
 export interface SharedPool<R extends SurfaceRenderer> {
   acquire(): R;
   release(renderer: R): void;
+  setFocused(focused: boolean): void;
   readonly users: number;
+}
+
+export interface FocusSource {
+  hasFocusedStage(): boolean;
+  subscribe(listener: () => void): () => void;
 }
 
 export type StageSurface = CoreSurface & { readonly canvas: HTMLCanvasElement };
@@ -128,6 +135,10 @@ interface Pooled<R> {
 
 export function sharedPool<R extends SurfaceRenderer>(create: () => R): SharedPool<R> {
   let pooled: Pooled<R> | null = null;
+  let focused = false;
+  const shrinkWhenUnused = (): void => {
+    if (pooled !== null && pooled.users === 0 && !focused) pooled.renderer.setSize(1, 1, false);
+  };
   return {
     acquire(): R {
       if (pooled === null) {
@@ -143,7 +154,12 @@ export function sharedPool<R extends SurfaceRenderer>(create: () => R): SharedPo
     release(renderer): void {
       if (pooled?.renderer !== renderer) return;
       pooled.users -= 1;
-      if (pooled.users === 0) renderer.setSize(1, 1, false);
+      shrinkWhenUnused();
+    },
+    setFocused(next): void {
+      if (focused === next) return;
+      focused = next;
+      shrinkWhenUnused();
     },
     get users(): number {
       return pooled?.users ?? 0;
@@ -151,7 +167,18 @@ export function sharedPool<R extends SurfaceRenderer>(create: () => R): SharedPo
   };
 }
 
+export function followFocus<R extends SurfaceRenderer>(
+  pool: SharedPool<R>,
+  source: FocusSource,
+): () => void {
+  pool.setFocused(source.hasFocusedStage());
+  return source.subscribe(() => {
+    pool.setFocused(source.hasFocusedStage());
+  });
+}
+
 const smallStages = sharedPool(() => createRenderer(document.createElement('canvas')));
+followFocus(smallStages, visibilityRegistry);
 
 function smallSurface(host: HTMLElement): StageSurface {
   const canvas = document.createElement('canvas');

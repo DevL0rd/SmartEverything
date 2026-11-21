@@ -11,7 +11,7 @@ export { kindLookupOf, kindsOfState } from './data/kind-lookup';
 export { useAutomationsSource } from './data/source';
 export { useRunActions } from './data/use-runs';
 export { automationRunAtom } from './model/consumers/activity-lines';
-export { byHandOf } from './model/consumers/by-hand';
+export { sameByHand, selectByHand } from './model/consumers/by-hand';
 export type { ByHand } from './model/consumers/by-hand';
 export { automationsUsing } from './model/consumers/automation-uses';
 export type { AutomationUse } from './model/consumers/automation-uses';

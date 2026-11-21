@@ -1,8 +1,13 @@
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
-import { AI_CHAT_ROW, AI_USAGE_ROW, type LiveChange } from '@smarteverything/domain';
+import {
+  AI_CHAT_ROW,
+  AI_USAGE_ROW,
+  type LiveChange,
+  type LiveWireChange,
+} from '@smarteverything/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { refreshChatMeterHistory } from './chat-meter-history';
-import { chatMeterHistoryKey } from './keys';
+import { AI_USAGE_PREFIX, chatMeterHistoryKey, OPENROUTER_ACCOUNT_KEY } from './keys';
 import { wired } from '../test-support/live-wire';
 
 const applyHomeMapChanges = vi.fn();
@@ -150,7 +155,7 @@ describe('chat meter history live changes', () => {
   it('refreshes meter histories absent from replay when a snapshot synchronizes', () => {
     const client = seededClient();
     const replay = [updateChat({ ...chat, context_percent: 75 })];
-    refreshChatMeterHistory(client, replay);
+    refreshChatMeterHistory(client, replay, wired(replay));
     expect(client.getQueryState(key)?.isInvalidated).toBe(false);
     expect(client.getQueryState(otherKey)?.isInvalidated).toBe(true);
   });
@@ -231,5 +236,140 @@ describe('chat meter history live changes', () => {
     );
     expect(client.getQueryState(key)?.isInvalidated).toBe(true);
     expect(client.getQueryState(otherKey)?.isInvalidated).toBe(true);
+  });
+});
+
+describe('AI usage live changes', () => {
+  const VISION_CALLS = 44;
+  const CALL_GAP_MS = 1360;
+  const RECONCILE_AFTER_MS = 400;
+  const READ_MS = 800;
+  const USAGE_KEYS = [
+    [...AI_USAGE_PREFIX, 'summary'],
+    [...AI_USAGE_PREFIX, 'totals'],
+    [...AI_USAGE_PREFIX, 'openrouter-utc-day'],
+    [...AI_USAGE_PREFIX, 'ledger'],
+    [...AI_USAGE_PREFIX, 'budget'],
+    [...AI_USAGE_PREFIX, 'choices'],
+  ] as const;
+
+  interface Reads {
+    readonly started: Map<string, number>;
+    readonly aborted: Map<string, number>;
+    readonly stop: () => void;
+  }
+
+  function watchedReads(client: QueryClient): Reads {
+    const started = new Map<string, number>();
+    const aborted = new Map<string, number>();
+    const bump = (counts: Map<string, number>, name: string): void => {
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    };
+    const stops = [...USAGE_KEYS, OPENROUTER_ACCOUNT_KEY].map((queryKey) => {
+      const name = queryKey.join('/');
+      const observer = new QueryObserver(client, {
+        queryKey,
+        queryFn: ({ signal }): Promise<number> => {
+          bump(started, name);
+          signal.addEventListener('abort', () => {
+            bump(aborted, name);
+          });
+          return new Promise((resolve) => setTimeout(resolve, READ_MS, 1));
+        },
+      });
+      return observer.subscribe(() => undefined);
+    });
+    return {
+      started,
+      aborted,
+      stop: (): void => {
+        for (const stop of stops) stop();
+      },
+    };
+  }
+
+  function visionInsert(index: number): LiveChange {
+    return {
+      type: 'change',
+      table: 'ai_usage',
+      operation: 'INSERT',
+      record: {
+        ...usage,
+        id: `a1b2c3d4-0000-4000-8000-${String(index).padStart(12, '0')}`,
+        chat_id: null,
+        work: 'photos',
+        cost_state: 'reported',
+      },
+      oldRecord: null,
+      seq: index * 2,
+    };
+  }
+
+  function reconciled(index: number): LiveWireChange {
+    return {
+      type: 'change',
+      table: 'ai_usage',
+      operation: 'UPDATE',
+      key: { id: `a1b2c3d4-0000-4000-8000-${String(index).padStart(12, '0')}` },
+      set: { cost_state: 'reconciled' },
+      seq: index * 2 + 1,
+    };
+  }
+
+  async function visionMinute(client: QueryClient): Promise<void> {
+    for (let index = 1; index <= VISION_CALLS; index += 1) {
+      const insert = visionInsert(index);
+      applyToWindows(client, [insert], wired([insert]));
+      await vi.advanceTimersByTimeAsync(RECONCILE_AFTER_MS);
+      applyToWindows(client, [], [reconciled(index)]);
+      await vi.advanceTimersByTimeAsync(CALL_GAP_MS - RECONCILE_AFTER_MS);
+    }
+    await vi.advanceTimersByTimeAsync(30_000);
+  }
+
+  function total(counts: Map<string, number>, names: readonly string[]): number {
+    return names.reduce((sum, name) => sum + (counts.get(name) ?? 0), 0);
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    return (): void => {
+      vi.useRealTimers();
+    };
+  });
+
+  it('reads the costs a few times and the OpenRouter account never during a minute of vision usage', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
+    const reads = watchedReads(client);
+    try {
+      await vi.advanceTimersByTimeAsync(READ_MS);
+      await visionMinute(client);
+      const usageNames = USAGE_KEYS.map((key) => key.join('/'));
+      const account = OPENROUTER_ACCOUNT_KEY.join('/');
+      expect({
+        usageReads: total(reads.started, usageNames),
+        usageCancelled: total(reads.aborted, usageNames),
+        accountReads: reads.started.get(account) ?? 0,
+      }).toEqual({ usageReads: 42, usageCancelled: 0, accountReads: 1 });
+    } finally {
+      reads.stop();
+    }
+  });
+
+  it('refreshes the costs once the usage burst settles', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
+    const reads = watchedReads(client);
+    try {
+      await vi.advanceTimersByTimeAsync(READ_MS);
+      const insert = visionInsert(1);
+      applyToWindows(client, [insert], wired([insert]));
+      applyToWindows(client, [], [reconciled(1)]);
+      expect(total(reads.started, [USAGE_KEYS[0].join('/')])).toBe(1);
+      await vi.advanceTimersByTimeAsync(READ_MS * 4);
+      expect(total(reads.started, [USAGE_KEYS[0].join('/')])).toBe(2);
+      expect(reads.started.get(OPENROUTER_ACCOUNT_KEY.join('/'))).toBe(1);
+    } finally {
+      reads.stop();
+    }
   });
 });

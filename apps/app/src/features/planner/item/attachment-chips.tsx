@@ -8,7 +8,7 @@ import {
   type PlannerAttachmentKind,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
-import { useMemo, type ReactNode, type Ref } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { View } from 'react-native';
 import { z } from 'zod';
 import { Button } from '../../../components/button';
@@ -16,12 +16,11 @@ import type { IconName } from '../../../components/icon';
 import { IconButton } from '../../../components/icon-button';
 import { Section } from '../../../components/section';
 import { compareText, hostOf } from '../../../format/text';
-import { useDevices, useRooms, useRows } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { readyAttachments, type Upload } from '../../assistant';
 import { familyIcon } from '../../device-visuals';
 import { DeviceFace } from '../../devices';
-import { modelSubjectOf, resolvedModelOf, useModelCatalog, useModelOverrides } from '../../models';
+import { modelSubjectOf, resolvedModelOf } from '../../models';
 import { OutlinedChip } from './outlined-chip';
 
 const log = new Logger('app.planner');
@@ -288,38 +287,6 @@ export function uploadStateOf(upload: Upload): string {
   if (upload.state === 'failed') return upload.failure?.text ?? 'Failed';
   if (upload.state === 'done') return 'Ready';
   return `${String(Math.round(upload.progress * 100))} %`;
-}
-
-export function useDeviceLines(): ReadonlyMap<string, DeviceLine> {
-  const devices = useDevices({ includeHidden: true });
-  const rooms = useRooms();
-  const catalog = useModelCatalog();
-  const overrides = useModelOverrides();
-  return useMemo(() => {
-    const roomNames = new Map(rooms.map((room) => [room.id, room.name]));
-    return new Map(
-      devices.map((device) => [
-        device.id,
-        deviceLineOf(
-          device,
-          device.room_id === null ? null : (roomNames.get(device.room_id) ?? null),
-          modelTitleOf(device, catalog, overrides),
-        ),
-      ]),
-    );
-  }, [devices, rooms, catalog, overrides]);
-}
-
-export function useAttachmentNames(): AttachmentNames {
-  const devices = useDeviceLines();
-  const automations = useRows('automations');
-  return useMemo(
-    () => ({
-      devices,
-      automations: new Map(automations.map((automation) => [automation.id, automation.name])),
-    }),
-    [devices, automations],
-  );
 }
 
 function hasWidget(attachment: PlannerAttachment, names: AttachmentNames): boolean {

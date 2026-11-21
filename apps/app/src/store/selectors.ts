@@ -149,6 +149,32 @@ export function useDevices(filter: DeviceFilter = {}): readonly Device[] {
   return useStoreSelector(deviceSelector(filter), shallowEqual);
 }
 
+const visibleDevices = deviceSelector({});
+
+function deviceCountIn(state: StoreState): number {
+  return visibleDevices(state).length;
+}
+
+export function useDeviceCount(): number {
+  return useStoreSelector(deviceCountIn);
+}
+
+function computersSelector(): (state: StoreState) => readonly Device[] {
+  let held: readonly Device[] = [];
+  return memoOnInputs(devicesTable, (state) => {
+    const computers = visibleDevices(state).filter((device) => device.kind === 'computer');
+    if (shallowEqual(held, computers)) return held;
+    held = computers;
+    return held;
+  });
+}
+
+export const computersIn = computersSelector();
+
+export function useComputers(): readonly Device[] {
+  return useStoreSelector(computersIn);
+}
+
 export type DeviceNameField = 'name' | 'label';
 
 function deviceNamesSelector(
@@ -184,6 +210,29 @@ export function deviceNamesIn(
 
 export function useDeviceNames(field: DeviceNameField): ReadonlyMap<string, string> {
   return useStoreSelector(DEVICE_NAMES[field], Object.is, [field]);
+}
+
+const automationsTable = (state: StoreState): readonly unknown[] => [state.tables.automations];
+
+function automationNamesSelector(): (state: StoreState) => ReadonlyMap<string, string> {
+  let held: ReadonlyMap<string, string> = new Map();
+  return memoOnInputs(automationsTable, (state) => {
+    const automations = rowsOf(state.tables.automations);
+    if (
+      held.size === automations.length &&
+      automations.every((automation) => held.get(automation.id) === automation.name)
+    ) {
+      return held;
+    }
+    held = new Map(automations.map((automation) => [automation.id, automation.name]));
+    return held;
+  });
+}
+
+const automationNamesIn = automationNamesSelector();
+
+export function useAutomationNames(): ReadonlyMap<string, string> {
+  return useStoreSelector(automationNamesIn);
 }
 
 export type DevicePredicate = (device: Device) => boolean;
@@ -244,6 +293,17 @@ export function useDevice(deviceId: string): Device | null {
   return useRow('devices', deviceId);
 }
 
+export function useDeviceLabel(deviceId: string): string | null {
+  return useStoreSelector(
+    (state) => {
+      const device = state.tables.devices.byId[deviceId];
+      return device === undefined ? null : device.label;
+    },
+    Object.is,
+    [deviceId],
+  );
+}
+
 export function useDeviceValues(deviceId: string): DeviceValues {
   return useStoreSelector((state) => deviceValuesOf(state, deviceId), Object.is, [deviceId]);
 }
@@ -270,6 +330,14 @@ export function useDeviceValue(deviceId: string, capability: string): DeviceValu
 
 export function useRooms(): readonly TableRow<'rooms'>[] {
   return useRows('rooms');
+}
+
+function roomCountIn(state: StoreState): number {
+  return state.tables.rooms.ids.length;
+}
+
+export function useRoomCount(): number {
+  return useStoreSelector(roomCountIn);
 }
 
 export function useRoom(roomId: string | null): TableRow<'rooms'> | null {

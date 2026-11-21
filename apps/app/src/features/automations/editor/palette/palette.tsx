@@ -7,10 +7,10 @@ import { Sheet } from '../../../../components/sheet';
 import { SheetHeader } from '../../../../components/sheet-header';
 import { Text } from '../../../../components/text';
 import { useIsPhone } from '../../../../design/size-class';
-import { useDevices } from '../../../../store/selectors';
 import { useCatalog } from '../../data/use-catalog';
 import { useAutomationPrefs } from '../../data/use-automation-prefs';
 import { useAutomationsSource } from '../../data/source';
+import { useShownEditorDevices } from '../../hosts/editor-devices';
 import {
   anchorOf,
   insertPointText,
@@ -54,17 +54,18 @@ const PREFS_INVALID = 'Your saved palette could not be read, so it cannot be cha
 export function usePaletteEntries(): readonly PaletteEntry[] {
   const { kinds } = useAutomationsSource();
   const { functions } = useCatalog();
-  const devices = useDevices();
-  return useMemo(
+  const devices = useShownEditorDevices();
+  const fixed = useMemo(
     () => [
       ...shippedNodeEntries(kinds),
       ...presetEntries(),
       ...functions.map(functionEntry),
       NEW_REUSABLE_ENTRY,
-      ...snippetEntries(devices),
     ],
-    [kinds, functions, devices],
+    [kinds, functions],
   );
+  const snippets = useMemo(() => snippetEntries(devices), [devices]);
+  return useMemo(() => [...fixed, ...snippets], [fixed, snippets]);
 }
 
 export function usePaletteModel(pin: PinSource | null): PaletteModel {

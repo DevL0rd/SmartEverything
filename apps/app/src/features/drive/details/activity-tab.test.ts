@@ -71,6 +71,7 @@ vi.mock('../activity/activity-row', () => ({
     createElement('li', {}, `${entry.row.op}:${entry.actorName ?? 'nobody'}`),
 }));
 vi.mock('../data', () => ({
+  useDriveRootPlaces: (): readonly unknown[] => [],
   useDriveChips: (): (() => unknown) => (): unknown => ({
     key: 'mine',
     label: 'My Drive',

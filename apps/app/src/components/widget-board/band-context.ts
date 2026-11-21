@@ -1,4 +1,4 @@
-import { use } from 'react';
+import { useContext } from 'react';
 import { controlHitSlop, type Density, type Idiom } from '../../design/tokens';
 import { InBand } from './in-band';
 
@@ -15,7 +15,7 @@ export function bandValueOf(idiom: Idiom, density: Density, compact: boolean): B
 }
 
 export function useBand(): Band | null {
-  return use(InBand);
+  return useContext(InBand);
 }
 
 export function useInActionBand(): boolean {

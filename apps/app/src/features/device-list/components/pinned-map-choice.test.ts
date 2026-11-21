@@ -53,7 +53,12 @@ vi.mock('../../home-map/data/map-set-query', () => ({ useHomeMapSet: none }));
 vi.mock('../../home-map/model/map-choice', () => ({ useMapChoice: none }));
 vi.mock('../../home-map/data/map-demand', () => ({ useHomeMapDemand: none }));
 vi.mock('../../home-map/data/stage-maps', () => ({ useStageMaps: (): undefined => undefined }));
-vi.mock('../../../store/store-context', () => ({ useStoreSelector: (): object => ({}) }));
+vi.mock('../../../store/store-context', () => ({
+  useStoreSelector: (): { rooms: readonly never[]; devices: readonly never[] } => ({
+    rooms: [],
+    devices: [],
+  }),
+}));
 
 const { PinnedMap, pinnedChoiceOf } = await import('./pinned-map');
 

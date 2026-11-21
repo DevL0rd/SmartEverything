@@ -1,5 +1,5 @@
 import type { ReactNode, RefObject } from 'react';
-import { createContext, use, useRef } from 'react';
+import { createContext, use, useContext, useRef } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import type { EntryOrExitLayoutType } from 'react-native-reanimated';
 import { useLiveAnimationGate, useScreenLive, type AnimationGate } from './animation-gate';
@@ -24,7 +24,7 @@ export function VisualVisibility({
 }
 
 export function useScopeVisible(): boolean {
-  return use(ScopeVisible);
+  return useContext(ScopeVisible);
 }
 
 export function useShownExit(animation: EntryOrExitLayoutType): {

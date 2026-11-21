@@ -1,4 +1,4 @@
-import { createContext, use } from 'react';
+import { createContext, useContext } from 'react';
 import type { PlannerPerson } from '../data';
 
 export interface QuickAddSeed {
@@ -22,7 +22,7 @@ class OutsidePlannerFrame extends Error {
 }
 
 export function usePlannerFrame(): PlannerFrameValue {
-  const value = use(PlannerFrameContext);
+  const value = useContext(PlannerFrameContext);
   if (value === null) throw new OutsidePlannerFrame();
   return value;
 }

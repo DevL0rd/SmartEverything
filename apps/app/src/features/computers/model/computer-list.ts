@@ -1,4 +1,4 @@
-import type { DiskSnapshot } from '@smarteverything/domain';
+import type { DiskUsage } from '@smarteverything/domain';
 import { compareText } from '../../../format/text';
 import type { Device } from '../../../store/state';
 import { isHub, osOf } from '../data/computer-device';
@@ -42,16 +42,16 @@ function holds(mount: string, home: string): boolean {
   return base === '' || inside === base || inside.startsWith(`${base}/`);
 }
 
-export function homeDiskOf(disks: readonly DiskSnapshot[], home: string): DiskSnapshot | null {
+export function homeDiskOf(disks: readonly DiskUsage[], home: string): DiskUsage | null {
   return disks
     .filter((disk) => holds(disk.mount, home))
-    .reduce<DiskSnapshot | null>(
+    .reduce<DiskUsage | null>(
       (best, disk) => (best === null || disk.mount.length > best.mount.length ? disk : best),
       null,
     );
 }
 
-export function homeUsageOf(disks: readonly DiskSnapshot[], home: string): HomeUsage | null {
+export function homeUsageOf(disks: readonly DiskUsage[], home: string): HomeUsage | null {
   const disk = homeDiskOf(disks, home);
   if (disk === null) return null;
   const share = usedShare(disk);

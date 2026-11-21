@@ -1,10 +1,11 @@
-import { createContext, use, useLayoutEffect, useMemo, useState } from 'react';
+import { createContext, use, useLayoutEffect, useState } from 'react';
 import { usePausable } from '../../../design/external-store';
 import { DAY_MS, localDayKey } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
-import { useAvailability, useRows, useSession, useSettings } from '../../../store/selectors';
+import { useDayNow } from '../../../store/clock';
+import { sameJson } from '../../../store/same-json';
+import { useAvailability, useSession, useSettings } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
-import type { Device } from '../../../store/state';
+import { rowsOf, type Device } from '../../../store/state';
 import { useActivity, type ActivityItem } from '../../activity';
 import { useCameraEntries, type CameraEntry } from '../../cameras';
 import { useComfortReadings, type ComfortMetric } from '../../climate';
@@ -13,7 +14,7 @@ import { useMyPhone } from '../../phone';
 import { PLANNER_HOME_WIDGETS } from '../../planner';
 import { useHasScale } from '../../profiles';
 import { TALK_WIDGETS } from '../../talk';
-import { useMyWatch } from '../../watches';
+import { useHasMyWatch } from '../../watches';
 import { favouritesOf, sameFavourites, type Favourites } from '../model/favourites';
 import { fitnessDayOf, type FitnessDay } from '../model/fitness-today';
 import { deviceDigest, sameDigest, type DeviceDigest } from '../model/spotlight';
@@ -21,7 +22,7 @@ import { powerOf, samePower, type PowerUse } from '../model/power';
 import { roomSummaries, sameRooms, type RoomSummary } from '../model/rooms';
 import { sameSecurity, securityLines, type SecurityLine } from '../model/security';
 import { homeSummary, type HomeSummary } from '../model/summary';
-import { byHandOf, type ByHand } from '../../automations';
+import { sameByHand, selectByHand, type ByHand } from '../../automations';
 
 const HOME_METRICS: readonly ComfortMetric[] = ['temperature', 'humidity', 'pm25', 'co2'];
 
@@ -41,13 +42,19 @@ export interface HomeData {
 }
 
 function useFitnessDay(): FitnessDay | null {
-  const rows = useRows('health_daily');
   const zone = useSettings().time_zone;
-  const now = useMinute();
+  const now = useDayNow(zone);
   const profile = useSession().client.profile_id;
-  const day = fitnessDayOf(rows, localDayKey(new Date(now), zone), profile);
+  const today = localDayKey(new Date(now), zone);
   const yesterday = localDayKey(new Date(now - DAY_MS), zone);
-  return day !== null && day.day >= yesterday ? day : null;
+  return useStoreSelector(
+    (state) => {
+      const day = fitnessDayOf(rowsOf(state.tables.health_daily), today, profile);
+      return day !== null && day.day >= yesterday ? day : null;
+    },
+    sameJson,
+    [today, yesterday, profile],
+  );
 }
 
 export function useHomeBasics(): Pick<HomeData, 'digest' | 'cameras'> {
@@ -77,8 +84,7 @@ export function useHomeSecurity(): readonly SecurityLine[] {
 }
 
 export function useHomeByHand(): readonly ByHand[] {
-  const automations = useRows('automations');
-  return useMemo(() => byHandOf(automations), [automations]);
+  return useStoreSelector(selectByHand, sameByHand);
 }
 
 export function useHomeFitness(): FitnessDay | null {
@@ -100,7 +106,7 @@ export function useHomeData(): HomeData {
     security: useHomeSecurity(),
     fitness: useHomeFitness(),
     scale: useHasScale(),
-    watch: useMyWatch() !== null,
+    watch: useHasMyWatch(),
     phone: useMyPhone() !== null,
   };
 }

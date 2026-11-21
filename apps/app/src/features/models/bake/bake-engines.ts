@@ -1,5 +1,6 @@
 import { Logger, background } from '@smarteverything/logging';
 import type { BakeContext } from './bake-layers';
+import { failed, requestIdOf } from './bake-protocol';
 import { createBakeContext, detailOf, settleBake } from './bake-run';
 import { documentStaging } from './bake-staging';
 import { FROM_BAKE_WORKER, TO_BAKE_WORKER } from './bake-worker-protocol';
@@ -39,7 +40,7 @@ function inlineChain(context: BakeContext, events: BakeEvents): BakeEngine['send
   };
 }
 
-function inlineEngine(canvas: HTMLCanvasElement, events: BakeEvents): BakeEngine | null {
+function inlineEngine(canvas: HTMLCanvasElement, events: BakeEvents): BakeEngine | string {
   const lost = (event: Event): void => {
     event.preventDefault();
     events.lost('webgl_context_lost');
@@ -48,10 +49,8 @@ function inlineEngine(canvas: HTMLCanvasElement, events: BakeEvents): BakeEngine
   const made = createBakeContext(canvas, { staging: documentStaging(), pause: idleSlice });
   if (typeof made === 'string') {
     canvas.removeEventListener('webglcontextlost', lost);
-    events.unavailable(made);
-    return null;
+    return made;
   }
-  events.ready();
   return {
     send: inlineChain(made, events),
     dispose: (): void => {
@@ -109,6 +108,12 @@ export interface BakeDriver extends BakeEngine {
   readonly start: () => void;
 }
 
+export function refuseBake(events: BakeEvents, text: string, detail: string): void {
+  const id = requestIdOf(text);
+  if (id === null) throw new Error(`the baker got a request without an id: ${detail}`);
+  events.result(JSON.stringify(failed(id, 'webgl', detail)));
+}
+
 export function bakeDriver(canvas: HTMLCanvasElement, events: BakeEvents): BakeDriver {
   let engine: BakeEngine | null = null;
   let disposed = false;
@@ -117,7 +122,13 @@ export function bakeDriver(canvas: HTMLCanvasElement, events: BakeEvents): BakeD
     engine = null;
     if (disposed) return;
     log.warn('model.bake_inline', { reason });
-    engine = inlineEngine(canvas, events);
+    const made = inlineEngine(canvas, events);
+    if (typeof made === 'string') {
+      events.unavailable(made);
+      return;
+    }
+    engine = made;
+    events.ready();
   };
   return {
     start: (): void => {
@@ -132,7 +143,10 @@ export function bakeDriver(canvas: HTMLCanvasElement, events: BakeEvents): BakeD
       }
     },
     send: (text): void => {
-      if (engine === null) throw new Error('the baker has no engine');
+      if (engine === null) {
+        refuseBake(events, text, 'the baker has no engine');
+        return;
+      }
       engine.send(text);
     },
     dispose: (): void => {

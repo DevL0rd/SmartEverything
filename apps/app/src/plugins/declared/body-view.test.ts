@@ -35,8 +35,8 @@ vi.mock('./controls-view', () => ({
   ControlsView: ({ items }: { readonly items: readonly unknown[] }): string =>
     `controls:${String(items.length)}`,
 }));
-vi.mock('../../components/figure', () => ({
-  Figure: (props: Record<string, unknown>): null => {
+vi.mock('../../components/live-figure', () => ({
+  LiveFigure: (props: Record<string, unknown>): null => {
     shown.figures.push(props);
     return null;
   },
@@ -110,7 +110,7 @@ describe('BodyView', () => {
     shown.values['soil'] = ready(61.234);
     render({ type: 'gauge', value: { stream: 'soil', field: null }, min: 0, max: 100 });
     expect(shown.gauges).toMatchObject([{ value: 61.234, min: 0, max: 100 }]);
-    expect(shown.figures).toMatchObject([{ value: '61.23' }]);
+    expect(shown.figures).toMatchObject([{ value: '61.23', widest: '888.88' }]);
   });
 
   it('draws the gauge at its tier size outside a board widget', () => {

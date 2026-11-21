@@ -1,5 +1,4 @@
 import { useQueryClient } from '@tanstack/react-query';
-import type { DriveRoot } from '@smarteverything/domain';
 import {
   createDriveShortcut,
   readDriveItem,
@@ -12,7 +11,8 @@ import { changeDriveBatched } from '../../../store/drive-bulk';
 import { useSession, useSyncStatus } from '../../../store/selectors';
 import type { FileSource } from '../../files';
 import { router } from 'expo-router';
-import { invalidateAllDrive, useDriveChips, useDriveRoots, useViewerId } from '../data';
+import { invalidateAllDrive, useDriveChips, useDriveRootPlaces, useViewerId } from '../data';
+import type { DriveRootPlace } from '../model/drive-access';
 import { shownDriveCreates } from '../data/shown';
 import { openHrefOf } from '../recent/recent-model';
 import { nativeDriveProvider } from '../phone/provider';
@@ -31,7 +31,7 @@ import { LIVE_UPLOAD, driveUploadTransport, type DriveUploadEnv } from './drive-
 export const DRIVE_SOURCE_ID = 'drive';
 
 export interface DriveSourceEnv {
-  readonly roots: readonly DriveRoot[];
+  readonly roots: readonly DriveRootPlace[];
   readonly viewerId: string | null;
   readonly clientId: string;
   readonly online: boolean;
@@ -85,7 +85,7 @@ export function createDriveSource(env: DriveSourceEnv): FileSource<DriveOrigin> 
 
 export function useDriveSource(): FileSource<DriveOrigin> {
   const client = useQueryClient();
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const chipOf = useDriveChips();
   const viewerId = useViewerId();
   return createDriveSource({

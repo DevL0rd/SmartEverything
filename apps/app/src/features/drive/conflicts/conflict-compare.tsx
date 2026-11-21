@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useEffectEvent } from 'react';
 import type { DriveConflict } from '@smarteverything/domain';
 import { notify } from '../../../components/toast-store';
-import { useDriveItem, useDriveRoots } from '../data';
+import { useDriveItem, useDriveRootPlaces } from '../data';
 import { VersionsSheet } from '../versions/versions-sheet';
 import type { VersionsSlots, VersionsTarget } from '../versions/versions-panel';
 import { ConflictBanner } from './conflict-banner';
@@ -17,7 +17,7 @@ export interface ConflictCompareProps {
 }
 
 function useTarget(conflict: DriveConflict, onClose: () => void): VersionsTarget | null {
-  const root = useDriveRoots().find((one) => one.id === conflict.rootId) ?? null;
+  const root = useDriveRootPlaces().find((one) => one.id === conflict.rootId) ?? null;
   const { item, versions, settled, sides } = useConflictFacts(conflict);
   const copy = useDriveItem(conflict.conflictItemId, conflict.rootId);
   const failed = useEffectEvent((error: unknown) => {

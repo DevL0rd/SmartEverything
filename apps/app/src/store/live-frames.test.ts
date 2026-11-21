@@ -60,7 +60,6 @@ const ran = frame({
   operation: 'UPDATE',
   key: { id: ID },
   set: { last_run_at: LATER, run_count: 6 },
-  previous: { last_run_at: AT, run_count: 5 },
   seq: 2,
 });
 
@@ -115,7 +114,6 @@ describe('column-scoped live UPDATE frames in the store', () => {
         operation: 'UPDATE',
         key: { id: ID },
         set: {},
-        previous: {},
         seq: 3,
       }),
     ]);
@@ -137,7 +135,6 @@ describe('column-scoped live UPDATE frames in the store', () => {
       operation: 'UPDATE',
       key: { device_id: DEVICE, capability: 'power' },
       set: { observed_at: LATER },
-      previous: { observed_at: AT },
       seq: 2,
     });
     const { state } = applied([value, observed]);
@@ -154,7 +151,6 @@ describe('column-scoped live UPDATE frames in the store', () => {
       operation: 'UPDATE',
       key: { id: ID },
       set: { id: PROFILE },
-      previous: { id: ID },
       seq: 2,
     });
     const { state } = applied([inserted, moved]);
@@ -168,7 +164,6 @@ describe('column-scoped live UPDATE frames in the store', () => {
       operation: 'UPDATE',
       key: { id: ID },
       set: { run_count: 'many' },
-      previous: { run_count: 5 },
       seq: 2,
     });
     expect(() => applied([inserted, broken])).toThrow(UnreadableChangeError);

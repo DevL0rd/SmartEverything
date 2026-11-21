@@ -9,7 +9,7 @@ import { deviceIcon } from '../../device-visuals';
 import type { AlarmDefaults } from './alarm-chips';
 import { useClockFormat } from '../../../store/clock-format';
 import { wakeRoutineTimeOf } from './alarm-text';
-import { useWatchName } from './watch-state-line';
+import { REMOVED_WATCH, useWatchName } from './watch-state-line';
 
 interface ChipProps {
   readonly icon: IconName;
@@ -54,7 +54,8 @@ function ClientChip({ clientId }: { readonly clientId: string }): ReactNode {
 }
 
 function WatchChip({ link }: { readonly link: PlannerWatchLink }): ReactNode {
-  return <TargetChip icon="watch" label={useWatchName(link.deviceId)} />;
+  const name = useWatchName(link.deviceId);
+  return <TargetChip icon="watch" label={name ?? REMOVED_WATCH} />;
 }
 
 function DeviceChip({ deviceId }: { readonly deviceId: string }): ReactNode {

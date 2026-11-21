@@ -14,38 +14,44 @@ export const PROJECT_ROOT = 'workspace';
 
 const LIST_LIMIT = 1000;
 
+async function listProject(
+  chatId: string,
+  path: string,
+  signal: AbortSignal,
+): Promise<readonly AiProjectFile[]> {
+  const startedAt = Date.now();
+  try {
+    const result = await api().call(
+      E.readAiProjectFiles,
+      {
+        params: { chatId },
+        body: { operation: 'list', path, limit: LIST_LIMIT },
+      },
+      { signal },
+    );
+    log.debug('project_files.listed', () => ({
+      chatId,
+      pathLength: path.length,
+      entries: result.entries?.length ?? 0,
+      durationMs: Date.now() - startedAt,
+    }));
+    return result.entries ?? [];
+  } catch (error) {
+    log.error('project_files.list_failed', error, {
+      chatId,
+      durationMs: Date.now() - startedAt,
+    });
+    throw error;
+  }
+}
+
 export function useProjectList(
   chatId: string,
   path: string,
 ): UseQueryResult<readonly AiProjectFile[]> {
   return useScreenQuery({
     queryKey: ['window', 'ai-project', chatId, path],
-    queryFn: async ({ signal }) => {
-      const startedAt = Date.now();
-      try {
-        const result = await api().call(
-          E.readAiProjectFiles,
-          {
-            params: { chatId },
-            body: { operation: 'list', path, limit: LIST_LIMIT },
-          },
-          { signal },
-        );
-        log.debug('project_files.listed', () => ({
-          chatId,
-          pathLength: path.length,
-          entries: result.entries?.length ?? 0,
-          durationMs: Date.now() - startedAt,
-        }));
-        return result.entries ?? [];
-      } catch (error) {
-        log.error('project_files.list_failed', error, {
-          chatId,
-          durationMs: Date.now() - startedAt,
-        });
-        throw error;
-      }
-    },
+    queryFn: ({ signal }) => listProject(chatId, path, signal),
   });
 }
 

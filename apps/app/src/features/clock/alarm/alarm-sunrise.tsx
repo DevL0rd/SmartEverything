@@ -7,7 +7,7 @@ import { NumberStepper } from '../../../components/number-stepper';
 import { SwitchRow } from '../../../components/rows';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { useRows } from '../../../store/selectors';
+import { useDeviceIds, useDeviceNames, type DevicePredicate } from '../../../store/selectors';
 import { useClockFormat } from '../../../store/clock-format';
 import type { AlarmDraft, AlarmEdit } from './alarm-draft';
 import { minutesText } from './alarm-options';
@@ -30,10 +30,16 @@ export interface SunriseProps {
 
 const MOST = Number.MAX_SAFE_INTEGER;
 
+const isLight: DevicePredicate = (device) => device.kind === 'light';
+
 function useHomeLights(): readonly SunriseLight[] {
-  return useRows('devices')
-    .filter((device) => device.kind === 'light')
-    .map((device) => ({ id: device.id, name: device.label }));
+  const ids = useDeviceIds(isLight, { includeHidden: true });
+  const names = useDeviceNames('label');
+  if (ids === '') return [];
+  return ids.split(',').flatMap((id) => {
+    const name = names.get(id);
+    return name === undefined ? [] : [{ id, name }];
+  });
 }
 
 function SunrisePreview({

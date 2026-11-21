@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type {
   AutomationRunSummary,
   FunctionLookup,
@@ -9,6 +9,8 @@ import type {
 import type { AutomationRow } from '../data/graph-adapter';
 import type { IconName } from '../../../components/icon';
 import { isIconName } from '../../../components/icon';
+import type { ShellSearchConfig } from '../../../components/page-shell/search-slot';
+import { useStableValue } from '../../../components/use-stable-value';
 import { localDayKey } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useAutomationsSource } from '../data/source';
@@ -17,11 +19,15 @@ import { useRuns } from '../data/use-runs';
 import { entriesOf, type ListContext, type ListEntry } from './list-entries';
 import {
   DEFAULT_VIEW,
+  SEARCH_FROM,
   countOf,
   filterChoices,
+  sameChoices,
   sectionsOf,
   type FilterChoice,
+  type FilterId,
   type Section,
+  type SortId,
   type View,
 } from './list-view';
 import { healthOf, statsByAutomation, type Health } from './run-stats';
@@ -45,7 +51,9 @@ export interface AutomationsList {
   readonly next: TimelineEvent | null;
   readonly rejected: number;
   readonly view: View;
-  readonly setView: (view: View) => void;
+  readonly setFilter: (filter: FilterId) => void;
+  readonly setSort: (sort: SortId) => void;
+  readonly search: ShellSearchConfig | undefined;
   readonly iconOf: (entry: ListEntry) => IconName;
   readonly timeZone: string;
 }
@@ -108,6 +116,26 @@ function useIconOf(): (entry: ListEntry) => IconName {
   );
 }
 
+function useSearch(
+  searchable: boolean,
+  query: string,
+  setView: (update: (current: View) => View) => void,
+): ShellSearchConfig | undefined {
+  return useMemo(
+    () =>
+      searchable
+        ? {
+            value: query,
+            onChange: (next: string): void => {
+              setView((current) => ({ ...current, query: next }));
+            },
+            placeholder: 'Find an automation',
+          }
+        : undefined,
+    [searchable, query, setView],
+  );
+}
+
 export function useAutomationsList(environment: ListEnvironment): AutomationsList {
   const { rows, rejected } = useAutomations();
   const runs = useRuns(null).data ?? NO_RUNS;
@@ -116,7 +144,17 @@ export function useAutomationsList(environment: ListEnvironment): AutomationsLis
   const { place, rooms } = environment;
   const entries = useEntries(rows, runs, localDayKey(now, place.timeZone), environment);
   const sections = useMemo(() => sectionsOf(entries, view), [entries, view]);
-  const choices = useMemo(() => filterChoices(entries, rooms), [entries, rooms]);
+  const choices = useStableValue(
+    useMemo(() => filterChoices(entries, rooms), [entries, rooms]),
+    sameChoices,
+  );
+  const setFilter = useCallback((filter: FilterId): void => {
+    setView((current) => ({ ...current, filter }));
+  }, []);
+  const setSort = useCallback((sort: SortId): void => {
+    setView((current) => ({ ...current, sort }));
+  }, []);
+  const search = useSearch(entries.length >= SEARCH_FROM, view.query, setView);
   const health = useMemo(() => healthOf(runs, now, place.timeZone), [runs, now, place.timeZone]);
   const events = useEvents(rows, runs, now, place);
   return {
@@ -129,7 +167,9 @@ export function useAutomationsList(environment: ListEnvironment): AutomationsLis
     next: nextUp(events),
     rejected,
     view,
-    setView,
+    setFilter,
+    setSort,
+    search,
     iconOf: useIconOf(),
     timeZone: place.timeZone,
   };

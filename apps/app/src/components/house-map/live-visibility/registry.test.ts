@@ -12,7 +12,12 @@ describe('visibility registry', () => {
     }
     expect(registry.liveStageIds()).toEqual(ids);
     for (const id of ids) {
-      expect(registry.getStage(id)).toEqual({ live: true, mounted: true, showStill: false });
+      expect(registry.getStage(id)).toEqual({
+        live: true,
+        mounted: true,
+        showStill: false,
+        focused: true,
+      });
     }
   });
 
@@ -23,7 +28,12 @@ describe('visibility registry', () => {
     registry.register('vacuum', visible);
     registry.report('pinned', { onScreen: false });
     expect(registry.liveStageIds()).toEqual(['hero', 'vacuum']);
-    expect(registry.getStage('pinned')).toEqual({ live: false, mounted: false, showStill: true });
+    expect(registry.getStage('pinned')).toEqual({
+      live: false,
+      mounted: true,
+      showStill: true,
+      focused: true,
+    });
   });
 
   it('pauses and unmounts every stage on background and restores them in the foreground', () => {
@@ -50,7 +60,12 @@ describe('visibility registry', () => {
     const registry = createVisibilityRegistry();
     registry.register('a', visible);
     registry.report('a', { modalCovered: true });
-    expect(registry.getStage('a')).toEqual({ live: false, mounted: true, showStill: true });
+    expect(registry.getStage('a')).toEqual({
+      live: false,
+      mounted: true,
+      showStill: true,
+      focused: true,
+    });
     registry.report('a', { modalCovered: false });
     expect(registry.getStage('a').live).toBe(true);
   });
@@ -67,6 +82,18 @@ describe('visibility registry', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     registry.report('a', { onScreen: false });
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('notifies a stage listener when its screen loses focus while it is scrolled away', () => {
+    const registry = createVisibilityRegistry();
+    registry.register('a', { ...visible, onScreen: false });
+    const listener = vi.fn();
+    registry.subscribeStage('a', listener);
+    registry.report('a', { screenFocused: false });
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(registry.getStage('a').focused).toBe(false);
+    registry.report('a', { screenFocused: true });
+    expect(registry.getStage('a').focused).toBe(true);
   });
 
   it('does not wake other stages for a change in one stage', () => {
@@ -98,6 +125,22 @@ describe('visibility registry', () => {
     unregister();
     expect(registry.liveStageIds()).toEqual([]);
     expect(registry.getStage('a').mounted).toBe(false);
+  });
+
+  it('reports a focused stage until every stage blurs, goes to the background or leaves', () => {
+    const registry = createVisibilityRegistry();
+    expect(registry.hasFocusedStage()).toBe(false);
+    const leave = registry.register('a', { ...visible, onScreen: false });
+    expect(registry.hasFocusedStage()).toBe(true);
+    registry.report('a', { screenFocused: false });
+    expect(registry.hasFocusedStage()).toBe(false);
+    registry.report('a', { screenFocused: true });
+    registry.setAppForeground(false);
+    expect(registry.hasFocusedStage()).toBe(false);
+    registry.setAppForeground(true);
+    expect(registry.hasFocusedStage()).toBe(true);
+    leave();
+    expect(registry.hasFocusedStage()).toBe(false);
   });
 
   it('ignores reports for stages that are not registered', () => {

@@ -2,7 +2,6 @@ import type {
   DriveChange,
   DriveChangeResult,
   DriveFolderPlace,
-  DriveRoot,
   DriveShortcut,
   DriveShortcutChange,
   DriveShortcutCreate,
@@ -20,6 +19,7 @@ import {
   type OpResult,
   type FileLocation,
 } from '../../files';
+import type { DriveRootPlace } from '../model/drive-access';
 import { itemIdOf, itemOf, type DriveNode, type DriveOrigin } from './drive-node';
 import { DRIVE_PLACES, folderPlaceOf } from './drive-places';
 import { restoredFollowOf, type RestoreEnv } from './drive-restore';
@@ -33,7 +33,7 @@ export interface DriveShortcutCalls {
 export interface DriveOpsEnv {
   readonly change: (body: DriveChange) => Promise<DriveChangeResult>;
   readonly shortcuts: DriveShortcutCalls;
-  readonly roots: readonly DriveRoot[];
+  readonly roots: readonly DriveRootPlace[];
   readonly viewerId: string | null;
   readonly restore: RestoreEnv;
 }

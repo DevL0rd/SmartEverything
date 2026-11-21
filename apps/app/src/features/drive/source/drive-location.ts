@@ -14,7 +14,7 @@ import {
   useDriveItem,
   useDriveOfflineRows,
   useDrivePlacementRows,
-  useDriveRoots,
+  useDriveRootPlaces,
   useSharedWithMe,
   useViewerId,
 } from '../data';
@@ -103,7 +103,7 @@ interface FolderRead {
 }
 
 function useFolderRead(location: FileLocation, place: DrivePlaceKey | null): FolderRead {
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const viewerId = useViewerId();
   const folderId = place === DRIVE_PLACES.trash ? null : location.folder;
   const item = useDriveItem(folderId, null);
@@ -131,7 +131,7 @@ function needsShared(
 function useContextWith(shared: DriveNodeContext['shared']): DriveNodeContext {
   const clientId = useSession().client.id;
   return {
-    roots: useDriveRoots(),
+    roots: useDriveRootPlaces(),
     viewerId: useViewerId(),
     shared,
     offline: offlineMapOf(useDriveOfflineRows(), clientId),
@@ -146,7 +146,7 @@ export function useDriveNodeContext(): DriveNodeContext {
 export function useDriveLocation(location: FileLocation): DriveLocationState {
   const place = drivePlaceKeyOf(location.place);
   const read = useFolderRead(location, place);
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const viewerId = useViewerId();
   const shared = useAllShared(needsShared(place, read.rootId, { roots, viewerId }));
   const context = useContextWith(shared.entries);
@@ -176,5 +176,5 @@ export function useDriveAbilities(location: FileLocation): FileAbilities {
 }
 
 export function useDrivePlaces(): readonly FilePlace[] {
-  return drivePlacesOf(useDriveRoots(), useViewerId());
+  return drivePlacesOf(useDriveRootPlaces(), useViewerId());
 }

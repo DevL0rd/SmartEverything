@@ -306,6 +306,7 @@ export class BakeChannel {
   }
 
   fail(detail: string): void {
+    this.connected = false;
     this.unavailable = detail;
     for (const entry of [...this.pending.values()]) {
       this.settle(failed(entry.request.id, 'webgl', detail));

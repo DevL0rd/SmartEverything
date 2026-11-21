@@ -114,7 +114,7 @@ export function hasWorkoutToShow(view: WatchWorkoutView): boolean {
 }
 
 export function WatchWorkoutCard({ device }: { readonly device: Device }): ReactNode {
-  const view = useWatchWorkout(device);
+  const view = useWatchWorkout(device.id);
   if (!hasWorkoutToShow(view)) {
     return null;
   }

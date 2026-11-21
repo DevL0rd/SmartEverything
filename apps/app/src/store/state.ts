@@ -38,6 +38,7 @@ export type ListTable = Exclude<
   | 'weather'
   | 'exchange_rates'
   | 'ai_outreach'
+  | 'ai_usage'
   | 'home_maps'
   | 'device_effect_targets'
 >;
@@ -212,7 +213,6 @@ function emptyTables(): Tables {
     assistant_messages: emptyTable(),
     ai_chats: emptyTable(),
     scheduled_actions: emptyTable(),
-    ai_usage: emptyTable(),
     plugins: emptyTable(),
     plugin_streams: emptyTable(),
     plugin_ui: emptyTable(),

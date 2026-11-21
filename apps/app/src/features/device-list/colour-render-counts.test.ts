@@ -21,7 +21,7 @@ function mountedHooks(read: () => unknown): number {
   act(() => {
     root.render(createElement(PaletteContext, { value: PALETTE }, createElement(Probe)));
   });
-  const used = nodes.hooks['use'] ?? 0;
+  const used = nodes.hooks['useContext'] ?? 0;
   act(() => {
     root.unmount();
   });

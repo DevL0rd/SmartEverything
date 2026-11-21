@@ -1,7 +1,7 @@
 import type { BoardWidget } from '../../../components/widget-board';
 import { useNutritionWidgets } from '../../nutrition';
 import { useHasScale } from '../../profiles';
-import { useMyWatch } from '../../watches';
+import { useHasMyWatch } from '../../watches';
 import { figureOn } from '../model/daily';
 import { METRIC_OPTIONS, TREND_OPTIONS, dailySeries } from '../model/metric-choices';
 import type { DailyFigure } from '../model/points';
@@ -30,7 +30,7 @@ export function useAvailableWidgets(
   const { figures, day } = data;
   const types = presence.types;
   const scale = useHasScale();
-  const watch = useMyWatch() !== null;
+  const watch = useHasMyWatch();
   const nutrition = useNutritionWidgets(day);
   const entries: readonly (readonly [string, boolean])[] = [
     ['rings', presence.domains.has('activity')],

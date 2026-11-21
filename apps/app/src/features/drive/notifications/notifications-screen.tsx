@@ -15,7 +15,7 @@ import {
   useDriveFileRequestRows,
   useDriveItemReads,
   useDriveNotificationRows,
-  useDriveRoots,
+  useDriveRootPlaces,
   useDriveTransferRows,
   useNotificationsRead,
   useViewerId,
@@ -97,7 +97,7 @@ function renderRow(entry: InboxNote, env: RowEnv): ReactElement {
 
 function useOpen(): (row: DriveNotification, item: DriveItem | null) => void {
   const read = useNotificationsRead();
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   return (row, item): void => {
     if (row.readAt === null) read.run({ ids: [row.id] });
     if (item !== null) router.push(openHrefOf(item, roots));

@@ -8,10 +8,13 @@ import {
   type BoardClass,
   type BoardWidget,
   type PickerState,
+  type TargetRow,
   type WidgetDefinition,
   type WidgetSize,
 } from '../../components/widget-board';
-import { useRows } from '../../store/selectors';
+import { sameJson } from '../../store/same-json';
+import { rowsOf, type StoreState } from '../../store/state';
+import { useStoreSelector } from '../../store/store-context';
 import { lightGroupSections, lightGroupSuggestions, mixedGroupSections } from './group-picker';
 import { LightGroup } from './widget/light-group';
 import { GroupPreview } from './widget/group-preview';
@@ -30,6 +33,23 @@ const EVERY_CLASS: Readonly<Record<BoardClass, readonly WidgetSize[]>> = {
   expanded: SIZES,
 };
 
+interface GroupChoice {
+  readonly key: string;
+  readonly title: string;
+  readonly options: TargetRow['options'];
+}
+
+function groupChoicesIn(store: StoreState): readonly GroupChoice[] {
+  const state: PickerState = {
+    devices: rowsOf(store.tables.devices),
+    rooms: rowsOf(store.tables.rooms),
+    groups: rowsOf(store.tables.device_groups),
+  };
+  return [...lightGroupSections(state, []), ...mixedGroupSections(state, [])].flatMap((section) =>
+    section.rows.map((row) => ({ key: row.key, title: row.title, options: row.options })),
+  );
+}
+
 function TargetEditor({
   value,
   onChange,
@@ -37,14 +57,7 @@ function TargetEditor({
   readonly value: GroupOptions;
   readonly onChange: (value: GroupOptions) => void;
 }): ReactNode {
-  const state: PickerState = {
-    devices: useRows('devices'),
-    rooms: useRows('rooms'),
-    groups: useRows('device_groups'),
-  };
-  const rows = [...lightGroupSections(state, []), ...mixedGroupSections(state, [])].flatMap(
-    (section) => section.rows,
-  );
+  const rows = useStoreSelector(groupChoicesIn, sameJson);
   return (
     <Select
       label="Group"

@@ -141,4 +141,13 @@ describe('bake protocol', () => {
     await expect(waiting).resolves.toMatchObject({ kind: 'failed', reason: 'webgl' });
     await expect(channel.bake(request('r2'))).resolves.toMatchObject({ reason: 'webgl' });
   });
+
+  it('stops sending once the baker reports WebGL missing after it was ready', async () => {
+    const { channel, sent } = harness();
+    channel.ready();
+    channel.fail('inline engine has no context');
+    await expect(channel.bake(request('r1'))).resolves.toMatchObject({ reason: 'webgl' });
+    channel.ready();
+    expect(sent).toHaveLength(0);
+  });
 });

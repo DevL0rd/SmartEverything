@@ -25,22 +25,37 @@ interface UpdateChecks {
   readonly hubSource: ReturnType<typeof useHubUpdateSource>;
 }
 
+interface CheckGate {
+  readonly running: () => boolean;
+  readonly mark: (running: boolean) => void;
+}
+
+async function runCheck(gate: CheckGate, work: () => Promise<unknown>): Promise<void> {
+  if (gate.running()) return;
+  gate.mark(true);
+  try {
+    await work();
+  } finally {
+    gate.mark(false);
+  }
+}
+
 function useCheckRun(work: () => Promise<unknown>): Pick<UpdateChecks, 'check' | 'checking'> {
   const pending = useRef(false);
   const [checking, setChecking] = useState(false);
   return {
     checking,
-    check: async (): Promise<void> => {
-      if (pending.current) return;
-      pending.current = true;
-      setChecking(true);
-      try {
-        await work();
-      } finally {
-        pending.current = false;
-        setChecking(false);
-      }
-    },
+    check: (): Promise<void> =>
+      runCheck(
+        {
+          running: () => pending.current,
+          mark: (running) => {
+            pending.current = running;
+            setChecking(running);
+          },
+        },
+        work,
+      ),
   };
 }
 

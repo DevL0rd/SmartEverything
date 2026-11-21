@@ -1,4 +1,4 @@
-import { createContext, use, useState } from 'react';
+import { createContext, useContext, useState } from 'react';
 
 export interface SectionSearch {
   readonly value: string;
@@ -8,7 +8,7 @@ export interface SectionSearch {
 export const SectionSearchContext = createContext<SectionSearch | null>(null);
 
 export function useSectionSearch(): SectionSearch {
-  const search = use(SectionSearchContext);
+  const search = useContext(SectionSearchContext);
   if (search === null) {
     throw new Error('useSectionSearch needs a section that declares a search');
   }

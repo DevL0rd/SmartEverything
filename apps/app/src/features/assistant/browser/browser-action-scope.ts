@@ -1,10 +1,10 @@
 import { useValue } from '../../../design/external-store';
 import { browserCovered } from '../../../platform/browser-overlays';
 import { restoreBrowserFocus } from '../../../platform/browser-focus';
-import { createContext, use, useEffect } from 'react';
+import { createContext, useContext, useEffect } from 'react';
 export const BrowserActionScope = createContext(true);
 export function useBrowserActionScope(): boolean {
-  return use(BrowserActionScope);
+  return useContext(BrowserActionScope);
 }
 
 export function useBrowserFocusRestore(scope: Parameters<typeof restoreBrowserFocus>[0]): void {

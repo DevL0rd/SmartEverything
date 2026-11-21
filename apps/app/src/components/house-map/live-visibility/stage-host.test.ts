@@ -10,6 +10,7 @@ import type { StageLiveProps, StageStillState } from './stage-host';
 
 interface Probe {
   visible: boolean;
+  focused: boolean;
   mounts: Map<string, number>;
   live: Map<string, StageLiveProps>;
   stills: Map<string, number>;
@@ -18,6 +19,7 @@ interface Probe {
 
 const probe: Probe = vi.hoisted(() => ({
   visible: true,
+  focused: true,
   mounts: new Map<string, number>(),
   live: new Map<string, StageLiveProps>(),
   stills: new Map<string, number>(),
@@ -47,6 +49,10 @@ vi.mock('react-native', async (importOriginal) => {
     },
   };
 });
+
+vi.mock('expo-router', () => ({
+  useIsFocused: (): boolean => probe.focused,
+}));
 
 vi.mock('../../../design/visibility', () => ({
   useOnScreen: (): { visible: boolean; onLayout: undefined } => ({
@@ -156,6 +162,7 @@ afterEach(() => {
   });
   vi.unstubAllGlobals();
   probe.visible = true;
+  probe.focused = true;
   probe.mounts.clear();
   probe.live.clear();
   probe.stills.clear();
@@ -198,18 +205,29 @@ describe('stage host', () => {
     expect(probe.live.get('hero')?.active).toBe(true);
   });
 
-  it('pauses, draws the still and then unmounts the DOM component off screen', () => {
+  it('pauses and draws the still off screen but keeps the DOM component until the screen blurs', () => {
     const registry = createVisibilityRegistry();
     render([stage(registry, { id: 'hero', selection: 0 })]);
     act(() => {
       probe.live.get('hero')?.onReady();
     });
     const stillsWhileLive = probe.stills.get('hero') ?? 0;
+    for (let pass = 0; pass < 3; pass += 1) {
+      probe.visible = false;
+      render([stage(registry, { id: 'hero', selection: 0 })]);
+      expect(probe.live.get('hero')?.active).toBe(false);
+      probe.visible = true;
+      render([stage(registry, { id: 'hero', selection: 0 })]);
+      expect(probe.live.get('hero')?.active).toBe(true);
+    }
+    expect(probe.stills.get('hero')).toBe(stillsWhileLive + 3);
+    expect(probe.mounts.get('hero')).toBe(1);
     probe.visible = false;
+    probe.focused = false;
     render([stage(registry, { id: 'hero', selection: 0 })]);
-    expect(probe.stills.get('hero')).toBe(stillsWhileLive + 1);
     expect(probe.live.has('hero')).toBe(false);
     probe.visible = true;
+    probe.focused = true;
     render([stage(registry, { id: 'hero', selection: 0 })]);
     expect(probe.mounts.get('hero')).toBe(2);
     expect(probe.live.get('hero')?.active).toBe(true);
@@ -270,8 +288,13 @@ describe('stage host', () => {
     first?.addEventListener('dispose', disposed);
     probe.visible = false;
     render([geometry()]);
+    expect(probe.live.get('hero')?.active).toBe(false);
+    probe.focused = false;
+    render([geometry()]);
+    expect(probe.live.has('hero')).toBe(false);
     expect(disposed).toHaveBeenCalledTimes(1);
     probe.visible = true;
+    probe.focused = true;
     render([geometry()]);
     expect(built).toEqual([first]);
     render([]);

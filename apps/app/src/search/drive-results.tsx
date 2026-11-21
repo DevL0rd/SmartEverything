@@ -30,7 +30,7 @@ import { thumbReadyOf } from '../features/drive/model/item-content';
 import { drivePathOf } from '../features/drive/model/drive-chip';
 import { KIND_LOOK, openHrefOf } from '../features/drive/recent/recent-model';
 import { useSaveSmartFolder } from '../features/drive/starred';
-import { flattenPages, useDriveChips, useDriveRoots, useDriveSearch } from '../features/drive';
+import { flattenPages, useDriveChips, useDriveRootPlaces, useDriveSearch } from '../features/drive';
 import { driveKindOf, driveWordsOf } from './drive-words';
 import { rangeIn } from './match';
 import { useRecentSearches } from './recent';
@@ -209,7 +209,7 @@ interface FileRowsProps {
 }
 
 function FileRows({ files, query, look, open }: FileRowsProps): ReactNode {
-  const drives = useDriveRoots();
+  const drives = useDriveRootPlaces();
   const chipOf = useDriveChips();
   const tokens = tokensOf(query);
   return files.map((item, index) => {
@@ -333,7 +333,7 @@ interface DriveGroup {
 
 function useDriveGroup(query: string): DriveGroup {
   const live = useSyncStatus().status === 'live';
-  const searchable = useDriveRoots().length > 0 && driveWordsOf(query).length > 0;
+  const searchable = useDriveRootPlaces().length > 0 && driveWordsOf(query).length > 0;
   const pages = useDriveSearch(driveSearchOf(query), searchable && live);
   const items = flattenPages(pages.data, (page) => page.items);
   const state = driveGroupStateOf({

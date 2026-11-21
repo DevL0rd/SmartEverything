@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { use } from 'react';
+import { useContext } from 'react';
 import { Image, View } from 'react-native';
 import type { AssistantAttachment, ImageOperationPreview } from '@smarteverything/domain';
 import { Text } from '../../../../components/text';
@@ -26,7 +26,7 @@ export function ImageRevealProvider({
 }
 
 function useRevealFor(attachmentId: string): ImageReveal | null {
-  const reveal = use(RevealContext);
+  const reveal = useContext(RevealContext);
   return reveal?.attachmentIds.has(attachmentId) === true ? reveal : null;
 }
 

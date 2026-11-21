@@ -6,7 +6,7 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import { joinParts } from '../../../format/text';
-import { useDevices, useLoaded } from '../../../store/selectors';
+import { useDevice, useLoaded } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { ComputerBrowser, computersOf, type ComputerFrameSlots } from '../../computers';
 import { type BrowserHeader, shellSearchOf } from '../../files';
@@ -28,12 +28,11 @@ function CompactCard({
 }): ReactNode {
   const here = useThisComputer();
   const drive = useDesktopDrive();
+  const own = placementsOn(device.id, placements);
   if (here !== null && drive !== null && here.deviceId === device.id) {
-    return (
-      <ThisComputerCard device={device} here={here} drive={drive} placements={placements} compact />
-    );
+    return <ThisComputerCard device={device} here={here} drive={drive} placements={own} compact />;
   }
-  return <ComputerCard device={device} placements={placementsOn(device.id, placements)} compact />;
+  return <ComputerCard device={device} placements={own} compact />;
 }
 
 export function computerSubtitleOf(device: string, header: BrowserHeader): string | undefined {
@@ -102,7 +101,8 @@ export function ComputerScreen(): ReactNode {
   const { deviceId } = useLocalSearchParams<{ deviceId: string }>();
   const loaded = useLoaded();
   const placements = useDrivePlacementRows();
-  const device = computersOf(useDevices()).find((candidate) => candidate.id === deviceId);
+  const row = useDevice(deviceId);
+  const [device] = computersOf(row === null ? [] : [row]);
   if (device !== undefined) return <ComputerFilesPage device={device} placements={placements} />;
   return (
     <DriveFrame section="computers" title="Computer" breadcrumbs={[COMPUTERS_CRUMB]}>

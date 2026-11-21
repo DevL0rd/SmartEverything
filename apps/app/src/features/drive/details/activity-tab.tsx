@@ -16,7 +16,8 @@ import { localDayKey } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
 import { useDeviceNames, useSession, useSettings, useSyncStatus } from '../../../store/selectors';
-import { flattenPages, useDriveChips, useDriveItemActivity } from '../data';
+import { flattenPages, useDriveChips, useDriveItemActivity, useDriveRootPlaces } from '../data';
+import { driveLocationHref } from '../model/section-routes';
 import {
   activityItemOf,
   feedRowsOf,
@@ -25,6 +26,7 @@ import {
   type FeedLine,
 } from '../activity/activity-filters';
 import { ActivityRow } from '../activity/activity-row';
+import { targetOf } from '../activity/via-model';
 import type { DetailsSubject } from './details-model';
 
 type ItemPages = ReturnType<typeof useDriveItemActivity>;
@@ -115,6 +117,7 @@ function Unloaded({ pages }: { readonly pages: ItemPages }): ReactNode {
 }
 
 function Day({ day, me }: { readonly day: ActivityDay; readonly me: string | null }): ReactNode {
+  const roots = useDriveRootPlaces();
   return (
     <View className="gap-2">
       <View className="flex-row items-baseline justify-between gap-3 px-4">
@@ -133,7 +136,12 @@ function Day({ day, me }: { readonly day: ActivityDay; readonly me: string | nul
       >
         {day.lines.map((line, index) => (
           <View key={line.key} className={index === 0 ? '' : 'border-t border-outline-variant'}>
-            <ActivityRow entry={line.entry} me={me} itemless />
+            <ActivityRow
+              entry={line.entry}
+              me={me}
+              href={driveLocationHref(roots, targetOf(line.entry))}
+              itemless
+            />
           </View>
         ))}
       </View>

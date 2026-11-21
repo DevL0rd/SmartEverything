@@ -13,7 +13,7 @@ import type { StageViewOption } from '../../features/home-map/components/stage/s
 import { StageStillView } from '../../features/home-map/components/stage/stage-states';
 import type { EditorNotice } from '../../features/home-map/editor/mount-edit';
 import { StageNoticeChip } from '../../features/home-map/editor/stage-notice';
-import { useDevices } from '../../store/selectors';
+import { useDeviceIdOf } from './zone-devices';
 import {
   areaCells,
   commitStroke,
@@ -49,9 +49,7 @@ const NO_VIEWS: readonly StageViewOption<'3d'>[] = [];
 const STILL_STATE = { unavailable: false } as const;
 
 export function useSensorMapView(sensor: ShellyDevice): SensorMapView | null {
-  const devices = useDevices({ includeHidden: true });
-  const deviceId = devices.find((device) => device.external_id === sensor.externalId)?.id ?? null;
-  return useSensorView(sensor, deviceId);
+  return useSensorView(sensor, useDeviceIdOf(sensor.externalId));
 }
 
 interface History {

@@ -22,16 +22,28 @@ import { latestDaily } from './daily-index';
 import { usePhoneWatch } from './watch-link';
 import { isLocalWatch } from './watch-status';
 
+function myWatchIn(state: StoreState, profileId: string | null): Device | null {
+  return (
+    rowsOf(state.tables.devices).find(
+      (device) => isLocalWatch(device) && device.details['profileId'] === profileId,
+    ) ?? null
+  );
+}
+
 export function useMyWatch(): Device | null {
   const profileId = useActiveProfile()?.id ?? null;
-  return useStoreSelector(
-    (state) =>
-      rowsOf(state.tables.devices).find(
-        (device) => isLocalWatch(device) && device.details['profileId'] === profileId,
-      ) ?? null,
-    Object.is,
-    [profileId],
-  );
+  return useStoreSelector((state) => myWatchIn(state, profileId), Object.is, [profileId]);
+}
+
+export function useMyWatchId(): string | null {
+  const profileId = useActiveProfile()?.id ?? null;
+  return useStoreSelector((state) => myWatchIn(state, profileId)?.id ?? null, Object.is, [
+    profileId,
+  ]);
+}
+
+export function useHasMyWatch(): boolean {
+  return useMyWatchId() !== null;
 }
 
 interface DayFigure {

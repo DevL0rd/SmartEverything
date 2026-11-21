@@ -6,18 +6,17 @@ import { LogTally } from '../design/log-tally';
 import { applyHomeMapChanges } from '../features/home-map/data/live';
 import { applyDriveChanges } from '../features/drive';
 import { patchCameraDays, refreshSnapshots } from './camera-day';
+import { refreshAiUsageSoon } from './ai-usage-refresh';
 import { invalidateChatMeterHistory } from './chat-meter-history';
 import { invalidateDeviceLogs } from './device-log';
 import { entryChanges } from './health-entries';
 import {
   ACCESS_PREFIX,
-  AI_USAGE_PREFIX,
   AGENT_RUN_PREFIX,
   ARCHIVED_CHATS_KEY,
   DEVICE_EFFECTS_KEY,
   HEALTH_PREFIX,
   HISTORY_PREFIX,
-  OPENROUTER_ACCOUNT_KEY,
   PLUGIN_PREFIX,
   plannerKeys,
   type PlannerKind,
@@ -110,16 +109,6 @@ function invalidatePlanner(client: QueryClient, tables: ReadonlySet<LiveTable>):
 }
 
 function invalidateAi(client: QueryClient, tables: ReadonlySet<LiveTable>): void {
-  if (tables.has('ai_usage')) {
-    background(
-      client.invalidateQueries({ queryKey: AI_USAGE_PREFIX }),
-      'queries.invalidate_failed',
-    );
-    background(
-      client.invalidateQueries({ queryKey: OPENROUTER_ACCOUNT_KEY }),
-      'queries.invalidate_failed',
-    );
-  }
   if (tables.has('ai_chats')) {
     background(
       client.invalidateQueries({
@@ -176,7 +165,8 @@ export function applyToWindows(
     background(client.invalidateQueries({ queryKey: HEALTH_PREFIX }), 'queries.invalidate_failed');
   }
   invalidateAi(client, tables);
-  invalidateChatMeterHistory(client, changes);
+  refreshAiUsageSoon(client, frames);
+  invalidateChatMeterHistory(client, changes, frames);
   if (tables.has('device_effect_targets')) {
     refreshDeviceEffects(client);
   }

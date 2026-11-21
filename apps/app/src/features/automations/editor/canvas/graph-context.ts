@@ -1,4 +1,4 @@
-import { use, useMemo } from 'react';
+import { use, useContext, useMemo } from 'react';
 import { usePausable } from '../../../../design/external-store';
 import type { GraphRunNode, GraphRunOverlay, GraphRunStepper } from '../../model/graph/run-overlay';
 import type { GraphCanvasIntent } from './graph-canvas-types';
@@ -122,7 +122,7 @@ export function useGraphRun(id: string): GraphNodeRun {
 }
 
 export function useGraphEmit(): (intent: GraphCanvasIntent) => void {
-  const emit = use(GraphEmitContext);
+  const emit = useContext(GraphEmitContext);
   if (emit === null) throw new MissingGraphContextError();
   return emit;
 }

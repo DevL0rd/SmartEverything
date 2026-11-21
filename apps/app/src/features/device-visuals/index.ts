@@ -4,6 +4,7 @@ export { deviceIcon, familyIcon } from './family-icon';
 export {
   useDeviceColour,
   useDeviceVisualState,
+  useGlanceVisualState,
   useWatchVisualState,
   type WatchLive,
 } from './model/use-visual-state';

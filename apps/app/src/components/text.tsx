@@ -65,6 +65,17 @@ export const Text = memo(function Text({
   const style = cn(VARIANT[variant], TONE_TEXT[tone], ALIGN[align]);
   if (ellipsize === 'middle') {
     const { head, tail } = splitMiddle(children);
+    if (tail === '') {
+      return (
+        <NativeText
+          selectable={selectable}
+          numberOfLines={1}
+          className={cn(style, 'min-w-0 max-w-full shrink', className)}
+        >
+          {children}
+        </NativeText>
+      );
+    }
     return (
       <View
         accessible
@@ -79,11 +90,9 @@ export const Text = memo(function Text({
         >
           {head}
         </NativeText>
-        {tail === '' ? null : (
-          <NativeText aria-hidden selectable={selectable} className={cn(style, 'shrink-0')}>
-            {tail}
-          </NativeText>
-        )}
+        <NativeText aria-hidden selectable={selectable} className={cn(style, 'shrink-0')}>
+          {tail}
+        </NativeText>
       </View>
     );
   }

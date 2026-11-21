@@ -1,7 +1,13 @@
 import type { UseQueryResult } from '@tanstack/react-query';
-import type { DriveRoot, MediaInfo, PhotoPlace } from '@smarteverything/domain';
+import type { MediaInfo, PhotoPlace } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { driveLabelOf, useDriveItem, useDriveRoots, useViewerId } from '../../drive';
+import {
+  driveLabelOf,
+  useDriveItem,
+  useDriveRootPlaces,
+  useViewerId,
+  type DriveRootPlace,
+} from '../../drive';
 import { usePhotoMedia, usePhotoPlace } from '../data/queries';
 import { isMediaItem, type MediaItem } from './info-model';
 import { wallMonthOf } from './sequence';
@@ -30,7 +36,7 @@ function monthOf(item: MediaItem, media: MediaInfo | null): string | null {
   return wallMonthOf(item.takenAt, media.tzOffsetMin);
 }
 
-function libraryOf(root: DriveRoot | null, viewerId: string | null): string | null {
+function libraryOf(root: DriveRootPlace | null, viewerId: string | null): string | null {
   return root === null ? null : driveLabelOf(root, viewerId);
 }
 
@@ -38,7 +44,7 @@ export function useViewerItem(itemId: string): ViewerItem {
   const item = useDriveItem(itemId, null);
   const media = usePhotoMedia(itemId);
   const place = usePhotoPlace(media.data?.placeId ?? null);
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const viewerId = useViewerId();
   if (item.data === undefined) {
     return item.isError

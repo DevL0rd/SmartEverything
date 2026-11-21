@@ -1,11 +1,13 @@
 import { useMemo, type ReactNode } from 'react';
+import type { FlowNode } from '@smarteverything/domain';
 import { View } from 'react-native';
 import { ActionRow } from '../../../../../components/rows';
 import { Section } from '../../../../../components/section';
 import { Text } from '../../../../../components/text';
-import { useAutomations } from '../../../data/use-automations';
+import { useAutomationRow } from '../../../data/use-automations';
 import {
   NO_INPUTS,
+  calledIdOf,
   calledInputsModel,
   clearLeftoverOps,
   leftoverNote,
@@ -17,16 +19,15 @@ import { portOps } from './edits';
 import { flowNodeOf } from './node-view';
 import type { SectionProps } from './section-types';
 
-function useCalledLookup(): CalledLookup {
-  const { byId } = useAutomations();
+function useCalledLookup(node: FlowNode | undefined): CalledLookup {
+  const calledId = node === undefined ? null : (calledIdOf(node) ?? null);
+  const called = useAutomationRow(calledId);
   return useMemo(
-    (): CalledLookup => (id) => {
-      const row = byId.get(id);
-      return row === undefined
+    (): CalledLookup => (id) =>
+      called?.id !== id
         ? undefined
-        : { name: row.name, enabled: row.enabled, inputs: row.definition.inputs };
-    },
-    [byId],
+        : { name: called.name, enabled: called.enabled, inputs: called.definition.inputs },
+    [called],
   );
 }
 
@@ -123,8 +124,8 @@ function Ready({
 }
 
 export function CalledInputs(section: SectionProps): ReactNode {
-  const lookup = useCalledLookup();
   const node = flowNodeOf(section.view);
+  const lookup = useCalledLookup(node);
   const { kind } = section.view;
   if (node === undefined || kind === undefined) return null;
   const model = calledInputsModel(kind, node, lookup);

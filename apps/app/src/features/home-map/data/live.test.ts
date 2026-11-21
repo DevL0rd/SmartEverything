@@ -3,6 +3,7 @@ import {
   HOME_MAP,
   HOME_MAP_MAP_ID,
   HOME_MAP_SUMMARY,
+  JSON_VALUE,
   type HomeMap,
   type HomeMapId,
   type HomeMapSummary,
@@ -10,6 +11,7 @@ import {
   type LiveWireChange,
 } from '@smarteverything/domain';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { HomeMapSignal } from './live';
 
 vi.mock('../../../api/transport', () => ({
@@ -57,16 +59,13 @@ const summary = (
   more: Partial<HomeMapSummaryRow> = {},
 ): LiveWireChange => {
   const { id: key, ...fields } = row(id, revision, more);
-  const set: Extract<LiveWireChange, { readonly operation: 'UPDATE' }>['set'] = JSON.parse(
-    JSON.stringify(fields),
-  );
+  const set = z.record(z.string(), JSON_VALUE).parse(JSON.parse(JSON.stringify(fields)));
   return {
     type: 'change',
     table: 'home_maps',
     operation: 'UPDATE',
     key: { id: key },
     set,
-    previous: {},
     seq: revision,
   };
 };
@@ -169,7 +168,6 @@ describe('the home map summaries on the live stream', () => {
       operation: 'UPDATE',
       key: { id: 'home' },
       set: { name: 'House' },
-      previous: { name: 'home' },
       seq: 12,
     };
     const signal = signalOf(renamed);

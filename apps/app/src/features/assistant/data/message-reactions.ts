@@ -56,6 +56,45 @@ function membersOf(
   );
 }
 
+interface ReactionContext {
+  readonly row: AssistantMessageRow;
+  readonly store: ReturnType<typeof useEntityStore>;
+  readonly requests: () => Set<string>;
+  readonly setPending: (pending: ReadonlySet<string>) => void;
+  readonly setAcknowledged: (next: (last: Acknowledged | null) => Acknowledged | null) => void;
+}
+
+async function updateReaction(
+  context: ReactionContext,
+  emoji: string,
+  present: boolean,
+): Promise<void> {
+  const { row, store, setPending, setAcknowledged } = context;
+  if (store.get().session?.client.profile_id !== row.profile_id) return;
+  const requests = context.requests();
+  if (requests.has(emoji)) return;
+  const requestRevision = historySynchronization.get();
+  requests.add(emoji);
+  setPending(new Set(requests));
+  try {
+    const receipt = await setMessageReaction(row, { emoji, present });
+    setAcknowledged((last) => {
+      if (historySynchronization.get() !== requestRevision) return last;
+      const previous = last?.revision === requestRevision ? last.receipt.sequence : null;
+      if (previous !== null && receipt.sequence !== null && previous > receipt.sequence)
+        return last;
+      return { row, receipt, revision: requestRevision };
+    });
+  } catch (error) {
+    notifyReactionFailure(present, error, () => {
+      background(updateReaction(context, emoji, present), 'message_reactions.retry_failed');
+    });
+  } finally {
+    requests.delete(emoji);
+    setPending(new Set(requests));
+  }
+}
+
 export function useReactionToggle(row: AssistantMessageRow): {
   readonly pending: ReadonlySet<string>;
   readonly members: readonly AssistantReaction[];
@@ -69,36 +108,28 @@ export function useReactionToggle(row: AssistantMessageRow): {
     acknowledged === null ? subscribeDormant : historySynchronization.subscribe,
     historySynchronization.get,
   );
-  const update = async (emoji: string, present: boolean): Promise<void> => {
-    if (store.get().session?.client.profile_id !== row.profile_id) return;
-    const requests = (active.current ??= new Set());
-    if (requests.has(emoji)) return;
-    const requestRevision = historySynchronization.get();
-    requests.add(emoji);
-    setPending(new Set(requests));
-    try {
-      const receipt = await setMessageReaction(row, { emoji, present });
-      setAcknowledged((last) => {
-        if (historySynchronization.get() !== requestRevision) return last;
-        const previous = last?.revision === requestRevision ? last.receipt.sequence : null;
-        if (previous !== null && receipt.sequence !== null && previous > receipt.sequence)
-          return last;
-        return { row, receipt, revision: requestRevision };
-      });
-    } catch (error) {
-      notifyReactionFailure(present, error, () => {
-        background(update(emoji, present), 'message_reactions.retry_failed');
-      });
-    } finally {
-      requests.delete(emoji);
-      setPending(new Set(requests));
-    }
-  };
   return {
     pending,
     members: membersOf(row, acknowledged, revision, store),
     change: (emoji, present): void => {
-      background(update(emoji, present), 'message_reactions.update_failed');
+      background(
+        updateReaction(
+          {
+            row,
+            store,
+            requests: () => {
+              const requests = active.current ?? new Set<string>();
+              active.current = requests;
+              return requests;
+            },
+            setPending,
+            setAcknowledged,
+          },
+          emoji,
+          present,
+        ),
+        'message_reactions.update_failed',
+      );
     },
   };
 }

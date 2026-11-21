@@ -2,11 +2,12 @@ import type { RouterSnapshot, SpeedTestResult } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { ProgressBar, Sparkline } from '../../../components/charts';
-import { Figure } from '../../../components/figure';
 import { Icon } from '../../../components/icon';
+import { LiveFigure } from '../../../components/live-figure';
 import { Text } from '../../../components/text';
 import type { ColourRole } from '../../../design/tokens';
 import type { HeroFigure } from '../../shared/service-hero';
+import { widestOf } from '../../shared/figure-width';
 import type { FigureFit } from '../../shared/service-widget-frame';
 import type { HeroModel } from '../overview/hero-model';
 import { withLatest } from '../overview/traffic-model';
@@ -75,12 +76,21 @@ export function Figures({
   const [download, upload] = hero.figures;
   return (
     <View className="flex-row flex-wrap items-baseline gap-x-4">
-      <Figure value={download.value} unit={unitOf(download, '↓')} size={size} stale={hero.stale} />
-      <Figure
+      <LiveFigure
+        value={download.value}
+        widest={widestOf(download.value)}
+        unit={unitOf(download, '↓')}
+        size={size}
+        stale={hero.stale}
+        align="baseline"
+      />
+      <LiveFigure
         value={upload.value}
+        widest={widestOf(upload.value)}
         unit={unitOf(upload, '↑')}
         size={size === 'l' ? 'm' : size}
         stale={hero.stale}
+        align="baseline"
       />
     </View>
   );

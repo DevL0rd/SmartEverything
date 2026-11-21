@@ -2,12 +2,13 @@ import type { SpeedTestResult } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Bars } from '../../../components/charts';
-import { Figure } from '../../../components/figure';
+import { LiveFigure } from '../../../components/live-figure';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { plural } from '../../../format/text';
 import type { HeroModel } from '../overview/hero-model';
 import type { SpeedTestRun } from '../router-data';
+import { widestOf } from '../../shared/figure-width';
 import { ServiceMedallion } from '../../shared/service-medallion';
 import {
   figureFitOf,
@@ -57,7 +58,12 @@ function Tile({ ready, hero, run }: InternetFaceProps): ReactNode {
           </>
         ) : (
           <>
-            <Figure value={download.value} size="m" stale={hero.stale} />
+            <LiveFigure
+              value={download.value}
+              widest={widestOf(download.value)}
+              size="m"
+              stale={hero.stale}
+            />
             {stale === null ? (
               <Text variant="caption" tone="variant" numberOfLines={1}>
                 {download.unit === undefined ? 'Download' : `${download.unit} ↓`}

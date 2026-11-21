@@ -26,6 +26,14 @@ class XiaomiFileListsTest {
   }
 
   @Test
+  fun `acknowledging only today's files never frees the earlier window, so the sync does not chain again`() {
+    val past = setOf("p1", "p2")
+    assertTrue(XiaomiFileLists.freesWindow(setOf("today"), past, emptySet()).isEmpty())
+    assertEquals(setOf("p1"), XiaomiFileLists.freesWindow(setOf("today", "p1"), past, emptySet()))
+    assertTrue(XiaomiFileLists.freesWindow(setOf("p1"), past, setOf("p1")).isEmpty())
+  }
+
+  @Test
   fun `a capture keeps the file id, kind, outcome and every byte`() {
     val bytes = ByteArray(3) { it.toByte() }
     val capture = XiaomiFileLists.capture(sleep, bytes, CaptureOutcome.STAGES_UNDECODED, "held")

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { use } from 'react';
+import { useContext } from 'react';
 import { View } from 'react-native';
 import type { JsonValue } from '@smarteverything/domain';
 import { JSON_VALUE } from '@smarteverything/domain';
@@ -147,7 +147,7 @@ export function JsonLiteral({
 const STATES_PORT = 'states';
 
 function useStates(): readonly string[] {
-  const scope = use(PortScopeContext);
+  const scope = useContext(PortScopeContext);
   const given = scope.ports[STATES_PORT];
   return textsOf(given !== undefined && 'lit' in given ? given.lit : undefined);
 }

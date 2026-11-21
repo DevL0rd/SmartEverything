@@ -1,17 +1,12 @@
-import type {
-  DriveItem,
-  DrivePlacement,
-  DrivePlacementSet,
-  DriveRoot,
-} from '@smarteverything/domain';
+import type { DriveItem, DrivePlacement, DrivePlacementSet } from '@smarteverything/domain';
 import { compareText } from '../../../format/text';
-import { driveLabelOf } from '../model/drive-access';
+import { driveLabelOf, type DriveRootPlace } from '../model/drive-access';
 import { placementBodyOf, type SyncSettings } from '../model/placement-body';
 import type { PickerChoice } from '../../files';
 import { itemOf, type DriveOrigin } from '../source/drive-node';
 
 export interface DriveNames {
-  readonly roots: readonly DriveRoot[];
+  readonly roots: readonly DriveRootPlace[];
   readonly viewerId: string | null;
 }
 

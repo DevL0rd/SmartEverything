@@ -26,7 +26,7 @@ const log = new Logger('app.models');
 
 export type LiveGl = Pick<
   WebGLRenderer,
-  'setPixelRatio' | 'setSize' | 'setScissorTest' | 'setScissor' | 'setViewport' | 'clear'
+  'setDrawingBufferSize' | 'setScissorTest' | 'setScissor' | 'setViewport' | 'clear'
 > & {
   autoClear: boolean;
   readonly info: ProgramInfo;
@@ -61,6 +61,7 @@ export interface LiveRenderer {
   readonly remove: (id: string) => void;
   readonly place: (id: string, rect: LiveRect, clip: LiveRect) => void;
   readonly resize: (width: number, height: number, dpr: number) => void;
+  readonly release: () => void;
   readonly draw: (nowMs: number) => LiveDraw;
   readonly recordFrame: (frameMs: number) => boolean;
   readonly viewIds: () => readonly string[];
@@ -196,6 +197,12 @@ class RendererCore implements LiveRenderer {
     this.surface = { width, height, dpr };
   };
 
+  readonly release = (): void => {
+    if (this.applied?.width === 1 && this.applied.height === 1 && this.applied.dpr === 1) return;
+    this.allocate({ width: 1, height: 1, dpr: 1 });
+    this.blank = false;
+  };
+
   readonly draw = (nowMs: number): LiveDraw => {
     const { gl, surface } = this;
     this.serial += 1;
@@ -277,16 +284,18 @@ class RendererCore implements LiveRenderer {
   }
 
   private applyScale(): void {
-    const idle = this.views.size === 0;
-    const width = idle ? 1 : this.surface.width;
-    const height = idle ? 1 : this.surface.height;
-    const dpr = idle ? 1 : this.surface.dpr * this.scale;
+    if (this.views.size === 0) return;
+    const { width, height } = this.surface;
+    const dpr = this.surface.dpr * this.scale;
     const { applied } = this;
     if (applied?.width === width && applied.height === height && applied.dpr === dpr) return;
-    this.applied = { width, height, dpr };
+    this.allocate({ width, height, dpr });
+  }
+
+  private allocate(size: Surface): void {
+    this.applied = size;
     this.unmeasured = true;
-    this.gl.setPixelRatio(dpr);
-    this.gl.setSize(width, height, false);
+    this.gl.setDrawingBufferSize(size.width, size.height, size.dpr);
   }
 }
 

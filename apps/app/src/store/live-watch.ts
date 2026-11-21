@@ -11,6 +11,7 @@ import { compareText } from '../format/text';
 
 const log = new Logger('app.live-watch');
 const NOTHING = '[]';
+const REFUSED_TOPIC = /demands\.(\d+)\.topics\.(\d+)/g;
 
 type Send = (message: LiveClientMessageInput) => void;
 type Follower = (deviceId: string, demanded: boolean) => void;
@@ -22,19 +23,22 @@ interface Hold {
   readonly files: string | undefined;
 }
 
-function demandsOf(holds: ReadonlySet<Hold>): WatchDemand[] {
+function demandsOf(holds: ReadonlySet<Hold>, unsupported: ReadonlySet<string>): WatchDemand[] {
   const byDevice = new Map<
     string,
     { topics: Set<WatchTopic>; processes?: ProcessWindow; files?: string }
   >();
   for (const hold of holds) {
     const known = byDevice.get(hold.deviceId) ?? { topics: new Set<WatchTopic>() };
-    hold.topics.forEach((topic) => known.topics.add(topic));
+    hold.topics.forEach((topic) => {
+      if (!unsupported.has(topic)) known.topics.add(topic);
+    });
     if (hold.processes !== undefined) known.processes = hold.processes;
     if (hold.files !== undefined) known.files = hold.files;
     byDevice.set(hold.deviceId, known);
   }
   return [...byDevice]
+    .filter(([, known]) => known.topics.size > 0)
     .sort(([left], [right]) => compareText(left, right))
     .map(([deviceId, known]) => ({
       deviceId,
@@ -49,6 +53,9 @@ export class LiveWatchRegistry {
   private readonly followers = new Set<Follower>();
   private send: Send | null = null;
   private sent = NOTHING;
+  private sentDemands: readonly WatchDemand[] = [];
+  private readonly unsupportedTopics = new Set<string>();
+  private refusedSignature: string | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   hold(
@@ -95,6 +102,25 @@ export class LiveWatchRegistry {
     this.flush();
   }
 
+  refuse(reason: string): boolean {
+    const refused = new Set<string>();
+    for (const match of reason.matchAll(REFUSED_TOPIC)) {
+      const topic = this.sentDemands[Number(match[1])]?.topics[Number(match[2])];
+      if (topic !== undefined) refused.add(topic);
+    }
+    if (refused.size === 0) return false;
+    refused.forEach((topic) => this.unsupportedTopics.add(topic));
+    log.warn('watch.topics_unsupported', { topics: [...refused], reason });
+    this.schedule();
+    return true;
+  }
+
+  refuseSent(reason: string): void {
+    if (this.refuse(reason)) return;
+    this.refusedSignature = this.sent;
+    log.warn('watch.refused', { devices: this.sentDemands.length, reason });
+  }
+
   topicsOf(deviceId: string): ReadonlySet<string> {
     const topics = new Set<string>();
     for (const hold of this.holds) {
@@ -129,10 +155,11 @@ export class LiveWatchRegistry {
   private flush(): void {
     const send = this.send;
     if (send === null) return;
-    const demands = demandsOf(this.holds);
+    const demands = demandsOf(this.holds, this.unsupportedTopics);
     const signature = JSON.stringify(demands);
-    if (signature === this.sent) return;
+    if (signature === this.sent || signature === this.refusedSignature) return;
     this.sent = signature;
+    this.sentDemands = demands;
     log.debug('watch.sent', { devices: demands.length });
     send({ type: 'watch', demands });
   }

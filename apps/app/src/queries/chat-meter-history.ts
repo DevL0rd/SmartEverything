@@ -1,20 +1,12 @@
 import type { QueryClient, QueryFilters } from '@tanstack/react-query';
-import type { AiChatRow, AiUsageRow, LiveChange } from '@smarteverything/domain';
+import type { AiChatRow, AiUsageRow, LiveChange, LiveWireChange } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { CHAT_METER_HISTORY_PREFIX } from './keys';
 
-function cacheMeterChanged(before: AiUsageRow | null, after: AiUsageRow | null): boolean {
-  if (before === null || after === null) return before !== after;
-  return (
-    before.chat_id !== after.chat_id ||
-    before.at !== after.at ||
-    before.tokens_in !== after.tokens_in ||
-    before.tokens_cached !== after.tokens_cached
-  );
-}
+const CACHE_METER_COLUMNS: readonly string[] = ['chat_id', 'at', 'tokens_in', 'tokens_cached'];
 
-function cacheChatId(row: AiUsageRow | null): string | null {
-  return row !== null && row.tokens_in > 0 ? row.chat_id : null;
+function cacheChatId(row: AiUsageRow): string | null {
+  return row.tokens_in > 0 ? row.chat_id : null;
 }
 
 function meterScopeChanged(before: AiChatRow, after: AiChatRow): boolean {
@@ -33,20 +25,43 @@ function chatMeterChanged(before: AiChatRow | null, after: AiChatRow): boolean {
   );
 }
 
-function changedChatMeters(changes: readonly LiveChange[]): ReadonlySet<string | null> {
-  const chats = new Set<string | null>();
+interface ChangedMeters {
+  readonly chats: ReadonlySet<string>;
+  readonly every: boolean;
+}
+
+function usageMeterMoved(frame: LiveWireChange & { readonly operation: 'UPDATE' }): boolean {
+  const moved = [...Object.keys(frame.set), ...(frame.cleared ?? [])];
+  return moved.some((column) => CACHE_METER_COLUMNS.includes(column));
+}
+
+function changedChats(changes: readonly LiveChange[]): Set<string> {
+  const chats = new Set<string>();
   for (const change of changes) {
     if (change.table === 'ai_chats') {
       const { record, oldRecord } = change;
       if (record !== null && chatMeterChanged(oldRecord, record)) chats.add(record.id);
     }
-    if (change.table === 'ai_usage' && cacheMeterChanged(change.oldRecord, change.record)) {
-      chats.add(cacheChatId(change.record));
-      chats.add(cacheChatId(change.oldRecord));
-    }
   }
-  chats.delete(null);
   return chats;
+}
+
+function changedChatMeters(
+  changes: readonly LiveChange[],
+  frames: readonly LiveWireChange[],
+): ChangedMeters {
+  const chats = changedChats(changes);
+  let every = false;
+  for (const frame of frames) {
+    if (frame.table !== 'ai_usage') continue;
+    if (frame.operation === 'UPDATE') {
+      every ||= usageMeterMoved(frame);
+      continue;
+    }
+    const chat = cacheChatId(frame.operation === 'INSERT' ? frame.record : frame.oldRecord);
+    if (chat !== null) chats.add(chat);
+  }
+  return { chats, every };
 }
 
 export function refreshSubscriptionMeterHistory(client: QueryClient): void {
@@ -65,16 +80,19 @@ function refreshMatchingHistory(client: QueryClient, matches: (chatId: string) =
 export function invalidateChatMeterHistory(
   client: QueryClient,
   changes: readonly LiveChange[],
+  frames: readonly LiveWireChange[],
 ): void {
-  const chats = changedChatMeters(changes);
-  if (chats.size === 0) return;
-  refreshMatchingHistory(client, (chatId) => chats.has(chatId));
+  const { chats, every } = changedChatMeters(changes, frames);
+  if (!every && chats.size === 0) return;
+  refreshMatchingHistory(client, (chatId) => every || chats.has(chatId));
 }
 
 export function refreshChatMeterHistory(
   client: QueryClient,
   replayed: readonly LiveChange[],
+  frames: readonly LiveWireChange[],
 ): void {
-  const refreshed = changedChatMeters(replayed);
-  refreshMatchingHistory(client, (chatId) => !refreshed.has(chatId));
+  const { chats, every } = changedChatMeters(replayed, frames);
+  if (every) return;
+  refreshMatchingHistory(client, (chatId) => !chats.has(chatId));
 }

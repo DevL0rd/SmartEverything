@@ -1,16 +1,20 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DriveSuggestion } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { ErrorState } from '../../../components/error-state';
-import { HScroller } from '../../../components/h-scroller';
+import { HList } from '../../../components/h-list';
 import { Section, SectionAction } from '../../../components/section';
 import { Skeleton } from '../../../components/skeleton';
 import { flattenPages, useDriveSuggested } from '../data';
-import { useByName } from '../components/use-by-name';
 import { suggestionsInDrive } from '../priority/priority-model';
-import { SuggestionCard, suggestionKeyOf } from '../priority/suggestion-card';
+import { SuggestionCard } from '../priority/suggestion-card';
+import {
+  suggestionViewKeyOf,
+  useSuggestionViews,
+  type SuggestionView,
+} from '../priority/suggestion-views';
 
 const PLACEHOLDERS = ['a', 'b', 'c'] as const;
 
@@ -24,6 +28,10 @@ function SuggestedSkeleton(): ReactNode {
   );
 }
 
+function renderSuggestion(view: SuggestionView): ReactElement {
+  return <SuggestionCard view={view} />;
+}
+
 function SuggestedBody({
   query,
   suggestions,
@@ -31,18 +39,17 @@ function SuggestedBody({
   readonly query: ReturnType<typeof useDriveSuggested>;
   readonly suggestions: readonly DriveSuggestion[];
 }): ReactNode {
-  const nameOf = useByName();
+  const views = useSuggestionViews(suggestions);
   if (query.data !== undefined) {
     return (
-      <HScroller label="Suggested files" fade inset>
-        {suggestions.map((suggestion) => (
-          <SuggestionCard
-            key={suggestionKeyOf(suggestion)}
-            suggestion={suggestion}
-            nameOf={nameOf}
-          />
-        ))}
-      </HScroller>
+      <HList
+        label="Suggested files"
+        data={views}
+        keyOf={suggestionViewKeyOf}
+        renderItem={renderSuggestion}
+        fade
+        inset
+      />
     );
   }
   if (!query.isError) return <SuggestedSkeleton />;

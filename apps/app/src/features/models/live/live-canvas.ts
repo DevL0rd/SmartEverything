@@ -45,8 +45,10 @@ export function syncCanvasViews(
   renderer: LiveRenderer,
   loop: FrameLoop,
   views: readonly LiveViewModel[],
+  focused: boolean,
 ): void {
   syncLive(renderer, views);
+  if (!focused) renderer.release();
   loop.setActive(true);
   loop.invalidate();
 }
@@ -57,7 +59,7 @@ function runGraphics(setup: LoopSetup, graphics: CanvasGraphics): RunningCanvas 
   sizeTo(renderer);
   const loop = runLoop(setup, renderer);
   const sync = (): void => {
-    syncCanvasViews(renderer, loop, surface.live());
+    syncCanvasViews(renderer, loop, surface.live(), surface.set.focused());
   };
   const redraw = (): void => {
     if (renderer.viewIds().length > 0) loop.invalidate();

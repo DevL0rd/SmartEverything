@@ -1,4 +1,4 @@
-import { createContext, use } from 'react';
+import { createContext, useContext } from 'react';
 
 export interface ShownSignal {
   readonly mark: () => void;
@@ -24,9 +24,9 @@ const NO_SIGNAL: ShownSignal = createSignal();
 export const OverlayShown = createContext<ShownSignal>(NO_SIGNAL);
 
 export function useOverlayShown(): () => void {
-  return use(OverlayShown).mark;
+  return useContext(OverlayShown).mark;
 }
 
 export function useInsideOverlay(): boolean {
-  return use(OverlayShown) !== NO_SIGNAL;
+  return useContext(OverlayShown) !== NO_SIGNAL;
 }

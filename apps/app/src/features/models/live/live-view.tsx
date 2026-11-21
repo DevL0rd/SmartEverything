@@ -114,7 +114,7 @@ function useOverlayWire(
     const sync = (): void => {
       if (!ready) return;
       const views = liveSurface.live(routePaint.route);
-      const wire = wireSync(routePaint.generation, views, sent.current);
+      const wire = wireSync(routePaint.generation, views, sent.current, liveSurface.set.focused());
       slot.current?.sync(JSON.stringify(wire));
       sent.current = activeSpecKeys(views);
     };

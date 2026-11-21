@@ -5,17 +5,16 @@ import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Skeleton } from '../../../components/skeleton';
-import { useDevices, useIsOwner, useLoaded, useSyncStatus } from '../../../store/selectors';
+import { useComputers, useIsOwner, useLoaded, useSyncStatus } from '../../../store/selectors';
 import type { Device } from '../../../store/state';
 import { computersOf, PairComputerSheet } from '../../computers';
-import { useDrivePlacementRows } from '../data';
+import { placementsOf, useDrivePlacementsByDevice } from '../data';
 import { DriveFrame } from '../components/drive-frame';
 import { ComputerCard } from './computer-card';
 import { computersSubtitleOf } from './computers-model';
 import { ConflictsCard } from './conflicts-card';
 import { MountPanel } from './mount-panel';
 import { mountSummaryOf } from './mount-summary';
-import { placementsOn } from './placement-model';
 import {
   useDesktopDrive,
   useThisComputer,
@@ -83,12 +82,7 @@ export function ThisComputerCard({
   readonly compact?: boolean;
 }): ReactNode {
   return (
-    <ComputerCard
-      device={device}
-      placements={placementsOn(device.id, placements)}
-      here
-      compact={compact}
-    >
+    <ComputerCard device={device} placements={placements} here compact={compact}>
       <MountPanel
         platform={here.platform}
         summary={mountSummaryOf(device.id, placements)}
@@ -99,7 +93,7 @@ export function ThisComputerCard({
 }
 
 function ComputerCards({ computers }: { readonly computers: readonly Device[] }): ReactNode {
-  const placements = useDrivePlacementRows();
+  const byDevice = useDrivePlacementsByDevice();
   const here = useThisComputer();
   const drive = useDesktopDrive();
   return (
@@ -111,13 +105,13 @@ function ComputerCards({ computers }: { readonly computers: readonly Device[] })
             device={device}
             here={here}
             drive={drive}
-            placements={placements}
+            placements={placementsOf(byDevice, device.id)}
           />
         ) : (
           <ComputerCard
             key={device.id}
             device={device}
-            placements={placementsOn(device.id, placements)}
+            placements={placementsOf(byDevice, device.id)}
           />
         ),
       )}
@@ -154,9 +148,9 @@ export function ComputersScreen(): ReactNode {
   const loaded = useLoaded();
   const live = useSyncStatus().status === 'live';
   const here = useThisComputer();
-  const devices = useDevices();
+  const rows = useComputers();
   const [pairing, setPairing] = useState(false);
-  const computers = computersOf(devices, here?.deviceId ?? null);
+  const computers = computersOf(rows, here?.deviceId ?? null);
   const pair = (): void => {
     setPairing(true);
   };

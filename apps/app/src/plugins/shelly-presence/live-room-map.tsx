@@ -8,20 +8,21 @@ import { Button } from '../../components/button';
 import { Card } from '../../components/card';
 import { StatusChip } from '../../components/status-chip';
 import { Text } from '../../components/text';
-import { useDevices } from '../../store/selectors';
+import { useEntityStore } from '../../store/store-context';
 import { LeaseCaption } from './lease-caption';
 import { MapLegend, statusLine, useZoneColours } from './room-map-legend';
 import { modelFor } from './room-geometry';
 import { RoomMap } from './room-map';
 import { TrackDetails } from './track-details';
 import { useLivePresence } from './use-live-presence';
+import { deviceLinksIn } from './zone-devices';
 
 function useZoneSelection(sensor: ShellyDevice): {
   readonly selected: string | null;
   readonly choose: (key: string) => void;
 } {
   const router = useRouter();
-  const devices = useDevices({ includeHidden: true });
+  const store = useEntityStore();
   const [selected, setSelected] = useState<string | null>(null);
   const choose = (key: string): void => {
     if (selected !== key) {
@@ -29,7 +30,7 @@ function useZoneSelection(sensor: ShellyDevice): {
       return;
     }
     const zone = sensor.zones.find((item) => item.key === key);
-    const child = devices.find((device) => device.external_id === zone?.externalId);
+    const child = zone === undefined ? undefined : deviceLinksIn(store.get()).get(zone.externalId);
     setSelected(null);
     if (child !== undefined) router.push(routes.device(child));
   };

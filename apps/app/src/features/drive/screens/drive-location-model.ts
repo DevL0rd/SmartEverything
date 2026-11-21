@@ -1,8 +1,7 @@
-import type { DriveRoot } from '@smarteverything/domain';
 import { href } from '../../../app-shell/hrefs';
 import type { AppHref } from '../../../components/app-href';
 import type { FileLocation } from '../../files';
-import { driveOfRootId, isDriveOwner } from '../model/drive-access';
+import { driveOfRootId, isDriveOwner, type DriveRootPlace } from '../model/drive-access';
 import type { DriveSection } from '../model/section-routes';
 import { DRIVE_PLACES, drivePlaceKeyOf, type DrivePlaceKey } from '../source/drive-places';
 
@@ -43,7 +42,7 @@ export function driveHrefOf(location: FileLocation): AppHref {
 }
 
 export function placeOfRoot(
-  roots: readonly DriveRoot[],
+  roots: readonly DriveRootPlace[],
   rootId: string,
   viewerId: string | null,
 ): DrivePlaceKey {
@@ -54,7 +53,7 @@ export function placeOfRoot(
 }
 
 export function folderLocationOf(
-  roots: readonly DriveRoot[],
+  roots: readonly DriveRootPlace[],
   folder: { readonly id: string; readonly rootId: string },
   viewerId: string | null,
 ): FileLocation {

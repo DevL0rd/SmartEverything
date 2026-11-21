@@ -82,7 +82,7 @@ function applySync(overlay: Overlay, text: string): void {
     sync.generation,
     views.map((view) => view.id),
   );
-  syncCanvasViews(overlay.renderer, overlay.loop, views);
+  syncCanvasViews(overlay.renderer, overlay.loop, views, sync.focused);
 }
 
 function applyPlace(overlay: Overlay, text: string): void {

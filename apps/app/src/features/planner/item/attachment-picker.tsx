@@ -18,7 +18,7 @@ import { notify } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { useIdiom } from '../../../design/platform';
 import { pickFiles } from '../../../platform/pick-files';
-import { useDevices, useRows } from '../../../store/selectors';
+import { useDevices } from '../../../store/selectors';
 import { attachFiles, clearUploads, useUploads, type Upload } from '../../assistant';
 import {
   DEFAULT_FACE,
@@ -229,9 +229,11 @@ function usePickGroups(
   search: string,
 ): PickGroups {
   const devices = useDevices();
-  const automations = useRows('automations');
   const filter = { taken: new Set(item.attachments.map(attachmentKeyOf)), text: search };
-  if (picked.kind === 'automation') return namedGroupsOf(automations, 'automation', filter);
+  if (picked.kind === 'automation') {
+    const automations = Array.from(names.automations, ([id, name]) => ({ id, name }));
+    return namedGroupsOf(automations, 'automation', filter);
+  }
   return deviceGroupsOf(devices, names, filter, subjectOf(item.completion));
 }
 

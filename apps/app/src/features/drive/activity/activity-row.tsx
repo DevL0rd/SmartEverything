@@ -12,8 +12,7 @@ import { clock } from '../../../format/time';
 import { useProfiles } from '../../../store/people';
 import { useSettings } from '../../../store/selectors';
 import { ProfileAvatar } from '../../profiles';
-import { useDriveRoots } from '../data';
-import { driveLocationHref } from '../model/section-routes';
+import type { AppHref } from '../../../components/app-href';
 import {
   SERIES_LOOK,
   VIA_LOOK,
@@ -21,13 +20,13 @@ import {
   itemSentenceOf,
   sentenceOf,
   seriesOf,
-  targetOf,
   type ActivityEntry,
 } from './via-model';
 
 export interface ActivityRowProps {
   readonly entry: ActivityEntry;
   readonly me: string | null;
+  readonly href: AppHref;
   readonly itemless?: boolean;
 }
 
@@ -119,21 +118,15 @@ function PhoneMeta({
   );
 }
 
-export const ActivityRow = memo(function ActivityRow({
-  entry,
-  me,
-  itemless = false,
-}: ActivityRowProps): ReactNode {
+function ActivityRowView({ entry, me, href, itemless = false }: ActivityRowProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const zone = useSettings().time_zone;
-  const roots = useDriveRoots();
   const time = clock(entry.row.at, zone);
   const sentence = itemless ? itemSentenceOf(entry, me) : sentenceOf(entry, me);
   const badge = badgeOf(entry);
-  const target = targetOf(entry);
   return (
     <Interactive
-      href={driveLocationHref(roots, target)}
+      href={href}
       label={`${time}, ${sentence}, in ${entry.folderPath}, ${badge}`}
       className="h-row-h-2 flex-row items-center gap-3 px-4"
     >
@@ -168,4 +161,15 @@ export const ActivityRow = memo(function ActivityRow({
       ) : null}
     </Interactive>
   );
-});
+}
+
+function sameRow(left: ActivityRowProps, right: ActivityRowProps): boolean {
+  return (
+    left.entry === right.entry &&
+    left.me === right.me &&
+    left.itemless === right.itemless &&
+    JSON.stringify(left.href) === JSON.stringify(right.href)
+  );
+}
+
+export const ActivityRow = memo(ActivityRowView, sameRow);

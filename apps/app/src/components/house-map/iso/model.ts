@@ -90,10 +90,13 @@ export interface IsoSolid {
   readonly mark: IsoMark | null;
 }
 
-export interface IsoRoomDraw {
+export interface IsoRoomShape {
   readonly id: string;
   readonly d: string;
   readonly room: RenderRoom;
+}
+
+export interface IsoRoomDraw extends IsoRoomShape {
   readonly active: boolean;
 }
 
@@ -127,7 +130,7 @@ interface Placed {
 interface Build {
   readonly basis: IsoBasis;
   readonly frame: IsoFrame;
-  readonly input: IsoStillInput;
+  readonly input: IsoSolidsInput;
 }
 
 const glyphMark = (matrix: string, metres: number, glyph: string): IsoMark => {
@@ -288,7 +291,7 @@ const roomPath = (build: Build, room: RenderRoom): string =>
     .map((ring) => isoPath(build.basis, build.frame, ring, 0))
     .join('');
 
-function poolGroups(build: Build, rooms: readonly IsoRoomDraw[]): readonly IsoPoolGroup[] {
+function poolGroups(build: Build, rooms: readonly IsoRoomShape[]): readonly IsoPoolGroup[] {
   const lit = new Set(build.input.litDeviceIds ?? NO_IDS);
   const groups = new Map<string | null, IsoPoolDraw[]>();
   for (const placement of build.input.floor.placements) {
@@ -311,10 +314,27 @@ function poolGroups(build: Build, rooms: readonly IsoRoomDraw[]): readonly IsoPo
   }));
 }
 
-export function buildIsoStill(
-  input: IsoStillInput,
+export type IsoSolidsInput = Omit<IsoStillInput, 'activeRoomIds' | 'zones'>;
+
+export type IsoOccupancyInput = Pick<IsoStillInput, 'activeRoomIds' | 'zones'>;
+
+export interface IsoStillScene {
+  readonly basis: IsoBasis;
+  readonly frame: IsoFrame;
+  readonly rooms: readonly IsoRoomShape[];
+  readonly pools: readonly IsoPoolGroup[];
+  readonly solids: readonly IsoSolid[];
+}
+
+export interface IsoOccupancy {
+  readonly rooms: readonly IsoRoomDraw[];
+  readonly zones: readonly IsoZone[];
+}
+
+export function buildIsoSolids(
+  input: IsoSolidsInput,
   viewport: { readonly width: number; readonly height: number },
-): IsoStillModel {
+): IsoStillScene {
   const basis = isoBasis(input.view ?? ISO_VIEW);
   const tallest = Math.max(
     input.floor.ceilingHeight,
@@ -322,12 +342,10 @@ export function buildIsoStill(
   );
   const frame = fitIsoFrame(basis, input.floor.bounds ?? EMPTY_BOUNDS, tallest, viewport);
   const build: Build = { basis, frame, input };
-  const active = new Set(input.activeRoomIds ?? NO_IDS);
   const rooms = shownRooms(input.floor).map((room) => ({
     id: room.id,
     d: roomPath(build, room),
     room,
-    active: active.has(room.id),
   }));
   const solids = paintOrder(basis, [
     ...wallSolids(build),
@@ -335,16 +353,33 @@ export function buildIsoStill(
     ...deviceSolids(build),
     ...robotSolid(build),
   ]);
+  return { basis, frame, rooms, pools: poolGroups(build, rooms), solids };
+}
+
+export function isoOccupancy(scene: IsoStillScene, input: IsoOccupancyInput): IsoOccupancy {
+  const active = new Set(input.activeRoomIds ?? NO_IDS);
   return {
-    rooms,
+    rooms: scene.rooms.map((room) => ({ ...room, active: active.has(room.id) })),
     zones: (input.zones ?? NO_ZONES).map((zone) => ({
       occupied: zone.occupied,
       d: zone.polygons
         .flatMap((polygon) => [polygon.outer, ...polygon.holes])
-        .map((ring) => isoPath(basis, frame, ring, 0))
+        .map((ring) => isoPath(scene.basis, scene.frame, ring, 0))
         .join(''),
     })),
-    pools: poolGroups(build, rooms),
-    solids,
+  };
+}
+
+export function buildIsoStill(
+  input: IsoStillInput,
+  viewport: { readonly width: number; readonly height: number },
+): IsoStillModel {
+  const scene = buildIsoSolids(input, viewport);
+  const occupancy = isoOccupancy(scene, input);
+  return {
+    rooms: occupancy.rooms,
+    zones: occupancy.zones,
+    pools: scene.pools,
+    solids: scene.solids,
   };
 }

@@ -9,7 +9,7 @@ import { Text } from '../../components/text';
 import type { Device } from '../../store/state';
 import { useArrival } from './use-arrival';
 import { hasWorkoutToShow, WatchWorkoutPanel } from './watch-workout-card';
-import { useMyWatch } from './watch-glance';
+import { useMyWatch, useMyWatchId } from './watch-glance';
 import { isRunning, useWatchWorkout } from './watch-workout';
 
 function SheetNotice({
@@ -38,7 +38,7 @@ function SheetNotice({
 }
 
 function SheetBody({ watch }: { readonly watch: Device }): ReactNode {
-  const view = useWatchWorkout(watch);
+  const view = useWatchWorkout(watch.id);
   if (!hasWorkoutToShow(view)) {
     return (
       <SheetNotice
@@ -50,13 +50,8 @@ function SheetBody({ watch }: { readonly watch: Device }): ReactNode {
   return <WatchWorkoutPanel device={watch} view={view} />;
 }
 
-function WorkoutSheet({
-  watch,
-  onClose,
-}: {
-  readonly watch: Device | null;
-  readonly onClose: () => void;
-}): ReactNode {
+function WorkoutSheet({ onClose }: { readonly onClose: () => void }): ReactNode {
+  const watch = useMyWatch();
   return (
     <Sheet open onClose={onClose} title="Workout" detents={['fit']}>
       {watch === null ? (
@@ -78,12 +73,12 @@ export interface StartWorkout {
 }
 
 export function useStartWorkout(arriving: boolean, onClosed?: () => void): StartWorkout {
-  const watch = useMyWatch();
+  const watchId = useMyWatchId();
   const [open, setOpen] = useArrival(arriving);
-  const running = isRunning(useWatchWorkout(watch));
+  const running = isRunning(useWatchWorkout(watchId));
   return {
     action:
-      watch === null
+      watchId === null
         ? undefined
         : {
             label: running ? 'Workout in progress' : 'Start workout',
@@ -95,7 +90,6 @@ export function useStartWorkout(arriving: boolean, onClosed?: () => void): Start
           },
     sheet: open ? (
       <WorkoutSheet
-        watch={watch}
         onClose={() => {
           setOpen(false);
           onClosed?.();

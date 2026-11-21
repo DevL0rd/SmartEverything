@@ -18,6 +18,7 @@ export class LiveViewSet {
   private readonly functioning = new Map<string, boolean>();
   private readonly listeners = new Set<() => void>();
   private live: readonly string[] = [];
+  private focusedNow = false;
   private unsubscribe: (() => void) | null = null;
 
   constructor(private readonly registry: VisibilityRegistry = visibilityRegistry) {}
@@ -50,6 +51,8 @@ export class LiveViewSet {
 
   readonly liveIds = (): readonly string[] => this.live;
 
+  readonly focused = (): boolean => this.focusedNow;
+
   readonly joinedCount = (): number => this.functioning.size;
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -76,10 +79,18 @@ export class LiveViewSet {
       .map(([viewId]) => viewId);
   }
 
+  private computeFocused(): boolean {
+    return [...this.functioning].some(
+      ([viewId, working]) => working && this.registry.getStage(liveStageId(viewId)).focused,
+    );
+  }
+
   private refresh(): void {
     const next = this.compute();
-    if (sameIds(next, this.live)) return;
+    const focused = this.computeFocused();
+    if (sameIds(next, this.live) && focused === this.focusedNow) return;
     this.live = next;
+    this.focusedNow = focused;
     for (const listener of [...this.listeners]) listener();
   }
 }

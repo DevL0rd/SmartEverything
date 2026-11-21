@@ -16,7 +16,7 @@ import { localDayKey } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useProfiles } from '../../../store/people';
 import { useDeviceNames, useSession, useSettings, useSyncStatus } from '../../../store/selectors';
-import { useDriveActivity, useDriveChips, useDriveRoots } from '../data';
+import { useDriveActivity, useDriveChips, useDriveRootPlaces } from '../data';
 import { driveLocationHref } from '../model/section-routes';
 import { flattenPages } from '../data/pages';
 import { DriveFrame } from '../components/drive-frame';
@@ -53,6 +53,7 @@ import {
   folderCounts,
   outsideOf,
   peopleLabel,
+  targetOf,
   type ActivityRange,
   type FolderCount,
 } from './via-model';
@@ -128,7 +129,7 @@ function useActivityItems(viewer: Viewer): Loaded {
 }
 
 function useOpenFolder(): (folder: FolderCount) => void {
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   return (folder) => {
     router.push(driveLocationHref(roots, { rootId: folder.rootId, folderId: folder.folderId }));
   };
@@ -230,9 +231,18 @@ function Feed({
   readonly footer?: ReactElement;
 }): ReactNode {
   const { view, viewer } = parts;
+  const roots = useDriveRootPlaces();
   const rows = feedRowsOf(view.shown, viewer.zone, viewer.today);
   const line = (item: FeedRow): ReactElement =>
-    item.kind === 'head' ? <Head row={item} /> : <ActivityRow entry={item.entry} me={viewer.me} />;
+    item.kind === 'head' ? (
+      <Head row={item} />
+    ) : (
+      <ActivityRow
+        entry={item.entry}
+        me={viewer.me}
+        href={driveLocationHref(roots, targetOf(item.entry))}
+      />
+    );
   const renderRow: ListRenderItem<FeedRow> = ({ item }) =>
     parts.wide && item.kind === 'line' ? (
       <GroupFrame edge={item.edge}>{line(item)}</GroupFrame>
@@ -242,7 +252,7 @@ function Feed({
   return (
     <FlashList<FeedRow>
       data={rows}
-      extraData={[viewer.me, parts.wide, rows.length]}
+      extraData={[viewer.me, parts.wide, rows.length, roots]}
       keyExtractor={(row) => row.key}
       getItemType={(row) => row.kind}
       renderItem={renderRow}

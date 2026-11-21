@@ -22,7 +22,6 @@ import {
   useViewerId,
 } from '../data';
 import { DriveFrame } from '../components/drive-frame';
-import { useByName } from '../components/use-by-name';
 import {
   PRIORITY_EMPTY_BODY,
   PRIORITY_EMPTY_TITLE,
@@ -33,7 +32,8 @@ import {
   type WaitingTile,
 } from './priority-model';
 import { SectionHead } from '../starred/section-head';
-import { SuggestionCard, suggestionKeyOf } from './suggestion-card';
+import { SuggestionCard } from './suggestion-card';
+import { useSuggestionViews } from './suggestion-views';
 
 const CARD_MIN_WIDTH = 300;
 
@@ -78,18 +78,13 @@ function Waiting({ tiles }: { readonly tiles: readonly WaitingTile[] }): ReactNo
 }
 
 function Group({ group }: { readonly group: SuggestionGroup }): ReactNode {
-  const nameOf = useByName();
+  const views = useSuggestionViews(group.suggestions);
   return (
     <View className="gap-2">
       <SectionHead title={group.label} />
       <Grid minItemWidth={CARD_MIN_WIDTH} maxColumns={3} stretchLastRow={false}>
-        {group.suggestions.map((suggestion) => (
-          <SuggestionCard
-            key={suggestionKeyOf(suggestion)}
-            suggestion={suggestion}
-            nameOf={nameOf}
-            fill
-          />
+        {views.map((view) => (
+          <SuggestionCard key={view.key} view={view} fill />
         ))}
       </Grid>
     </View>

@@ -4,7 +4,7 @@ import { notify } from '../../../components/toast-store';
 import { useValue } from '../../../design/external-store';
 import { rememberTab, type FileBrowserHandle, FilePickerSheet, type FileSource } from '../../files';
 import { FolderColourSheet } from '../components/folder-colour';
-import { useDriveRoots, useShortcutCreate, useViewerId } from '../data';
+import { useDriveRootPlaces, useShortcutCreate, useViewerId } from '../data';
 import { useFileRequestSheet } from '../requests/file-request-sheet';
 import { useShareSheet } from '../share/share-sheet';
 import { closeDriveRequest, driveRequests, type DriveRequest } from '../source/drive-actions';
@@ -36,7 +36,7 @@ function ShortcutPicker({
   readonly start: FileBrowserHandle<DriveOrigin>['location'];
 }): ReactNode {
   const create = useShortcutCreate();
-  const roots = useDriveRoots();
+  const roots = useDriveRootPlaces();
   const viewerId = useViewerId();
   return (
     <FilePickerSheet

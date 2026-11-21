@@ -70,6 +70,8 @@ const CONNECTION: ServerConnection = {
   token: `set_${'a'.repeat(64)}`,
 };
 
+const running: InstanceType<typeof LiveSync>[] = [];
+
 async function started(): Promise<{
   sync: InstanceType<typeof LiveSync>;
   store: InstanceType<typeof EntityStore>;
@@ -77,6 +79,7 @@ async function started(): Promise<{
   const store = new EntityStore();
   const sync = new LiveSync(CONNECTION, store, { onChanges: vi.fn(), onProfileChanged: vi.fn() });
   sync.start();
+  running.push(sync);
   await vi.advanceTimersByTimeAsync(0);
   return { sync, store };
 }
@@ -100,6 +103,9 @@ describe('the live connection after the hub stops answering', () => {
   });
 
   afterEach(() => {
+    running.splice(0).forEach((sync) => {
+      sync.stop();
+    });
     vi.useRealTimers();
   });
 
@@ -237,7 +243,6 @@ describe('the live connection after the hub stops answering', () => {
           operation: 'UPDATE',
           key: { id: room },
           set: { position: 'first' },
-          previous: { position: 0 },
           seq,
         },
       });
@@ -355,6 +360,75 @@ describe('the live connection after the hub stops answering', () => {
     liveWatch.hold(DEVICE, ['cpu'])();
     vi.advanceTimersByTime(1000);
     expect(second).toHaveLength(2);
+  });
+
+  it('stops sending a watch topic the hub refuses and waits out the backoff before reopening', async () => {
+    const DEVICE = '33333333-3333-4333-8333-333333333333';
+    const release = liveWatch.hold(DEVICE, ['disk_usage', 'drive_mounts']);
+    const { sync, store } = await started();
+    const first: unknown[] = [];
+    opened[0]?.handlers.onOpen((message) => first.push(message));
+    expect(first).toStrictEqual([
+      { type: 'watch', demands: [{ deviceId: DEVICE, topics: ['disk_usage', 'drive_mounts'] }] },
+    ]);
+    opened[0]?.handlers.onMessage({
+      kind: 'message',
+      message: {
+        type: 'refused',
+        error: {
+          code: 'invalid_request',
+          message: 'The live message is not valid: demands.0.topics.0: Invalid option.',
+        },
+      },
+    });
+    expect(store.get().sync.status).not.toBe('refused');
+    opened[0]?.handlers.onClose(1008, 'invalid message');
+    hubAnswered();
+    hubAnswered();
+    expect(opened).toHaveLength(1);
+    vi.advanceTimersByTime(backoffOf(0) - 1);
+    expect(opened).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(opened).toHaveLength(2);
+    const second: unknown[] = [];
+    opened[1]?.handlers.onOpen((message) => second.push(message));
+    expect(second).toStrictEqual([
+      { type: 'watch', demands: [{ deviceId: DEVICE, topics: ['drive_mounts'] }] },
+    ]);
+    opened[1]?.handlers.onClose(1006, '');
+    hubAnswered();
+    expect(opened).toHaveLength(3);
+    release();
+    sync.stop();
+  });
+
+  it('keeps the socket and the sync state when the hub refuses a named watch message', async () => {
+    const DEVICE = '44444444-4444-4444-8444-444444444444';
+    const release = liveWatch.hold(DEVICE, ['tiling']);
+    const { sync, store } = await started();
+    const sent: unknown[] = [];
+    opened[0]?.handlers.onOpen((message) => sent.push(message));
+    expect(sent).toHaveLength(1);
+    opened[0]?.handlers.onMessage({
+      kind: 'message',
+      message: {
+        type: 'refused',
+        error: {
+          code: 'invalid_request',
+          reason: 'watch',
+          message: 'The live watch message is not valid: demands.0.processes: Required.',
+        },
+      },
+    });
+    expect(store.get().sync.status).not.toBe('refused');
+    expect(opened[0]?.closed).toBe(false);
+    opened[0]?.handlers.onClose(1006, '');
+    vi.advanceTimersByTime(backoffOf(0));
+    const again: unknown[] = [];
+    opened[1]?.handlers.onOpen((message) => again.push(message));
+    expect(again).toHaveLength(0);
+    release();
+    sync.stop();
   });
 
   it('does not let a replaced socket take over the demand', async () => {

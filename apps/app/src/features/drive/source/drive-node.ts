@@ -1,7 +1,6 @@
 import type {
   DriveItem,
   DriveOfflineState,
-  DriveRoot,
   DriveShortcut,
   DriveShortcutUnavailableReason,
   DriveTrashEntry,
@@ -15,7 +14,13 @@ import {
   type FileNodeKind,
   type PlacementMark,
 } from '../../files';
-import { canWrite, driveOfRootId, isDriveOwner, type DriveAccess } from '../model/drive-access';
+import {
+  canWrite,
+  driveOfRootId,
+  isDriveOwner,
+  type DriveAccess,
+  type DriveRootPlace,
+} from '../model/drive-access';
 import { ENTRY_STAYS_LINE, entryLineOf, isEntryItem } from '../model/item-content';
 import { accessOfItem, type DriveWorld } from './drive-places';
 
@@ -174,7 +179,7 @@ export function shortcutNodeOf(shortcut: DriveShortcut, context: DriveNodeContex
 export interface TrashRights {
   readonly owner: boolean;
   readonly viewerId: string | null;
-  readonly roots: readonly DriveRoot[];
+  readonly roots: readonly DriveRootPlace[];
 }
 
 export function deletableFromTrash(entry: DriveTrashEntry, rights: TrashRights): boolean {

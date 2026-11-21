@@ -2,11 +2,12 @@ import type { PluginId, WidgetBody } from '@smarteverything/domain';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { EmptyGraph, Gauge, Sparkline } from '../../components/charts';
-import { Figure } from '../../components/figure';
+import { LiveFigure } from '../../components/live-figure';
 import { Text } from '../../components/text';
 import { heroFigure, widgetBodyHeight, type WidgetSize } from '../../components/widget-board';
 import { useWidgetFrame } from '../../components/widget-board/widget-scope';
 import { cn } from '../../design/cn';
+import { widestOf } from '../shared/figure-width';
 import { FitList } from '../shared/plugin-widget';
 import { ControlsView } from './controls-view';
 import {
@@ -65,11 +66,12 @@ interface ViewProps<T extends WidgetBody['type']> {
 }
 
 function FigureView({ pluginId, body, size }: ViewProps<'figure'>): ReactNode {
-  const reading = textReading(useStreamValue(pluginId, body.value));
+  const streamValue = useStreamValue(pluginId, body.value);
+  const reading = textReading(streamValue);
   if (reading.state === 'missing') return <Missing reason={reading.reason} />;
   return (
     <View className="gap-1">
-      <Figure value={reading.text} size={heroFigure(size)} />
+      <LiveFigure value={reading.text} widest={widestOf(reading.text)} size={heroFigure(size)} />
       {body.caption === null ? null : (
         <Text variant="footnote" tone="variant" numberOfLines={2}>
           {body.caption}
@@ -98,7 +100,7 @@ function GaugeView({ pluginId, body, size }: ViewProps<'gauge'>): ReactNode {
             ticking={false}
           />
           <View className="min-w-0 flex-1 gap-0.5">
-            <Figure value={text} size={heroFigure(size)} />
+            <LiveFigure value={text} widest={widestOf(text)} size={heroFigure(size)} />
             <Text variant="caption" tone="variant" numberOfLines={2}>
               {`${formatNumber(body.min)} to ${formatNumber(body.max)}`}
             </Text>
@@ -118,7 +120,11 @@ function SparklineView({ pluginId, body, size }: ViewProps<'sparkline'>): ReactN
   }
   return (
     <View className="min-h-0 flex-1 gap-2">
-      <Figure value={formatNumber(latest.v)} size="m" />
+      <LiveFigure
+        value={formatNumber(latest.v)}
+        widest={widestOf(formatNumber(latest.v))}
+        size="m"
+      />
       <Room>
         {(room) => <Sparkline points={points} colour="primary" height={height(room)} area />}
       </Room>

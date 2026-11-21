@@ -11,17 +11,25 @@ export interface TestStart {
   readonly startTest: (body: RunStartBody) => void;
 }
 
+async function startRun(
+  begin: (body: RunStartBody) => Promise<AutomationRunStartReply>,
+  onStarted: (reply: AutomationRunStartReply) => void,
+  setStarting: (starting: TestStart['starting']) => void,
+  body: RunStartBody,
+): Promise<void> {
+  setStarting(body.mode === 'live' ? 'live' : 'dry');
+  try {
+    onStarted(await begin(body));
+  } finally {
+    setStarting(null);
+  }
+}
+
 export function useTestStart(onStarted: (reply: AutomationRunStartReply) => void): TestStart {
   const actions = useRunActions();
   const [starting, setStarting] = useState<TestStart['starting']>(null);
-  const start = async (body: RunStartBody): Promise<void> => {
-    setStarting(body.mode === 'live' ? 'live' : 'dry');
-    try {
-      onStarted(await actions.start(body));
-    } finally {
-      setStarting(null);
-    }
-  };
+  const start = (body: RunStartBody): Promise<void> =>
+    startRun(actions.start, onStarted, setStarting, body);
   return {
     starting,
     start,

@@ -74,4 +74,28 @@ describe('live view set', () => {
     expect(changes).toBe(2);
     expect(set.joinedCount()).toBe(1);
   });
+
+  it('stays focused while every view is scrolled away and notifies when the screen pauses', () => {
+    const { registry, set } = joined(2);
+    set.report('widget-0', SHOWN);
+    set.report('widget-1', { onScreen: false, screenFocused: true });
+    expect(set.focused()).toBe(true);
+    let changes = 0;
+    set.subscribe(() => {
+      changes += 1;
+    });
+    set.report('widget-0', { onScreen: false });
+    expect(set.liveIds()).toEqual([]);
+    expect(set.focused()).toBe(true);
+    expect(changes).toBe(1);
+    set.report('widget-0', { screenFocused: false });
+    expect(changes).toBe(1);
+    set.report('widget-1', { screenFocused: false });
+    expect(set.focused()).toBe(false);
+    expect(changes).toBe(2);
+    set.report('widget-1', { screenFocused: true });
+    expect(set.focused()).toBe(true);
+    registry.setAppForeground(false);
+    expect(set.focused()).toBe(false);
+  });
 });

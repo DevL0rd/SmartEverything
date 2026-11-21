@@ -5,7 +5,8 @@ import { background, Logger } from '@smarteverything/logging';
 import { notify } from '../../../components/toast-store';
 import { usePausable } from '../../../design/external-store';
 import { useStableCallback } from '../../../design/use-stable-callback';
-import { useDevices, useIsOwner } from '../../../store/selectors';
+import { useEntityStore } from '../../../store/store-context';
+import { devicesIn, useIsOwner } from '../../../store/selectors';
 import { useSecrets } from '../data/use-secrets';
 import { InstanceHostProvider, type InstanceHost } from '../functions/edit/instance-host';
 import { applyGraphIntent, type GraphIntent } from '../editor/host/apply-intents';
@@ -27,6 +28,7 @@ import { links } from '../routes';
 import { inspectorEnvOf, type EditorContext } from './editor-context';
 import { resolveOptions } from './option-sources';
 import type { HomeData, OptionResult } from './option-types';
+import { AutomationHomeContext } from './automation-home-context';
 import { useAutomationHome, useReferenceCatalogue } from './use-environment';
 
 const log = new Logger('app.automations');
@@ -59,6 +61,17 @@ export interface GesturePort {
   readonly endGesture: () => void;
 }
 
+function useInstanceHost(router: ReturnType<typeof useRouter>): InstanceHost {
+  return useMemo(
+    (): InstanceHost => ({
+      openSameSteps: (functionId): void => {
+        router.push(links.node(functionId));
+      },
+    }),
+    [router],
+  );
+}
+
 export function EditorValueServices({
   store,
   context,
@@ -71,10 +84,14 @@ export function EditorValueServices({
   const router = useRouter();
   const program = usePausable(store.state.subscribe, () => store.state.get().program);
   const layout = usePausable(store.state.subscribe, () => store.state.get().layout);
-  const references = useReferenceCatalogue();
   const home = useAutomationHome();
+  const references = useReferenceCatalogue(home);
   const owner = useIsOwner();
   const secrets = useSecrets(owner).data;
+  const deviceOptions = useStableCallback(
+    (source: OptionSourceId, scope: DeviceScope): DeviceChoices =>
+      optionChoices(source, scope, home),
+  );
   const services = useMemo(
     (): ValueServices => ({
       env: inspectorEnvOf({ program, layout, target: null, findings: [] }, context).steps,
@@ -86,22 +103,17 @@ export function EditorValueServices({
           router.push(links.secrets());
         },
       },
-      deviceOptions: (source, scope): DeviceChoices => optionChoices(source, scope, home),
+      deviceOptions,
     }),
-    [program, layout, context, references, home, secrets, owner, router],
+    [program, layout, context, references, deviceOptions, secrets, owner, router],
   );
-  const instances = useMemo(
-    (): InstanceHost => ({
-      openSameSteps: (functionId): void => {
-        router.push(links.node(functionId));
-      },
-    }),
-    [router],
-  );
+  const instances = useInstanceHost(router);
   return (
-    <ValueServicesContext value={services}>
-      <InstanceHostProvider value={instances}>{children}</InstanceHostProvider>
-    </ValueServicesContext>
+    <AutomationHomeContext value={home}>
+      <ValueServicesContext value={services}>
+        <InstanceHostProvider value={instances}>{children}</InstanceHostProvider>
+      </ValueServicesContext>
+    </AutomationHomeContext>
   );
 }
 
@@ -203,17 +215,17 @@ export function useInsert(
   context: EditorContext,
   onReusable: () => void,
 ): (insertion: Insertion) => void {
-  const devices = useDevices();
+  const home = useEntityStore();
   const runtime = useIntentRuntime(context.lint, context.registry, NOTHING_MEASURED);
   const env = useMemo(
     (): InsertEnv => ({
       intent: { store, clipboard: deviceClipboard, runtime },
       snippet: (id) =>
-        snippetsFor(devices)
+        snippetsFor(devicesIn(home.get(), {}))
           .find((snippet) => snippet.id === id)
           ?.build(),
     }),
-    [store, runtime, devices],
+    [store, runtime, home],
   );
   return useStableCallback((insertion: Insertion): void => {
     try {

@@ -112,6 +112,21 @@ export function filterChoices(
   }));
 }
 
+export function sameChoices(
+  left: readonly FilterChoice[],
+  right: readonly FilterChoice[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((choice, index) => {
+      const other = right[index];
+      return (
+        other?.id === choice.id && other.label === choice.label && other.count === choice.count
+      );
+    })
+  );
+}
+
 export function headerLine(entries: readonly ListEntry[]): string {
   const on = entries.filter((entry) => entry.enabled).length;
   const paused = entries.length - on;

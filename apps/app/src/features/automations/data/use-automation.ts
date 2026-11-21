@@ -17,7 +17,7 @@ import {
   type AutomationsApi,
   type StoredAutomation,
 } from './source';
-import { useAutomations } from './use-automations';
+import { useAutomationRow } from './use-automations';
 
 export interface AutomationView {
   readonly row: AutomationRow | null;
@@ -26,12 +26,12 @@ export interface AutomationView {
 
 export function useAutomation(automationId: string): AutomationView {
   const { api } = useAutomationsSource();
-  const { byId } = useAutomations();
+  const row = useAutomationRow(automationId);
   const revisions = useScreenQuery({
     queryKey: automationKeys.revisions(automationId),
     queryFn: ({ signal }) => api.listRevisions(automationId, { signal }),
   });
-  return { row: byId.get(automationId) ?? null, revisions };
+  return { row, revisions };
 }
 
 export interface AutomationActions {

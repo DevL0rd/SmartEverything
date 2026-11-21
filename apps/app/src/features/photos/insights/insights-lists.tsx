@@ -14,7 +14,7 @@ import { RankedList } from '../../../components/ranked-list';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { bytes } from '../../../format/number';
-import { driveLabelOf, useDriveItem, useDriveRoots, useViewerId } from '../../drive';
+import { driveLabelOf, useDriveItem, useDriveRootPlaces, useViewerId } from '../../drive';
 import { Cover } from '../places/cover';
 import { NATURAL_EARTH_ATTRIBUTION, WorldMap } from '../world-map';
 import { LegendDot } from './insights-charts';
@@ -367,7 +367,7 @@ export function FoldersCard({
   readonly compact: boolean;
   readonly className: string;
 }): ReactNode {
-  const known = useDriveRoots();
+  const known = useDriveRootPlaces();
   const viewerId = useViewerId();
   const labels = new Map(known.map((root) => [root.id, driveLabelOf(root, viewerId)]));
   const bars = folderBars(roots, (rootId) => labels.get(rootId) ?? 'Shared with you');

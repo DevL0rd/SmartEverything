@@ -5,7 +5,7 @@ import type { AutomationRunSummary } from '@smarteverything/domain';
 import { background, Logger } from '@smarteverything/logging';
 import { PageShell } from '../../../components/page-shell/page-shell';
 import { notify } from '../../../components/toast-store';
-import { useAutomations } from '../data/use-automations';
+import { useAutomationName } from '../data/use-automations';
 import { useRunActions } from '../data/use-runs';
 import { RunScreen } from '../runs/run-view/run-screen';
 import { links } from '../routes';
@@ -49,7 +49,7 @@ function Run({
   const { options } = useEditorContext();
   const { timeZone } = usePlace();
   const onReplay = useReplay();
-  const name = useAutomations().byId.get(automationId)?.name ?? null;
+  const name = useAutomationName(automationId);
   return (
     <PageShell title={runPageTitle(name)} scroll={false}>
       <RunScreen

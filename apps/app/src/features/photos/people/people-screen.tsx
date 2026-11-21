@@ -24,28 +24,18 @@ import {
   faceScanTextOf,
   groupingTextOf,
   isScanState,
-  namingOf,
-  peopleSectionsOf,
   peopleStateOf,
   peopleSubtitleOf,
   type PeopleState,
   type ScanState,
 } from './model';
-import {
-  GroupingRing,
-  GroupSection,
-  MergeSuggestions,
-  PeopleHeader,
-  PetsSection,
-  ScanRing,
-} from './people-parts';
+import { PeopleList } from './people-list';
+import { GroupingRing, ScanRing } from './people-parts';
 import { usePhotoPeople } from './queries';
 
 const SMART_HREF = href.settings.page(PHOTOS_SMART_PAGE);
 
 const PEOPLE_SETTINGS = { href: SMART_HREF, label: 'Face grouping settings' } as const;
-
-export const UNSORTED_NOTE = 'Faces seen in one photo so far. Name one to start a person.';
 
 function GroupingOff(): ReactNode {
   const mutation = useMutationState();
@@ -165,32 +155,15 @@ function Ready({
 }): ReactNode {
   const [species, setSpecies] = useState<string | null>(null);
   const size = shellLayoutOf(useAreaWidth()) === 'compact' ? 80 : 112;
-  const sections = peopleSectionsOf(people.groups, species);
   return (
-    <View className="gap-section-gap">
-      <PeopleHeader status={status} naming={namingOf(people.groups)} />
-      {live ? <MergeSuggestions people={people} /> : null}
-      <GroupSection title="People" groups={sections.people} size={size} />
-      <PetsSection
-        all={people.groups}
-        pets={sections.pets}
-        species={species}
-        size={size}
-        onSpecies={setSpecies}
-      />
-      <GroupSection
-        title="Unsorted faces"
-        groups={sections.unsorted}
-        size={size}
-        note={UNSORTED_NOTE}
-      />
-      <GroupSection
-        title="Hidden"
-        groups={sections.hidden}
-        size={size}
-        note="Hidden from People and pets and from search suggestions. Open one to show it again."
-      />
-    </View>
+    <PeopleList
+      people={people}
+      status={status}
+      live={live}
+      size={size}
+      species={species}
+      onSpecies={setSpecies}
+    />
   );
 }
 
@@ -246,9 +219,10 @@ export function PeopleScreen(): ReactNode {
     <PhotosFrame
       active="people"
       settings={PEOPLE_SETTINGS}
+      scroll={state !== 'ready'}
       {...(subtitle === null ? {} : { subtitle })}
     >
-      <View className="gap-section-gap">
+      <View className={state === 'ready' ? 'min-h-0 flex-1' : 'gap-section-gap'}>
         <StateBody
           state={state}
           people={people.data}

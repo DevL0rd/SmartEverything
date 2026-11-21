@@ -16,6 +16,9 @@ object XiaomiFileLists {
 
   fun windowFull(listed: List<XiaomiFileId>): Boolean = listed.size >= PAST_WINDOW
 
+  fun freesWindow(acknowledged: Set<String>, past: Set<String>, freedBefore: Set<String>): Set<String> =
+    acknowledged.filter { it in past && it !in freedBefore }.toSet()
+
   fun windowText(listed: Int, kept: Int): String =
     "the watch lists at most $PAST_WINDOW earlier files at a time and listed $listed ($kept kept on the watch from earlier syncs); newer earlier files appear only after these are acknowledged"
 

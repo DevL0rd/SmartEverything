@@ -27,12 +27,16 @@ class XiaomiSync(
   private var capture = false
   private var pastWindowFull = false
   private val held = mutableSetOf<String>()
+  private val pastListed = mutableSetOf<String>()
+  private val freedInChain = mutableSetOf<String>()
   private val timeout = Runnable { fileTimedOut() }
 
   val busy: Boolean get() = running
   private var startedAt = 0L
 
-  fun start(reason: String) {
+  fun start(reason: String) = begin(reason, chained = false)
+
+  private fun begin(reason: String, chained: Boolean) {
     NativeLog.info(SCOPE, "sync.requested") { mapOf("reason" to reason, "alreadyRunning" to running, "skippedKeys" to skipped.size) }
     if (running) {
       sink.note("sync_skipped", "a sync is already running ($reason)")
@@ -43,6 +47,8 @@ class XiaomiSync(
     parsed.clear()
     queue.clear()
     captures.clear()
+    pastListed.clear()
+    if (!chained) freedInChain.clear()
     capture = capturing()
     pastWindowFull = false
     awaitingPast = true
@@ -77,6 +83,7 @@ class XiaomiSync(
       send(health(FETCH_PAST, null))
       handler.postDelayed(timeout, FILE_TIMEOUT_MS)
     } else {
+      pastListed.addAll(listed.map { it.key })
       pastWindowFull = XiaomiFileLists.windowFull(listed)
       if (pastWindowFull) sink.note("sync_list_window_full", XiaomiFileLists.windowText(listed.size, listed.size - fresh.size))
       awaitingPast = false
@@ -188,21 +195,26 @@ class XiaomiSync(
     val files = parsed.toList()
     val holding = held.toSet()
     val moreEarlier = pastWindowFull
+    val past = pastListed.toSet()
     parsed.clear()
     held.clear()
     NativeLog.info(SCOPE, "sync.parsed", NativeLog.elapsedMs(startedAt)) { mapOf("files" to files.size, "captures" to captures.size) }
     sink.synced(files.map { it.second }, captures.toList()) { keep ->
-      handler.post { acknowledge(files.map { it.first }, keep, holding, moreEarlier) }
+      handler.post { acknowledge(files.map { it.first }, keep, holding, moreEarlier, past) }
     }
   }
 
-  private fun acknowledge(files: List<XiaomiFileId>, keep: Set<String>?, holding: Set<String>, moreEarlier: Boolean) {
+  private fun acknowledge(files: List<XiaomiFileId>, keep: Set<String>?, holding: Set<String>, moreEarlier: Boolean, past: Set<String>) {
     val acknowledged = if (keep == null) emptySet() else AckDecision.acknowledge(files.map { it.key }, keep, holding).toSet()
     files.filter { it.key in acknowledged }.forEach { send(health(ACK, ProtoWriter().bytes(3, it.bytes))) }
     if (keep != null) skipped.addAll(holding)
     running = false
-    if (moreEarlier && acknowledged.isNotEmpty()) {
-      start("the watch lists more earlier files once these are acknowledged")
+    val freed = XiaomiFileLists.freesWindow(acknowledged, past, freedInChain)
+    freedInChain.addAll(freed)
+    if (moreEarlier && freed.isNotEmpty()) {
+      begin("the watch lists more earlier files once these are acknowledged", chained = true)
+    } else if (moreEarlier) {
+      sink.note("sync_window_stuck", "the watch still lists ${past.size} earlier files and none of them was newly acknowledged; the next sync tries again")
     }
   }
 

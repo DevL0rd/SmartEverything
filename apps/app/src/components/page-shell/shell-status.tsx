@@ -1,10 +1,10 @@
-import { use, type ReactNode } from 'react';
+import { useContext, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useHeaderStatus } from '../header-status';
 import { StatusFormContext, type StatusForm } from './shell-status-context';
 
 export function useStatusForm(): StatusForm {
-  return use(StatusFormContext);
+  return useContext(StatusFormContext);
 }
 
 export const StatusFormProvider = StatusFormContext;
