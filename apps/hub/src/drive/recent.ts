@@ -12,7 +12,7 @@ import { DriveItemsRepository } from '../store/repositories/drive-items';
 import { DriveShortcutsRepository } from '../store/repositories/drive-shortcuts';
 import { accessFilter, accessSql, driveSql, type DriveActor } from './access';
 import { decodeCursor, encodeCursor } from './search';
-import { shortcutFrom } from './social/shortcuts';
+import { shortcutFrom } from './social/shortcut-from';
 
 export const DRIVE_CHANGED_OPS = ['update', 'rename', 'move', 'restore'] as const;
 

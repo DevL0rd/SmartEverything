@@ -94,7 +94,7 @@ describe('Custom Nodes run on the hub', () => {
         node('second', 'fn.call', { fn: lit(id) }),
       ]),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     for (let run = 1; run <= 2; run += 1) {
       rig.engine.start(row.id, {}, null);
       await rig.until(() => rig.finished.length === run);
@@ -112,7 +112,7 @@ describe('Custom Nodes run on the hub', () => {
     const self = randomUUID();
     saved(rig, graphFunction(recursive(rig.home.lampId, self), STATIC_KIND_LOOKUP), self);
     const row = rig.add(program([node('start', 'fn.call', { fn: lit(self) })]));
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.start(row.id, {}, null);
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id).map((record) => record.error)).toStrictEqual([null]);

@@ -8,8 +8,9 @@ import {
   type DriveItem,
   type DriveScrubState,
 } from '@smarteverything/domain';
-import { DriveAlbumsService } from '../../src/drive/albums';
-import { commitContent, folderDraft, identityOf, isoOf, recordItem } from '../../src/drive/changes';
+import { DriveAlbums } from '../../src/drive/service-write-albums';
+import { commitContent, folderDraft, recordItem } from '../../src/drive/changes';
+import { identityOf, isoOf } from '../../src/drive/change-rows';
 import type { ConflictEnv } from '../../src/drive/conflicts';
 import { PosixScope, type PosixEnv } from '../../src/drive/posix/env';
 import type { OpenTarget } from '../../src/drive/posix/open';
@@ -56,11 +57,7 @@ function envOf(opened: TestStore): () => ConflictEnv {
     store: opened.store,
     purge: { rearm: (): void => undefined },
     conflicts: {
-      insert: (): void => undefined,
       find: () => undefined,
-      resolve: (): never => {
-        throw new Error('unused');
-      },
     },
   });
 }
@@ -71,23 +68,19 @@ function serviceOf(opened: TestStore, read: DriveReadService): DriveWriteService
     env: envOf(opened)(),
     store,
     read,
-    albums: new DriveAlbumsService({
-      albums: store.driveAlbums,
-      items: store.driveItems,
-      roots: store.driveRoots,
-      grants: store.driveGrants,
-      runner: { rows: (): [] => [], count: (): number => 0 },
-      newId: randomUUID,
-      now: (): string => NOW.toISOString(),
-      timeZone: 'UTC',
-    }),
+    albums: new DriveAlbums(store),
     shares: new DriveShares({
       store,
       origin: (): { url: string; public: boolean } => ({ url: 'http://hub.local', public: false }),
       now: (): Date => NOW,
     }),
-    scrub: { start: (): DriveScrubState => ({ state: 'idle', lastFinishedAt: null, corrupt: 0 }) },
-    backups: { report: (input): DriveBackupReport => store.driveBackups.record(input) },
+    scrub: {
+      start: (): Promise<DriveScrubState> =>
+        Promise.resolve({ state: 'idle', lastFinishedAt: null, corrupt: 0 }),
+    },
+    backups: {
+      report: (input): Promise<DriveBackupReport> => store.host.write('driveBackupReport', input),
+    },
     guard: {
       status: (profileId): DriveQuotaStatus => store.driveQuotas.status(profileId),
       space: (): Promise<Pick<DriveDataSpace, 'totalBytes' | 'freeBytes'>> =>
@@ -163,7 +156,6 @@ function posixOf(opened: TestStore, changeEnv: () => ConflictEnv): DrivePosix {
     guard: { status: (profileId) => store.driveQuotas.status(profileId), space },
     space: {
       read: new DriveReadService(store),
-      store,
       quota: (profileId) => store.driveQuotas.status(profileId),
       probe: { space },
       inodes: () => Promise.resolve({ files: 1000, free: 900 }),

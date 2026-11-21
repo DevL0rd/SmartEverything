@@ -61,6 +61,7 @@ const PARTICIPANT = z.strictObject({ author_profile_id: z.string() });
 const COUNT = z.strictObject({ replies: z.number() });
 
 export interface DriveCommentInput {
+  readonly id?: string | undefined;
   readonly itemId: string;
   readonly authorProfileId: string;
   readonly parentId: string | null;
@@ -134,7 +135,7 @@ export class DriveCommentsRepository {
           throw new DriveCommentParentError(input.itemId, input.parentId);
         }
       }
-      const id = this.context.newId();
+      const id = input.id ?? this.context.newId();
       this.context.sql.run(
         'add the drive comment',
         `insert into drive_comments (id, item_id, author_profile_id, parent_id, body, mentions,

@@ -246,7 +246,7 @@ function zonesPart(map: MapRead): readonly Record<string, unknown>[] | null {
 
 function cameraPart(source: PartSource): Record<string, unknown> {
   return {
-    stream: source.store.cameras.find(source.placed.device.id) !== undefined,
+    stream: source.facts.camera !== null,
     video_switch: shownOf(source, 'vacuum_video_on'),
   };
 }

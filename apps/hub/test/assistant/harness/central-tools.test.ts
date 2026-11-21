@@ -43,20 +43,20 @@ function installed(now: () => Date, ran: string[]): void {
         ran.push(String(args['text']));
         return Promise.resolve({ response: { echoed: args['text'] }, line: '', pictures: [] });
       },
-      validate: (): null => null,
+      validate: (): Promise<null> => Promise.resolve(null),
       changes: (): (() => void) => (): void => undefined,
     },
   ]);
   bindCentralHarness(rig.service, new HarnessHubTools(rig.service, hub), now);
 }
 
-function session(): {
+async function session(): Promise<{
   readonly send: (request: HarnessTransportRequest['request']) => Promise<unknown>;
-  readonly claim: ReturnType<Rig['service']['prepare']>['claim'];
+  readonly claim: Awaited<ReturnType<Rig['service']['prepare']>>['claim'];
   readonly chat: AiChatRow;
-} {
+}> {
   const chat = rig.newChat(rig.desk.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   const host = rig.service.directory.get(rig.desk.target).host;
   if (rig.desk.target.kind !== 'device') throw new Error('The desk is a device.');
   const binding = {
@@ -75,7 +75,7 @@ describe('a hub tool called by a chat on another computer', () => {
   it('runs each call the writer makes, even when the same call is made again', async () => {
     const ran: string[] = [];
     installed(() => new Date(), ran);
-    const { send, claim } = session();
+    const { send, claim } = await session();
     const call = {
       operation: 'tool',
       claim,
@@ -96,7 +96,7 @@ describe('a hub tool called by a chat on another computer', () => {
   it('refuses a claim that is not the current writer of the session', async () => {
     const ran: string[] = [];
     installed(() => new Date(), ran);
-    const { send, claim } = session();
+    const { send, claim } = await session();
 
     await expect(
       send({
@@ -115,7 +115,7 @@ describe('a hub tool called by a chat on another computer', () => {
 const VOICE_TEXT = 'The greenhouse is ready.';
 const VOICE_OPERATION = API_ENDPOINTS.postChatVoiceReply;
 
-function voiceTurn({ chat, claim }: ReturnType<typeof session>): string {
+function voiceTurn({ chat, claim }: Awaited<ReturnType<typeof session>>): string {
   const { store } = rig.opened;
   const event = store.assistantEvents.add({
     id: randomUUID(),
@@ -134,16 +134,17 @@ function voiceTurn({ chat, claim }: ReturnType<typeof session>): string {
   return event.id;
 }
 
-function voiceSession(
-  beforeAudio: (current: ReturnType<typeof session>) => void = () => undefined,
-): {
+async function voiceSession(
+  beforeAudio: (current: Awaited<ReturnType<typeof session>>) => void = () => undefined,
+): Promise<{
   readonly request: (eventId?: string) => Promise<unknown>;
   readonly record: ReturnType<typeof vi.fn<AssistantVoice['recordClip']>>;
   readonly budget: { readonly check: ReturnType<typeof vi.fn> };
-  readonly current: ReturnType<typeof session>;
-} {
+  readonly current: Awaited<ReturnType<typeof session>>;
+}> {
   const { store, directory } = rig.opened;
-  const current = session();
+  await store.live.home.load();
+  const current = await session();
   const firstEvent = voiceTurn(current);
   const record = vi.fn<AssistantVoice['recordClip']>(async () => {
     beforeAudio(current);
@@ -152,6 +153,7 @@ function voiceSession(
   });
   const files = new AssistantFiles({
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     layout: hubLayout(directory, {}),
     now: (): Date => new Date(),
   });
@@ -163,7 +165,7 @@ function voiceSession(
     {
       tools: (): HubTool[] => [{ ...tool.listing, origin: { kind: 'se' }, humanOnly: false }],
       call: invoke,
-      validate: (): null => null,
+      validate: (): Promise<null> => Promise.resolve(null),
       changes: (): (() => void) => (): void => undefined,
     },
   ]);
@@ -201,7 +203,7 @@ function operationVoiceCall(replies: ChatVoiceReplies): ToolSource['call'] {
 
 describe('a voice reply from a chat on another computer', () => {
   it('charges and posts once when a writer repeats the same call', async () => {
-    const { current, request, record, budget } = voiceSession();
+    const { current, request, record, budget } = await voiceSession();
     const first = HARNESS_CENTRAL_RESULT.parse(await request());
     const receipt = VOICE_OPERATION.response.parse(first.response['result']);
     const second = HARNESS_CENTRAL_RESULT.parse(await request());
@@ -227,7 +229,7 @@ describe('a voice reply from a chat on another computer', () => {
   });
 
   it('cannot publish when the writer detaches during synthesis', async () => {
-    const { request, record } = voiceSession(({ claim, chat }) => {
+    const { request, record } = await voiceSession(({ claim, chat }) => {
       rig.opened.store.dshSessions.detach(claim.session_id, chat.profile_id);
     });
 
@@ -240,7 +242,7 @@ describe('a voice reply from a chat on another computer', () => {
   });
 
   it('cannot publish when the current turn changes under the same writer', async () => {
-    const { request, record } = voiceSession(voiceTurn);
+    const { request, record } = await voiceSession(voiceTurn);
 
     const result = HARNESS_CENTRAL_RESULT.parse(await request());
 
@@ -252,8 +254,8 @@ describe('a voice reply from a chat on another computer', () => {
 });
 
 describe('a tool call from a runtime that is not the granted host', () => {
-  it('fails with its own error, not as lost ownership of the session', () => {
-    const { claim } = session();
+  it('fails with its own error, not as lost ownership of the session', async () => {
+    const { claim } = await session();
     const host = rig.service.directory.get(rig.desk.target).host;
     if (rig.desk.target.kind !== 'device') throw new Error('The desk is a device.');
     const verify = (): unknown =>
@@ -272,7 +274,7 @@ describe('the prompt a chat on another computer receives', () => {
   it('keeps the system prompt the same as time passes and carries the time in the turn facts', async () => {
     let now = new Date('2026-10-17T09:00:00.000Z');
     installed(() => now, []);
-    const { send, claim } = session();
+    const { send, claim } = await session();
 
     const early = HARNESS_CENTRAL_CONTEXT.parse(await send({ operation: 'context', claim }));
     now = new Date('2026-10-17T09:07:00.000Z');
@@ -286,7 +288,7 @@ describe('the prompt a chat on another computer receives', () => {
 
   it('names the primary folder only in the machine context, not in the hub prompt', async () => {
     installed(() => new Date(), []);
-    const { send, claim } = session();
+    const { send, claim } = await session();
 
     const context = HARNESS_CENTRAL_CONTEXT.parse(await send({ operation: 'context', claim }));
 

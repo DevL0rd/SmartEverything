@@ -110,7 +110,7 @@ describe('OpenRouter image errors', () => {
     const body = JSON.stringify({ error: { message: 'Insufficient credits.' } });
     const catalog = new OpenRouterImageCatalog({
       client: clientOf(answering(402, body)),
-      store: store.aiModels,
+      store: store.live.aiModels,
       now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
     });
     const failure = await catalog.list(true).then(

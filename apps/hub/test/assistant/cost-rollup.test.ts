@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChatDirectory } from '../../src/assistant/chat-directory';
-import { costRolledUp } from '../../src/assistant/cost-rollup';
 import { ConversationLog } from '../../src/assistant/conversation-log';
 import { AssistantFiles } from '../../src/assistant/files';
 import { captureLogs } from '../support/logs';
@@ -19,7 +18,7 @@ afterEach(async () => {
   await opened.close();
 });
 
-function replyInNewChat(): { chatId: string; profileId: string; messageId: string } {
+async function replyInNewChat(): Promise<{ chatId: string; profileId: string; messageId: string }> {
   const { store } = opened;
   const client = store.clients.create(
     { name: 'This computer', platform: 'desktop', role: 'owner', tokenHash: 'a' },
@@ -30,21 +29,25 @@ function replyInNewChat(): { chatId: string; profileId: string; messageId: strin
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now,
   });
   const chat = new ChatDirectory(store, files).create(
     { profileId, role: 'owner' },
     { engine: TEST_ENGINE },
   );
-  const reply = new ConversationLog(store).startReply(chat, null, 'openai/gpt-6-luna');
+  const reply = await new ConversationLog(store).startReply({
+    chat: chat,
+    replyTo: null,
+    model: 'openai/gpt-6-luna',
+  });
   return { chatId: chat.id, profileId, messageId: reply.id };
 }
 
 describe('a generation priced after its reply was deleted by a retry', () => {
-  it('still settles the usage and adds the cost to the chat', () => {
+  it('still settles the usage and adds the cost to the chat', async () => {
     const { store } = opened;
-    const { chatId, profileId, messageId } = replyInNewChat();
-    store.ledger.rollup(costRolledUp(store));
+    const { chatId, profileId, messageId } = await replyInNewChat();
     const usage = store.ledger.record({
       profile_id: profileId,
       chat_id: chatId,
@@ -62,10 +65,9 @@ describe('a generation priced after its reply was deleted by a retry', () => {
     expect(store.aiChats.chat(chatId).cost_micros).toBe(500);
   });
 
-  it('adds the cost to the reply and the chat while the reply exists', () => {
+  it('adds the cost to the reply and the chat while the reply exists', async () => {
     const { store } = opened;
-    const { chatId, profileId, messageId } = replyInNewChat();
-    store.ledger.rollup(costRolledUp(store));
+    const { chatId, profileId, messageId } = await replyInNewChat();
     store.ledger.record({
       profile_id: profileId,
       chat_id: chatId,
@@ -81,10 +83,9 @@ describe('a generation priced after its reply was deleted by a retry', () => {
     expect(store.aiChats.chat(chatId).cost_micros).toBe(700);
   });
 
-  it('still settles the usage when the whole chat was deleted', () => {
+  it('still settles the usage when the whole chat was deleted', async () => {
     const { store } = opened;
-    const { chatId, profileId } = replyInNewChat();
-    store.ledger.rollup(costRolledUp(store));
+    const { chatId, profileId } = await replyInNewChat();
     const usage = store.ledger.record({
       profile_id: profileId,
       chat_id: chatId,

@@ -4,7 +4,7 @@ import { pipeline } from 'node:stream/promises';
 import type { DriveItem } from '@smarteverything/domain';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import { isFileItem } from '../../drive/file-item';
-import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
 import { authenticateDav, DavError, guarded, type DavDeps, type DavExchange } from './dav-auth';
 import { DAV_PREFIX, headerOf, targetOf, type DavTarget } from './collections';
 
@@ -269,8 +269,8 @@ function* multistatus(
 export function handlePropfind(deps: DavDeps, exchange: DavExchange): Promise<void> {
   const { request, response } = exchange;
   return guarded(exchange, async () => {
-    const caller = authenticateDav(deps, request);
-    const target = targetOf(deps, caller, request);
+    const caller = await authenticateDav(deps, request);
+    const target = await targetOf(deps, caller, request);
     const depth = depthOf(request);
     const selection = selectionOf(await bodyOf(request));
     if (target.relPath !== '' && target.item === undefined) {

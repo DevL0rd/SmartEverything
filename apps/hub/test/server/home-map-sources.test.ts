@@ -92,13 +92,13 @@ const resolve = async (noticeId: string, action: string): Promise<number> =>
     await call(routes.resolveHomeMapNotice, { params: { noticeId }, body: { action } }),
   ).revision;
 
-const addNotice = (kind: string, elementId: string): string => {
+const addNotice = async (kind: string, elementId: string): Promise<string> => {
   const op: HomeMapOp = {
     op: 'add',
     kind: 'notice',
     element: { id: `notice-${kind}`, kind, elementId, detail: kind, createdAt: NOW },
   };
-  runtime.service.apply([op], 'profile:test');
+  await runtime.service.apply([op], 'profile:test');
   return `notice-${kind}`;
 };
 
@@ -144,6 +144,7 @@ beforeEach(async () => {
     now: () => new Date(NOW),
     log: testLogger('home-map'),
   });
+  await runtime.load();
   routes = homeMapRoutes({ homeMap: runtime, store: opened.store });
   const client: ClientRow = opened.store.clients.create(
     { name: 'Owner', platform: 'desktop', role: 'owner', tokenHash: 'c'.repeat(64) },
@@ -157,29 +158,36 @@ afterEach(async () => {
 });
 
 describe('following the robot through the change feed', () => {
-  it('waits for the robot to settle, then makes the map once and follows later shapes', () => {
-    const stop = startHomeMap({ homeMap: runtime, store: opened.store });
+  it('waits for the robot to settle, then makes the map once and follows later shapes', async () => {
+    const stop = await startHomeMap({ homeMap: runtime, store: opened.store });
     setStatus(CLEANING);
     publish(syntheticScene);
+    await runtime.service.settled();
     expect(map().revision).toBe(0);
     setStatus(CHARGING);
+    await runtime.service.settled();
     expect(map().revision).toBe(1);
-    expect(runtime.service.revisions()[0]?.actor).toMatch(/^source:/u);
+    expect((await runtime.service.revisions())[0]?.actor).toMatch(/^source:/u);
     publish({ ...withRooms(hall(), den(rectRing(4.1, 0, 9.1, 3))), index: 8 });
+    await runtime.service.settled();
     expect(map().revision).toBe(2);
     expect(homeMapPolygonArea(roomNamed('Den').polygon)).toBeCloseTo(15, 1);
     publish({ ...jitter(withRooms(hall(), den(rectRing(4.1, 0, 9.1, 3)))), index: 9 });
+    await runtime.service.settled();
     expect(map().revision).toBe(2);
+    await runtime.service.settled();
     stop();
   });
 
-  it('watches a robot that is added after the hub started', () => {
+  it('watches a robot that is added after the hub started', async () => {
     opened.store.devices.remove([vacuumId]);
-    const stop = startHomeMap({ homeMap: runtime, store: opened.store });
+    const stop = await startHomeMap({ homeMap: runtime, store: opened.store });
     vacuumId = addRobot();
     setStatus(CHARGING);
     publish(syntheticScene);
+    await runtime.service.settled();
     expect(map().revision).toBe(1);
+    await runtime.service.settled();
     stop();
   });
 });
@@ -188,15 +196,18 @@ describe('importing a robot map on request', () => {
   it('imports a settled map, reports unchanged for the same map and pending mid run', async () => {
     setStatus(CHARGING);
     publish(syntheticScene);
+    await runtime.service.settled();
     expect(await importIt()).toEqual({ revision: 1, status: 'imported' });
     expect(await importIt()).toEqual({ revision: 1, status: 'unchanged' });
     setStatus(CLEANING);
     publish({ ...syntheticScene, index: 9 });
+    await runtime.service.settled();
     expect(await importIt()).toEqual({ revision: 1, status: 'pending' });
   });
 
   it('answers pending while the robot has published nothing', async () => {
     setStatus(CHARGING);
+    await runtime.service.settled();
     expect(await importIt()).toEqual({ revision: 0, status: 'pending' });
   });
 
@@ -211,6 +222,7 @@ describe('importing a robot map on request', () => {
   it('refuses to import an imported robot onto another floor', async () => {
     setStatus(CHARGING);
     publish(syntheticScene);
+    await runtime.service.settled();
     await importIt();
     await expect(
       call(routes.importHomeMapSource, {
@@ -226,6 +238,7 @@ describe('aligning an imported map', () => {
   it('moves the robot rooms by the given transform and keeps the user objects where they are', async () => {
     setStatus(CHARGING);
     publish(syntheticScene);
+    await runtime.service.settled();
     await importIt();
     const before = roomNamed('Hall').polygon.outer[0]?.x ?? 0;
     const tx = (map().sources[0]?.transform.tx ?? 0) + 1;
@@ -243,6 +256,7 @@ describe('aligning an imported map', () => {
   it('fits a transform from two points', async () => {
     setStatus(CHARGING);
     publish(syntheticScene);
+    await runtime.service.settled();
     await importIt();
     await call(routes.alignHomeMapSource, {
       params: { sourceId: sourceId() },
@@ -259,6 +273,7 @@ describe('aligning an imported map', () => {
   it('refuses two points that coincide and a source that does not exist', async () => {
     setStatus(CHARGING);
     publish(syntheticScene);
+    await runtime.service.settled();
     await importIt();
     const same = { source: { x: 1, y: 1 }, house: { x: 1, y: 1 } };
     await expect(
@@ -280,21 +295,22 @@ describe('settling notices', () => {
   beforeEach(async () => {
     setStatus(CHARGING);
     publish(syntheticScene);
+    await runtime.service.settled();
     await importIt();
   });
 
   it('turns a missing room into a hand room when kept, and removes it when deleted', async () => {
     const hallId = roomNamed('Hall').id;
-    await resolve(addNotice('source_missing', hallId), 'keep_mine');
+    await resolve(await addNotice('source_missing', hallId), 'keep_mine');
     expect(roomNamed('Hall').origin.kind).toBe('hand');
     expect(map().notices).toEqual([]);
     const denId = roomNamed('Den').id;
-    await resolve(addNotice('source_missing', denId), 'delete');
+    await resolve(await addNotice('source_missing', denId), 'delete');
     expect(map().floors[0]?.rooms.map((room) => room.name)).toEqual(['Hall']);
   });
 
   it('dismisses a moved or stale notice and refuses to take the robot side of it', async () => {
-    const id = addNotice('link_stale', roomNamed('Hall').id);
+    const id = await addNotice('link_stale', roomNamed('Hall').id);
     await expect(resolve(id, 'use_source')).rejects.toMatchObject({ code: 'invalid_request' });
     await resolve(id, 'keep_mine');
     expect(map().notices).toEqual([]);
@@ -306,7 +322,7 @@ describe('settling notices', () => {
 
   it('takes the robot shape of a room the user had reshaped', async () => {
     const mine = roomNamed('Den');
-    runtime.service.apply(
+    await runtime.service.apply(
       [
         {
           op: 'update',
@@ -329,8 +345,9 @@ describe('settling notices', () => {
       ],
       'profile:test',
     );
-    const stop = startHomeMap({ homeMap: runtime, store: opened.store });
+    const stop = await startHomeMap({ homeMap: runtime, store: opened.store });
     publish({ ...withRooms(hall(), den(rectRing(4.1, 0, 10.1, 3))), index: 9 });
+    await runtime.service.settled();
     stop();
     const notice = map().notices.find((entry) => entry.kind === 'source_changed');
     expect(notice).toBeDefined();
@@ -340,7 +357,7 @@ describe('settling notices', () => {
   });
 
   it('splits a room like the robot into the rooms the robot made', async () => {
-    const stop = startHomeMap({ homeMap: runtime, store: opened.store });
+    const stop = await startHomeMap({ homeMap: runtime, store: opened.store });
     publish({
       ...withRooms(
         robotRoom(hall(), 21, 'Hall A', rectRing(0, 0, 1.5, 3)),
@@ -350,6 +367,7 @@ describe('settling notices', () => {
       ),
       index: 9,
     });
+    await runtime.service.settled();
     stop();
     const notice = map().notices.find((entry) => entry.kind === 'source_changed');
     await resolve(notice?.id ?? '', 'split_like_source');
@@ -367,11 +385,12 @@ describe('working on a map that is not the default', () => {
   const annexMap = (): HomeMap => runtime.service.get(annex);
   const query = (): { mapId: HomeMapId } => ({ mapId: annex });
 
-  beforeEach(() => {
-    runtime.set.create('Main', 'profile:test');
-    annex = runtime.set.create('Annex', 'profile:test').id;
+  beforeEach(async () => {
+    await runtime.set.create('Main', 'profile:test');
+    annex = (await runtime.set.create('Annex', 'profile:test')).id;
     setStatus(CHARGING);
     publish(syntheticScene);
+    await runtime.service.settled();
   });
 
   it('imports the robot map onto that map only', async () => {
@@ -412,7 +431,7 @@ describe('working on a map that is not the default', () => {
   it('settles a notice of that map', async () => {
     await importAnnex();
     const hall = annexMap().floors[0]?.rooms[0];
-    runtime.service.apply(
+    await runtime.service.apply(
       [
         {
           op: 'add',

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { setImmediate as nextTurn } from 'node:timers/promises';
+import { setTimeout as later } from 'node:timers/promises';
 import type { CommandRow, DeviceCommand, JsonValue } from '@smarteverything/domain';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -20,6 +20,7 @@ import { FakeClock } from './support/fake-clock';
 import { LAMP } from './support/fake-provider';
 import { testLogger } from './support/logs';
 import { testRun } from './automations-v3/effects/support';
+import { adapterDirectory } from './support/adapter-directory';
 
 const LAMPS = 3;
 const STAMP = { nodePath: 'node', iteration: 0, attempt: 1 };
@@ -39,6 +40,8 @@ afterEach(async () => {
   await Promise.all(open.splice(0).map((db) => db.close()));
 });
 
+const TRIP_MS = 25;
+
 class Trips {
   readonly order: string[] = [];
   peak = 0;
@@ -53,7 +56,7 @@ class Trips {
     const busy = (this.busyOf.get(value) ?? 0) + 1;
     this.busyOf.set(value, busy);
     this.peakOf.set(value, Math.max(this.peakOf.get(value) ?? 0, busy));
-    await nextTurn();
+    await later(TRIP_MS);
     this.busy -= 1;
     this.busyOf.set(value, (this.busyOf.get(value) ?? 1) - 1);
   }
@@ -100,7 +103,7 @@ async function rig(): Promise<Rig> {
     store: db.database,
     inventory,
     drivers,
-    adapters: { adapterFor: (): undefined => undefined },
+    adapters: adapterDirectory((): undefined => undefined),
     hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
     log: testLogger(),
     now: (): Date => NOW,
@@ -187,7 +190,7 @@ describe('the generic command layer waits only where an order is needed', () => 
       events: { record: (): void => undefined },
       clock: new FakeClock(NOW.toISOString()),
       tools: {
-        check: (): ToolCheck => ({ ok: true, tool: SPEAK_TOOL }),
+        check: (): Promise<ToolCheck> => Promise.resolve({ ok: true, tool: SPEAK_TOOL }),
         call: async (_name, args): Promise<HubToolResult> => {
           const label = DEVICE_TARGET.parse(args['target']).deviceId;
           await speaking.trip(label);

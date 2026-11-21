@@ -156,7 +156,7 @@ describe('a routed tool built from the Zod input of each of its parts', () => {
     const bare: Tool = {
       name: 'create_room',
       listing: room().listing,
-      check: () => null,
+      check: () => Promise.resolve(null),
       call: () => Promise.resolve({ structured: {} }),
     };
     expect(() => servedTool('room_edit', ROUTE, new Map([[bare.name, bare]]), new Map())).toThrow();

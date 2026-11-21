@@ -1,7 +1,8 @@
 import type { DriveItem } from '@smarteverything/domain';
 import { checkSyncPath, collidesWith } from '@smarteverything/domain/drive-sync';
-import { DRIVE_PAGE_SIZE } from '../service-read';
-import { inScope, toDrivePath, type SyncScope } from './placement-scope';
+import { DRIVE_PAGE_SIZE } from '../page-size';
+import type { SyncScope } from './placement-scope';
+import { inScope, toDrivePath } from './sync-paths';
 import type { ConflictReason, SyncEnv } from './server-ops';
 
 const PORTABLE_OS = /windows|mac|darwin/iu;

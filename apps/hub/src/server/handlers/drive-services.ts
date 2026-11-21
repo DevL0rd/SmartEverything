@@ -6,7 +6,7 @@ import type {
   DriveShare,
   DriveVia,
 } from '@smarteverything/domain';
-import type { DriveAlbumsService } from '../../drive/albums';
+import type { DriveAlbums } from '../../drive/service-write-albums';
 import type { DriveBackups } from '../../drive/backups';
 import type { DriveHealthReader } from '../../drive/health';
 import type { DriveScrubber } from '../../drive/scrub';
@@ -18,7 +18,7 @@ import type { DriveCaller } from '../../drive/service-write-support';
 import type { DriveShares } from '../../drive/shares';
 import type { DriveGrants } from '../../drive/grants';
 import type { DataSpaceProbe } from '../../drive/data-space';
-import type { Store } from '../../store/store';
+import type { ContentHasher } from '../../drive/hasher';
 import { profileIdOf, roleOfCaller, type Caller } from '../auth';
 import type { DriveFiles as DriveByteFiles } from '../drive-files';
 
@@ -41,15 +41,21 @@ export interface ShareListQuery {
 }
 
 export interface DriveListings {
-  readonly shares: (actor: DriveActor, query: ShareListQuery) => DrivePage<DriveShare>;
-  readonly duplicates: (actor: DriveActor, query: RootPageQuery) => DrivePage<DriveDuplicateGroup>;
-  readonly conflicts: (actor: DriveActor, query: RootPageQuery) => DrivePage<DriveConflict>;
+  readonly shares: (actor: DriveActor, query: ShareListQuery) => Promise<DrivePage<DriveShare>>;
+  readonly duplicates: (
+    actor: DriveActor,
+    query: RootPageQuery,
+  ) => Promise<DrivePage<DriveDuplicateGroup>>;
+  readonly conflicts: (
+    actor: DriveActor,
+    query: RootPageQuery,
+  ) => Promise<DrivePage<DriveConflict>>;
 }
 
 export interface DriveServices {
   readonly read: DriveReadService;
   readonly write: DriveWriteService;
-  readonly albums: DriveAlbumsService;
+  readonly albums: DriveAlbums;
   readonly shares: DriveShares;
   readonly scrub: Pick<DriveScrubber, 'state'>;
   readonly backups: Pick<DriveBackups, 'status'>;
@@ -59,10 +65,11 @@ export interface DriveServices {
   readonly probe: DataSpaceProbe;
   readonly dataSpace: () => Promise<DriveDataSpace>;
   readonly listings: DriveListings;
+  readonly hasher: Pick<ContentHasher, 'hash'>;
 }
 
-export function actorOf(store: Store, caller: Caller): DriveActor {
-  return { profileId: profileIdOf(store, caller) };
+export function actorOf(caller: Caller): DriveActor {
+  return { profileId: profileIdOf(caller) };
 }
 
 function viaOf(caller: Caller): DriveVia {
@@ -73,17 +80,17 @@ function viaOf(caller: Caller): DriveVia {
   return 'app';
 }
 
-export function callerOf(store: Store, caller: Caller): DriveCaller {
+export function callerOf(caller: Caller): DriveCaller {
   return {
-    ...actorOf(store, caller),
+    ...actorOf(caller),
     owner: roleOfCaller(caller) === 'owner',
     via: viaOf(caller),
     deviceId: null,
   };
 }
 
-export function usageViewerOf(store: Store, caller: Caller): DriveUsageViewer {
+export function usageViewerOf(caller: Caller): DriveUsageViewer {
   return roleOfCaller(caller) === 'owner'
     ? { role: 'owner' }
-    : { role: 'member', profileId: profileIdOf(store, caller) };
+    : { role: 'member', profileId: profileIdOf(caller) };
 }

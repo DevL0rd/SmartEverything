@@ -205,12 +205,12 @@ async function invoke(
   return runLocked(root, locked, runLogFile(work, input));
 }
 
-export function requireUpdateSource(layout: HubLayout): {
+export async function requireUpdateSource(layout: HubLayout): Promise<{
   readonly root: string;
   readonly remote: string;
   readonly branch: string;
-} {
-  const source = findCheckoutSource(layout);
+}> {
+  const source = await findCheckoutSource(layout);
   if (source === undefined)
     throw new UpdateUnavailableError(
       'This hub has no update checkout. Only the hub build source needs one: on the hub machine, run tooling/configure-update-source.ts --checkout from a SmartEverything checkout.',
@@ -222,7 +222,7 @@ export async function configuredUpdateEntry(
   layout: HubLayout,
   script: ConfiguredUpdateScript,
 ): Promise<{ readonly root: string; readonly entry: string }> {
-  const { root } = requireUpdateSource(layout);
+  const { root } = await requireUpdateSource(layout);
   const entry = join(root, 'tooling', script);
   try {
     await Promise.all([access(entry), access(join(root, 'node_modules', 'tsx', 'package.json'))]);

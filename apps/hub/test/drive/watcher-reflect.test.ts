@@ -3,11 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DriveActivity } from '../../src/drive/activity';
-import { fileDraft, folderDraft, type NewItem } from '../../src/drive/changes';
+import { fileDraft, folderDraft } from '../../src/drive/changes';
+import type { NewItem } from '../../src/drive/change-rows';
 import { DriveWatchers, systemWatch } from '../../src/drive/watcher';
-import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import { testLogger } from '../support/logs';
 import { driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
+import { localIndex, localScanPort } from './local-ports';
 
 const ROOT = '0d000000-0000-4000-8000-000000000004';
 const SETTLE_MS = 40;
@@ -52,12 +53,12 @@ afterEach(() => {
 async function start(): Promise<void> {
   fixture.addDrive(driveRoot(ROOT), root);
   watchers = new DriveWatchers({
-    roots: fixture.roots,
-    index: { items: fixture.items, inodes: new DriveInodesRepository(fixture.context) },
+    roots: localScanPort({ ...fixture, now: () => new Date(NOW) }),
+    index: localIndex(fixture),
     activity,
-    mounted: (): boolean => {
+    mounted: (): Promise<boolean> => {
       mountedReads += 1;
-      return mounted;
+      return Promise.resolve(mounted);
     },
     onPlacementChange: (listener): (() => void) => {
       placementListeners.push(listener);

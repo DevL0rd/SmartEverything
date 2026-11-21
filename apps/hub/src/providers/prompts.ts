@@ -4,6 +4,7 @@ import {
   type ProviderProblem,
   type ProviderPrompt,
 } from '@smarteverything/domain';
+import { messageOf, type Logger } from '@smarteverything/logging';
 import type { ShownPrompt } from '../adapters/contract';
 import type { HubDatabase } from '../database/port';
 
@@ -42,7 +43,10 @@ class PromptDismissedError extends Error {
 export class PromptBroker {
   private readonly pending = new Map<Provider, Pending>();
 
-  constructor(private readonly store: Pick<HubDatabase, 'updateProviderLink'>) {}
+  constructor(
+    private readonly store: Pick<HubDatabase, 'updateProviderLink'>,
+    private readonly log: Logger,
+  ) {}
 
   async ask(provider: Provider, prompt: ProviderPrompt): Promise<string> {
     return (await this.show(provider, prompt)).answer;
@@ -54,6 +58,9 @@ export class PromptBroker {
     const answer = new Promise<string>((resolve, reject) => {
       entry = { resolve, reject };
       this.pending.set(provider, entry);
+    });
+    answer.catch((cause: unknown) => {
+      this.log.info('provider.prompt_closed', { provider, reason: messageOf(cause) });
     });
     await this.store.updateProviderLink(provider, { prompt, phase: 'awaiting_answer' });
     return {

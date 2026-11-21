@@ -212,6 +212,7 @@ export const AI_HARNESS_EVENT = z.discriminatedUnion('kind', [
     ...EVENT_FIELDS,
     kind: z.literal('completed'),
     input_discarded: z.boolean().optional(),
+    failure: AI_HARNESS_FAILURE.optional(),
     interrupted: z.boolean(),
     durable_seq: z.int().min(-1),
   }),

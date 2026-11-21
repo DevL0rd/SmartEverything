@@ -88,7 +88,7 @@ function filesOf(
       return Promise.resolve(allowed ? { data: upload.data, name: upload.name } : null);
     },
     fromMachine: (): ReturnType<ActionFiles['fromMachine']> => Promise.resolve(null),
-    attachmentsOf: (): readonly string[] => [],
+    attachmentsOf: (): Promise<readonly string[]> => Promise.resolve([]),
     readAttachment: (): Promise<Buffer> =>
       Promise.reject(new PrinterError('not_authorized', 'no attachments in this test')),
   };

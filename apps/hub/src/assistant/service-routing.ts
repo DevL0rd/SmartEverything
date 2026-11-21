@@ -6,7 +6,7 @@ import { AssistantFiles } from './files';
 import type { EngineSelections } from './engine-selections';
 import { AssistantRequests, type RequestsDeps } from './requests';
 import type { EngineRegistry } from './engines/registry';
-import { AssistantDelivery } from './delivery';
+import { AssistantDelivery, hostedDeliveryEvents } from './delivery';
 import type { DeliveryOptions } from './delivery';
 import type { AssistantServiceOptions } from './service-contract';
 import type { ConversationLog } from './conversation-log';
@@ -33,7 +33,7 @@ export function assistantDelivery(
   ports: Pick<DeliveryOptions, 'admit' | 'delivered' | 'failed' | 'retrying' | 'stopped'>,
 ): AssistantDelivery {
   return new AssistantDelivery({
-    events: options.store.assistantEvents,
+    events: hostedDeliveryEvents(options.store),
     frozen: (id): boolean => options.store.aiChats.chat(id).deletion_state !== null,
     route: (event) => engines.route(event),
     ...ports,
@@ -82,6 +82,7 @@ export function assistantFiles(
   return new AssistantFiles({
     layout: options.layout,
     chat: options.store.assistantChat,
+    attachments: options.store.live.attachments,
     now: options.now,
     projects,
   });

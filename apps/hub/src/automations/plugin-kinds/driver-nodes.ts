@@ -93,9 +93,9 @@ export class DriverNodes {
 
   over(base: () => NodeTools): NodeTools {
     return {
-      check: (name, args): ToolCheck => {
+      check: async (name, args): Promise<ToolCheck> => {
         const owned = this.owned(name);
-        if (owned === undefined) return base().check(name, args);
+        if (owned === undefined) return await base().check(name, args);
         const parsed = owned.tool.input.safeParse(args);
         return parsed.success
           ? { ok: true, tool: hubToolOf(owned.driverId, owned.tool) }

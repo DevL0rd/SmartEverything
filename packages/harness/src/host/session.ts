@@ -40,6 +40,7 @@ export class HarnessSession {
   private readonly persistence: MachineSessionPersistence;
   private readonly humanCommands: HarnessHumanCommands;
   private readonly durability: SessionDurability;
+  private readonly unwatchStatus: () => boolean;
 
   constructor(
     private readonly ctx: Context,
@@ -58,6 +59,24 @@ export class HarnessSession {
     this.durability = new SessionDurability(handle.agent.id, () =>
       ctx.sessions.flush(handle.agent.session),
     );
+    this.unwatchStatus = ctx.on('agent/status', ({ agent, status }) => {
+      if (agent === handle.agent && status === 'idle')
+        queueMicrotask(() => {
+          this.discardStrandedInput();
+        });
+    });
+  }
+
+  private discardStrandedInput(): void {
+    const { agent } = this.handle;
+    const queued = agent.inbox.nextTurn.length;
+    if (this.frozen || agent.status !== 'idle' || queued === 0) return;
+    log.warn('session.stranded_input_discarded', {
+      session_id: this.id,
+      queued,
+      message_ids: agent.inbox.nextTurn.map((message) => message.id),
+    });
+    agent.inbox.splice('next-turn', 0, queued, []);
   }
 
   get id(): string {
@@ -337,6 +356,7 @@ export class HarnessSession {
     if (this.nativeDisposal === undefined) {
       await this.ctx.get('subagents')?.drainDescendants([this.handle.agent]);
       await this.stop({ kind: 'disposed' }, 'Session is closing.');
+      this.unwatchStatus();
       this.nativeDisposal = this.handle.dispose();
       await this.nativeDisposal;
     } else {

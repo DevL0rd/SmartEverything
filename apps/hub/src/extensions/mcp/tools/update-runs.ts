@@ -24,7 +24,7 @@ type RollbackInput = Omit<Extract<UpdateInput, { action: 'rollback' }>, 'action'
 
 export async function update(context: ToolContext, input: Update): Promise<ToolOutput> {
   requireSourceFields(input);
-  const { chatId, profileId } = requireUpdateRequester(context);
+  const { chatId, profileId } = await requireUpdateRequester(context);
   const origin = chatId === null ? undefined : { chatId, profileId };
   try {
     return {
@@ -66,7 +66,7 @@ async function runStatusOutput(layout: HubLayout, runId: string): Promise<ToolOu
 }
 
 export async function status(context: ToolContext, runId: string | undefined): Promise<ToolOutput> {
-  const layout = layoutOf(context);
+  const layout = await layoutOf(context);
   const release = await readHubUpdate(layout, runId);
   if (release === null)
     return runId === undefined ? { structured: { release: null } } : runStatusOutput(layout, runId);
@@ -87,7 +87,7 @@ export async function status(context: ToolContext, runId: string | undefined): P
 }
 
 export async function rollback(context: ToolContext, input: RollbackInput): Promise<ToolOutput> {
-  const layout = layoutOf(context);
+  const layout = await layoutOf(context);
   if (input.artifact !== 'hub')
     throw new ToolError(
       `update_control cannot roll back the ${input.artifact} release yet. Withdraw or roll it back with the owner's release tools on a dev machine.`,

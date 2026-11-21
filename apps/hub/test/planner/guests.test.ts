@@ -20,7 +20,7 @@ import {
   plannerItemRoutes,
 } from '../../src/server/handlers/planner-items';
 import { plannerSharingRoutes } from '../../src/server/handlers/planner-sharing';
-import { plannerTablesOf } from '../../src/server/handlers/snapshot';
+import { plannerTablesOf } from '../../src/server/snapshot-tables';
 import type { Bound } from '../../src/server/router';
 import { testLogger } from '../support/logs';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
@@ -102,7 +102,7 @@ beforeEach(async () => {
   bob = addPerson(test, 'Bob', 'member');
   cat = addPerson(test, 'Cat', 'member');
   const context = { store: test.store };
-  items = plannerItemRoutes(context, () => NOW);
+  items = plannerItemRoutes(context);
   collections = plannerCollectionRoutes(context);
   sharing = plannerSharingRoutes(context, () => NOW);
   notices = [];
@@ -257,6 +257,7 @@ describe('notices and signals', () => {
     const work = await calendar(ann);
     const dinner = await event(ann, work.id);
     await setGuests(ann, dinner.id, [{ kind: 'person', profile_id: bob.profileId }]);
+    await desk.settled();
     expect(notices).toContainEqual({
       type: 'planner_invited',
       personId: bob.profileId,
@@ -269,6 +270,7 @@ describe('notices and signals', () => {
       params: { itemId: dinner.id },
       body: { response: 'maybe' },
     });
+    await desk.settled();
     expect(notices).toContainEqual(
       expect.objectContaining({
         type: 'planner_rsvp',
@@ -277,7 +279,9 @@ describe('notices and signals', () => {
         response: 'maybe',
       }),
     );
+    await desk.settled();
     expect(signals).toHaveLength(1);
+    await desk.settled();
     expect(signals[0]).toMatchObject({
       kind: 'guest_responded',
       subject: dinner.id,
@@ -290,6 +294,7 @@ describe('notices and signals', () => {
     const work = await calendar(ann);
     const dinner = await event(ann, work.id);
     await setGuests(ann, dinner.id, [{ kind: 'person', profile_id: ann.profileId }]);
+    await desk.settled();
     expect(notices.filter((notice) => notice.type === 'planner_invited')).toEqual([]);
   });
 });

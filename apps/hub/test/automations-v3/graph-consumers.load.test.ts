@@ -97,7 +97,7 @@ describe('loading a stored program that does not structure', () => {
       STATIC_KIND_LOOKUP,
     );
     const good = rig.add(program([node('wait', 'flow.wait', { duration: lit(1) })]), 'Good');
-    const report = rig.engine.sync();
+    const report = await rig.engine.sync();
     expect(report).toMatchObject({ loaded: 1, refused: 1 });
     expect(logs.events()).toContain('automation.not_loaded');
     expect(stored.id).not.toBe(good.id);

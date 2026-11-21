@@ -60,14 +60,14 @@ function presented(request: IncomingMessage, form: URLSearchParams): Presented {
     : { clientId, secret, method: 'client_secret_post' };
 }
 
-export function authenticateClient(
-  store: Store,
+export async function authenticateClient(
+  store: Pick<Store, 'host'>,
   request: IncomingMessage,
   form: URLSearchParams,
-): OAuthClientAuth {
+): Promise<OAuthClientAuth> {
   const credentials = presented(request, form);
   const basic = credentials.method === 'client_secret_basic';
-  const client = store.oauth.findClient(credentials.clientId);
+  const client = await store.host.call('oauth', 'findClient', credentials.clientId);
   if (client === undefined) {
     throw invalidClient('No client is registered with that client_id; register again.', basic);
   }

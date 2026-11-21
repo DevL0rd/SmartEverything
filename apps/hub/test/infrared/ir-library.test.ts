@@ -28,7 +28,10 @@ const MODEL: LibraryClimate = {
   },
 };
 
-const encoders = new IrEncoders([LEARNED_KEYS_ENCODER], [libraryEncoders({ model: () => MODEL })]);
+const encoders = new IrEncoders(
+  [LEARNED_KEYS_ENCODER],
+  [libraryEncoders({ model: () => Promise.resolve(MODEL) })],
+);
 
 const COOLING: IrRemoteState = {
   ...EMPTY_IR_REMOTE_STATE,
@@ -38,16 +41,14 @@ const COOLING: IrRemoteState = {
   speed: 1,
 };
 
-function sent(from: IrRemoteState, goal: IrApplianceApply): string[] {
-  return encoders
-    .of('library:smartir:climate:1')
-    .frames([], from, goal)
-    .map((frame) => frame.code);
+async function sent(from: IrRemoteState, goal: IrApplianceApply): Promise<string[]> {
+  const encoder = await encoders.of('library:smartir:climate:1');
+  return encoder.frames([], from, goal).map((frame) => frame.code);
 }
 
-function refusal(from: IrRemoteState, goal: IrApplianceApply): string {
+async function refusal(from: IrRemoteState, goal: IrApplianceApply): Promise<string> {
   try {
-    sent(from, goal);
+    await sent(from, goal);
   } catch (error) {
     if (error instanceof CommandRefusedError) {
       return error.message;
@@ -58,58 +59,64 @@ function refusal(from: IrRemoteState, goal: IrApplianceApply): string {
 }
 
 describe('the library air conditioner encoder', () => {
-  it('sends the one frame that sets mode, temperature and fan together', () => {
+  it('sends the one frame that sets mode, temperature and fan together', async () => {
     expect(
-      sent(EMPTY_IR_REMOTE_STATE, { on: true, mode: 'Cool', temp: 24, speed: 1 }),
+      await sent(EMPTY_IR_REMOTE_STATE, { on: true, mode: 'Cool', temp: 24, speed: 1 }),
     ).toStrictEqual(['COOL-LOW-24']);
-    const [frame] = encoders
-      .of('library:x')
-      .frames([], EMPTY_IR_REMOTE_STATE, { on: true, mode: 'Cool', temp: 24, speed: 1 });
+    const encoder = await encoders.of('library:x');
+    const [frame] = encoder.frames([], EMPTY_IR_REMOTE_STATE, {
+      on: true,
+      mode: 'Cool',
+      temp: 24,
+      speed: 1,
+    });
     expect(frame).toStrictEqual({ key: 'Cool 24 fan low', format: 'pulses', code: 'COOL-LOW-24' });
   });
 
-  it('fills what the request leaves out from the assumed state', () => {
-    expect(sent(COOLING, { temp: 25 })).toStrictEqual(['COOL-LOW-25']);
-    expect(sent(COOLING, { speed: 5 })).toStrictEqual(['COOL-HIGH-24']);
+  it('fills what the request leaves out from the assumed state', async () => {
+    expect(await sent(COOLING, { temp: 25 })).toStrictEqual(['COOL-LOW-25']);
+    expect(await sent(COOLING, { speed: 5 })).toStrictEqual(['COOL-HIGH-24']);
   });
 
-  it('spreads the five fan steps over the speeds the mode has and leaves auto out', () => {
-    expect([1, 2, 3, 4, 5].map((speed) => sent(COOLING, { speed })[0])).toStrictEqual([
-      'COOL-LOW-24',
-      'COOL-MID-24',
-      'COOL-MID-24',
-      'COOL-HIGH-24',
-      'COOL-HIGH-24',
+  it('spreads the five fan steps over the speeds the mode has and leaves auto out', async () => {
+    expect(
+      await Promise.all([1, 2, 3, 4, 5].map(async (speed) => (await sent(COOLING, { speed }))[0])),
+    ).toStrictEqual(['COOL-LOW-24', 'COOL-MID-24', 'COOL-MID-24', 'COOL-HIGH-24', 'COOL-HIGH-24']);
+  });
+
+  it('sends the off code whatever the assumed state is', async () => {
+    expect(await sent(EMPTY_IR_REMOTE_STATE, { on: false })).toStrictEqual(['OFF']);
+    expect(await sent({ ...COOLING, on: false }, { on: false })).toStrictEqual(['OFF']);
+  });
+
+  it('needs no temperature for a mode whose fan speeds carry one code each', async () => {
+    expect(await sent(COOLING, { mode: 'Fan', speed: 5 })).toStrictEqual(['FAN-HIGH']);
+    expect(await sent({ ...COOLING, temp: null }, { mode: 'Fan', speed: 1 })).toStrictEqual([
+      'FAN-LOW',
     ]);
   });
 
-  it('sends the off code whatever the assumed state is', () => {
-    expect(sent(EMPTY_IR_REMOTE_STATE, { on: false })).toStrictEqual(['OFF']);
-    expect(sent({ ...COOLING, on: false }, { on: false })).toStrictEqual(['OFF']);
+  it('reaches Auto through the heat_cool commands', async () => {
+    expect(await sent(COOLING, { mode: 'Auto', speed: 1 })).toStrictEqual(['AUTO-24']);
   });
 
-  it('needs no temperature for a mode whose fan speeds carry one code each', () => {
-    expect(sent(COOLING, { mode: 'Fan', speed: 5 })).toStrictEqual(['FAN-HIGH']);
-    expect(sent({ ...COOLING, temp: null }, { mode: 'Fan', speed: 1 })).toStrictEqual(['FAN-LOW']);
-  });
-
-  it('reaches Auto through the heat_cool commands', () => {
-    expect(sent(COOLING, { mode: 'Auto', speed: 1 })).toStrictEqual(['AUTO-24']);
-  });
-
-  it('refuses instead of guessing when the power, mode, temperature or fan is not known', () => {
-    expect(refusal(EMPTY_IR_REMOTE_STATE, { temp: 24 })).toMatch(/power is not known/);
-    expect(refusal({ ...COOLING, on: false }, { temp: 24 })).toMatch(
+  it('refuses instead of guessing when the power, mode, temperature or fan is not known', async () => {
+    expect(await refusal(EMPTY_IR_REMOTE_STATE, { temp: 24 })).toMatch(/power is not known/);
+    expect(await refusal({ ...COOLING, on: false }, { temp: 24 })).toMatch(
       /turn it on in the same request/,
     );
-    expect(refusal({ ...COOLING, mode: null }, { temp: 24 })).toMatch(/mode is not known/);
-    expect(refusal({ ...COOLING, speed: null }, { temp: 24 })).toMatch(/fan speed is not known/);
-    expect(refusal({ ...COOLING, temp: null }, { speed: 1 })).toMatch(/temperature is not known/);
+    expect(await refusal({ ...COOLING, mode: null }, { temp: 24 })).toMatch(/mode is not known/);
+    expect(await refusal({ ...COOLING, speed: null }, { temp: 24 })).toMatch(
+      /fan speed is not known/,
+    );
+    expect(await refusal({ ...COOLING, temp: null }, { speed: 1 })).toMatch(
+      /temperature is not known/,
+    );
   });
 
-  it('names the temperatures and modes the model does not have', () => {
-    expect(refusal(COOLING, { temp: 30 })).toMatch(/30 is not a Cool temperature.*18 to 26/);
-    expect(refusal(COOLING, { mode: 'Heat' })).toMatch(
+  it('names the temperatures and modes the model does not have', async () => {
+    expect(await refusal(COOLING, { temp: 30 })).toMatch(/30 is not a Cool temperature.*18 to 26/);
+    expect(await refusal(COOLING, { mode: 'Heat' })).toMatch(
       /no Heat mode, its modes are cool, fan_only, heat_cool/,
     );
   });
@@ -118,31 +125,32 @@ describe('the library air conditioner encoder', () => {
 describe('the built-in infrared library', () => {
   const library = new IrLibrary();
 
-  it('lists air conditioners and televisions with their brands', () => {
-    const categories = library.categories();
+  it('lists air conditioners and televisions with their brands', async () => {
+    const categories = await library.categories();
     expect(categories.map((one) => one.name)).toEqual(
       expect.arrayContaining(['Air conditioner', 'TV', 'Fan', 'Projector']),
     );
-    expect(library.brands('TV').map((one) => one.name)).toContain('Samsung');
-    expect(library.brands('Air conditioner').length).toBeGreaterThan(50);
+    expect((await library.brands('TV')).map((one) => one.name)).toContain('Samsung');
+    expect((await library.brands('Air conditioner')).length).toBeGreaterThan(50);
   });
 
-  it('draws air conditioners from both open sources', () => {
-    const air = library
-      .brands('Air conditioner')
-      .flatMap((brand) => library.entries('Air conditioner', brand.name));
+  it('draws air conditioners from both open sources', async () => {
+    const brands = await library.brands('Air conditioner');
+    const air = (
+      await Promise.all(brands.map((brand) => library.entries('Air conditioner', brand.name)))
+    ).flat();
     expect(new Set(air.map((entry) => entry.source))).toStrictEqual(
       new Set(['smartir', 'flipper-irdb']),
     );
   });
 
-  it('decodes every model to valid pulse codes', () => {
+  it('decodes every model to valid pulse codes', async () => {
     const climate = { models: 0, codes: 0 };
     const keys = { models: 0, codes: 0 };
-    for (const category of library.categories()) {
-      for (const brand of library.brands(category.name)) {
-        for (const entry of library.entries(category.name, brand.name)) {
-          const model = library.model(entry.id);
+    for (const category of await library.categories()) {
+      for (const brand of await library.brands(category.name)) {
+        for (const entry of await library.entries(category.name, brand.name)) {
+          const model = await library.model(entry.id);
           const codes =
             model.kind === 'keys'
               ? Object.values(model.keys)
@@ -167,7 +175,7 @@ describe('the built-in infrared library', () => {
     expect(keys.models).toBeGreaterThan(1500);
   });
 
-  it('refuses an id it does not have', () => {
-    expect(() => library.model('smartir:climate:nope')).toThrow(IrLibraryEntryUnknownError);
+  it('refuses an id it does not have', async () => {
+    await expect(library.model('smartir:climate:nope')).rejects.toThrow(IrLibraryEntryUnknownError);
   });
 });

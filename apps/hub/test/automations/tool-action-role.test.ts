@@ -27,7 +27,7 @@ const TOOL: HubTool = {
 
 function hub(callers: ToolCaller[]): Pick<ToolHub, 'check' | 'call'> {
   return {
-    check: (): ToolCheck => ({ ok: true, tool: TOOL }),
+    check: (): Promise<ToolCheck> => Promise.resolve({ ok: true, tool: TOOL }),
     call: (_name, _args, caller): Promise<HubToolResult> => {
       callers.push(caller);
       return Promise.resolve({ response: {}, line: '', pictures: [] });
@@ -71,7 +71,7 @@ describe('the role a tool step runs with', () => {
 
   it('refuses a step the tools would refuse', async () => {
     const refusing: Pick<ToolHub, 'check' | 'call'> = {
-      check: () => ({ ok: false, reason: 'switched off' }),
+      check: () => Promise.resolve({ ok: false, reason: 'switched off' }),
       call: () => Promise.reject(new Error('unused')),
     };
     await expect(callTool(refusing, ACTION, ORIGIN)).rejects.toThrow('switched off');
@@ -79,7 +79,7 @@ describe('the role a tool step runs with', () => {
 
   it('turns a tool error answer into a failed step', async () => {
     const failing: Pick<ToolHub, 'check' | 'call'> = {
-      check: () => ({ ok: true, tool: TOOL }),
+      check: () => Promise.resolve({ ok: true, tool: TOOL }),
       call: () => Promise.resolve({ response: { error: 'Nope' }, line: '', pictures: [] }),
     };
     await expect(callTool(failing, ACTION, ORIGIN)).rejects.toThrow(

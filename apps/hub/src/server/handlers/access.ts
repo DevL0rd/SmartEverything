@@ -25,26 +25,27 @@ const discoveryRoutes = (context: ServerContext) =>
 
 const clientRoutes = (context: ServerContext) =>
   ({
-    listClients: bound(E.listClients, () => context.store.clients.list()),
-    updateClient: bound(E.updateClient, ({ params, body, caller }) => {
+    listClients: bound(E.listClients, () => context.store.host.call('clients', 'list')),
+    updateClient: bound(E.updateClient, async ({ params, body, caller }) => {
       const { profile_id: profileId, ...change } = body;
-      const before = context.store.clients.byId(params.clientId);
+      const before = await context.store.host.call('clients', 'byId', params.clientId);
       if (profileId !== undefined || change.role !== undefined) {
-        const target = profileId ?? context.store.profiles.activeOf(params.clientId).id;
-        assertMemberPerson(context.store, before, change.role ?? before.role, target);
+        const target =
+          profileId ?? (await context.store.host.call('profiles', 'activeOf', params.clientId)).id;
+        await assertMemberPerson(context.store, before, change.role ?? before.role, target);
       }
       if (profileId !== undefined) {
-        const profile = context.store.profiles.byId(profileId);
-        context.store.clients.useProfile(params.clientId, profile.id);
+        const profile = await context.store.host.call('profiles', 'byId', profileId);
+        await context.store.host.call('clients', 'useProfile', params.clientId, profile.id);
         context.live.profileChanged(params.clientId, profile.id);
       }
       const client =
         change.name === undefined && change.role === undefined
-          ? context.store.clients.byId(params.clientId)
-          : context.store.clients.update(params.clientId, change);
+          ? await context.store.host.call('clients', 'byId', params.clientId)
+          : await context.store.host.call('clients', 'update', params.clientId, change);
       if (change.role !== undefined) {
         context.live.closeClient(client.id);
-        context.store.accessAudit.record({
+        await context.store.host.call('accessAudit', 'record', {
           profile_id: client.profile_id,
           client_id: clientOf(caller).id,
           kind: 'role_changed',
@@ -53,8 +54,8 @@ const clientRoutes = (context: ServerContext) =>
       }
       return client;
     }),
-    removeClient: bound(E.removeClient, ({ params }) => {
-      context.store.clients.remove(params.clientId);
+    removeClient: bound(E.removeClient, async ({ params }) => {
+      await context.store.host.call('clients', 'remove', params.clientId);
       context.live.closeClient(params.clientId);
       return DONE_REPLY;
     }),

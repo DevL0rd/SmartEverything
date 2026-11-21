@@ -2,11 +2,7 @@ import type { DriveQuery } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BrowsePage } from '../../../src/drive/service-read';
 import { driveHits } from '../../../src/drive/search-provider';
-import {
-  DriveShortcuts,
-  shortcutsForQuery,
-  type ShortcutsEnv,
-} from '../../../src/drive/social/shortcuts';
+import { DriveShortcuts, shortcutsForQuery } from '../../../src/drive/social/shortcuts';
 import {
   ROBIN_DRIVE,
   ROBIN_FILE,
@@ -38,25 +34,24 @@ let shortcuts: DriveShortcuts;
 
 beforeEach(async () => {
   social = await openSocial();
-  shortcuts = new DriveShortcuts({
-    store: social.opened.store,
-    context: social.opened.store.context,
-    read: social.read,
-  });
+  shortcuts = new DriveShortcuts({ store: social.opened.store });
 });
 
 afterEach(async () => {
   await social.opened.close();
 });
 
-function inRobinDocs(): BrowsePage {
-  return social.read.browseFolder(social.robin, { rootId: ROBIN_DRIVE, folderId: ROBIN_FOLDER });
+async function inRobinDocs(): Promise<BrowsePage> {
+  return await social.read.browseFolder(social.robin, {
+    rootId: ROBIN_DRIVE,
+    folderId: ROBIN_FOLDER,
+  });
 }
 
 describe('shortcuts', () => {
-  it('shows a file of another drive in a folder without copying it', () => {
+  it('shows a file of another drive in a folder without copying it', async () => {
     share(social, TRIP, social.robin, 'view');
-    const created = shortcuts.create(
+    const created = await shortcuts.create(
       { ...social.robin, via: 'app' },
       {
         targetItemId: TRIP_FILE,
@@ -65,14 +60,16 @@ describe('shortcuts', () => {
       },
     );
     expect(created.target).toMatchObject({ state: 'available', item: { id: TRIP_FILE } });
-    const page = inRobinDocs();
+    const page = await inRobinDocs();
     expect(page.items).toHaveLength(0);
     expect(page.shortcuts.map((shortcut) => shortcut.name)).toEqual(['Trip notes']);
-    expect(social.read.browseFolder(social.robin, { rootId: ROBIN_DRIVE }).shortcuts).toEqual([]);
+    expect(
+      (await social.read.browseFolder(social.robin, { rootId: ROBIN_DRIVE })).shortcuts,
+    ).toEqual([]);
   });
 
-  it('needs read access to the target and write access to the folder', () => {
-    expect(() =>
+  it('needs read access to the target and write access to the folder', async () => {
+    await expect(
       shortcuts.create(
         { ...social.robin, via: 'app' },
         {
@@ -81,9 +78,9 @@ describe('shortcuts', () => {
           name: 's',
         },
       ),
-    ).toThrow(/no such/);
+    ).rejects.toThrow(/no such/);
     share(social, TRIP, social.robin, 'view');
-    expect(() =>
+    await expect(
       shortcuts.create(
         { ...social.robin, via: 'app' },
         {
@@ -92,22 +89,24 @@ describe('shortcuts', () => {
           name: 's',
         },
       ),
-    ).toThrow(/cannot add or change/);
+    ).rejects.toThrow(/cannot add or change/);
     share(social, TRIP, social.robin, 'edit');
     expect(
-      shortcuts.create(
-        { ...social.robin, via: 'app' },
-        {
-          targetItemId: ROBIN_FILE,
-          place: { kind: 'folder', folderId: TRIP },
-          name: 's',
-        },
+      (
+        await shortcuts.create(
+          { ...social.robin, via: 'app' },
+          {
+            targetItemId: ROBIN_FILE,
+            place: { kind: 'folder', folderId: TRIP },
+            name: 's',
+          },
+        )
       ).parentId,
     ).toBe(TRIP);
   });
 
-  it('refuses a name already used by a shortcut or a real item in the folder', () => {
-    shortcuts.create(
+  it('refuses a name already used by a shortcut or a real item in the folder', async () => {
+    await shortcuts.create(
       { ...social.robin, via: 'app' },
       {
         targetItemId: ROBIN_FILE,
@@ -115,7 +114,7 @@ describe('shortcuts', () => {
         name: 'twin',
       },
     );
-    expect(() =>
+    await expect(
       shortcuts.create(
         { ...social.robin, via: 'app' },
         {
@@ -124,8 +123,8 @@ describe('shortcuts', () => {
           name: 'twin',
         },
       ),
-    ).toThrow(/already in that folder/);
-    expect(() =>
+    ).rejects.toThrow(/already in that folder/);
+    await expect(
       shortcuts.create(
         { ...social.robin, via: 'app' },
         {
@@ -134,11 +133,11 @@ describe('shortcuts', () => {
           name: 'mine.txt',
         },
       ),
-    ).toThrow(/already in that folder/);
+    ).rejects.toThrow(/already in that folder/);
   });
 
-  it('renames, moves and removes a shortcut and leaves the target alone', () => {
-    const made = shortcuts.create(
+  it('renames, moves and removes a shortcut and leaves the target alone', async () => {
+    const made = await shortcuts.create(
       { ...social.robin, via: 'app' },
       {
         targetItemId: ROBIN_FILE,
@@ -146,19 +145,19 @@ describe('shortcuts', () => {
         name: 'first',
       },
     );
-    const renamed = shortcuts.update(social.robin, made.id, { name: 'second' });
+    const renamed = await shortcuts.update(social.robin, made.id, { name: 'second' });
     expect(renamed.name).toBe('second');
-    const moved = shortcuts.update(social.robin, made.id, {
+    const moved = await shortcuts.update(social.robin, made.id, {
       place: { kind: 'folder', folderId: ROBIN_FOLDER },
     });
     expect(moved.parentId).toBe(ROBIN_FOLDER);
-    shortcuts.remove(social.robin, made.id);
-    expect(inRobinDocs().shortcuts).toEqual([]);
+    await shortcuts.remove(social.robin, made.id);
+    expect((await inRobinDocs()).shortcuts).toEqual([]);
     expect(social.opened.store.driveItems.find(ROBIN_FILE, null)).toBeDefined();
   });
 
-  it('does not let another person change a shortcut they cannot write', () => {
-    const made = shortcuts.create(
+  it('does not let another person change a shortcut they cannot write', async () => {
+    const made = await shortcuts.create(
       { ...social.robin, via: 'app' },
       {
         targetItemId: ROBIN_FILE,
@@ -166,14 +165,12 @@ describe('shortcuts', () => {
         name: 'first',
       },
     );
-    expect(() => {
-      shortcuts.remove(social.sam, made.id);
-    }).toThrow(/no such drive/);
+    await expect(shortcuts.remove(social.sam, made.id)).rejects.toThrow(/no such drive/);
   });
 
-  it('shows a shortcut whose target the viewer can no longer open, with the reason', () => {
+  it('shows a shortcut whose target the viewer can no longer open, with the reason', async () => {
     share(social, TRIP, social.robin, 'view');
-    shortcuts.create(
+    await shortcuts.create(
       { ...social.robin, via: 'app' },
       {
         targetItemId: TRIP_FILE,
@@ -185,15 +182,15 @@ describe('shortcuts', () => {
       social.opened.store.driveGrants.forPerson(TRIP, social.robin.profileId)?.id ?? '',
     );
     expect(
-      social.read.browseFolder(social.robin, { rootId: ROBIN_DRIVE }).shortcuts[0]?.target,
+      (await social.read.browseFolder(social.robin, { rootId: ROBIN_DRIVE })).shortcuts[0]?.target,
     ).toEqual({
       state: 'unavailable',
       reason: 'no_access',
     });
   });
 
-  it('shows a shortcut whose target is in the trash with the trashed reason', () => {
-    const made = shortcuts.create(
+  it('shows a shortcut whose target is in the trash with the trashed reason', async () => {
+    const made = await shortcuts.create(
       { ...social.robin, via: 'app' },
       {
         targetItemId: ROBIN_FILE,
@@ -218,14 +215,16 @@ describe('shortcuts', () => {
       });
       store.driveItems.remove(ROBIN_FILE);
     });
-    expect(inRobinDocs().shortcuts.find((shortcut) => shortcut.id === made.id)?.target).toEqual({
+    expect(
+      (await inRobinDocs()).shortcuts.find((shortcut) => shortcut.id === made.id)?.target,
+    ).toEqual({
       state: 'unavailable',
       reason: 'trashed',
     });
   });
 
-  it('is only on the first page of a folder', () => {
-    shortcuts.create(
+  it('is only on the first page of a folder', async () => {
+    await shortcuts.create(
       { ...social.robin, via: 'app' },
       {
         targetItemId: ROBIN_FILE,
@@ -233,13 +232,13 @@ describe('shortcuts', () => {
         name: 'first',
       },
     );
-    const page = social.read.browseFolder(social.robin, { rootId: ROBIN_DRIVE });
+    const page = await social.read.browseFolder(social.robin, { rootId: ROBIN_DRIVE });
     expect(page.shortcuts).toHaveLength(1);
   });
 
-  it('is found by its name in search and points at the target', () => {
+  it('is found by its name in search and points at the target', async () => {
     share(social, TRIP, social.robin, 'view');
-    shortcuts.create(
+    await shortcuts.create(
       { ...social.robin, via: 'app' },
       {
         targetItemId: TRIP_FILE,
@@ -247,7 +246,7 @@ describe('shortcuts', () => {
         name: 'Holiday plans',
       },
     );
-    shortcuts.create(
+    await shortcuts.create(
       { ...social.robin, via: 'app' },
       {
         targetItemId: ROBIN_FILE,
@@ -255,16 +254,23 @@ describe('shortcuts', () => {
         name: 'Budget',
       },
     );
-    const found = shortcuts.matching(social.robin, 'holiday PLANS', { rootId: null });
+    const { store } = social.opened;
+    const found = await shortcutsForQuery(store, social.robin, { ...QUERY, text: 'holiday PLANS' });
     expect(found.map((shortcut) => shortcut.name)).toEqual(['Holiday plans']);
-    expect(shortcuts.matching(social.robin, 'holiday', { rootId: SAM_DRIVE })).toEqual([]);
-    expect(shortcuts.matching(social.sam, 'holiday', { rootId: null })).toEqual([]);
+    expect(
+      await shortcutsForQuery(store, social.robin, {
+        ...QUERY,
+        text: 'holiday',
+        rootId: SAM_DRIVE,
+      }),
+    ).toEqual([]);
+    expect(await shortcutsForQuery(store, social.sam, { ...QUERY, text: 'holiday' })).toEqual([]);
   });
 
   describe('in the search of the drive', () => {
-    function holidayShortcut(): void {
+    async function holidayShortcut(): Promise<void> {
       share(social, TRIP, social.robin, 'view');
-      shortcuts.create(
+      await shortcuts.create(
         { ...social.robin, via: 'app' },
         {
           targetItemId: TRIP_FILE,
@@ -274,42 +280,39 @@ describe('shortcuts', () => {
       );
     }
 
-    function env(): Pick<ShortcutsEnv, 'store' | 'context'> {
-      const { store } = social.opened;
-      return { store, context: store.context };
-    }
-
-    it('comes with a name search, honouring the drive, the folder and the first page', () => {
-      holidayShortcut();
-      const names = (query: DriveQuery): string[] =>
-        shortcutsForQuery(env(), social.robin, query).map((shortcut) => shortcut.name);
-      expect(names(QUERY)).toEqual(['Holiday plans']);
-      expect(names({ ...QUERY, rootId: ROBIN_DRIVE })).toEqual(['Holiday plans']);
-      expect(names({ ...QUERY, rootId: SAM_DRIVE })).toEqual([]);
-      expect(names({ ...QUERY, folderId: ROBIN_FOLDER })).toEqual(['Holiday plans']);
-      expect(names({ ...QUERY, folderId: TRIP })).toEqual([]);
-      expect(names({ ...QUERY, cursor: 'next' })).toEqual([]);
-      expect(names({ ...QUERY, text: null })).toEqual([]);
-      expect(names({ ...QUERY, kinds: ['image'] })).toEqual([]);
+    it('comes with a name search, honouring the drive, the folder and the first page', async () => {
+      await holidayShortcut();
+      const names = async (query: DriveQuery): Promise<string[]> =>
+        (await shortcutsForQuery(social.opened.store, social.robin, query)).map(
+          (shortcut) => shortcut.name,
+        );
+      expect(await names(QUERY)).toEqual(['Holiday plans']);
+      expect(await names({ ...QUERY, rootId: ROBIN_DRIVE })).toEqual(['Holiday plans']);
+      expect(await names({ ...QUERY, rootId: SAM_DRIVE })).toEqual([]);
+      expect(await names({ ...QUERY, folderId: ROBIN_FOLDER })).toEqual(['Holiday plans']);
+      expect(await names({ ...QUERY, folderId: TRIP })).toEqual([]);
+      expect(await names({ ...QUERY, cursor: 'next' })).toEqual([]);
+      expect(await names({ ...QUERY, text: null })).toEqual([]);
+      expect(await names({ ...QUERY, kinds: ['image'] })).toEqual([]);
     });
 
-    it('is hidden from someone without access and once the target is lost', () => {
-      holidayShortcut();
-      expect(shortcutsForQuery(env(), social.sam, QUERY)).toEqual([]);
+    it('is hidden from someone without access and once the target is lost', async () => {
+      await holidayShortcut();
+      expect(await shortcutsForQuery(social.opened.store, social.sam, QUERY)).toEqual([]);
       social.opened.store.driveGrants.remove(
         social.opened.store.driveGrants.forPerson(TRIP, social.robin.profileId)?.id ?? '',
       );
-      expect(shortcutsForQuery(env(), social.robin, QUERY)).toEqual([]);
+      expect(await shortcutsForQuery(social.opened.store, social.robin, QUERY)).toEqual([]);
     });
 
-    it('is a hit of the global search that points at the target', () => {
-      holidayShortcut();
+    it('is a hit of the global search that points at the target', async () => {
+      await holidayShortcut();
       const { store } = social.opened;
-      const hits = driveHits(
-        store.driveSearch,
+      const hits = await driveHits(
+        (viewer, query, limit) => store.host.call('driveSearch', 'search', viewer, query, limit),
         social.robin,
         { query: 'holiday', limit: 5 },
-        (viewer, query) => shortcutsForQuery(env(), viewer, query),
+        (viewer, query) => shortcutsForQuery(social.opened.store, viewer, query),
       );
       expect(hits).toHaveLength(1);
       expect(hits[0]).toMatchObject({

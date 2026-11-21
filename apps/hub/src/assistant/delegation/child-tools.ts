@@ -41,7 +41,7 @@ export function selectedHelper(
   engine: EngineRequest | undefined,
 ): EngineRequest | undefined {
   if (parent.engine.kind !== 'dsh' || engine === undefined || engine.kind === 'dsh') return engine;
-  const settings = store.computerRuntimes.settings({
+  const settings = store.live.computers.runtimeSettings({
     device_id: engine.device_id,
     runtime: engine.kind,
   });

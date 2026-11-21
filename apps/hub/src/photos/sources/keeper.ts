@@ -1,13 +1,8 @@
 import { ApiError, type DriveItem } from '@smarteverything/domain';
-import {
-  commitContent,
-  folderDraft,
-  identityOf,
-  isoOf,
-  recordItem,
-  type ChangeActor,
-} from '../../drive/changes';
-import { DriveWriteError, locate, type DriveWriteRoot } from '../../drive/intents';
+import { commitContent, folderDraft, recordItem, type ChangeActor } from '../../drive/changes';
+import { identityOf, isoOf } from '../../drive/change-rows';
+import { locate, type DriveWriteRoot } from '../../drive/intents';
+import { DriveWriteError } from '../../drive/write-error';
 import { stageBytes } from '../../drive/versions';
 import type { SourcesEnv } from './shapes';
 
@@ -51,7 +46,7 @@ export class Keeper {
     }
     const parent = await this.ensureFolders(root, actor, folders);
     const relPath = `${parent.relPath}/${name}`;
-    const existing = store.driveItems.byPath(root.id, relPath, null);
+    const existing = await store.host.call('driveItems', 'byPath', root.id, relPath, null);
     if (existing?.kind === 'folder') {
       throw new ApiError('conflict', `A folder named ${relPath} is in the way of the file.`);
     }
@@ -79,7 +74,7 @@ export class Keeper {
     parent: DriveItem | null,
     relPath: string,
   ): Promise<DriveItem> {
-    const indexed = this.env.store.driveItems.byPath(root.id, relPath, null);
+    const indexed = await this.env.store.host.call('driveItems', 'byPath', root.id, relPath, null);
     if (indexed !== undefined) {
       if (indexed.kind !== 'folder') {
         throw new ApiError('conflict', `A file named ${relPath} is in the way of the folder.`);

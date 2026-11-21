@@ -31,6 +31,7 @@ import { background, failureLine } from '@smarteverything/logging';
 
 export interface AdapterDirectory {
   readonly adapterFor: (provider: Provider) => ProviderAdapter | undefined;
+  readonly started: (provider: Provider) => Promise<ProviderAdapter>;
 }
 
 export interface CommandExecutorOptions {
@@ -152,7 +153,7 @@ export class CommandExecutor {
   ): Promise<Sent> {
     try {
       authorize?.();
-      const sent = rows.map((row) => this.options.effects?.prepare(row) ?? row);
+      const sent = await Promise.all(rows.map((row) => this.prepared(row)));
       const commands = sent.map((row) => deviceCommandOf(this.options, row).command);
       return {
         outcome: { status: 'succeeded', result: await driver.executeTogether(commands) },
@@ -342,6 +343,11 @@ export class CommandExecutor {
     else log.info(`command.${outcome.status}`, fields);
   }
 
+  private prepared(row: CommandRow): Promise<CommandRow> {
+    const { effects } = this.options;
+    return effects === undefined ? Promise.resolve(row) : effects.prepare(row);
+  }
+
   private async outcomeOf(row: CommandRow, authorize?: () => void): Promise<Sent> {
     let sent = row;
     try {
@@ -353,7 +359,7 @@ export class CommandExecutor {
           sent: [row],
         };
       }
-      sent = this.options.effects?.prepare(row) ?? row;
+      sent = await this.prepared(row);
       return {
         outcome: { status: 'succeeded', result: await executeOnDevice(this.options, sent) },
         sent: [sent],

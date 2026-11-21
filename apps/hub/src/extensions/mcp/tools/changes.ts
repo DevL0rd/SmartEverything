@@ -124,8 +124,14 @@ function valueOf(presented: PresentedCapability, change: Change): JsonValue {
     : valueFor(presented, change.value, change.unit);
 }
 
-function planned(context: ToolContext, asked: Change, into: Plan): void {
-  const placedAll = targeted(context.store, deviceScopeOfActor(context), asked.target);
+async function planned(
+  context: ToolContext,
+  asked: Change,
+  into: Plan,
+  seen: Map<string, DeviceRow>,
+): Promise<void> {
+  const placedAll = await targeted(context.store, deviceScopeOfActor(context), asked.target);
+  for (const { device } of placedAll) seen.set(device.id, device);
   const lit = new Set(
     asked.scope === 'on'
       ? litMembers(
@@ -165,10 +171,12 @@ function planned(context: ToolContext, asked: Change, into: Plan): void {
   }
 }
 
-function nounOf(context: ToolContext, commands: readonly CommandRequest[]): ResultNoun {
+function nounOf(
+  seen: ReadonlyMap<string, DeviceRow>,
+  commands: readonly CommandRequest[],
+): ResultNoun {
   return commands.every((command) => {
-    const device =
-      command.device_id === null ? undefined : context.store.devices.find(command.device_id);
+    const device = command.device_id === null ? undefined : seen.get(command.device_id);
     return device !== undefined && deviceFamily(device) === 'light';
   })
     ? 'light'
@@ -181,8 +189,9 @@ export async function applyChanges(
 ): Promise<ToolOutput> {
   const plan: Plan = { commands: [], skipped: [] };
   changes.forEach(requireResolvedRaw);
+  const seen = new Map<string, DeviceRow>();
   for (const change of changes) {
-    planned(context, change, plan);
+    await planned(context, change, plan, seen);
   }
   if (plan.commands.length === 0) {
     throw new ToolError(
@@ -193,10 +202,10 @@ export async function applyChanges(
   const outcome = await sendAndWait(context, plan.commands);
   return {
     structured: {
-      ...reported(context, outcome),
+      ...(await reported(context, outcome)),
       headline: targetResultHeadline(
         memberOutcomes([], outcome.commands),
-        nounOf(context, plan.commands),
+        nounOf(seen, plan.commands),
       ),
       skipped: plan.skipped,
     },

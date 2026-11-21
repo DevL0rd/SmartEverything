@@ -7,7 +7,7 @@ import {
   type OutreachState,
 } from '@smarteverything/domain';
 import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HubTool, HubToolResult } from '../../../src/ai-tools/hub-tool';
 import type { ToolCheck, ToolHub } from '../../../src/ai-tools/tool-hub';
 import { AutomationAiSlot } from '../../../src/automations/automation-ai';
@@ -74,7 +74,7 @@ async function rig(): Promise<Rig> {
       expires_at: null,
     });
   const tools: Pick<ToolHub, 'check' | 'call'> = {
-    check: (): ToolCheck => ({ ok: true, tool: TOOL }),
+    check: (): Promise<ToolCheck> => Promise.resolve({ ok: true, tool: TOOL }),
     call: (name, args): Promise<HubToolResult> => {
       calls.push({ name, args });
       const response =
@@ -158,10 +158,8 @@ async function ringingWait(
   if (handler === undefined) throw new Error('missing handler');
   const context = testRun();
   const result = handler(params, request('call.person', params, 'wait_for_result'), context);
-  await new Promise<void>((resolve) => {
-    setImmediate(resolve);
-  });
-  return { result, row: home.ring(), controller: context.controller };
+  const row = await vi.waitFor(() => home.ring(), { timeout: 10_000 });
+  return { result, row, controller: context.controller };
 }
 
 describe('call node registration', () => {
@@ -306,11 +304,17 @@ describe('call.person', () => {
 
   it('stops waiting and listening when the run is cancelled', async () => {
     const home = await rig();
+    const before = home.db.store.feed.drain().listeners['row'] ?? 0;
     const pending = await ringingWait(home, baseline(home.person));
-    expect(home.db.store.feed.drain().listeners['row']).toBe(1);
+    await vi.waitFor(
+      () => {
+        expect(home.db.store.feed.drain().listeners['row']).toBe(before + 1);
+      },
+      { timeout: 10_000 },
+    );
     pending.controller.abort();
     await expect(pending.result).rejects.toBeInstanceOf(AutomationRunCancelledError);
-    expect(home.db.store.feed.drain().listeners['row']).toBe(0);
+    expect(home.db.store.feed.drain().listeners['row'] ?? 0).toBe(before);
   });
 });
 

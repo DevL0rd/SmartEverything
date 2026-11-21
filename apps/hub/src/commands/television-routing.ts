@@ -9,8 +9,6 @@ import {
   type CommandRequest,
   type DeviceCommand,
   type JsonValue,
-  type Provider,
-  type ProviderAdapter,
   type TvDevice,
   type TvKey,
   type TvPaths,
@@ -26,7 +24,7 @@ import type { TelevisionWake } from './television-wake';
 export interface TelevisionRoutingOptions {
   readonly adapters: AdapterDirectory;
   readonly valueOf: (deviceId: string, capability: string) => JsonValue | undefined;
-  readonly settingsOf: (deviceId: string) => TelevisionSettingsRow | undefined;
+  readonly settingsOf: (deviceId: string) => Promise<TelevisionSettingsRow | undefined>;
   readonly wake: TelevisionWake;
   readonly log: Logger;
 }
@@ -35,20 +33,12 @@ function wakesFromHub(command: DeviceCommand): boolean {
   return command.capability === 'power' && command.value === true;
 }
 
-function adapterOf(adapters: AdapterDirectory, provider: Provider): ProviderAdapter {
-  const adapter = adapters.adapterFor(provider);
-  if (adapter === undefined) {
-    throw new CommandRefusedError('remote_key', `the ${provider} provider is not running`);
-  }
-  return adapter;
-}
-
 type Routes = readonly [TvRoute, ...TvRoute[]];
 
 export class TelevisionRouting {
   constructor(private readonly options: TelevisionRoutingOptions) {}
 
-  handles(device: DeviceRecord, command: DeviceCommand): boolean {
+  async handles(device: DeviceRecord, command: DeviceCommand): Promise<boolean> {
     if (device.provider !== 'smartthings' || device.kind !== 'television') {
       return false;
     }
@@ -56,12 +46,13 @@ export class TelevisionRouting {
       return true;
     }
     return (
-      (command.capability === 'power' || command.capability === 'app_launch') && this.linked(device)
+      (command.capability === 'power' || command.capability === 'app_launch') &&
+      (await this.linked(device))
     );
   }
 
   async execute(device: DeviceRecord, command: DeviceCommand): Promise<JsonValue> {
-    if (wakesFromHub(command) && !this.linked(device)) {
+    if (wakesFromHub(command) && !(await this.linked(device))) {
       return this.options.wake.powerOn(device.id, () =>
         this.send(device, command, { path: 'smartthings', send: this.requestOf(device, command) }),
       );
@@ -73,7 +64,8 @@ export class TelevisionRouting {
       ]);
     }
     const key = this.keyOf(command);
-    const entry = tvKeyMap(this.tvOf(device), this.valuesOf(device), this.pathsOf(device))(key);
+    const paths = await this.pathsOf(device);
+    const entry = tvKeyMap(this.tvOf(device), this.valuesOf(device), paths)(key);
     if (entry.path === null) {
       throw new CommandRefusedError(command.capability, TV_KEY_REASON_TEXT[entry.reason]);
     }
@@ -83,8 +75,8 @@ export class TelevisionRouting {
     ]);
   }
 
-  private linked(device: DeviceRecord): boolean {
-    const mac = this.options.settingsOf(device.id)?.direct_mac ?? null;
+  private async linked(device: DeviceRecord): Promise<boolean> {
+    const mac = (await this.options.settingsOf(device.id))?.direct_mac ?? null;
     return mac !== null && this.options.adapters.adapterFor('samsung_tv') !== undefined;
   }
 
@@ -104,9 +96,9 @@ export class TelevisionRouting {
     );
   }
 
-  private pathsOf(device: DeviceRecord): TvPaths {
-    const wake = this.options.settingsOf(device.id)?.wake_macs ?? [];
-    return tvPathsFor(this.linked(device), wake.length > 0);
+  private async pathsOf(device: DeviceRecord): Promise<TvPaths> {
+    const wake = (await this.options.settingsOf(device.id))?.wake_macs ?? [];
+    return tvPathsFor(await this.linked(device), wake.length > 0);
   }
 
   private keyOf(command: DeviceCommand): TvKey {
@@ -150,17 +142,23 @@ export class TelevisionRouting {
     }
   }
 
-  private send(device: DeviceRecord, command: DeviceCommand, route: TvRoute): Promise<JsonValue> {
+  private async send(
+    device: DeviceRecord,
+    command: DeviceCommand,
+    route: TvRoute,
+  ): Promise<JsonValue> {
     const { capability, value } = route.send;
     if (route.path === 'smartthings') {
-      return adapterOf(this.options.adapters, 'smartthings').execute({
+      const adapter = await this.options.adapters.started('smartthings');
+      return adapter.execute({
         commandId: command.commandId,
         externalId: device.externalId,
         capability,
         value,
       });
     }
-    return adapterOf(this.options.adapters, 'samsung_tv').execute({
+    const adapter = await this.options.adapters.started('samsung_tv');
+    return adapter.execute({
       commandId: command.commandId,
       externalId: device.id,
       capability,

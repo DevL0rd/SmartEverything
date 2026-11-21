@@ -45,6 +45,7 @@ const ALARM_FIELDS = {
 
 export const PLANNER_ALARM_CREATE = z
   .strictObject({
+    id: ID.optional().describe('Id the client generated for the new alarm'),
     time: ALARM_FIELDS.time,
     label: ALARM_FIELDS.label.default(null),
     days: ALARM_FIELDS.days.default([]),
@@ -252,7 +253,8 @@ export const PLANNER_CLOCK_ENDPOINTS = {
     method: 'POST',
     path: '/api/planner/alarms',
     access: 'member',
-    summary: 'Add an alarm',
+    summary:
+      'Add an alarm; repeating a create with the same client id returns the alarm already made',
     params: NOTHING,
     query: PLANNER_PERSON_QUERY,
     body: PLANNER_ALARM_CREATE,

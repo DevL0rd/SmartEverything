@@ -1,4 +1,4 @@
-import { setImmediate as nextTurn } from 'node:timers/promises';
+import { settleWithHost } from '../../support/host-settle';
 import type {
   DeviceCapability,
   DeviceCommand,
@@ -7,7 +7,7 @@ import type {
   RoomRow,
 } from '@smarteverything/domain';
 import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { climateEffects } from '../../../src/automations/effects/climate-nodes';
 import { DeviceSetter } from '../../../src/automations/effects/device-set';
@@ -21,6 +21,7 @@ import { FakeClock } from '../../support/fake-clock';
 import { FakeAdapter, LAMP } from '../../support/fake-provider';
 import { testLogger } from '../../support/logs';
 import { testRun } from './support';
+import { adapterDirectory } from '../../support/adapter-directory';
 
 const open: TestDatabase[] = [];
 
@@ -183,7 +184,7 @@ async function home(devices: readonly DiscoveredDevice[]): Promise<Rig> {
     store: db.database,
     inventory,
     drivers: new DeviceDriverRegistry(),
-    adapters: { adapterFor: (): TogetherAdapter => adapter },
+    adapters: adapterDirectory((): TogetherAdapter => adapter),
     hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
     log: testLogger(),
     now: clock.now,
@@ -199,7 +200,7 @@ async function home(devices: readonly DiscoveredDevice[]): Promise<Rig> {
 }
 
 async function settle(): Promise<void> {
-  for (let turn = 0; turn < 20; turn += 1) await nextTurn();
+  await settleWithHost();
 }
 
 function report(db: TestDatabase, deviceId: string, capabilityKey: string, value: JsonValue): void {
@@ -248,8 +249,12 @@ describe('climate.set sends every device at once, one multi-control command each
       swing: 'vertical',
       offTimer: 1_800_000,
     });
-    await settle();
-    expect(batches(rig.adapter)).toHaveLength(2);
+    await vi.waitFor(
+      () => {
+        expect(batches(rig.adapter)).toHaveLength(2);
+      },
+      { timeout: 10_000 },
+    );
     expect(rig.adapter.executed).toStrictEqual([]);
     for (const commands of batches(rig.adapter)) {
       expect(valuesOf(commands)).toStrictEqual({
@@ -278,8 +283,12 @@ describe('climate.set sends every device at once, one multi-control command each
       oscillation: true,
       fanSpeed: 3,
     });
-    await settle();
-    expect(batches(rig.adapter)).toHaveLength(2);
+    await vi.waitFor(
+      () => {
+        expect(batches(rig.adapter)).toHaveLength(2);
+      },
+      { timeout: 10_000 },
+    );
     const byCapabilities = batches(rig.adapter).map(valuesOf);
     expect(byCapabilities).toContainEqual({ power: true, target_temperature: 21 });
     expect(byCapabilities).toContainEqual({ power: true, 'raw:2.6': true, fan_speed: 3 });

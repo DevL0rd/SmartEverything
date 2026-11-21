@@ -20,9 +20,9 @@ import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import { DrivePathError, ORPHAN_DIRECTORY, resolveInRoot } from '../../src/drive/paths';
 import { DriveInodesRepository, type DriveInode } from '../../src/store/repositories/drive-inodes';
-import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import { testLogger } from '../support/logs';
 import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
+import { localScans } from './local-ports';
 
 const ROOT = '0d000000-0000-4000-8000-000000000031';
 
@@ -59,17 +59,15 @@ afterEach(() => {
 
 function environment(): ScanEnvironment {
   return {
-    store: {
-      driveRoots: fixture.roots,
-      driveItems: fixture.items,
-      driveInodes: inodes,
-      driveMissing: new DriveMissingRepository(fixture.context),
+    ...localScans({
+      roots: fixture.roots,
+      items: fixture.items,
+      context: fixture.context,
       feed: fixture.feed,
-      write: (work) => fixture.context.write(work),
       now: () => new Date(NOW),
-    },
+    }),
     availability: () => Promise.resolve('online'),
-    mounted: (): boolean => false,
+    mounted: () => Promise.resolve(false),
     workerScript,
     lanes: new DriveRootLanes(),
     log: testLogger(),

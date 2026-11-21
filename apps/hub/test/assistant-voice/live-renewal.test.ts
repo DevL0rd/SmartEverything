@@ -67,8 +67,8 @@ async function startCall(options: CallOptions = {}): Promise<Call> {
     speech: options.speech ?? 'gated-client',
     settings: (): AssistantVoiceSettings => ASSISTANT_VOICE_SETTINGS.parse({}),
     system: (): string => 'system',
-    note: (): string => '',
-    history: (): string[] => [],
+    note: (): Promise<string> => Promise.resolve(''),
+    history: (): Promise<readonly string[]> => Promise.resolve([]),
     tools: (): FunctionDeclaration[] => [
       { name: 'sight_look', description: 'Look at what they show' },
     ],

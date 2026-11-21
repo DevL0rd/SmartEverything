@@ -3,8 +3,9 @@ import { ApiError, type DriveItem } from '@smarteverything/domain';
 import { locate, versionRelPath, type DriveWriteRoot } from '../../drive/intents';
 import { canWrite, itemAccess } from '../../drive/access';
 import { writableItemRoot, type DriveCaller } from '../../drive/service-write-support';
-import type { StoredDrive } from '../../store/repositories/drive-roots';
+import { storeUnit } from '../../store/host/unit';
 import { DriveMediaRepository } from '../../store/repositories/drive-media';
+import type { StoredDrive } from '../../store/repositories/drive-roots';
 import type { PhotoEditRow } from '../../store/repositories/photo-edits';
 import type { EditDeps } from './deps';
 import type { OutputFormat } from './render';
@@ -34,13 +35,17 @@ export function copyFormat(item: ImageItem): OutputFormat {
   return SAVES_IN_PLACE[item.mime] ?? 'jpeg';
 }
 
-export function capabilityOf(deps: EditDeps, target: EditTarget<ImageItem>): Capability {
+export interface EditFacts {
+  readonly row: PhotoEditRow | undefined;
+  readonly motion: boolean;
+}
+
+export function capabilityOf(target: EditTarget<ImageItem>, facts: EditFacts): Capability {
   const { item, root } = target;
-  const media = new DriveMediaRepository(deps.store.context).find(item.id);
   const reason =
     SAVES_IN_PLACE[item.mime] === undefined
       ? `${item.mime} photos are saved as a JPEG copy; the original stays as it is.`
-      : media?.motion_clip_id !== null && media?.motion_clip_id !== undefined
+      : facts.motion
         ? 'Motion photos are saved as a copy so the motion stays with the original.'
         : !root.versions
           ? 'This drive keeps no earlier versions, so the edit is saved as a copy.'
@@ -48,36 +53,44 @@ export function capabilityOf(deps: EditDeps, target: EditTarget<ImageItem>): Cap
   return { canSaveVersion: reason === null, copyOnlyReason: reason };
 }
 
-export function readableImage(deps: EditDeps, caller: DriveCaller, itemId: string): ImageItem {
-  const item = deps.read.readItem(caller, itemId);
+export async function readableImage(
+  deps: EditDeps,
+  caller: DriveCaller,
+  itemId: string,
+): Promise<ImageItem> {
+  const item = await deps.read.readItem(caller, itemId);
   if (item.kind !== 'image')
     throw new ApiError('invalid_request', 'Only photos can be edited here.');
   return item;
 }
 
-export function canEditItem(deps: EditDeps, caller: DriveCaller, item: ImageItem): boolean {
-  const drive = deps.store.driveRoots.byId(item.rootId);
+export async function canEditItem(
+  deps: EditDeps,
+  caller: DriveCaller,
+  item: ImageItem,
+): Promise<boolean> {
+  const drive = await deps.store.host.call('driveRoots', 'byId', item.rootId);
   return canWrite(itemAccess(deps.store, caller, drive, item));
 }
 
-export function imageTarget(
+export async function imageTarget(
   deps: EditDeps,
   caller: DriveCaller,
   itemId: string,
-): EditTarget<ImageItem> {
-  const item = readableImage(deps, caller, itemId);
-  return { caller, item, root: writableItemRoot(deps.store, caller, item) };
+): Promise<EditTarget<ImageItem>> {
+  const item = await readableImage(deps, caller, itemId);
+  return { caller, item, root: await writableItemRoot(deps.store, caller, item) };
 }
 
-export function videoTarget(
+export async function videoTarget(
   deps: EditDeps,
   caller: DriveCaller,
   itemId: string,
-): EditTarget<VideoItem> {
-  const item = deps.read.readItem(caller, itemId);
+): Promise<EditTarget<VideoItem>> {
+  const item = await deps.read.readItem(caller, itemId);
   if (item.kind !== 'video')
     throw new ApiError('invalid_request', 'Only videos can be trimmed here.');
-  return { caller, item, root: writableItemRoot(deps.store, caller, item) };
+  return { caller, item, root: await writableItemRoot(deps.store, caller, item) };
 }
 
 export interface Original {
@@ -92,7 +105,8 @@ export async function originalOf(
 ): Promise<Original> {
   const root: DriveWriteRoot = target.root;
   const baseId = edit?.baseVersionId ?? null;
-  const base = baseId === null ? undefined : deps.store.driveVersions.find(baseId);
+  const base =
+    baseId === null ? undefined : await deps.store.host.call('driveVersions', 'find', baseId);
   if (base?.rootId === root.id && base.version.itemId === target.item.id) {
     return {
       path: await locate(root, versionRelPath(base.version.sha256)),
@@ -107,8 +121,14 @@ export interface LiveEdit {
   readonly stale: boolean;
 }
 
-export function editOf(deps: EditDeps, target: EditTarget<ImageItem>): LiveEdit {
-  const row = deps.store.photoEdits.find(target.item.id, target.caller.profileId);
+export function editFacts(deps: EditDeps, target: EditTarget<ImageItem>): Promise<EditFacts> {
+  return deps.store.host.read('photoEditFacts', {
+    itemId: target.item.id,
+    profileId: target.caller.profileId,
+  });
+}
+
+export function liveEditOf(target: EditTarget<ImageItem>, row: PhotoEditRow | undefined): LiveEdit {
   if (row === undefined) return { row: undefined, stale: false };
   return row.resultSha256 === target.item.sha256
     ? { row, stale: false }
@@ -119,3 +139,13 @@ export function stemOf(name: string): { readonly stem: string; readonly extensio
   const extension = posix.extname(name);
   return { stem: name.slice(0, name.length - extension.length), extension };
 }
+
+export const PHOTO_EDIT_FACTS_UNIT = storeUnit(
+  (store, input: { readonly itemId: string; readonly profileId: string }): EditFacts => {
+    const media = new DriveMediaRepository(store.context).find(input.itemId);
+    return {
+      row: store.photoEdits.find(input.itemId, input.profileId),
+      motion: media?.motion_clip_id !== null && media?.motion_clip_id !== undefined,
+    };
+  },
+);

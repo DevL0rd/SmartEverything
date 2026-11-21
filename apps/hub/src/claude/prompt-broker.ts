@@ -154,12 +154,12 @@ export class PromptBroker {
     }
   }
 
-  hold(request: HoldRequest, closed: AbortSignal): Promise<HookOutput> {
+  async hold(request: HoldRequest, closed: AbortSignal): Promise<HookOutput> {
     if (!isHeldTool(request.event, request.toolName)) {
-      return Promise.resolve(NO_ANSWER);
+      return NO_ANSWER;
     }
     const now = this.options.clock.now();
-    const risk = classifyPrompt({
+    const risk = await classifyPrompt({
       toolName: request.toolName,
       input: request.input,
       cwd: request.cwd,
@@ -169,7 +169,7 @@ export class PromptBroker {
         ? (this.options.riskyHoldMs ?? RISKY_HOLD_MS)
         : (this.options.holdMs ?? PROMPT_HOLD_MS);
     const prompt = promptOf(request, risk, now, holdMs);
-    return new Promise((resolve) => {
+    return await new Promise((resolve) => {
       const cancel = this.options.clock.at(new Date(now.getTime() + holdMs), () => {
         this.finish(prompt.id, 'expired', null, NO_ANSWER);
       });

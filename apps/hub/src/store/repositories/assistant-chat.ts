@@ -17,13 +17,12 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { readResponseStyle, saveResponseStyle } from './assistant-response-style';
-import { CALL_TEXT, type CallText } from './assistant-call-text';
+import { callTextsOfSource, type CallText, type CallTextQuery } from './assistant-call-text';
 export type { CallText } from './assistant-call-text';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
 import { jsonText } from '../sql';
 import {
-  AttachmentCleanup,
   attachFiles,
   FILE_COLUMNS,
   STORED_FILE,
@@ -57,8 +56,6 @@ export interface MessagePage {
 }
 
 export class AssistantChatRepository {
-  readonly attachmentCleanup = new AttachmentCleanup();
-
   constructor(private readonly context: StoreContext) {}
 
   settings(): AssistantSettings {
@@ -164,26 +161,8 @@ export class AssistantChatRepository {
     );
   }
 
-  callTextsOfSource(query: {
-    readonly profileId: string;
-    readonly sourceKey: string;
-    readonly exceptChatId: string;
-    readonly limit: number;
-  }): CallText[] {
-    return this.context.sql.all(
-      CALL_TEXT,
-      `select m.created_at as at, m.text as text from assistant_messages m
-       join ai_chats c on c.id = m.chat_id
-       where c.profile_id = $profile and c.source_key = $source and c.archived_at is null
-         and c.id <> $except and m.kind = 'call' and m.text <> ''
-       order by m.created_at desc, m.rowid desc limit $limit`,
-      {
-        profile: query.profileId,
-        source: query.sourceKey,
-        except: query.exceptChatId,
-        limit: query.limit,
-      },
-    );
+  callTextsOfSource(query: CallTextQuery): CallText[] {
+    return callTextsOfSource(this.context, query);
   }
 
   recent(profileId: string, limit: number): AssistantMessageRow[] {
@@ -430,7 +409,7 @@ export class AssistantChatRepository {
   }
 
   attachTo(messageId: string, ids: readonly string[]): void {
-    attachFiles(this.context, this.attachmentCleanup, messageId, ids);
+    attachFiles(this.context, messageId, ids);
   }
 
   unattachedBefore(moment: string): StoredAttachment[] {

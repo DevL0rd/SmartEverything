@@ -1,6 +1,6 @@
 import type { ChangeEnv } from '../../drive/changes';
 import type { DriveReadService } from '../../drive/service-read';
-import type { DriveWriteGuard } from '../../drive/quotas';
+import type { DataSpaceProbe } from '../../drive/data-space';
 import type { HubLayout } from '../../data-layout';
 import type { Store } from '../../store/store';
 import type { ColourRunner } from './colour-runner';
@@ -9,14 +9,14 @@ import type { PreviewDecoders } from '../pipeline/preview';
 
 export type EditStore = Pick<
   Store,
-  'driveRoots' | 'driveItems' | 'driveGrants' | 'driveVersions' | 'photoEdits' | 'context' | 'write'
+  'driveRoots' | 'driveItems' | 'driveGrants' | 'context' | 'host'
 >;
 
 export interface EditDeps {
   readonly env: ChangeEnv;
   readonly store: EditStore;
   readonly read: Pick<DriveReadService, 'readItem'>;
-  readonly guard: DriveWriteGuard;
+  readonly space: DataSpaceProbe['space'];
   readonly layout: Pick<HubLayout, 'cache' | 'tmp'>;
   readonly decoders: PreviewDecoders;
   readonly colour: ColourRunner;

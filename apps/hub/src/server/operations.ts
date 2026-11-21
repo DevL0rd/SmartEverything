@@ -12,8 +12,9 @@ import type { Caller } from './auth';
 import { admitConfined } from './confinement';
 import { assertOwnerRoute } from './owner-route';
 import { assertScopeRoute } from './person-scope';
-import { issuesOf } from './errors';
+import { issuesOf } from './issues';
 import type { Bound } from './router';
+import type { ResponseEncoder } from './responses/encoder';
 import { messageOf } from '@smarteverything/logging';
 
 export interface OperationInput {
@@ -52,6 +53,7 @@ export class Operations {
   constructor(
     private readonly log: Logger,
     private readonly store: Store,
+    private readonly encoder: ResponseEncoder,
   ) {
     this.boundary = new HubLocalBoundary(store);
   }
@@ -89,7 +91,7 @@ export class Operations {
     return `The ${failed[0]} is not valid: ${issuesOf(failed[1].error)}`;
   }
 
-  private admit(name: EndpointName, caller: Caller, input: OperationInput): void {
+  private async admit(name: EndpointName, caller: Caller, input: OperationInput): Promise<void> {
     const authority = caller.kind === 'service' ? caller.authority : currentExecutionAuthority();
     if (hubOriginated(authority)) {
       const refusal = withExecutionAuthority(authority, () =>
@@ -105,7 +107,7 @@ export class Operations {
       if (refusal !== undefined) throw new ApiError('forbidden', refusal);
     }
     assertOwnerRoute(this.store, caller, this.bound(name).endpoint);
-    assertScopeRoute(this.store, caller, this.bound(name).endpoint, input.params ?? {});
+    await assertScopeRoute(this.store, caller, this.bound(name).endpoint, input.params ?? {});
     admitConfined(this.store, name, caller, input);
     const refusal =
       (caller.kind === 'client' || caller.kind === 'service') &&
@@ -116,7 +118,27 @@ export class Operations {
       throw refusal;
     }
   }
-  run(name: EndpointName, caller: Caller, input: OperationInput): Promise<unknown> {
+  private async served(
+    name: EndpointName,
+    caller: Caller,
+    input: OperationInput,
+  ): Promise<unknown> {
+    const served = await this.bound(name).serve(
+      caller,
+      {
+        params: input.params ?? {},
+        query: queryOf(input.query ?? {}),
+        body: input.body === undefined ? undefined : Buffer.from(JSON.stringify(input.body)),
+        remote: 'mcp',
+        headers: {},
+      },
+      this.encoder,
+    );
+    const value: unknown = JSON.parse(served.text);
+    return value;
+  }
+
+  async run(name: EndpointName, caller: Caller, input: OperationInput): Promise<unknown> {
     const startedAt = performance.now();
     const who = {
       operation: name,
@@ -124,7 +146,7 @@ export class Operations {
       clientId: caller.kind === 'client' ? caller.client.id : null,
     };
     try {
-      this.admit(name, caller, input);
+      await this.admit(name, caller, input);
     } catch (cause) {
       this.log.warn('operation.refused', {
         ...who,
@@ -133,21 +155,10 @@ export class Operations {
       });
       throw cause;
     }
-    const run = (): Promise<unknown> =>
-      this.bound(name).run(
-        caller,
-        {
-          params: input.params ?? {},
-          query: queryOf(input.query ?? {}),
-          body: input.body,
-          remote: 'mcp',
-          headers: {},
-        },
-        this.log,
-      );
+    const run = (): Promise<unknown> => this.served(name, caller, input);
     const running =
       caller.kind === 'service' ? withExecutionAuthority(caller.authority, run) : run();
-    return running.then(
+    return await running.then(
       (value) => {
         this.log.debug('operation.finished', () => ({
           ...who,

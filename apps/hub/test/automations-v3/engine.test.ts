@@ -67,7 +67,7 @@ describe('the V3 engine end to end', () => {
   it('runs the two node press-cycles-brightness example from the language document', async () => {
     const rig = await rigV3();
     const row = rig.add(cycleProgram(rig.home.lampId));
-    expect(rig.engine.sync()).toMatchObject({ loaded: 1, unchanged: 0, removed: 0 });
+    expect(await rig.engine.sync()).toMatchObject({ loaded: 1, unchanged: 0, removed: 0 });
     for (let press = 0; press < 3; press += 1) {
       rig.press(REMOTE, 'single');
       await rig.until(() => rig.finished.length === press + 1);
@@ -93,7 +93,7 @@ describe('the V3 engine end to end', () => {
         }),
       ]),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.start(row.id, {}, null);
     await rig.until(() => rig.finished.length === 1);
     const stored = rig.nodes.forRun(rig.runs(row.id)[0]?.id ?? '');
@@ -121,15 +121,15 @@ describe('the V3 engine end to end', () => {
         }),
       ]),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const started = rig.engine.start(row.id, {}, null);
     await rig.settle();
     expect(started.kind).toBe('started');
     expect(rig.runs(row.id)[0]).toMatchObject({ status: 'waiting' });
     expect(brightnesses(rig)).toStrictEqual([]);
     rig.restart();
-    rig.engine.sync();
-    expect(rig.engine.boot()).toStrictEqual({ resumed: 1, cancelled: 0, interrupted: 0 });
+    await rig.engine.sync();
+    expect(await rig.engine.boot()).toStrictEqual({ resumed: 1, cancelled: 0, interrupted: 0 });
     await rig.advance(599_000);
     expect(brightnesses(rig)).toStrictEqual([]);
     await rig.advance(2000);
@@ -160,7 +160,7 @@ describe('the V3 engine end to end', () => {
         }),
       ]),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.start(row.id, {}, null);
     await rig.until(() => rig.finished.length === 1);
     expect(seen).toStrictEqual([`Bearer ${SECRET_VALUE}`]);
@@ -181,14 +181,14 @@ describe('the V3 engine end to end', () => {
       program([node('child', 'automation.run', { automation: lit(target.id), wait: lit(true) })]),
       'Parent',
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.start(target.id, {}, null);
     await rig.settle();
     rig.engine.start(parent.id, {}, null);
     await rig.settle();
     expect(rig.runs(parent.id)[0]).toMatchObject({ status: 'running' });
     rig.setEnabled(target.id, false);
-    rig.engine.reload(target.id);
+    await rig.engine.reload(target.id);
     await rig.until(() => rig.runs(parent.id)[0]?.status !== 'running');
     expect(rig.runs(parent.id)[0]).toMatchObject({ status: 'failed' });
   });
@@ -200,23 +200,23 @@ describe('the V3 engine end to end', () => {
       'Waits',
     );
     rig.add(cycleProgram(rig.home.lampId), 'Cycles');
-    expect(rig.engine.sync()).toMatchObject({ loaded: 2, unchanged: 0 });
-    expect(rig.engine.sync()).toMatchObject({ loaded: 0, unchanged: 2 });
+    expect(await rig.engine.sync()).toMatchObject({ loaded: 2, unchanged: 0 });
+    expect(await rig.engine.sync()).toMatchObject({ loaded: 0, unchanged: 2 });
     rig.engine.start(waiting.id, {}, null);
     await rig.settle();
     expect(rig.engine.driver.active).toBe(1);
     rig.setEnabled(waiting.id, false);
-    rig.engine.reload(waiting.id);
+    await rig.engine.reload(waiting.id);
     await rig.until(() => rig.finished.length === 1);
     expect(rig.finished[0]).toMatchObject({ outcome: 'cancelled' });
     expect(rig.engine.automations).toHaveLength(1);
-    expect(rig.engine.sync()).toMatchObject({ loaded: 0, removed: 0, unchanged: 2 });
+    expect(await rig.engine.sync()).toMatchObject({ loaded: 0, removed: 0, unchanged: 2 });
   });
 
   it('tells when a run finished and stops every run of an automation', async () => {
     const rig = await rigV3();
     const waiting = rig.add(program([node('pause', 'flow.wait', { duration: lit(900_000) })]));
-    rig.engine.sync();
+    await rig.engine.sync();
     const started = rig.engine.start(waiting.id, {}, null);
     if (started.kind === 'refused') throw started.error;
     const done = rig.engine.finished(started.runId);

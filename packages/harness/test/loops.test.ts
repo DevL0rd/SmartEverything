@@ -10,7 +10,7 @@ import { bindAgentLoopSettings } from '../src/plugins/goals';
 import { bootRuntime, spoken, turnsFinished } from './support/runtime';
 import type { BootOptions, RuntimeFixture } from './support/runtime';
 import type { ScriptedReply } from './support/scripted-model';
-import type { HarnessAuthority } from '../src/host/server-policy';
+import type { HarnessAuthority } from '../src/host/authority';
 
 let fixture: RuntimeFixture | undefined;
 let anchor: Context | undefined;

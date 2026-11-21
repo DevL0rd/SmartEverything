@@ -12,7 +12,7 @@ export const televisionRoutes = (
 ) =>
   ({
     listTelevisionCandidates: bound(E.listTelevisionCandidates, async ({ params }) => {
-      const device = store.devices.byId(params.deviceId);
+      const device = await store.host.call('devices', 'byId', params.deviceId);
       if (device.provider !== 'smartthings' || device.kind !== 'television') {
         throw new ApiError(
           'invalid_request',

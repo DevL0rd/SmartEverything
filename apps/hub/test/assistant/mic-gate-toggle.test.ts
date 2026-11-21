@@ -82,6 +82,7 @@ async function speakingCall(listening: HostedListening | undefined): Promise<Hos
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   heardChunks = 0;
   events = null;
   logs = captureLogs();

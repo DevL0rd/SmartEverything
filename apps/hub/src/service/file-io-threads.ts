@@ -6,7 +6,7 @@ import {
   DEFAULT_FILE_IO_THREADS,
   MAX_FILE_IO_THREADS,
   type DriveSettingsRunning,
-} from '@smarteverything/domain';
+} from '@smarteverything/domain/drive-settings';
 import { z } from 'zod';
 
 export type FileIoThreadsSource = 'saved' | 'unseeded';

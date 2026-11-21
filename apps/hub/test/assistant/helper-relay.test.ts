@@ -26,6 +26,7 @@ beforeEach(async () => {
   captureLogs();
   const now = (): Date => new Date('2026-11-06T10:00:00.000Z');
   opened = await testStore(now);
+  await Promise.all([opened.store.live.aiModels.load(), opened.store.live.computers.load()]);
   const { store } = opened;
   const client = store.clients.create(
     { name: 'This computer', platform: 'desktop', role: 'owner', tokenHash: 'a' },
@@ -36,6 +37,7 @@ beforeEach(async () => {
   files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now,
   });
   chats = new ChatDirectory(store, files);
@@ -167,6 +169,7 @@ describe('helper messages in the parent thread', () => {
     const text = 'The totals match.';
     delegation.finished(task, text, true);
     delegation.finished(task, text, true);
+    await delegation.settled();
     const pending = store.assistantEvents.pending();
     expect(pending).toHaveLength(1);
     const [report] = pending;
@@ -225,6 +228,7 @@ describe('helper messages in the parent thread', () => {
     const delivery = store.assistantEvents.event(outbound.eventId);
     store.assistantEvents.mark(delivery.id, 'answered_at');
     delegation.finished(delivery, 'The totals match.', true);
+    await delegation.settled();
     const [report] = store.assistantEvents.pending();
     if (report === undefined) throw new Error('Expected one completion event.');
     const incoming = received(report);

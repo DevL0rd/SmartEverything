@@ -64,6 +64,7 @@ describe('camera wake superseded', () => {
     claims.request({ source, key: 'discord:ann', snippetDbfs: -60 });
     await settle();
     expect(hungUp).toEqual([row.id]);
+    await expect.poll(() => test.store.aiOutreach.byId(row.id).state).toBe('ended');
     expect(test.store.aiOutreach.byId(row.id)).toMatchObject({
       state: 'ended',
       detail: 'Answered by Discord',
@@ -86,7 +87,9 @@ describe('camera wake superseded', () => {
     await waking;
     await settle();
     expect(hungUp).toEqual([row.id]);
-    expect(test.store.aiOutreach.byId(row.id).detail).toBe('Answered by another camera');
+    await expect
+      .poll(() => test.store.aiOutreach.byId(row.id).detail)
+      .toBe('Answered by another camera');
   });
 
   it('leaves the conversation alone when nothing takes over', async () => {

@@ -40,6 +40,9 @@ export type DriveAccessRequest = z.infer<typeof DRIVE_ACCESS_REQUEST>;
 
 export const DRIVE_ACCESS_REQUEST_CREATE = z
   .strictObject({
+    id: ID.optional().describe(
+      'Id the client generated for the new request; repeating the request with the same id returns the request already made',
+    ),
     itemId: ID,
     role: DRIVE_GRANT_ROLE,
     message: z.string().trim().min(1).nullable(),

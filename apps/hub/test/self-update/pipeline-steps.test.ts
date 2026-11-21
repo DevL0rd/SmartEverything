@@ -65,7 +65,7 @@ async function ledgerHolds(entry: HubUpdateRelease): Promise<StepDependencies> {
   );
   return {
     layout,
-    publicServer: () => 'https://home.example',
+    publicServer: () => Promise.resolve('https://home.example'),
     finished: () => Promise.resolve(entry),
   };
 }

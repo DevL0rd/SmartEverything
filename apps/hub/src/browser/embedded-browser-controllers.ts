@@ -20,7 +20,6 @@ import type { ViewerFocus } from './viewer-focus';
 import type { EmbeddedBrowserAuthority } from './embedded-browser-authority';
 import type { ProjectFilesService } from '../projects/service';
 import { chatPagePath } from './chat-files';
-import { chatServerComputer } from './chat-server';
 export interface EmbeddedBrowserViewer {
   readonly scope: EmbeddedBrowserScope;
   readonly perform: (request: EmbeddedBrowserRequest) => Promise<EmbeddedBrowserResult>;
@@ -151,7 +150,11 @@ export class EmbeddedBrowserControllers {
       return {
         kind: 'server',
         server: {
-          computerId: chatServerComputer(this.store, caller, chatId, command.computer),
+          computerId: await this.store.host.read('chatServerComputer', {
+            caller,
+            chatId,
+            wanted: command.computer ?? null,
+          }),
           port: command.port,
         },
       };

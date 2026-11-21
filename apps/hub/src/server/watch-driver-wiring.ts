@@ -6,7 +6,10 @@ import type { ServerContext } from './context';
 export function startWatchDriver(context: ServerContext): () => void {
   const unregister = context.hub.drivers.registry.register(
     watchDriver({
-      store: context.store,
+      devices: {
+        byExternal: (provider, externalId) =>
+          context.store.host.call('devices', 'byExternal', provider, externalId),
+      },
       watches: context.hub.watches,
       actions: context.watchActions,
     }),

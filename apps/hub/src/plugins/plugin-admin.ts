@@ -79,16 +79,16 @@ function authorOfConfigure(row: PluginRow, by: ToolCaller | undefined): Settings
 export class PluginAdmin {
   constructor(private readonly options: PluginAdminOptions) {}
 
-  list(): PluginRow[] {
-    return this.options.store.plugins.list();
+  list(): Promise<PluginRow[]> {
+    return this.options.store.host.call('plugins', 'list');
   }
 
   async install(install: PluginInstall): Promise<PluginRow> {
     const found = await findManifest(install, this.options.fetch);
-    if (this.options.store.plugins.find(found.manifest.id) !== undefined) {
+    if ((await this.options.store.host.call('plugins', 'find', found.manifest.id)) !== undefined) {
       throw new ApiError('conflict', `${found.manifest.name} is already added.`);
     }
-    return this.options.store.plugins.create({
+    return this.options.store.host.call('plugins', 'create', {
       manifest: found.manifest,
       source: install.source,
       location: found.location,
@@ -101,12 +101,12 @@ export class PluginAdmin {
     change: Omit<PluginChangeInput, 'author'>,
     author: SettingsAuthor,
   ): Promise<PluginSaved> {
-    const row = this.options.store.plugins.byId(id);
+    const row = await this.row(id);
     const applied = await applyChange(row, { ...change, author }, this.options);
     await this.restartIf(applied.restart, applied.row);
     this.applyLive(applied);
     this.options.host().changed();
-    return { outcome: 'saved', plugin: this.options.store.plugins.byId(id) };
+    return { outcome: 'saved', plugin: await this.row(id) };
   }
 
   async configure(
@@ -114,7 +114,7 @@ export class PluginAdmin {
     change: Partial<PluginConfiguration>,
     by?: ToolCaller,
   ): Promise<void> {
-    const row = this.options.store.plugins.byId(id);
+    const row = await this.row(id);
     const author = authorOfConfigure(row, by);
     const applied = await applyChange(
       row,
@@ -134,29 +134,29 @@ export class PluginAdmin {
   }
 
   async restart(id: string): Promise<PluginRow> {
-    const row = this.options.store.plugins.byId(id);
+    const row = await this.row(id);
     if (!row.enabled) {
       throw new ApiError('conflict', `${row.manifest.name} is switched off.`);
     }
     await this.options.host().launch(id);
-    return this.options.store.plugins.byId(id);
+    return this.row(id);
   }
 
   async remove(id: string): Promise<void> {
-    const row = this.options.store.plugins.byId(id);
+    const row = await this.row(id);
     if (row.source === 'builtin') {
       throw new ApiError('conflict', `${row.manifest.name} is built in; switch it off instead.`);
     }
     const host = this.options.host();
     await host.halt(id);
     await this.options.secrets.forget(id);
-    this.options.store.plugins.remove(id);
+    await this.options.store.host.call('plugins', 'remove', id);
     await rm(host.dataOf(id), { recursive: true, force: true });
     host.changed();
   }
 
-  tools(id: string): PluginToolRow[] {
-    const row = this.options.store.plugins.byId(id);
+  async tools(id: string): Promise<PluginToolRow[]> {
+    const row = await this.row(id);
     return (this.options.host().slot(id)?.tools() ?? []).map((tool) => ({
       name: tool.name,
       title: tool.title,
@@ -168,16 +168,13 @@ export class PluginAdmin {
     }));
   }
 
-  log(id: string): readonly PluginLogLine[] {
-    this.options.store.plugins.byId(id);
+  async log(id: string): Promise<PluginLogLine[]> {
+    await this.row(id);
     return readPluginLines(this.options.logs, id);
   }
 
-  data(id: string, stream: string | undefined, limit: number): PluginDataPoint[] {
-    this.options.store.plugins.byId(id);
-    return stream === undefined
-      ? this.options.store.pluginData.latest(id)
-      : this.options.store.pluginData.history(id, stream, limit);
+  data(id: string, stream: string | undefined, limit: number): Promise<PluginDataPoint[]> {
+    return this.options.store.host.read('pluginDataPoints', { pluginId: id, stream, limit });
   }
 
   async callTool(
@@ -186,7 +183,7 @@ export class PluginAdmin {
     call: ToolCall,
     caller: ToolCaller,
   ): Promise<PluginToolOutcome> {
-    const found = this.runningTool(id, name);
+    const found = await this.runningTool(id, name);
     if (caller.pluginRequester !== undefined && found.tool.humanOnly) {
       throw new ApiError('forbidden', `Only a person in the app can run ${found.tool.title}.`);
     }
@@ -199,44 +196,52 @@ export class PluginAdmin {
     return { outcome: 'done', result: result.response };
   }
 
-  choices(
+  async choices(
     id: string,
     source: string,
     query: PluginOptionQuery,
     caller: ToolCaller,
   ): Promise<PluginOptionPage> {
-    const row = this.options.store.plugins.byId(id);
+    const row = await this.row(id);
     const slot = this.options.host().slot(id);
     return slot === undefined
-      ? Promise.resolve({ state: 'unavailable', message: `${row.manifest.name} is switched off.` })
+      ? { state: 'unavailable', message: `${row.manifest.name} is switched off.` }
       : slot.choices(source, query, caller);
   }
 
-  people(id: string): PluginPerson[] {
+  people(id: string): Promise<PluginPerson[]> {
     return this.options.people.list(id);
   }
 
-  setPerson(id: string, externalId: string, change: PluginPersonChange): PluginPerson {
-    const saved = this.options.people.set(id, externalId, change);
+  async setPerson(
+    id: string,
+    externalId: string,
+    change: PluginPersonChange,
+  ): Promise<PluginPerson> {
+    const saved = await this.options.people.set(id, externalId, change);
     this.options.host().changed();
     return saved;
   }
 
-  removePerson(id: string, externalId: string): void {
-    this.options.people.remove(id, externalId);
+  async removePerson(id: string, externalId: string): Promise<void> {
+    await this.options.people.remove(id, externalId);
     this.options.host().changed();
   }
 
-  post(pluginId: string, message: InboundMessage): void {
-    const row = this.options.store.plugins.byId(pluginId);
+  async post(pluginId: string, message: InboundMessage): Promise<void> {
+    const row = await this.row(pluginId);
     if (!row.enabled || !row.manifest.permissions.inbound) {
       throw new ApiError('forbidden', `${row.manifest.name} may not post into chats.`);
     }
     this.options.inbox().receive(pluginId, message);
   }
 
-  private runningTool(id: string, name: string): RunningTool {
-    const row = this.options.store.plugins.byId(id);
+  private row(id: string): Promise<PluginRow> {
+    return this.options.store.host.call('plugins', 'byId', id);
+  }
+
+  private async runningTool(id: string, name: string): Promise<RunningTool> {
+    const row = await this.row(id);
     const found = this.options
       .host()
       .running()

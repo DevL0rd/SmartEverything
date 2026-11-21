@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session';
 import { DSH_SESSION_EVENTS_WRITE } from '@smarteverything/domain';
 import type { DshSessionEvent, DshWriterClaim } from '@smarteverything/domain';
@@ -85,7 +85,7 @@ function toolCall(turn: number, callId: string, name: string): Draft[] {
 }
 
 interface Writer {
-  readonly append: (events: readonly Draft[]) => void;
+  readonly append: (events: readonly Draft[]) => Promise<void>;
 }
 
 function writer(claim: DshWriterClaim): Writer {
@@ -95,9 +95,9 @@ function writer(claim: DshWriterClaim): Writer {
     rig.service.directory.get(rig.hub.target).host,
   );
   return {
-    append: (events): void => {
+    append: async (events): Promise<void> => {
       const next = store.dshSessions.stat(claim.session_id, rig.owner.profileId)?.next_seq ?? 0;
-      store.dshSessions.append(
+      await store.live.dshSessions.append(
         {
           claim,
           operation_id: randomUUID(),
@@ -118,14 +118,14 @@ function rows(chatId: string): readonly (readonly [string, string, readonly stri
     .map((row) => [row.role, row.text, row.steps] as const);
 }
 
-function parentChat(): {
+async function parentChat(): Promise<{
   readonly chatId: string;
   readonly claim: DshWriterClaim;
   readonly delivery: string;
-} {
+}> {
   const { store } = rig.opened;
   const chat = rig.newChat(rig.hub.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   const question = addMessage(rig, chat.id, { role: 'person', text: 'Check the lights' });
   const reply = addMessage(rig, chat.id, { role: 'responder', text: 'Asked a helper.' });
   const event = store.assistantEvents.add({
@@ -144,26 +144,26 @@ function parentChat(): {
 }
 
 describe('the chat messages of a native conversation', () => {
-  it('keeps every auto-started reply once, in order, and leaves hub turns to the live reply', () => {
+  it('keeps every auto-started reply once, in order, and leaves hub turns to the live reply', async () => {
     const { store } = rig.opened;
     watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
-    const parent = parentChat();
+    const parent = await parentChat();
     const session = writer(parent.claim);
     const closing = randomUUID();
 
-    session.append([
+    await session.append([
       turnStart(1),
       user(parent.delivery, ['Check the lights'], { kind: 'user' }),
       assistant(1, 'Asked a helper.'),
       turnEnd(1),
     ]);
-    session.append([
+    await session.append([
       turnStart(2),
       user(randomUUID(), ['The helper finished.'], { kind: 'subagent-settled', form: 'notice' }),
     ]);
-    session.append([...toolCall(2, 'c1', 'home_read'), assistant(2, 'It finished: done.')]);
-    session.append([turnEnd(2), turnStart(3), assistant(3, 'Both helpers are in.', closing)]);
-    session.append([assistant(3, 'Both helpers are in.', closing), turnEnd(3)]);
+    await session.append([...toolCall(2, 'c1', 'home_read'), assistant(2, 'It finished: done.')]);
+    await session.append([turnEnd(2), turnStart(3), assistant(3, 'Both helpers are in.', closing)]);
+    await session.append([assistant(3, 'Both helpers are in.', closing), turnEnd(3)]);
 
     expect(rows(parent.chatId)).toStrictEqual([
       ['person', 'Check the lights', []],
@@ -176,7 +176,7 @@ describe('the chat messages of a native conversation', () => {
   it('shows a helper the message its parent sent and the answer it gave to it', async () => {
     const { store } = rig.opened;
     watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
-    const parent = parentChat();
+    const parent = await parentChat();
     const persistence = new LocalHarnessPersistence(rig.service);
     persistence.bind(parent.claim);
     const child = await persistence.create(
@@ -196,13 +196,13 @@ describe('the chat messages of a native conversation', () => {
     const run = store.aiAgentRuns.currentOfSession(child.claim.session_id);
     const parentTitle = store.aiChats.chat(parent.chatId).title;
 
-    session.append([
+    await session.append([
       turnStart(1),
       user(randomUUID(), ['Count the lamps.'], { kind: 'user' }),
       assistant(1, 'Three lamps.'),
       turnEnd(1),
     ]);
-    session.append([
+    await session.append([
       turnStart(2),
       user(randomUUID(), [`Agent ${parent.claim.session_id} sent a message: `, 'And the fans?'], {
         kind: 'agent-message',
@@ -224,14 +224,14 @@ describe('the chat messages of a native conversation', () => {
     expect(store.assistantChat.messages({ chatId, limit: 50 })[1]?.author).toBe(parentTitle);
   });
 
-  it('shows the thinking and tools of a reply in the order they happened', () => {
+  it('shows the thinking and tools of a reply in the order they happened', async () => {
     const { store } = rig.opened;
     watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
-    const parent = parentChat();
+    const parent = await parentChat();
     const session = writer(parent.claim);
     const reply = randomUUID();
 
-    session.append([
+    await session.append([
       turnStart(1),
       user(randomUUID(), ['Check the fans'], { kind: 'user' }),
       assistant(1, '', randomUUID(), 'Look at the fans first.'),
@@ -240,6 +240,11 @@ describe('the chat messages of a native conversation', () => {
       turnEnd(1),
     ]);
 
+    await vi.waitFor(() => {
+      expect(
+        store.assistantChat.message(reply).embeds.some((embed) => embed.kind === 'chat_timeline'),
+      ).toBe(true);
+    });
     const row = store.assistantChat.message(reply);
     const timeline = row.embeds.find((embed) => embed.kind === 'chat_timeline');
     expect(timeline).toMatchObject({

@@ -27,6 +27,7 @@ export interface VoiceKit {
 export interface VoiceWho {
   readonly caller: Caller;
   readonly chatId: string;
+  readonly chatTools: readonly string[] | null;
   readonly place: string | null;
   readonly speaking: HostedSpeaking | null;
   readonly canSee: boolean;
@@ -40,7 +41,7 @@ export interface NoteRequest {
 }
 
 export function voiceHub(kit: VoiceKit, who: () => VoiceWho): ToolHub {
-  const allowed = kit.store.aiChats.chat(who().chatId).tools;
+  const allowed = who().chatTools;
   const hub = kit.tools.restrict((tool) => {
     const now = who();
     return (
@@ -57,8 +58,8 @@ function principalOf(who: VoiceWho): MemoryPrincipal {
   return callPrincipal({ ...who.caller, chatId: who.chatId });
 }
 
-export function callSearchesWeb(kit: VoiceKit, who: VoiceWho): boolean {
-  const allowed = kit.store.aiChats.chat(who.chatId).tools;
+export function callSearchesWeb(who: VoiceWho): boolean {
+  const allowed = who.chatTools;
   return allowed === null || allowed.includes(WEB_SEARCH_TOOL);
 }
 
@@ -85,14 +86,14 @@ export function systemOf(kit: VoiceKit, tools: ToolHub, who: VoiceWho): string {
   );
 }
 
-export function voiceNoteOf(
+export async function voiceNoteOf(
   kit: VoiceKit,
   tools: ToolHub,
   who: VoiceWho,
   request: NoteRequest,
-): string {
+): Promise<string> {
   return conversationNote(
-    noteOf({
+    await noteOf({
       store: kit.store,
       tools,
       memory: kit.memory,
@@ -107,10 +108,15 @@ export function voiceNoteOf(
 
 const ONE_TURN_NOTE: NoteRequest = { recentSpeech: null, known: null, starting: false };
 
-export function turnSystemOf(kit: VoiceKit, tools: ToolHub, who: VoiceWho, bare: boolean): string {
+export async function turnSystemOf(
+  kit: VoiceKit,
+  tools: ToolHub,
+  who: VoiceWho,
+  bare: boolean,
+): Promise<string> {
   return bare
     ? (who.place ?? '')
-    : `${systemOf(kit, tools, who)}\n\n${voiceNoteOf(kit, tools, who, ONE_TURN_NOTE)}`;
+    : `${systemOf(kit, tools, who)}\n\n${await voiceNoteOf(kit, tools, who, ONE_TURN_NOTE)}`;
 }
 
 export function declarationsOf(

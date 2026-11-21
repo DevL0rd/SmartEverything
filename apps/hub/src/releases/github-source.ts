@@ -411,8 +411,8 @@ export async function stageGithubRelease(
   }
 }
 
-export function githubRepositoryOf(layout: HubLayout): GithubRepository {
-  const source = findUpdateSource(layout);
+export async function githubRepositoryOf(layout: HubLayout): Promise<GithubRepository> {
+  const source = await findUpdateSource(layout);
   if (source === undefined)
     refuse('unavailable', 'This hub has no update source configured, so it knows no repository.');
   return { repository: source.repository, branch: source.branch };

@@ -1,6 +1,6 @@
 import type { DriveItem } from '@smarteverything/domain';
 import { PosixError } from '../posix/errors';
-import { inScope, toDrivePath } from './placement-scope';
+import { inScope, toDrivePath } from './sync-paths';
 import { blocksOf } from './server-blocks';
 import { ensureFolders } from './server-commit';
 import {
@@ -8,9 +8,9 @@ import {
   applyMeta,
   createHardLink,
   createSymlink,
-  inodeOfItem,
   type SyncCall,
 } from './server-meta';
+import { inodeOfItem } from './item-meta';
 import {
   acceptOf,
   conflictOf,

@@ -38,7 +38,7 @@ describe('boot after a restart', () => {
     const { second, runId, db, home } = await parkedThenRestarted(
       seq(sleep('long', MINUTE), effect('after')),
     );
-    expect(second.boot()).toStrictEqual({ resumed: 1, cancelled: 0, interrupted: 0 });
+    expect(await second.boot()).toStrictEqual({ resumed: 1, cancelled: 0, interrupted: 0 });
     await second.advance(MINUTE - SECOND);
     expect(home.effects).toStrictEqual([]);
     await second.advance(SECOND);
@@ -59,7 +59,7 @@ describe('boot after a restart', () => {
           held.clock.jumpTo('2026-10-18T12:10:00.000Z');
         },
       );
-      second.boot();
+      await second.boot();
       await second.advance(0);
       expect(home.effects).toHaveLength(ran);
       expect(row(db, runId).status).toBe(status);
@@ -73,7 +73,7 @@ describe('boot after a restart', () => {
     );
     home.watched.length = 0;
     home.level = true;
-    second.boot();
+    await second.boot();
     await second.settle();
     const [watcher] = home.watched;
     expect(watcher?.wait).toMatchObject({ kind: 'condition' });
@@ -89,7 +89,7 @@ describe('boot after a restart', () => {
     expect(deadline).toBe(Date.parse('2026-10-18T12:00:25.000Z'));
     expect(first.requests).toHaveLength(1);
     db.clock.jumpTo('2026-10-18T12:00:20.000Z');
-    expect(second.boot().resumed).toBe(1);
+    expect((await second.boot()).resumed).toBe(1);
     await second.advance(0);
     await second.advance(30 * SECOND);
     expect(row(db, runId).status).toBe('succeeded');
@@ -108,7 +108,7 @@ describe('boot after a restart', () => {
     };
     const running = db.records.create({ ...common, status: 'running' });
     const queued = db.records.create({ ...common, status: 'queued' });
-    second.boot();
+    await second.boot();
     for (const id of [running.id, queued.id]) {
       expect(row(db, id)).toMatchObject({
         status: 'interrupted',
@@ -137,7 +137,7 @@ describe('boot after a restart', () => {
       'insert into automation_run_commands(run_id, command_id) values ($run, $command)',
       { run: run.id, command: command.id },
     );
-    second.boot();
+    await second.boot();
     expect(new CommandsRepository(db.context).byId(command.id)).toMatchObject({
       status: 'failed',
       error: 'The hub stopped before the owned command outcome was known. It was not replayed.',
@@ -152,7 +152,7 @@ describe('boot after a restart', () => {
         held.sql.run('drop the plan', 'delete from automation_plans');
       },
     );
-    expect(second.boot()).toStrictEqual({ resumed: 0, cancelled: 0, interrupted: 1 });
+    expect(await second.boot()).toStrictEqual({ resumed: 0, cancelled: 0, interrupted: 1 });
     const saved = row(db, runId);
     expect(saved.status).toBe('interrupted');
     expect(saved.error).toContain('RunResumeError');
@@ -169,7 +169,7 @@ describe('boot after a restart', () => {
         held.sql.run('damage the state', `update automation_runs set state = '{"runId":1}'`);
       },
     );
-    second.boot();
+    await second.boot();
     const saved = row(db, runId);
     expect(saved.status).toBe('interrupted');
     expect(saved.error).toContain('cannot be read');
@@ -186,7 +186,7 @@ describe('boot after a restart', () => {
     const { second, runId, db, home } = await parkedThenRestarted(body, (held) => {
       held.enabled.clear();
     });
-    expect(second.boot()).toStrictEqual({ resumed: 0, cancelled: 1, interrupted: 0 });
+    expect(await second.boot()).toStrictEqual({ resumed: 0, cancelled: 1, interrupted: 0 });
     await second.settle();
     expect(home.effects).toStrictEqual(['cleanup']);
     expect(row(db, runId).status).toBe('cancelled');
@@ -209,7 +209,7 @@ describe('shutdown', () => {
     expect(row(db, brief).status).toBe('cancelled');
     expect(home.effects).toStrictEqual([]);
     const next = new Hub(db, home);
-    expect(next.boot().resumed).toBe(1);
+    expect((await next.boot()).resumed).toBe(1);
     expect(row(db, waiting).status).toBe('waiting');
     await next.advance(0);
     expect(row(db, waiting).status).toBe('succeeded');
@@ -223,7 +223,7 @@ describe('temporary regions across a restart', () => {
       seq(effect('apply'), sleep('hold', 10 * MINUTE, { durable: false }), effect('revert')),
     );
     expect(row(db, runId)).toMatchObject({ status: 'running', state: null });
-    expect(second.boot()).toStrictEqual({ resumed: 0, cancelled: 0, interrupted: 0 });
+    expect(await second.boot()).toStrictEqual({ resumed: 0, cancelled: 0, interrupted: 0 });
     expect(row(db, runId)).toMatchObject({
       status: 'interrupted',
       error: 'The hub stopped before this run finished. Its actions were not replayed.',

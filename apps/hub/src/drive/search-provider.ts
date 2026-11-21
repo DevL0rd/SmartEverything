@@ -4,11 +4,11 @@ import {
   type DriveHit as ContentHit,
   type DriveItem,
   type DriveQuery,
+  type DriveQueryPage,
   type DriveShortcut,
   type NavTarget,
 } from '@smarteverything/domain';
 import type { DriveActor } from './access';
-import type { DriveSearch } from './search';
 
 export interface DriveHit {
   readonly id: string;
@@ -76,14 +76,20 @@ function shortcutHitOf(shortcut: DriveShortcut): DriveHit[] {
   ];
 }
 
-export type ShortcutHits = (viewer: DriveActor, query: DriveQuery) => DriveShortcut[];
+export type ShortcutHits = (viewer: DriveActor, query: DriveQuery) => Promise<DriveShortcut[]>;
 
-export function driveHits(
-  search: Pick<DriveSearch, 'search'>,
+export type HitSearch = (
+  viewer: DriveActor,
+  query: DriveQuery,
+  limit: number,
+) => Promise<DriveQueryPage>;
+
+export async function driveHits(
+  search: HitSearch,
   viewer: DriveActor,
   { query, limit }: DriveHitInput,
   shortcuts: ShortcutHits,
-): DriveHit[] {
+): Promise<DriveHit[]> {
   const request: DriveQuery = {
     text: query,
     match: 'all',
@@ -96,9 +102,9 @@ export function driveHits(
     sort: { field: 'modifiedAt', direction: 'desc' },
     cursor: null,
   };
-  const page = search.search(viewer, request, limit);
+  const page = await search(viewer, request, limit);
   const snippets = new Map(page.hits.map((hit) => [hit.itemId, hit]));
   const items = page.items.map((item) => hitOf(item, snippets.get(item.id)));
-  const named = shortcuts(viewer, request).flatMap(shortcutHitOf);
+  const named = (await shortcuts(viewer, request)).flatMap(shortcutHitOf);
   return [...items, ...named].slice(0, limit);
 }

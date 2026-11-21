@@ -8,7 +8,6 @@ import type { Clock } from '../../clock';
 import type { ExtensionContext, RunningExtension, ServerExtension } from '../../extensions';
 import { scopesOfClient } from '../../server/person-scope';
 import { ownsSessions } from './access';
-import { isBrushEntry } from './brands';
 import { registerToothbrushAutomation } from './automation';
 import { brushDrivers } from './commands';
 import { entrySettingsOf } from './config';
@@ -16,14 +15,9 @@ import { liveFrameOf, noticeOf } from './live';
 import { brushRoutes } from './routes';
 import { buildWiring, type Wiring } from './wiring';
 
-function brushOf(context: ExtensionContext, deviceId: string): DeviceRow | null {
-  const device = context.store.devices.find(deviceId);
-  const known =
-    device !== undefined &&
-    context.store.localDevices
-      .list()
-      .some((entry) => entry.externalId === device.external_id && isBrushEntry(entry));
-  return known ? device : null;
+function brushOf(wiring: Wiring, deviceId: string): DeviceRow | null {
+  const device = wiring.fleet.device(deviceId);
+  return device !== undefined && wiring.fleet.known(deviceId) !== undefined ? device : null;
 }
 
 function keyframeOf(
@@ -47,20 +41,21 @@ function watchLive(context: ExtensionContext, wiring: Wiring, now: () => Date): 
   return context.live.watches.attach({
     viewers: context.hub.drivers.viewers,
     allowed: (client, deviceId) => {
-      const device = brushOf(context, deviceId);
+      const device = brushOf(wiring, deviceId);
       const scope = scopesOfClient(store, client)?.devices ?? null;
       return device !== null && (scope === null || deviceInScope(scope, device));
     },
     keyframe: (deviceId, client) => {
-      const device = brushOf(context, deviceId);
+      const device = brushOf(wiring, deviceId);
       return device === null ? null : keyframeOf(context, wiring, { device, client }, now);
     },
   });
 }
 
 export function toothbrushesExtension(clock: Clock): ServerExtension {
-  return (context): Promise<RunningExtension> => {
+  return async (context): Promise<RunningExtension> => {
     const wiring = buildWiring(context, clock);
+    const unfollow = await wiring.fleet.start();
     const detach = watchLive(context, wiring, clock.now);
     const drivers = brushDrivers(wiring.commands, (driverContext) => {
       wiring.slot.set(driverContext.sink);
@@ -73,11 +68,10 @@ export function toothbrushesExtension(clock: Clock): ServerExtension {
       ...drivers.map((driver) => context.hub.drivers.registry.register(driver)),
       registerToothbrushAutomation(context.hub.automationKinds),
     ];
-    return Promise.resolve({
+    return {
       endpoints: brushRoutes({
         store: context.store,
         fleet: wiring.fleet,
-        local: context.hub.local,
         bridges: wiring.bridges,
         ingest: wiring.ingest,
         broker: wiring.broker,
@@ -87,6 +81,7 @@ export function toothbrushesExtension(clock: Clock): ServerExtension {
       }),
       routes: [],
       stop: (): Promise<void> => {
+        unfollow();
         detach();
         unregisters.forEach((unregister) => {
           unregister();
@@ -95,6 +90,6 @@ export function toothbrushesExtension(clock: Clock): ServerExtension {
         wiring.broker.stop();
         return Promise.resolve();
       },
-    });
+    };
   };
 }

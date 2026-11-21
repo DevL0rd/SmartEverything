@@ -5,6 +5,7 @@ import { hubLayout } from '../../src/data-layout';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import type { TestStore } from '../support/store';
+import { testStoreHost } from '../support/store-host';
 
 export async function driveTestStore(
   now: () => Date = () => new Date('2026-11-07T00:00:00.000Z'),
@@ -12,12 +13,12 @@ export async function driveTestStore(
   const directory = await mkdtemp(join(tmpdir(), 'hub-drive-'));
   const layout = hubLayout(directory, {});
   const store = openStore({
+    host: testStoreHost(),
     path: join(directory, 'test.db'),
     log: testLogger('store'),
     now,
     systemTimeZone: 'UTC',
-    drivePathOf: (scope, ownerProfileId) =>
-      scope === 'home' ? layout.home.drive : layout.person(String(ownerProfileId)).drive,
+    driveFolders: layout.drives,
   });
   return {
     store,

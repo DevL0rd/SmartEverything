@@ -12,6 +12,7 @@ import {
   OpenRouterVision,
   readVisionAnswer,
   VISION_PROMPT,
+  visionBody,
   type VisionRequest,
 } from '../../src/openrouter/vision';
 
@@ -60,15 +61,16 @@ function clientOf(
   key: string | null = 'key',
 ): OpenRouterClient {
   const transport: typeof fetch = async (input, init) => {
-    sent.push({ url: urlOf(input), body: bodyOf(init) });
+    sent.push({ url: urlOf(input), body: await bodyOf(init) });
     return answer();
   };
   return new OpenRouterClient({ fetch: transport, key: () => key });
 }
 
 function visionOf(client: OpenRouterClient, limit?: number): OpenRouterVision {
-  const meter = (entry: UsageEntry): void => {
+  const meter = (entry: UsageEntry): Promise<void> => {
     metered.push(entry);
+    return Promise.resolve();
   };
   return limit === undefined
     ? new OpenRouterVision(client, scratch, meter)
@@ -244,5 +246,23 @@ describe('reading the answer', () => {
       text: null,
       pets: [],
     });
+  });
+});
+
+describe('the request body', () => {
+  it('encodes media across many base64 slices exactly like one whole encoding', async () => {
+    const data = randomBytes(2 * 1024 * 1024 + 7);
+    const encoded = await visionBody('model/a', { mime: 'image/jpeg', data });
+    const body = await bodyOf({ body: encoded.blob });
+    const part = IMAGE_PART.parse(contentOf(body)[1]);
+
+    expect(part.image_url.url).toBe(`data:image/jpeg;base64,${data.toString('base64')}`);
+    expect(body.model).toBe('model/a');
+  });
+
+  it('refuses a model name that carries the media marker', async () => {
+    await expect(
+      visionBody('smarteverything-media-bytes', { mime: 'image/jpeg', data: randomBytes(4) }),
+    ).rejects.toThrow(OpenRouterError);
   });
 });

@@ -61,7 +61,7 @@ it('keeps the same port and URL after a restart and kills it on revoke', async (
   const port = await freePort();
   const first = create(port);
   await first.start();
-  const url = first.openMcp('claude', ADDRESS, TOKEN);
+  const url = await first.openMcp('claude', ADDRESS, TOKEN);
   expect(url).toMatch(
     new RegExp(`^http://127\\.0\\.0\\.1:${String(port)}/guest/[0-9a-f]{64}/mcp$`),
   );
@@ -69,14 +69,14 @@ it('keeps the same port and URL after a restart and kills it on revoke', async (
   first.close();
   const second = create(port);
   await second.start();
-  expect(second.openMcp('claude', ADDRESS, TOKEN)).toBe(url);
+  expect(await second.openMcp('claude', ADDRESS, TOKEN)).toBe(url);
   const mode = (await stat(join(directory, 'mcp-claude.grant-id'))).mode & 0o777;
   expect(mode).toBe(0o600);
-  second.revokeMcp('claude');
+  await second.revokeMcp('claude');
   await expect(readFile(join(directory, 'mcp-claude.grant-id'), 'utf8')).rejects.toThrow();
   const response = await fetch(url);
   expect(response.status).toBe(409);
-  expect(second.openMcp('claude', ADDRESS, TOKEN)).not.toBe(url);
+  expect(await second.openMcp('claude', ADDRESS, TOKEN)).not.toBe(url);
 });
 
 it('fails the start and logs the port and code when the port is taken', async () => {
@@ -112,4 +112,16 @@ it('fails the start and logs the port and code when the port is taken', async ()
   expect(record).toBeDefined();
   expect(JSON.stringify(record)).toContain('EADDRINUSE');
   expect(JSON.stringify(record)).toContain(String(port));
+});
+
+it('gives concurrent opens of one runtime a single persisted grant', async () => {
+  const broker = create(await freePort());
+  await broker.start();
+  const [first, second] = await Promise.all([
+    broker.openMcp('claude', ADDRESS, TOKEN),
+    broker.openMcp('claude', ADDRESS, TOKEN),
+  ]);
+  expect(second).toBe(first);
+  const stored = (await readFile(join(directory, 'mcp-claude.grant-id'), 'utf8')).trim();
+  expect(first).toContain(`/guest/${stored}/mcp`);
 });

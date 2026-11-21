@@ -79,7 +79,7 @@ const asMember = (): DriveActor => ({ profileId: memberProfile });
 const memberVia = (via: ShortcutActor['via']): ShortcutActor => ({ ...asMember(), via });
 
 function shortcuts(): DriveShortcuts {
-  return new DriveShortcuts({ store: opened.store, context: opened.store.context, read: service });
+  return new DriveShortcuts({ store: opened.store });
 }
 
 function kinds(entries: readonly DriveRecentEntry[]): string[] {
@@ -109,13 +109,13 @@ afterEach(async () => {
 });
 
 describe('shortcuts in Recent', () => {
-  it('lists a new shortcut under everything and added with who made it and how', () => {
-    const made = shortcuts().create(memberVia('ai'), {
+  it('lists a new shortcut under everything and added with who made it and how', async () => {
+    const made = await shortcuts().create(memberVia('ai'), {
       targetItemId: FILE,
       name: 'Readme link',
       place: { kind: 'drive', rootId: MEMBER_ROOT },
     });
-    const everything = service.readRecent(asMember(), { filter: 'everything' }).entries;
+    const everything = (await service.readRecent(asMember(), { filter: 'everything' })).entries;
     expect(everything).toEqual([
       {
         kind: 'shortcut',
@@ -126,47 +126,43 @@ describe('shortcuts in Recent', () => {
         deviceId: null,
       },
     ]);
-    expect(kinds(service.readRecent(asMember(), { filter: 'added' }).entries)).toEqual([
+    expect(kinds((await service.readRecent(asMember(), { filter: 'added' })).entries)).toEqual([
       'shortcut',
     ]);
-    expect(service.readRecent(asMember(), { filter: 'opened' }).entries).toEqual([]);
-    expect(service.readRecent(asMember(), { filter: 'changed' }).entries).toEqual([]);
-    expect(service.readRecent(asOwner(), { filter: 'everything' }).entries).toEqual([]);
+    expect((await service.readRecent(asMember(), { filter: 'opened' })).entries).toEqual([]);
+    expect((await service.readRecent(asMember(), { filter: 'changed' })).entries).toEqual([]);
+    expect((await service.readRecent(asOwner(), { filter: 'everything' })).entries).toEqual([]);
   });
 
-  it('leaves out a shortcut whose target the person can no longer open', () => {
+  it('leaves out a shortcut whose target the person can no longer open', async () => {
     const grant = opened.store.driveGrants.set(
       { itemId: OTHER_FILE, profileId: memberProfile, role: 'view', expiresAt: null },
       otherProfile,
     );
-    shortcuts().create(memberVia('app'), {
+    await shortcuts().create(memberVia('app'), {
       targetItemId: OTHER_FILE,
       name: 'Shared note',
       place: { kind: 'drive', rootId: MEMBER_ROOT },
     });
-    expect(kinds(service.readRecent(asMember(), { filter: 'added' }).entries)).toEqual([
+    expect(kinds((await service.readRecent(asMember(), { filter: 'added' })).entries)).toEqual([
       'shortcut',
     ]);
     opened.store.driveGrants.remove(grant.id);
-    expect(service.readRecent(asMember(), { filter: 'added' }).entries).toEqual([]);
+    expect((await service.readRecent(asMember(), { filter: 'added' })).entries).toEqual([]);
   });
 });
 
 describe('opened files', () => {
-  it('records an open of a file the person can read and refuses folders and hidden files', () => {
-    service.recordOpen(asMember(), FILE, '2026-11-08T00:00:00.000Z');
+  it('records an open of a file the person can read and refuses folders and hidden files', async () => {
+    await service.recordOpen(asMember(), FILE, '2026-11-08T00:00:00.000Z');
     expect(
-      service
-        .readRecent(asMember(), { filter: 'opened' })
-        .entries.map((entry) => (entry.kind === 'opened' ? [entry.item.id, entry.at] : [])),
+      (await service.readRecent(asMember(), { filter: 'opened' })).entries.map((entry) =>
+        entry.kind === 'opened' ? [entry.item.id, entry.at] : [],
+      ),
     ).toEqual([[FILE, '2026-11-08T00:00:00.000Z']]);
-    expect(() => {
-      service.recordOpen(asMember(), FOLDER, NOW);
-    }).toThrow(/folder/);
-    expect(() => {
-      service.recordOpen(asMember(), OTHER_FILE, NOW);
-    }).toThrow(/no such/);
-    expect(service.readRecent(asOwner(), { filter: 'opened' }).entries).toEqual([]);
+    await expect(service.recordOpen(asMember(), FOLDER, NOW)).rejects.toThrow(/folder/);
+    await expect(service.recordOpen(asMember(), OTHER_FILE, NOW)).rejects.toThrow(/no such/);
+    expect((await service.readRecent(asOwner(), { filter: 'opened' })).entries).toEqual([]);
   });
 
   it('records an open when one file is prepared for download', async () => {
@@ -179,25 +175,25 @@ describe('opened files', () => {
     });
     await downloads.prepare(asMember(), [FILE]);
     expect(
-      service
-        .readRecent(asMember(), { filter: 'opened' })
-        .entries.map((entry) => (entry.kind === 'opened' ? entry.at : null)),
+      (await service.readRecent(asMember(), { filter: 'opened' })).entries.map((entry) =>
+        entry.kind === 'opened' ? entry.at : null,
+      ),
     ).toEqual(['2026-11-09T00:00:00.000Z']);
   });
 });
 
 describe('the Locked folder by id', () => {
-  it('refuses its items unless the call opened the Locked folder', () => {
-    expect(() => service.readItem(asMember(), LOCKED_FILE)).toThrow(/no such/);
-    expect(() => service.readItem(asMember(), LOCKED)).toThrow(/no such/);
-    expect(service.readItem({ ...asMember(), lockedFolder: 'open' }, LOCKED_FILE).id).toBe(
+  it('refuses its items unless the call opened the Locked folder', async () => {
+    await expect(service.readItem(asMember(), LOCKED_FILE)).rejects.toThrow(/no such/);
+    await expect(service.readItem(asMember(), LOCKED)).rejects.toThrow(/no such/);
+    expect((await service.readItem({ ...asMember(), lockedFolder: 'open' }, LOCKED_FILE)).id).toBe(
       LOCKED_FILE,
     );
   });
 });
 
 describe('file request uploads in Activity', () => {
-  it('names the outsider who uploaded the file and nobody on later changes', () => {
+  it('names the outsider who uploaded the file and nobody on later changes', async () => {
     const { store } = opened;
     const request = store.driveFileRequests.create({
       folderItemId: FOLDER,
@@ -226,7 +222,7 @@ describe('file request uploads in Activity', () => {
     };
     append('create', 'share', 1);
     append('update', 'app', 2);
-    const page = service.readActivity(asMember(), { from: '2026-10-01T00:00:00Z' });
+    const page = await service.readActivity(asMember(), { from: '2026-10-01T00:00:00Z' });
     expect(page.items.map((entry) => [entry.row.op, entry.outsiderName])).toEqual([
       ['update', null],
       ['create', 'Kim'],

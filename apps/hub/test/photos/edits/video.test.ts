@@ -147,7 +147,7 @@ describe('running ffmpeg', () => {
 describe('editing a video', () => {
   it('trims frame exact into a new version and keeps the original as the earlier version', async () => {
     const item = await rig.seed('Photos/clip.mp4', clip);
-    const { jobId } = service.start(rig.owner, item.id, {
+    const { jobId } = await service.start(rig.owner, item.id, {
       trim: { startMs: 500, endMs: 1500 },
       stabilize: false,
       mode: 'version',
@@ -168,7 +168,7 @@ describe('editing a video', () => {
 
   it('saves a trimmed copy and leaves the original alone', async () => {
     const item = await rig.seed('Photos/clip.mp4', clip);
-    const { jobId } = service.start(rig.owner, item.id, {
+    const { jobId } = await service.start(rig.owner, item.id, {
       trim: { startMs: 1000, endMs: 2000 },
       stabilize: false,
       mode: 'copy',
@@ -188,7 +188,7 @@ describe('editing a video', () => {
 
   it('stabilizes with two passes, reporting progress across both, and keeps the length', async () => {
     const item = await rig.seed('Photos/clip.mp4', clip);
-    const { jobId } = service.start(rig.owner, item.id, {
+    const { jobId } = await service.start(rig.owner, item.id, {
       trim: null,
       stabilize: true,
       mode: 'copy',
@@ -203,7 +203,7 @@ describe('editing a video', () => {
 
   it('trims and stabilizes together', async () => {
     const item = await rig.seed('Photos/clip.mp4', clip);
-    const { jobId } = service.start(rig.owner, item.id, {
+    const { jobId } = await service.start(rig.owner, item.id, {
       trim: { startMs: 0, endMs: 1000 },
       stabilize: true,
       mode: 'copy',
@@ -217,7 +217,7 @@ describe('editing a video', () => {
   it('fails the job with the reason and leaves the file when the video cannot be read', async () => {
     const broken = Buffer.from('this is not a video file at all');
     const item = await rig.seed('Photos/broken.mp4', broken);
-    const { jobId } = service.start(rig.owner, item.id, {
+    const { jobId } = await service.start(rig.owner, item.id, {
       trim: { startMs: 0, endMs: 500 },
       stabilize: false,
       mode: 'copy',
@@ -230,7 +230,7 @@ describe('editing a video', () => {
 
   it('refuses a bad trim, a version of an unsupported container and a stranger', async () => {
     const item = await rig.seed('Photos/clip.mp4', clip);
-    const late = service.start(rig.owner, item.id, {
+    const late = await service.start(rig.owner, item.id, {
       trim: { startMs: 5000, endMs: 6000 },
       stabilize: false,
       mode: 'copy',
@@ -239,25 +239,25 @@ describe('editing a video', () => {
       state: 'failed',
       error: 'The trim starts after the video ends.',
     });
-    const whole = service.start(rig.owner, item.id, {
+    const whole = await service.start(rig.owner, item.id, {
       trim: { startMs: 0, endMs: 99_000 },
       stabilize: false,
       mode: 'copy',
     });
     expect((await finished(whole.jobId)).job.error).toBe('The trim keeps the whole video.');
     const odd = await rig.seed('Photos/odd.avi', clip);
-    expect(() =>
+    await expect(
       service.start(rig.owner, odd.id, {
         trim: { startMs: 0, endMs: 500 },
         stabilize: false,
         mode: 'version',
       }),
-    ).toThrow('MP4 copy');
+    ).rejects.toThrow('MP4 copy');
     const photo = await rig.seed('Photos/a.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
-    expect(() =>
+    await expect(
       service.start(rig.owner, photo.id, { trim: null, stabilize: true, mode: 'copy' }),
-    ).toThrow('Only videos');
-    const started = service.start(rig.owner, item.id, {
+    ).rejects.toThrow('Only videos');
+    const started = await service.start(rig.owner, item.id, {
       trim: { startMs: 0, endMs: 500 },
       stabilize: false,
       mode: 'copy',

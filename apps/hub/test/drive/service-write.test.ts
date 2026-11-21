@@ -7,14 +7,14 @@ import {
   type DriveChange,
   type DriveConflict,
   type DriveBackupReport,
-  type DriveConflictResolution,
   type DriveItem,
   type DriveDataSpace,
   type DriveScrubState,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DriveAlbumsService } from '../../src/drive/albums';
-import { commitContent, folderDraft, identityOf, isoOf, recordItem } from '../../src/drive/changes';
+import { DriveAlbums } from '../../src/drive/service-write-albums';
+import { commitContent, folderDraft, recordItem } from '../../src/drive/changes';
+import { identityOf, isoOf } from '../../src/drive/change-rows';
 import type { ConflictEnv } from '../../src/drive/conflicts';
 import { DriveReadService } from '../../src/drive/service-read';
 import { ensureDrives, personalDrive, sharedDrive } from '../../src/drive/spaces';
@@ -65,17 +65,7 @@ function changeEnv(): ConflictEnv {
       rearm: (): void => undefined,
     },
     conflicts: {
-      insert: (conflict): void => {
-        conflictRows.set(conflict.id, conflict);
-      },
       find: (id) => conflictRows.get(id),
-      resolve: (id, resolution: DriveConflictResolution, at): DriveConflict => {
-        const found = conflictRows.get(id);
-        if (found === undefined) throw new Error('missing');
-        const resolved = { ...found, resolution, resolvedAt: at };
-        conflictRows.set(id, resolved);
-        return resolved;
-      },
     },
   };
 }
@@ -161,16 +151,7 @@ beforeEach(async () => {
     env,
     store: opened.store,
     read,
-    albums: new DriveAlbumsService({
-      albums: opened.store.driveAlbums,
-      items: opened.store.driveItems,
-      roots: opened.store.driveRoots,
-      grants: opened.store.driveGrants,
-      runner: { rows: (): [] => [], count: (): number => 0 },
-      newId: randomUUID,
-      now: (): string => NOW.toISOString(),
-      timeZone: 'UTC',
-    }),
+    albums: new DriveAlbums(opened.store),
     shares: new DriveShares({
       store: opened.store,
       origin: (): { url: string; public: boolean } => ({
@@ -180,12 +161,15 @@ beforeEach(async () => {
       now: (): Date => NOW,
     }),
     scrub: {
-      start: (): DriveScrubState => {
+      start: (): Promise<DriveScrubState> => {
         scrubStarts += 1;
-        return { state: 'idle', lastFinishedAt: null, corrupt: 0 };
+        return Promise.resolve({ state: 'idle', lastFinishedAt: null, corrupt: 0 });
       },
     },
-    backups: { report: (input): DriveBackupReport => opened.store.driveBackups.record(input) },
+    backups: {
+      report: (input): Promise<DriveBackupReport> =>
+        opened.store.host.write('driveBackupReport', input),
+    },
     guard: {
       status: (profileId): DriveQuotaStatus => opened.store.driveQuotas.status(profileId),
       space: (): Promise<Pick<DriveDataSpace, 'totalBytes' | 'freeBytes'>> =>
@@ -203,40 +187,40 @@ afterEach(async () => {
 });
 
 describe('drive settings', () => {
-  it('lets a person change their own drive and rescans when the walk changes', () => {
-    const updated = service.updateRoot(member(), theirs.id, { skipPatterns: ['*.tmp'] });
+  it('lets a person change their own drive and rescans when the walk changes', async () => {
+    const updated = await service.updateRoot(member(), theirs.id, { skipPatterns: ['*.tmp'] });
     expect(updated).toMatchObject({ id: theirs.id, skipPatterns: ['*.tmp'] });
     expect('path' in updated).toBe(false);
     expect(scans).toEqual([theirs.id]);
-    service.updateRoot(member(), theirs.id, { versions: false });
+    await service.updateRoot(member(), theirs.id, { versions: false });
     expect(opened.store.driveRoots.byId(theirs.id).versions).toBe(false);
     expect(scans).toEqual([theirs.id]);
   });
 
-  it('lets only the owner change or scan the Shared Drive', () => {
-    expect(() => service.updateRoot(member(), shared.id, { includeHidden: true })).toThrow(
+  it('lets only the owner change or scan the Shared Drive', async () => {
+    await expect(service.updateRoot(member(), shared.id, { includeHidden: true })).rejects.toThrow(
       expect.objectContaining({ code: 'forbidden' }),
     );
-    expect(() => {
-      service.scanRoot(member(), shared.id);
-    }).toThrow(expect.objectContaining({ code: 'forbidden' }));
-    expect(service.updateRoot(owner(), shared.id, { includeHidden: true }).includeHidden).toBe(
-      true,
+    await expect(service.scanRoot(member(), shared.id)).rejects.toThrow(
+      expect.objectContaining({ code: 'forbidden' }),
     );
-    service.scanRoot(owner(), shared.id);
+    expect(
+      (await service.updateRoot(owner(), shared.id, { includeHidden: true })).includeHidden,
+    ).toBe(true);
+    await service.scanRoot(owner(), shared.id);
     expect(scans).toEqual([shared.id, shared.id]);
   });
 
-  it('hides a person’s drive from everyone else, the owner included', () => {
-    expect(() => service.updateRoot(owner(), theirs.id, { versions: false })).toThrow(
+  it('hides a person’s drive from everyone else, the owner included', async () => {
+    await expect(service.updateRoot(owner(), theirs.id, { versions: false })).rejects.toThrow(
       expect.objectContaining({ code: 'not_found' }),
     );
-    expect(() => {
-      service.scanRoot(owner(), theirs.id);
-    }).toThrow(expect.objectContaining({ code: 'not_found' }));
-    expect(() => {
-      service.scanRoot(member(), mine.id);
-    }).toThrow(expect.objectContaining({ code: 'not_found' }));
+    await expect(service.scanRoot(owner(), theirs.id)).rejects.toThrow(
+      expect.objectContaining({ code: 'not_found' }),
+    );
+    await expect(service.scanRoot(member(), mine.id)).rejects.toThrow(
+      expect.objectContaining({ code: 'not_found' }),
+    );
     expect(scans).toEqual([]);
   });
 });
@@ -454,7 +438,7 @@ describe('changes in the tree', () => {
   it('adds files to a manual album and takes them out again', async () => {
     const root = shared;
     const file = await seedFile(root, 'a.jpg', 'a');
-    const album = service.createAlbum(owner(), {
+    const album = await service.createAlbum(owner(), {
       kind: 'manual',
       title: 'Trip',
       surface: 'drive',
@@ -472,9 +456,9 @@ describe('changes in the tree', () => {
       change({ action: 'album_remove', albumId: album.id, itemIds: [file.id] }),
     );
     expect(opened.store.driveAlbums.byId(album.id).itemCount).toBe(0);
-    const renamed = service.updateAlbum(owner(), album.id, { title: 'Holiday' });
+    const renamed = await service.updateAlbum(owner(), album.id, { title: 'Holiday' });
     expect(renamed.title).toBe('Holiday');
-    service.removeAlbum(owner(), album.id);
+    await service.removeAlbum(owner(), album.id);
     expect(opened.store.driveAlbums.find(album.id)).toBeUndefined();
   });
 });
@@ -509,28 +493,30 @@ describe('versions, quotas, settings, shares and conflicts', () => {
     expect(await textOf(root, 'a.txt')).toBe('two!');
   });
 
-  it('lets only the owner set quotas, settings, scrub and backup reports', () => {
-    expect(() => {
-      service.setQuota(member(), { profileId: memberId, bytes: 5 });
-    }).toThrow(expect.objectContaining({ code: 'forbidden' }));
+  it('lets only the owner set quotas, settings, scrub and backup reports', async () => {
+    await expect(service.setQuota(member(), { profileId: memberId, bytes: 5 })).rejects.toThrow(
+      expect.objectContaining({ code: 'forbidden' }),
+    );
     expect(() => service.updateSettings(member(), { membersMayShare: true })).toThrow(
       expect.objectContaining({ code: 'forbidden' }),
     );
-    expect(() => service.startScrub(member())).toThrow(
+    await expect(service.startScrub(member())).rejects.toThrow(
       expect.objectContaining({ code: 'forbidden' }),
     );
-    expect(() => service.reportBackup(member(), { reporter: 'x', bytes: 1, ok: true })).toThrow(
-      expect.objectContaining({ code: 'forbidden' }),
-    );
+    await expect(
+      service.reportBackup(member(), { reporter: 'x', bytes: 1, ok: true }),
+    ).rejects.toThrow(expect.objectContaining({ code: 'forbidden' }));
     expect(scrubStarts).toBe(0);
-    service.setQuota(owner(), { profileId: memberId, bytes: 5 });
+    await service.setQuota(owner(), { profileId: memberId, bytes: 5 });
     expect(opened.store.driveQuotas.find(memberId)?.bytes).toBe(5);
-    service.setQuota(owner(), { profileId: memberId, bytes: null });
+    await service.setQuota(owner(), { profileId: memberId, bytes: null });
     expect(opened.store.driveQuotas.find(memberId)).toBeUndefined();
     expect(service.updateSettings(owner(), { membersMayShare: true }).membersMayShare).toBe(true);
-    expect(service.startScrub(owner()).state).toBe('idle');
+    expect((await service.startScrub(owner())).state).toBe('idle');
     expect(scrubStarts).toBe(1);
-    expect(service.reportBackup(owner(), { reporter: 'job', bytes: 9, ok: true })).toMatchObject({
+    expect(
+      await service.reportBackup(owner(), { reporter: 'job', bytes: 9, ok: true }),
+    ).toMatchObject({
       reporter: 'job',
       ok: true,
     });
@@ -543,7 +529,7 @@ describe('versions, quotas, settings, shares and conflicts', () => {
     await expect(service.createShare(member(), input)).rejects.toMatchObject({ code: 'forbidden' });
     service.updateSettings(owner(), { membersMayShare: true });
     const created = await service.createShare(member(), input);
-    expect(service.revokeShare(owner(), created.share.id).revokedAt).not.toBeNull();
+    expect((await service.revokeShare(owner(), created.share.id)).revokedAt).not.toBeNull();
   });
 
   it('settles a conflict inside the caller’s reach only', async () => {
@@ -553,7 +539,7 @@ describe('versions, quotas, settings, shares and conflicts', () => {
       id: randomUUID(),
       rootId: root.id,
       itemId: file.id,
-      conflictItemId: randomUUID(),
+      conflictItemId: file.id,
       relPath: 'a.txt',
       conflictRelPath: 'a.sync-conflict.txt',
       hubRev: 1,
@@ -565,6 +551,7 @@ describe('versions, quotas, settings, shares and conflicts', () => {
       resolution: null,
     };
     conflictRows.set(conflict.id, conflict);
+    opened.store.driveConflicts.insert(conflict);
     await expect(
       service.resolveConflict(member(), { conflictId: conflict.id, resolution: 'keep_both' }),
     ).rejects.toMatchObject({ code: 'not_found' });

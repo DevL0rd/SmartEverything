@@ -27,8 +27,8 @@ export interface Caller {
   readonly pluginId?: string;
 }
 
-export function callerOf(store: Store, client: ClientRow, device: string): Caller {
-  const profile = store.profiles.activeOf(client.id);
+export async function callerOf(store: Store, client: ClientRow, device: string): Promise<Caller> {
+  const profile = await store.host.call('profiles', 'activeOf', client.id);
   return {
     clientId: client.id,
     role: client.role === 'owner' ? 'owner' : 'member',
@@ -48,12 +48,13 @@ export interface HostedCaller {
   readonly pluginId?: string;
 }
 
-export function hostedCallerOf(store: Store, hosted: HostedCaller): Caller {
+export async function hostedCallerOf(store: Store, hosted: HostedCaller): Promise<Caller> {
+  const profile = await store.host.call('profiles', 'byId', hosted.profileId);
   return {
     clientId: null,
     role: hosted.role,
     profileId: hosted.profileId,
-    person: store.profiles.byId(hosted.profileId).name,
+    person: profile.name,
     device: hosted.label,
     machine: hosted.machine ?? null,
     ...(hosted.requester === undefined ? {} : { requester: hosted.requester }),
@@ -62,28 +63,34 @@ export function hostedCallerOf(store: Store, hosted: HostedCaller): Caller {
 }
 
 export function assistantNames(store: Store): string[] {
-  const settings = store.assistantChat.settings();
+  const settings = store.live.home.assistant.read();
   return [assistantLabel(settings), ...settings.aliases];
 }
 
 const OMITTED =
   'Earlier messages of this chat are not shown here; read them with chat_read view messages when they matter.';
 
-function linesOf(store: Store, row: AssistantMessageRow): string[] {
+async function linesOf(store: Store, row: AssistantMessageRow): Promise<string[]> {
   if (row.kind === 'call') {
     return row.text.split('\n').filter((line) => line !== '');
   }
-  const files = row.attachments.map((file) =>
-    attachmentNote(file, store.assistantChat.attachment(file.id).transcript, { pending: false }),
+  const files = await Promise.all(
+    row.attachments.map(async (file) =>
+      attachmentNote(
+        file,
+        (await store.host.call('assistantChat', 'attachment', file.id)).transcript,
+        { pending: false },
+      ),
+    ),
   );
   const text = [row.text, ...files].filter((part) => part !== '').join(' ');
   return text === '' ? [] : [transcriptLine({ ...row, text })];
 }
 
-export function historyOf(store: Store, chatId: string): string[] {
-  const budget = historyCharacters(store.assistantChat.settings());
+export async function historyOf(store: Store, chatId: string): Promise<string[]> {
+  const budget = historyCharacters(store.live.home.assistant.read());
   const { summary, rows } = chatContext(store, chatId);
-  const lines = rows.flatMap((row) => linesOf(store, row));
+  const lines = (await Promise.all(rows.map((row) => linesOf(store, row)))).flat();
   const kept = newest(lines, budget);
   const summaryLine =
     summary === null ? [] : [`Summary of the earlier part: ${summary.slice(0, budget / 2)}`];
@@ -131,10 +138,11 @@ export interface NoteInput {
   readonly now: Date;
 }
 
-function contextOf(input: NoteInput): PromptFacts {
+async function contextOf(input: NoteInput): Promise<PromptFacts> {
   const { store, caller } = input;
+  const chat = await store.host.call('aiChats', 'chat', input.chatId);
   return {
-    ...facts(store, store.aiChats.chat(input.chatId), input.tools, {
+    ...facts(store, chat, input.tools, {
       now: input.now,
       clientId: null,
     }),
@@ -144,11 +152,11 @@ function contextOf(input: NoteInput): PromptFacts {
   };
 }
 
-export function noteOf(input: NoteInput): VoiceNote {
+export async function noteOf(input: NoteInput): Promise<VoiceNote> {
   const { store, caller, known } = input;
-  const history = historyOf(store, input.chatId);
+  const history = await historyOf(store, input.chatId);
   return {
-    context: contextOf(input),
+    context: await contextOf(input),
     screenRule: caller.machine === null ? null : ownScreenRule(caller.machine),
     place: input.place,
     recentSpeech: input.recentSpeech,

@@ -3,7 +3,11 @@ import { dirname, join } from 'node:path';
 import type { DriveItem } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { fsCode } from '../../../fs-code';
-import type { DriveFolderIcon } from '../../../store/repositories/drive-folder-icons';
+import type {
+  DriveFolderIcon,
+  DriveFolderIconInput,
+} from '../../../store/repositories/drive-folder-icons';
+import type { DriveChildrenQuery, DriveItemWindow } from '../../../store/repositories/drive-items';
 import type { StoredDrive } from '../../../store/repositories/drive-roots';
 import type { Store } from '../../../store/store';
 import { detectFolderIcon, modifiedMsOf } from './detect';
@@ -12,10 +16,30 @@ const WINDOW_ROWS = 1000;
 
 type Folder = Extract<DriveItem, { readonly kind: 'folder' }>;
 
+export interface FolderIconStore {
+  readonly children: (query: DriveChildrenQuery) => Promise<DriveItemWindow>;
+  readonly find: (folderItemId: string) => Promise<DriveFolderIcon | undefined>;
+  readonly set: (input: DriveFolderIconInput) => Promise<boolean>;
+  readonly clear: (folderItemId: string) => Promise<boolean>;
+  readonly latestSeq: () => Promise<number>;
+}
+
 export interface FolderIconEnvironment {
-  readonly store: Pick<Store, 'driveItems' | 'driveFolderIcons' | 'driveFeed' | 'feed'>;
+  readonly icons: FolderIconStore;
+  readonly feed: Pick<Store['feed'], 'notice'>;
   readonly derivedDirectory: (itemId: string) => string;
   readonly log: Logger;
+}
+
+export function hostFolderIcons(store: Pick<Store, 'host'>): FolderIconStore {
+  const { host } = store;
+  return {
+    children: (query) => host.call('driveItems', 'children', query),
+    find: (folderItemId) => host.call('driveFolderIcons', 'find', folderItemId),
+    set: (input) => host.call('driveFolderIcons', 'set', input),
+    clear: (folderItemId) => host.call('driveFolderIcons', 'clear', folderItemId),
+    latestSeq: () => host.call('driveFeed', 'latestSeq'),
+  };
 }
 
 export function folderIconFile(
@@ -58,7 +82,7 @@ export class FolderIconRefresher {
     for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
       let after: string | null = null;
       do {
-        const window = this.env.store.driveItems.children({
+        const window = await this.env.icons.children({
           rootId: root.id,
           parentId: parent,
           after,
@@ -77,7 +101,7 @@ export class FolderIconRefresher {
   }
 
   async refreshFolder(root: StoredDrive, folder: Folder): Promise<void> {
-    const existing = this.env.store.driveFolderIcons.find(folder.id);
+    const existing = await this.env.icons.find(folder.id);
     if (
       this.checked.get(folder.id) === folder.modifiedAt &&
       (await this.unchanged(root, existing))
@@ -91,7 +115,7 @@ export class FolderIconRefresher {
       return;
     }
     await writeIcon(folderIconFile(this.env, folder.id, found.sha256), found.png);
-    const changed = this.env.store.driveFolderIcons.set({
+    const changed = await this.env.icons.set({
       folderItemId: folder.id,
       source: found.source,
       sourceRelPath: found.relPath,
@@ -102,7 +126,7 @@ export class FolderIconRefresher {
     if (existing !== undefined && existing.imageSha256 !== found.sha256) {
       await removeFile(folderIconFile(this.env, folder.id, existing.imageSha256));
     }
-    if (changed) this.announce(root, folder);
+    if (changed) await this.announce(root, folder);
   }
 
   private async unchanged(
@@ -114,19 +138,20 @@ export class FolderIconRefresher {
   }
 
   private async clear(root: StoredDrive, folder: Folder, existing: DriveFolderIcon): Promise<void> {
-    this.env.store.driveFolderIcons.clear(folder.id);
+    await this.env.icons.clear(folder.id);
     await removeFile(folderIconFile(this.env, folder.id, existing.imageSha256));
-    this.announce(root, folder);
+    await this.announce(root, folder);
   }
 
-  private announce(root: StoredDrive, folder: Folder): void {
-    this.env.store.feed.notice({
+  private async announce(root: StoredDrive, folder: Folder): Promise<void> {
+    const cursor = await this.env.icons.latestSeq();
+    this.env.feed.notice({
       type: 'drive_changed',
       rootIds: [root.id],
       folderIds: folder.parentId === null ? [] : [folder.parentId],
       albumIds: [],
       months: [],
-      cursor: this.env.store.driveFeed.latestSeq(),
+      cursor,
     });
   }
 }

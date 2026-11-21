@@ -356,6 +356,9 @@ export const CHAT_STREAM_NOTICE = z.strictObject({
 export type ChatStreamNotice = z.infer<typeof CHAT_STREAM_NOTICE>;
 
 export const AI_CHAT_NEW = z.strictObject({
+  id: ID.optional().describe(
+    'Id the client generated for the new chat; repeating a create with the same id returns the chat already made',
+  ),
   title: z.string().trim().min(1).max(AI_CHAT_TITLE_MAX).optional(),
   icon: z.string().trim().min(1).max(40).optional(),
   engine: ENGINE_REQUEST.optional(),

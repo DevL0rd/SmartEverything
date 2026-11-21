@@ -34,7 +34,7 @@ import {
 } from './catalogue-query';
 import { fetchOpenRouterModels, googleRows } from './catalogue-sync';
 import type { OpenRouterClient } from './client';
-import type { AiModelsRepository } from './models-repository';
+import type { AiModelsState } from '../store/ai-models-state';
 import { modelSearchPage } from './model-search-query';
 import { syncModelSearch } from './model-search-sync';
 import { messageOf } from '@smarteverything/logging';
@@ -44,7 +44,7 @@ const SYNC_HOUR = 4;
 const SYNC_MINUTE = 10;
 
 export interface CatalogueOptions {
-  readonly models: AiModelsRepository;
+  readonly models: AiModelsState;
   readonly client: OpenRouterClient;
   readonly clock: Clock;
   readonly log: Logger;
@@ -79,8 +79,9 @@ export class Catalogue {
 
   constructor(private readonly options: CatalogueOptions) {}
 
-  start(): void {
-    this.writeGoogle(this.settings().google_prices);
+  async start(): Promise<void> {
+    await this.options.models.load();
+    await this.writeGoogle(this.settings().google_prices);
     const synced = this.options.models.syncState().synced_at;
     const stale = synced === null || this.now() - Date.parse(synced) > DAY_MS;
     if (stale) {
@@ -172,8 +173,8 @@ export class Catalogue {
     return row?.gone_at === null ? row : null;
   }
 
-  detail(id: string): AiModelDetail {
-    return { model: this.model(id), prices: this.options.models.prices(id) };
+  async detail(id: string): Promise<AiModelDetail> {
+    return { model: this.model(id), prices: await this.options.models.prices(id) };
   }
 
   model(id: string): AiModelRow {
@@ -223,7 +224,7 @@ export class Catalogue {
     return available ? this.resolve(null, null) : null;
   }
 
-  setGooglePrice(id: string, pricing: AiPricing | null): AiModelDetail {
+  async setGooglePrice(id: string, pricing: AiPricing | null): Promise<AiModelDetail> {
     try {
       googleModelOf(id);
     } catch (cause) {
@@ -237,9 +238,9 @@ export class Catalogue {
       Object.entries(settings.google_prices).filter(([modelId]) => modelId !== id),
     );
     const google_prices = pricing === null ? others : { ...others, [id]: pricing };
-    this.options.models.saveSettings({ ...settings, google_prices });
-    this.writeGoogle(google_prices);
-    return this.detail(id);
+    await this.options.models.saveSettings({ ...settings, google_prices });
+    await this.writeGoogle(google_prices);
+    return await this.detail(id);
   }
 
   private chatModel(id: string): AiModelRow {
@@ -261,15 +262,15 @@ export class Catalogue {
         },
         syncedAt,
       );
-      const result = this.options.models.replace(fetched.rows, 'openrouter');
-      this.options.models.saveSearchState(
+      const result = await this.options.models.replace(fetched.rows, 'openrouter');
+      await this.options.models.saveSearchState(
         await syncModelSearch(
           { client: this.options.client, log: this.options.log, at: syncedAt },
           this.options.models.searchState(),
         ),
       );
-      this.writeGoogle(this.settings().google_prices);
-      this.options.models.saveSyncState({
+      await this.writeGoogle(this.settings().google_prices);
+      await this.options.models.saveSyncState({
         synced_at: syncedAt,
         error: null,
         error_at: null,
@@ -286,7 +287,7 @@ export class Catalogue {
       };
     } catch (cause) {
       const previous = this.options.models.syncState();
-      this.options.models.saveSyncState({
+      await this.options.models.saveSyncState({
         ...previous,
         error: causeText(cause),
         error_at: syncedAt,
@@ -296,9 +297,9 @@ export class Catalogue {
     }
   }
 
-  private writeGoogle(overrides: Readonly<Record<string, AiPricing>>): void {
+  private async writeGoogle(overrides: Readonly<Record<string, AiPricing>>): Promise<void> {
     const syncedAt = this.options.clock.now().toISOString();
-    this.options.models.replace(googleRows(overrides, syncedAt), 'google');
+    await this.options.models.replace(googleRows(overrides, syncedAt), 'google');
     this.reload();
   }
 

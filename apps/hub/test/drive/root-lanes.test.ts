@@ -136,7 +136,13 @@ describe('staged work on a drive', () => {
     expect(order).not.toContain('exclusive');
     firstEnds.open();
     await Promise.all([first, exclusive]);
-    expect(order).toEqual(['first lands', 'second lands', 'second ends', 'first ends', 'exclusive']);
+    expect(order).toEqual([
+      'first lands',
+      'second lands',
+      'second ends',
+      'first ends',
+      'exclusive',
+    ]);
   });
 
   it('keeps a staged work that never hands off in order with the next one', async () => {

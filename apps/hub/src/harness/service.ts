@@ -41,6 +41,7 @@ import { HarnessDirectory } from './directory';
 import { HarnessStorage } from './storage';
 import { admitChildRoutes } from './child-routes';
 import type { HarnessRoutes } from './routes';
+import { settleRestartedSessions } from './restart-settle';
 import type { DshSessionPrincipal } from '../store/repositories/dsh-session-claims';
 
 export class HarnessService {
@@ -73,8 +74,10 @@ export class HarnessService {
     this.ingest = new NativeIngest(store, (event) => {
       this.publish(event);
     });
-    this.dshUsage = new DshUsageLedger(store.ledger);
-    store.dshSessions.onAppend((sessionId, events) => {
+    this.dshUsage = new DshUsageLedger({
+      amend: (id, change): Promise<unknown> => store.host.write('ledgerAmend', { id, change }),
+    });
+    store.live.dshSessions.onAppend((sessionId, events) => {
       this.ingest.appended(sessionId, events);
       this.dshUsage.appended(sessionId, events);
     });
@@ -96,7 +99,7 @@ export class HarnessService {
       { state: options.layout.system.ai.harness, tmp: options.layout.tmp },
       (): Date => options.clock.now(),
     );
-    this.settleInterruptedSwitches();
+    settleRestartedSessions(store.harnessSessions);
     this.sources = new HarnessSourceRegistry(store.settingsKv);
     this.discovery = new HarnessDiscovery(
       () => this.extensions.installed(),
@@ -112,7 +115,10 @@ export class HarnessService {
     );
   }
   chatFolder(chat: AiChatRow): string {
-    return ensureChatFolder(chatFolder(this.layout, chat));
+    return chatFolder(this.layout, chat);
+  }
+  async readyFolder(open: Extract<HarnessRuntimeRequest, { kind: 'open' }>): Promise<void> {
+    if (open.claim.target.kind === 'server') await ensureChatFolder(open.cwd);
   }
   own(owner: ChatOwner, chatId: string): AiChatRow {
     return ownedChat(this.store, owner, chatId);
@@ -159,7 +165,7 @@ export class HarnessService {
     chatId: string,
     authority: HarnessAuthority,
     localClientId?: string,
-  ): Extract<HarnessRuntimeRequest, { kind: 'open' }> {
+  ): Promise<Extract<HarnessRuntimeRequest, { kind: 'open' }>> {
     return prepareConversation(this, { owner, chatId, authority, localClientId });
   }
   selection(chat: AiChatRow): AiModelRouteSelection {
@@ -260,16 +266,6 @@ export class HarnessService {
         throw cause;
       },
     );
-  }
-  private settleInterruptedSwitches(): void {
-    for (const id of this.store.harnessSessions.switchingSessions()) {
-      this.log.warn('harness.switch_interrupted', { harnessSession: id });
-      this.store.harnessSessions.settleSwitching(id, {
-        code: 'operation_failed',
-        message: 'The hub restarted during the machine change; send a message to continue.',
-        retry_at: null,
-      });
-    }
   }
   onMachineChanged(listener: (chat: AiChatRow, text: string) => void): void {
     this.machineListeners.add(listener);
@@ -379,7 +375,7 @@ export class HarnessService {
   private admitWork(request: HarnessRuntimeRequest): void {
     if (request.kind === 'close' || request.kind === 'interrupt') return;
     if (request.kind === 'open') {
-      this.store.aiChats.assertWorkAllowed(request.chat_id);
+      this.store.live.chatWork.assertWorkAllowed(request.chat_id);
       return;
     }
     const grant = this.store.harnessSessions.grant(request.session_id);
@@ -388,7 +384,7 @@ export class HarnessService {
     const metadata = this.store.dshSessions.stat(request.session_id, grant.profile_id);
     if (metadata === undefined)
       throw new ApiError('conflict', 'Native work has no stored conversation.');
-    this.store.aiChats.assertWorkAllowed(metadata.chat_id);
+    this.store.live.chatWork.assertWorkAllowed(metadata.chat_id);
   }
   admitTarget(owner: ChatOwner, host: AiHarnessHost): void {
     if (host.target.kind === 'device' && owner.role !== 'owner')

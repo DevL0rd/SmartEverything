@@ -194,7 +194,7 @@ export class ComputerNodeSockets extends ComputerSockets<NodeSocketConnection> {
       device_id: deviceId,
       generation,
       runtimes: frame.runtimes.map((runtime) =>
-        this.store.computerRuntimes.settings({ device_id: deviceId, runtime }),
+        this.store.live.computers.runtimeSettings({ device_id: deviceId, runtime }),
       ),
     };
     connection.send(welcome);

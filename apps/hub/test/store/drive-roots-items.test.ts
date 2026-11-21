@@ -18,7 +18,7 @@ import { DriveStarsRepository, starredBy } from '../../src/store/repositories/dr
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const LATER = '2026-11-08T00:00:00.000Z';
@@ -53,7 +53,7 @@ beforeEach(() => {
   sql = new Sql(database);
   const context = new StoreContext(sql, feed, () => new Date(NOW));
   migrate(sql, MIGRATIONS, NOW, log);
-  roots = new DriveRootsRepository(context, drivePathOf);
+  roots = new DriveRootsRepository(context, driveFolders);
   items = new DriveItemsRepository(context);
   opens = new DriveOpensRepository(context);
   stars = new DriveStarsRepository(context);

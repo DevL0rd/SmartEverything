@@ -84,7 +84,7 @@ async function sightPicture(
   who: SightCaller,
   args: SightArgs,
 ): Promise<OneShotPicture> {
-  const check = tools.check('sight_look', args);
+  const check = await tools.check('sight_look', args);
   if (!check.ok) throw new ToolActionError(check.reason);
   const result = await tools.call('sight_look', args, {
     profileId: who.profileId,

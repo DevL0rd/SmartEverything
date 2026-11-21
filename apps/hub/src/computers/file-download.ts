@@ -56,7 +56,7 @@ export function computerDownloadRoute({ store, directory }: Options): RawRoute {
     method: 'GET',
     path: COMPUTER_DOWNLOAD_PATH,
     handle: async (request, response, params): Promise<void> => {
-      const viewer = viewerOf(store, authenticate(store, request, 'member', false));
+      const viewer = viewerOf(await authenticate(store, request, 'member', false));
       const deviceId = params['deviceId'] ?? '';
       const path = FILE_PATH.safeParse(
         new URL(request.url ?? '/', 'http://hub').searchParams.get('path'),
@@ -66,7 +66,7 @@ export function computerDownloadRoute({ store, directory }: Options): RawRoute {
       }
       const chunkOf: ChunkOf = (start, length) =>
         guarded(async () => {
-          access.require(deviceId, 'files', viewer);
+          await access.require(deviceId, 'files', viewer);
           const call = { verb: 'file_range', path: path.data, start, length } as const;
           return FILE_RANGE.parse(await directory.byDevice(deviceId).call(call));
         });

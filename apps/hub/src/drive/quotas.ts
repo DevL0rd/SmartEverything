@@ -1,4 +1,5 @@
 import type { DriveQuotaStatus } from '../store/repositories/drive-quotas';
+import type { Store } from '../store/store';
 import type { DataSpaceProbe } from './data-space';
 
 export type DriveQuotaSource = (profileId: string) => DriveQuotaStatus;
@@ -69,6 +70,15 @@ export function checkDriveQuota(status: DriveQuotaSource, request: DriveWriteReq
   }
 }
 
+export async function loadedQuotaCheck(
+  store: Pick<Store, 'host'>,
+  request: DriveWriteRequest,
+): Promise<void> {
+  if (request.profileId === null) return;
+  const status = await store.host.call('driveQuotas', 'status', request.profileId);
+  checkDriveQuota(() => status, request);
+}
+
 export async function checkDriveFreeSpace(
   space: DataSpaceProbe['space'],
   path: string,
@@ -98,6 +108,15 @@ export async function checkDriveWrite(
 ): Promise<void> {
   checkDriveQuota(guard.status, check);
   await checkDriveFreeSpace(guard.space, check.path, check.addBytes);
+}
+
+export async function checkLoadedDriveWrite(
+  store: Pick<Store, 'host'>,
+  space: DataSpaceProbe['space'],
+  check: DriveWriteCheck,
+): Promise<void> {
+  await loadedQuotaCheck(store, check);
+  await checkDriveFreeSpace(space, check.path, check.addBytes);
 }
 
 export class DriveQuotaMeter {

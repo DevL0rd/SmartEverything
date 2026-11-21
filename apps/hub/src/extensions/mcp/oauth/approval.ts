@@ -40,19 +40,19 @@ export class ApprovalCodes {
     return MCP_APPROVAL_CODE.parse({ code, expiresAt: new Date(expiresAt).toISOString() });
   }
 
-  check(answer: string): ApprovalOutcome {
+  async check(answer: string): Promise<ApprovalOutcome> {
     const trimmed = answer.trim();
     if (trimmed === '') {
       return { approved: false, reason: 'Type the approval code the desktop app shows.' };
     }
     if (CLIENT_TOKEN.safeParse(trimmed).success) {
-      return this.ownerToken(trimmed);
+      return await this.ownerToken(trimmed);
     }
     return this.code(trimmed.replace(/\s+/g, ''));
   }
 
-  private ownerToken(token: string): ApprovalOutcome {
-    const client = this.store.clients.byTokenHash(hashClientToken(token));
+  private async ownerToken(token: string): Promise<ApprovalOutcome> {
+    const client = await this.store.host.call('clients', 'byTokenHash', hashClientToken(token));
     if (client === undefined || effectiveRow(this.store, client).role !== 'owner') {
       return { approved: false, reason: 'That is not the token of an owner of this home.' };
     }

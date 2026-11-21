@@ -30,12 +30,12 @@ const PROTOCOL_HEADERS = {
   'cache-control': 'private, max-age=0',
 } as const;
 
-function publicOriginOf(store: Store, request: IncomingMessage): string {
+async function publicOriginOf(store: Store, request: IncomingMessage): Promise<string> {
   const host = request.headers.host;
   if (host === undefined) {
     throw new ApiError('invalid_request', 'The header host is missing.', 'received no header');
   }
-  const publicUrl = store.settings.read().public_url;
+  const { public_url: publicUrl } = await store.host.read('settingsRow', null);
   if (publicUrl !== null && new URL(publicUrl).host === host) return new URL(publicUrl).origin;
   return `${request.socket instanceof TLSSocket ? 'https' : 'http'}://${host}`;
 }
@@ -75,7 +75,7 @@ async function answerFor(
   clientId: string,
 ): Promise<{ readonly answer: ExpoAnswer; readonly part: MultipartPart }> {
   const answer = expoAnswerFor(await options.folder.entries(), expo, clientId);
-  const origin = answer.kind === 'manifest' ? publicOriginOf(options.store, request) : '';
+  const origin = answer.kind === 'manifest' ? await publicOriginOf(options.store, request) : '';
   const name = answer.kind === 'manifest' ? 'manifest' : 'directive';
   return { answer, part: signed(options, expo, partOf(name, bodyOf(options, answer, origin))) };
 }
@@ -86,7 +86,7 @@ export function expoManifestRoute(options: ExpoManifestRouteOptions): RawRoute {
     path: APP_UPDATE_MANIFEST_PATH,
     handle: async (request, response): Promise<void> => {
       const expo = parseExpoRequest(request);
-      const client = clientForUpdateKey(options.store, request, expo.key, options.log);
+      const client = await clientForUpdateKey(options.store, request, expo.key, options.log);
       noteCaller(response, { kind: 'client', client });
       const { answer, part } = await answerFor(options, request, expo, client.id);
       const body = multipartMixed(randomBytes(16).toString('hex'), [part]);

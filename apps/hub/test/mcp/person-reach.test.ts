@@ -13,7 +13,6 @@ import {
   reachableAreas,
 } from '../../src/extensions/mcp/tools/person-reach';
 import { foundDevices, listedDevices } from '../../src/extensions/mcp/tools/devices';
-import { deviceGroupSummaries } from '../../src/extensions/mcp/tools/device-groups';
 import { eventsOf } from '../../src/extensions/mcp/tools/history';
 import type { ToolActor, ToolContext } from '../../src/extensions/mcp/tools/registry';
 import { placedDevice, placedDevices, targeted } from '../../src/extensions/mcp/tools/targets';
@@ -116,30 +115,38 @@ describe('the areas the AI of a person reaches', () => {
 });
 
 describe('the devices the AI of a person sees and targets', () => {
-  it('lists, finds and places only the devices in scope and refuses a hidden one by id', () => {
+  it('lists, finds and places only the devices in scope and refuses a hidden one by id', async () => {
     limit({ devices: { mode: 'only', rooms: [], devices: [home.lamp.id] } });
     const scope = deviceScopeOfActor(member());
     expect(scope).not.toBeNull();
-    expect(placedDevices(opened.store, scope).map((placed) => placed.device.id)).toStrictEqual([
-      home.lamp.id,
-    ]);
     expect(
-      listedDevices(opened.store, scope, {
-        includeHidden: true,
-        limit: 50,
-      }).map((row) => row['id']),
+      (await placedDevices(opened.store, scope)).map((placed) => placed.device.id),
     ).toStrictEqual([home.lamp.id]);
     expect(
-      foundDevices(opened.store, scope, OWNER, { includeHidden: true, limit: 50, detail: false }),
+      (
+        await listedDevices(opened.store, scope, {
+          includeHidden: true,
+          limit: 50,
+        })
+      ).map((row) => row['id']),
+    ).toStrictEqual([home.lamp.id]);
+    expect(
+      await foundDevices(opened.store, scope, OWNER, {
+        includeHidden: true,
+        limit: 50,
+        detail: false,
+      }),
     ).toHaveLength(1);
-    expect(() => placedDevice(opened.store, scope, home.camera.id)).toThrow(
+    await expect(placedDevice(opened.store, scope, home.camera.id)).rejects.toThrow(
       /not part of your access/,
     );
-    expect(() => targeted(opened.store, scope, { rooms: ['Hall'] })).toThrow(/No device matches/);
-    expect(targeted(opened.store, scope, { rooms: ['Study'] })).toHaveLength(1);
+    await expect(targeted(opened.store, scope, { rooms: ['Hall'] })).rejects.toThrow(
+      /No device matches/,
+    );
+    expect(await targeted(opened.store, scope, { rooms: ['Study'] })).toHaveLength(1);
   });
 
-  it('shows events and device groups only for devices in scope', () => {
+  it('shows events and device groups only for devices in scope', async () => {
     opened.store.events.insert([
       {
         deviceId: home.camera.id,
@@ -152,10 +159,10 @@ describe('the devices the AI of a person sees and targets', () => {
     opened.store.deviceGroups.create({ name: 'Lamp', device_ids: [home.lamp.id] });
     limit({ devices: { mode: 'except', rooms: [home.hall.id], devices: [] } });
     const scope = deviceScopeOfActor(member());
-    expect(eventsOf(opened.store, scope, OWNER, { limit: 50 })).toStrictEqual([]);
-    expect(eventsOf(opened.store, null, OWNER, { limit: 50 })).toHaveLength(1);
+    expect(await eventsOf(opened.store, scope, OWNER, { limit: 50 })).toStrictEqual([]);
+    expect(await eventsOf(opened.store, null, OWNER, { limit: 50 })).toHaveLength(1);
     expect(
-      deviceGroupSummaries(opened.store, scope)
+      (await opened.store.host.read('mcpDeviceGroupSummaries', scope))
         .filter((summary) => summary.kind === 'group')
         .map((summary) => summary.name),
     ).toStrictEqual(['Lamp']);

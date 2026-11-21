@@ -19,8 +19,9 @@ const ONE_INSTANCE: Readonly<Record<string, string>> = {
   'src/app-shell/shell.tsx': 'the shell layout, mounted once',
   'src/components/back-navigation.ts':
     'every page header picks its own back step from the path of the screen it sits on',
-  'src/features/automations/hosts/list-hosts.tsx':
-    'the automations master and layout hosts, each mounted once',
+  'src/app-shell/connection-notice.tsx': 'the root connection notice host, mounted once',
+  'src/features/photos/components/photos-error-boundary.tsx':
+    'rendered only in place of a photos route that crashed',
   'src/features/connections/consent/consent-host.tsx': 'a global host, mounted once',
   'src/features/connections/flows/tuya-handoff.tsx': 'inside the consent host, mounted once',
   'src/features/assistant/browser/browser-runtime-host.tsx': 'a global host, mounted once',

@@ -65,9 +65,10 @@ export interface SpecStoreOptions {
 }
 
 export class SpecStore {
-  private index: MiotSpecIndex | null = null;
+  private index: Promise<MiotSpecIndex> | null = null;
   private indexFetched = false;
-  private firmwares: Map<string, string> | null = null;
+  private firmwares: Promise<Map<string, string>> | null = null;
+  private readonly reading = new Map<string, Promise<MiotSpec>>();
 
   constructor(private readonly options: SpecStoreOptions) {}
 
@@ -79,7 +80,7 @@ export class SpecStore {
     const type = reportedType ?? (await this.typeFor(model));
     const file = join(this.options.directory, SPEC_DIRECTORY, `${encodeURIComponent(type)}.json`);
     const url = `${this.options.baseUrl}/miot-spec-v2/instance?type=${encodeURIComponent(type)}`;
-    const stored = await this.cached(file, url, MIOT_SPEC);
+    const stored = await this.storedSpec(file, url);
     if (firmware === null) {
       return stored;
     }
@@ -118,22 +119,33 @@ export class SpecStore {
     return fresh;
   }
 
-  private async firmwareVersions(): Promise<Map<string, string>> {
-    this.firmwares ??= new Map(
-      Object.entries(
-        await cachedJson(
-          join(this.options.directory, FIRMWARE_FILE),
-          FIRMWARE_VERSIONS,
-          () => Promise.resolve({}),
-          (cause) => {
-            this.options.log.warn('miot_spec.cache_unreadable', {
-              file: FIRMWARE_FILE,
-              reason: failureLine(cause),
-            });
-          },
-        ),
-      ),
-    );
+  private storedSpec(file: string, url: string): Promise<MiotSpec> {
+    const inFlight = this.reading.get(file);
+    if (inFlight !== undefined) return inFlight;
+    const read = this.cached(file, url, MIOT_SPEC).finally(() => {
+      this.reading.delete(file);
+    });
+    this.reading.set(file, read);
+    return read;
+  }
+
+  private firmwareVersions(): Promise<Map<string, string>> {
+    this.firmwares ??= cachedJson(
+      join(this.options.directory, FIRMWARE_FILE),
+      FIRMWARE_VERSIONS,
+      () => Promise.resolve({}),
+      (cause) => {
+        this.options.log.warn('miot_spec.cache_unreadable', {
+          file: FIRMWARE_FILE,
+          reason: failureLine(cause),
+        });
+      },
+    )
+      .then((versions) => new Map(Object.entries(versions)))
+      .catch((cause: unknown) => {
+        this.firmwares = null;
+        throw cause;
+      });
     return this.firmwares;
   }
 
@@ -146,24 +158,31 @@ export class SpecStore {
   }
 
   private async typeFor(model: string): Promise<string> {
-    this.index ??= await this.cached(
-      join(this.options.directory, INDEX_FILE),
-      this.indexUrl(),
-      MIOT_SPEC_INDEX,
-    );
-    const known = specTypeForModel(this.index, model);
+    const loading = (this.index ??= this.indexLoad(() =>
+      this.cached(join(this.options.directory, INDEX_FILE), this.indexUrl(), MIOT_SPEC_INDEX),
+    ));
+    const known = specTypeForModel(await loading, model);
     if (known !== null) {
       return known;
     }
+    if (this.index !== loading) {
+      return this.typeFor(model);
+    }
     if (!this.indexFetched) {
-      this.index = await this.download(
-        join(this.options.directory, INDEX_FILE),
-        this.indexUrl(),
-        MIOT_SPEC_INDEX,
+      this.index = this.indexLoad(() =>
+        this.download(join(this.options.directory, INDEX_FILE), this.indexUrl(), MIOT_SPEC_INDEX),
       );
       return this.typeFor(model);
     }
     throw new MiotSpecError(model, 'a released MIoT spec for this model on miot-spec.org', 'none');
+  }
+
+  private indexLoad(load: () => Promise<MiotSpecIndex>): Promise<MiotSpecIndex> {
+    const loading: Promise<MiotSpecIndex> = load().catch((cause: unknown) => {
+      if (this.index === loading) this.index = null;
+      throw cause;
+    });
+    return loading;
   }
 
   private indexUrl(): string {

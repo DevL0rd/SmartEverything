@@ -12,6 +12,10 @@ const STORED_ROOM_LINK = z.object({
 
 export type StoredRoomLink = z.infer<typeof STORED_ROOM_LINK>;
 
+const DEVICE_ROOM_LINK = STORED_ROOM_LINK.extend({ deviceId: z.string() });
+
+export type DeviceRoomLink = z.infer<typeof DEVICE_ROOM_LINK>;
+
 export interface RoomLinkDraft {
   readonly mapRoomId: number;
   readonly mapRoomName: string;
@@ -28,6 +32,12 @@ const LIST = `select l.map_room_id as mapRoomId, l.map_room_name as mapRoomName,
     l.missing_since as missingSince
   from vacuum_room_links l join rooms r on r.id = l.room_id
   where l.device_id = $deviceId order by l.map_room_id`;
+
+const LIST_ALL = `select l.device_id as deviceId, l.map_room_id as mapRoomId,
+    l.map_room_name as mapRoomName, l.room_id as roomId, r.name as roomName,
+    l.linked_at as linkedAt, l.missing_since as missingSince
+  from vacuum_room_links l join rooms r on r.id = l.room_id
+  order by l.device_id, l.map_room_id`;
 
 const RELEASE = `delete from vacuum_room_links
   where device_id = $deviceId and room_id = $roomId and map_room_id != $mapRoomId`;
@@ -52,6 +62,10 @@ export class VacuumRoomLinksRepository {
 
   list(deviceId: string): StoredRoomLink[] {
     return this.context.sql.all(STORED_ROOM_LINK, LIST, { deviceId });
+  }
+
+  all(): DeviceRoomLink[] {
+    return this.context.sql.all(DEVICE_ROOM_LINK, LIST_ALL);
   }
 
   link(deviceId: string, draft: RoomLinkDraft): void {

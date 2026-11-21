@@ -18,12 +18,12 @@ export class HarnessMemorySessions implements MemorySessions {
   constructor(
     private readonly callers: SessionCallers,
     private readonly messageOf: (eventId: string) => string | null,
-    private readonly textOf: (messageId: string) => string,
+    private readonly textOf: (messageId: string) => Promise<string>,
   ) {}
 
-  latest(sessionId: string): LatestMessage | null {
+  async latest(sessionId: string): Promise<LatestMessage | null> {
     const id = this.principal(sessionId).messageId;
-    return id === null ? null : { id, text: this.textOf(id) };
+    return id === null ? null : { id, text: await this.textOf(id) };
   }
 
   principal(sessionId: string): MemoryPrincipal {

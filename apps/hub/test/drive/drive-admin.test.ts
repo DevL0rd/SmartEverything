@@ -46,38 +46,36 @@ afterEach(async () => {
 });
 
 describe('drive settings', () => {
-  it('lets a person change the settings of their own drive and rescans when the walk changes', () => {
-    const changed = admin.update(member, MEMBER_DRIVE, { skipPatterns: ['*.tmp'] });
+  it('lets a person change the settings of their own drive and rescans when the walk changes', async () => {
+    const changed = await admin.update(member, MEMBER_DRIVE, { skipPatterns: ['*.tmp'] });
     expect(changed).toMatchObject({ id: MEMBER_DRIVE, skipPatterns: ['*.tmp'] });
     expect('path' in changed).toBe(false);
     expect(scans).toEqual([MEMBER_DRIVE]);
-    admin.update(member, MEMBER_DRIVE, { versions: false });
+    await admin.update(member, MEMBER_DRIVE, { versions: false });
     expect(opened.store.driveRoots.byId(MEMBER_DRIVE).versions).toBe(false);
     expect(scans).toEqual([MEMBER_DRIVE]);
   });
 
-  it('refuses everyone but the owner on the Shared Drive', () => {
-    expect(() => admin.update(member, SHARED, { includeHidden: true })).toThrow(ApiError);
-    expect(admin.update(owner, SHARED, { includeHidden: true })).toMatchObject({
+  it('refuses everyone but the owner on the Shared Drive', async () => {
+    await expect(admin.update(member, SHARED, { includeHidden: true })).rejects.toThrow(ApiError);
+    expect(await admin.update(owner, SHARED, { includeHidden: true })).toMatchObject({
       includeHidden: true,
     });
     expect(scans).toEqual([SHARED]);
   });
 
-  it('hides another person drive from everyone, the owner included', () => {
-    expect(() => admin.update(owner, MEMBER_DRIVE, { versions: false })).toThrow(/no such drive/);
-    expect(() => {
-      admin.scan(owner, MEMBER_DRIVE);
-    }).toThrow(/no such drive/);
-    expect(() => {
-      admin.scan(member, OWNER_DRIVE);
-    }).toThrow(/no such drive/);
+  it('hides another person drive from everyone, the owner included', async () => {
+    await expect(admin.update(owner, MEMBER_DRIVE, { versions: false })).rejects.toThrow(
+      /no such drive/,
+    );
+    await expect(admin.scan(owner, MEMBER_DRIVE)).rejects.toThrow(/no such drive/);
+    await expect(admin.scan(member, OWNER_DRIVE)).rejects.toThrow(/no such drive/);
     expect(scans).toEqual([]);
   });
 
-  it('scans a drive the caller may settle', () => {
-    admin.scan(member, MEMBER_DRIVE);
-    admin.scan(owner, SHARED);
+  it('scans a drive the caller may settle', async () => {
+    await admin.scan(member, MEMBER_DRIVE);
+    await admin.scan(owner, SHARED);
     expect(scans).toEqual([MEMBER_DRIVE, SHARED]);
   });
 });

@@ -29,21 +29,19 @@ export function subscriptionConsumerRoute(
       const body = SUBSCRIPTION_CONSUMER_REQUEST.parse(
         parseJsonBody(request, await readBody(request, SUBSCRIPTION_INFERENCE_MAX_BYTES)),
       );
-      const admit = (): void => {
-        admitConsumerCall(context, service, request, body);
-      };
-      admit();
+      const admit = (): Promise<void> => admitConsumerCall(context, service, request, body);
+      await admit();
       await streamConsumerCall({ service, body, admit }, request, response);
     },
   };
 }
-function admitConsumerCall(
+async function admitConsumerCall(
   context: ServerContext,
   service: HarnessService,
   request: IncomingMessage,
   body: SubscriptionConsumerRequest,
-): void {
-  const actor = authenticate(context, request, body.device_id);
+): Promise<void> {
+  const actor = await authenticate(context, request, body.device_id);
   const execution = service.directory.bound(body.device_id, body.generation, body.runtime_instance);
   requireActor(execution, actor);
   admitConsumerExecution(service, execution);
@@ -79,7 +77,7 @@ function admitConsumerWriter(service: HarnessService, body: SubscriptionConsumer
 interface ConsumerCall {
   readonly service: HarnessService;
   readonly body: SubscriptionConsumerRequest;
-  readonly admit: () => void;
+  readonly admit: () => Promise<void>;
 }
 async function streamConsumerCall(
   input: ConsumerCall,
@@ -93,11 +91,9 @@ async function streamConsumerCall(
   };
   const revalidate = (): void => {
     if (controller.signal.aborted) return;
-    try {
-      admit();
-    } catch (cause) {
+    admit().catch((cause: unknown) => {
       controller.abort(cause);
-    }
+    });
   };
   request.once('aborted', disconnected);
   response.once('close', disconnected);
@@ -131,7 +127,7 @@ async function forwardResults(
     throw new ApiError('conflict', 'The subscription supplier inference port is unavailable.');
   for await (const raw of supplier.call(body.request, signal)) {
     signal.throwIfAborted();
-    admit();
+    await admit();
     const result = SUBSCRIPTION_INFERENCE_RESULT.parse(raw);
     const frame = `${JSON.stringify(result)}\n`;
     if (Buffer.byteLength(frame) > SUBSCRIPTION_INFERENCE_MAX_BYTES)
@@ -146,5 +142,5 @@ async function forwardResults(
       });
     if (!response.write(frame)) await once(response, 'drain', { signal });
   }
-  admit();
+  await admit();
 }

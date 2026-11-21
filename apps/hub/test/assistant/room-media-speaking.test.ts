@@ -70,6 +70,7 @@ async function hostedCall(): Promise<HostedCall> {
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   events = null;
   seen = [];
   chatId = opened.store.aiChats.create({

@@ -11,16 +11,16 @@ const LINK_TOKEN_FILE = 'link.token';
 const BRIDGE_TOKEN_NAME = 'Claude Code on this computer';
 
 export interface LinkCredential {
-  readonly verify: (bearer: string | null) => boolean;
+  readonly verify: (bearer: string | null) => Promise<boolean>;
   readonly read: () => Promise<string | null>;
   readonly ensure: () => Promise<string>;
   readonly revoke: () => Promise<void>;
-  readonly retireBridge: () => number;
+  readonly retireBridge: () => Promise<number>;
 }
 
 export class LinkToken {
   constructor(
-    private readonly store: Store,
+    private readonly store: Pick<Store, 'host'>,
     private readonly directory: string,
   ) {}
 
@@ -28,19 +28,22 @@ export class LinkToken {
     return join(this.directory, LINK_TOKEN_FILE);
   }
 
-  verify(bearer: string | null): boolean {
+  async verify(bearer: string | null): Promise<boolean> {
     if (bearer === null || !MCP_TOKEN.safeParse(bearer).success) {
       return false;
     }
-    return (
-      this.store.oauth.activePersonalTokenByHash(hashMcpToken(bearer))?.name === LINK_TOKEN_NAME
+    const row = await this.store.host.call(
+      'oauth',
+      'activePersonalTokenByHash',
+      hashMcpToken(bearer),
     );
+    return row?.name === LINK_TOKEN_NAME;
   }
 
   async read(): Promise<string | null> {
     try {
       const token = (await readFile(this.file, 'utf8')).trim();
-      return this.verify(token) ? token : null;
+      return (await this.verify(token)) ? token : null;
     } catch (cause) {
       if (!isMissing(cause)) {
         throw cause;
@@ -54,9 +57,9 @@ export class LinkToken {
     if (known !== null) {
       return known;
     }
-    this.revokeRows();
+    await this.revokeRows();
     const token = createMcpToken();
-    this.store.oauth.createPersonalToken({
+    await this.store.host.call('oauth', 'createPersonalToken', {
       name: LINK_TOKEN_NAME,
       tokenHash: hashMcpToken(token),
       localOnly: true,
@@ -69,25 +72,24 @@ export class LinkToken {
   }
 
   async revoke(): Promise<void> {
-    this.revokeRows();
+    await this.revokeRows();
     await rm(this.file, { force: true });
   }
 
-  retireBridge(): number {
-    const rows = this.store.oauth
-      .personalTokens()
-      .filter((row) => row.name === BRIDGE_TOKEN_NAME && row.revoked_at === null);
-    for (const row of rows) {
-      this.store.oauth.revokePersonalToken(row.id);
-    }
-    return rows.length;
+  retireBridge(): Promise<number> {
+    return this.revokeNamed(BRIDGE_TOKEN_NAME);
   }
 
-  private revokeRows(): void {
-    for (const row of this.store.oauth.personalTokens()) {
-      if (row.name === LINK_TOKEN_NAME && row.revoked_at === null) {
-        this.store.oauth.revokePersonalToken(row.id);
-      }
-    }
+  private async revokeRows(): Promise<void> {
+    await this.revokeNamed(LINK_TOKEN_NAME);
+  }
+
+  private async revokeNamed(name: string): Promise<number> {
+    const { host } = this.store;
+    const rows = (await host.call('oauth', 'personalTokens')).filter(
+      (row) => row.name === name && row.revoked_at === null,
+    );
+    for (const row of rows) await host.call('oauth', 'revokePersonalToken', row.id);
+    return rows.length;
   }
 }

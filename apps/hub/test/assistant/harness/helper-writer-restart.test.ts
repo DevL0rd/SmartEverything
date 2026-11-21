@@ -2,8 +2,7 @@ import type { DshWriterClaim } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DSH_SESSION_HEADER, DSH_SESSION_EVENTS_WRITE } from '@smarteverything/domain';
-import { ConversationLog } from '../../../src/assistant/conversation-log';
-import { adoptSubagentSession } from '../../../src/assistant/engines/dsh/children';
+import { adoptSubagentSession } from '../../../src/assistant/engines/dsh/children-adoption';
 import { resumeHelperWriter } from '../../../src/harness/helper-writer-renewal';
 import { harnessRig, type Rig } from './support/rig';
 
@@ -26,10 +25,10 @@ async function interruptedChild(): Promise<{
   const { service } = made;
   const store = made.opened.store;
   const chat = made.newChat(made.hub.target);
-  const opened = service.prepare(made.owner, chat.id, made.authority, made.clientId);
+  const opened = await service.prepare(made.owner, chat.id, made.authority, made.clientId);
   const host = service.directory.get(made.hub.target).host;
   const before = service.hostPrincipal(made.owner.profileId, host);
-  const child = adoptSubagentSession(store, new ConversationLog(store), {
+  const child = await adoptSubagentSession(store, {
     principal: before,
     parentClaim: opened.claim,
     parentGrant: service.storage.grant(opened.claim.session_id),
@@ -44,7 +43,7 @@ async function interruptedChild(): Promise<{
     inherited: 0,
     now: new Date().toISOString(),
   });
-  store.dshSessions.append(
+  await store.live.dshSessions.append(
     {
       claim: child.opened.claim,
       operation_id: randomUUID(),
@@ -60,14 +59,16 @@ async function interruptedChild(): Promise<{
     runtime_instance: randomUUID(),
     connection_generation: randomUUID(),
   };
-  const parent = store.dshSessions.acquire(
-    {
-      session_id: opened.claim.session_id,
-      target: principal.target,
-      runtime_instance: principal.runtime_instance,
-      connection_generation: principal.connection_generation,
-    },
-    principal,
+  const parent = (
+    await store.live.dshSessions.acquire(
+      {
+        session_id: opened.claim.session_id,
+        target: principal.target,
+        runtime_instance: principal.runtime_instance,
+        connection_generation: principal.connection_generation,
+      },
+      principal,
+    )
   ).claim;
   return { made, store, child: child.opened.claim, parent, principal, before };
 }
@@ -77,7 +78,7 @@ describe('retired helper writer recovery', () => {
     const world = await interruptedChild();
     const { store, child, parent, principal, made } = world;
     const events = store.dshSessions.readAll(child.session_id, made.owner.profileId);
-    const resumed = resumeHelperWriter(store, {
+    const resumed = await resumeHelperWriter(store, {
       id: child.session_id,
       parent,
       principal,
@@ -94,7 +95,7 @@ describe('retired helper writer recovery', () => {
     expect(made.service.storage.grant(child.session_id).generation).toBe(
       principal.connection_generation,
     );
-    const again = resumeHelperWriter(store, {
+    const again = await resumeHelperWriter(store, {
       id: child.session_id,
       parent,
       principal,
@@ -106,36 +107,38 @@ describe('retired helper writer recovery', () => {
   it('rejects a child whose direct-parent lineage differs', async () => {
     const { store, child, principal, made } = await interruptedChild();
     const other = made.newChat(made.hub.target);
-    const opened = made.service.prepare(made.owner, other.id, made.authority, made.clientId);
-    const unrelated = store.dshSessions.acquire(
-      {
-        session_id: opened.claim.session_id,
-        target: principal.target,
-        runtime_instance: principal.runtime_instance,
-        connection_generation: principal.connection_generation,
-      },
-      principal,
+    const opened = await made.service.prepare(made.owner, other.id, made.authority, made.clientId);
+    const unrelated = (
+      await store.live.dshSessions.acquire(
+        {
+          session_id: opened.claim.session_id,
+          target: principal.target,
+          runtime_instance: principal.runtime_instance,
+          connection_generation: principal.connection_generation,
+        },
+        principal,
+      )
     ).claim;
-    expect(() =>
+    await expect(
       resumeHelperWriter(store, {
         id: child.session_id,
         parent: unrelated,
         principal,
         grant: made.service.storage.grant(child.session_id),
       }),
-    ).toThrow('direct parent');
+    ).rejects.toThrow('direct parent');
     expect(store.dshSessions.attached(child.session_id, made.owner.profileId)).toEqual(child);
   });
   it('rejects a stale parent without renewing the child', async () => {
     const { store, child, parent, principal, made } = await interruptedChild();
-    expect(() =>
+    await expect(
       resumeHelperWriter(store, {
         id: child.session_id,
         parent: { ...parent, epoch: parent.epoch - 1 },
         principal,
         grant: made.service.storage.grant(child.session_id),
       }),
-    ).toThrow();
+    ).rejects.toThrow();
     expect(store.dshSessions.attached(child.session_id, made.owner.profileId)).toEqual(child);
   });
 });

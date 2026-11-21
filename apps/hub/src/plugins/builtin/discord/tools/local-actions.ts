@@ -8,8 +8,8 @@ import { plain, type LocalAction, type LocalOutput } from './action-tool';
 const PEOPLE_SHOWN = 25;
 const PAGE = z.number().int().min(1).max(100).default(25);
 
-function entry(services: DiscordServices, who: Person): Readonly<Record<string, unknown>> {
-  return { ...who, label: describePerson(who), owner: services.policy.isOwner(who.id) };
+function entry(owners: ReadonlySet<string>, who: Person): Readonly<Record<string, unknown>> {
+  return { ...who, label: describePerson(who), owner: owners.has(who.id) };
 }
 
 async function people(
@@ -28,20 +28,18 @@ async function people(
     await directory.searchGuild(guildId, query.replace(/^@/, ''));
   }
   const owner = hub.list().find((person) => person.status === 'owner');
+  const ownerPerson = owner === undefined ? null : directory.person(owner.external_id, guildId);
+  const matches = query === undefined ? [] : directory.find(query, guildId).slice(0, PEOPLE_SHOWN);
+  const owners = await services.policy.owners(
+    [...(ownerPerson === null ? [] : [ownerPerson]), ...approved, ...matches].map((who) => who.id),
+  );
   return {
-    owner:
-      owner === undefined ? null : entry(services, directory.person(owner.external_id, guildId)),
-    approved: approved.map((who) => entry(services, who)),
-    matches:
-      query === undefined
-        ? []
-        : directory
-            .find(query, guildId)
-            .slice(0, PEOPLE_SHOWN)
-            .map((who) => ({
-              ...entry(services, who),
-              approved: hub.find(who.id) !== null,
-            })),
+    owner: ownerPerson === null ? null : entry(owners, ownerPerson),
+    approved: approved.map((who) => entry(owners, who)),
+    matches: matches.map((who) => ({
+      ...entry(owners, who),
+      approved: hub.find(who.id) !== null,
+    })),
     note: 'Names are display data only. Approval, owner status and every permission are keyed to the numeric ID.',
   };
 }

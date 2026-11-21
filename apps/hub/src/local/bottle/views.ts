@@ -15,7 +15,7 @@ import { standingOf } from './access';
 import { filterStatusOf } from './filter';
 import { entryConfigOf, type BottleEntryConfig } from './config';
 import { reminderOfCap, quietOfCap } from './convert';
-import { phoneClientsOf } from './actions';
+import { phoneClientsOf } from './phones';
 import { SNAP } from './snapshots';
 import { capOf, isoOfSeconds, levelOf, orientationSnapshotOf } from './summary';
 import { statsView } from './views-stats';

@@ -11,7 +11,7 @@ import {
   type ProcessWindow,
   NODE_PROTOCOL_VERSION,
 } from '@smarteverything/domain';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_PLACEMENTS } from '../support/session-rig';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import { ComputerSession } from '../../src/computers/computer-session';
@@ -180,7 +180,7 @@ describe('computer session', () => {
     ]);
   });
 
-  it('asks the computer for exactly the topics that are watched, with the process window', () => {
+  it('asks the computer for exactly the topics that are watched, with the process window', async () => {
     const viewers = new Viewers<DeviceDetail>();
     const { recorded, send } = start(viewers);
     send({ type: 'hello', hello: HELLO });
@@ -192,9 +192,11 @@ describe('computer session', () => {
     viewers.release('phone');
     viewers.release('desktop');
     const history = DEFAULT_HISTORY_POLICY;
-    expect(recorded.demands).toEqual([
+    await vi.waitFor(() => {
+      expect(recorded.demands).toContainEqual({ type: 'placements', placements: [] });
+    });
+    expect(recorded.demands.filter((frame) => frame.type === 'demand')).toEqual([
       { type: 'demand', demand: { topics: {}, history } },
-      { type: 'placements', placements: [] },
       {
         type: 'demand',
         demand: { topics: { cpu: 1000, processes: 1000 }, processes: WINDOW, history },

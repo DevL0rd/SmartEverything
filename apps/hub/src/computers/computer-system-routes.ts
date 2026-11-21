@@ -64,7 +64,7 @@ export type ComputerSystemEndpointName =
   | 'readHistoryBackfill';
 
 export interface ComputerSystemRouteOptions {
-  readonly store: Pick<Store, 'devices'>;
+  readonly store: Pick<Store, 'host'>;
   readonly service: ComputerService;
   readonly directory: ComputerDirectory;
   readonly downloads: Pick<ComputerDownloads, 'prepare'>;
@@ -93,13 +93,13 @@ async function pendingToken(
   return pending.token;
 }
 
-function historyOf(
+async function historyOf(
   options: ComputerSystemRouteOptions,
   caller: Caller,
   body: HistoryBackfillRequest,
-): Promise<HistoryColumns> | HistoryColumns {
+): Promise<HistoryColumns> {
   const query = queryOf(body);
-  if (options.store.devices.byId(body.device).kind !== 'computer') {
+  if ((await options.store.host.call('devices', 'byId', body.device)).kind !== 'computer') {
     return options.sources.backfill(body.device, query);
   }
   const request: NodeRequest = { verb: 'history', query };

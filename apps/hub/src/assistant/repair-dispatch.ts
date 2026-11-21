@@ -277,14 +277,14 @@ export class RepairDispatch {
   }
 }
 
-export function retainedLogOf(
+export async function retainedLogOf(
   store: Pick<Store, 'aiRepairInbox'>,
   logs: Pick<LogStore, 'around'>,
   fingerprint: string,
   profileId: string | null,
-): RetainedLog | null {
+): Promise<RetainedLog | null> {
   const logId = store.aiRepairInbox.latestLogId(fingerprint);
   if (logId === null) return null;
-  const around = logs.around({ owner: true, profileId }, { id: logId, before: 0, after: 0 });
+  const around = await logs.around({ owner: true, profileId }, { id: logId, before: 0, after: 0 });
   return around === null ? null : { logId, anchor: around.anchor };
 }

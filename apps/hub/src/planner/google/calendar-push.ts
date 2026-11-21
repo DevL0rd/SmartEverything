@@ -5,7 +5,6 @@ import {
   eventInsertPath,
   eventPath,
   GoogleEventSchema,
-  resolveLocalDelete,
   type FieldPatch,
   type GoogleEvent,
   type GoogleFailure,
@@ -16,15 +15,10 @@ import type { Store } from '../../store/store';
 import {
   EVENT_TYPE_KEY,
   PATCH_FIELDS,
-  eventFields,
-  eventZone,
   instanceId,
   isReadOnlyType,
-  itemFields,
   patchable,
-  type Fields,
 } from './calendar-map';
-import { guestsOfItem, pullAttendees } from './calendar-guests';
 import { GoogleCallError, type Ctx, type Requester } from './calendar-run';
 
 const log = new Logger('hub.planner');
@@ -38,11 +32,8 @@ function notifying(url: string): string {
 }
 
 export interface PushPorts {
-  readonly store: Pick<Store, 'plannerItems' | 'plannerGuests'>;
-  readonly now: () => Date;
+  readonly store: Pick<Store, 'host'>;
   readonly request: Requester;
-  readonly reconcile: (ctx: Ctx, item: PlannerItemRow, event: GoogleEvent, fields: Fields) => void;
-  readonly create: (ctx: Ctx, event: GoogleEvent, fields: Fields) => void;
 }
 
 function failed(cause: unknown, ...kinds: GoogleFailure['kind'][]): boolean {
@@ -55,27 +46,18 @@ function readOnlyItem(item: PlannerItemRow): boolean {
   return typeof type === 'string' && isReadOnlyType(type);
 }
 
-function masterFirst(rows: readonly PlannerItemRow[]): PlannerItemRow[] {
-  return [
-    ...rows.filter((item) => item.series_id === null),
-    ...rows.filter((item) => item.series_id !== null),
-  ];
-}
-
 export class CalendarPusher {
   constructor(private readonly ports: PushPorts) {}
 
   async push(ctx: Ctx): Promise<void> {
-    const { plannerItems } = this.ports.store;
-    const { profileId } = ctx.run;
-    const trashed = plannerItems
-      .trashed(profileId)
-      .filter((item) => item.collection_id === ctx.collection.id && item.google !== null);
-    const live = plannerItems.list(profileId, { collectionIds: [ctx.collection.id] });
-    for (const item of masterFirst(trashed)) {
+    const { trashed, live } = await this.ports.store.host.read('plannerGoogleCalendarPushable', {
+      profileId: ctx.run.profileId,
+      collectionId: ctx.collection.id,
+    });
+    for (const item of trashed) {
       await this.guard(ctx, item, () => this.remove(ctx, item));
     }
-    for (const item of masterFirst(live)) {
+    for (const item of live) {
       await this.guard(ctx, item, () => this.pushItem(ctx, item, false));
     }
   }
@@ -89,18 +71,15 @@ export class CalendarPusher {
         item: item.id,
         message: cause.failure.message,
       });
-      this.markConflict(ctx, item.id);
+      await this.markConflict(ctx, item.id);
     }
   }
 
-  private markConflict(ctx: Ctx, id: string): void {
-    const { plannerItems } = this.ports.store;
-    const fresh = plannerItems.find(id, ctx.run.profileId);
-    if (fresh !== undefined && fresh.google !== null) {
-      plannerItems.update(id, ctx.run.profileId, {
-        google: { ...fresh.google, state: 'conflict' },
-      });
-    }
+  private markConflict(ctx: Ctx, id: string): Promise<void> {
+    return this.ports.store.host.write('plannerGoogleCalendarConflict', {
+      profileId: ctx.run.profileId,
+      id,
+    });
   }
 
   private async pushItem(ctx: Ctx, item: PlannerItemRow, retried: boolean): Promise<void> {
@@ -114,43 +93,34 @@ export class CalendarPusher {
       return;
     }
     if (readOnlyItem(item) || google.etag === null) return;
+    const local = await this.ports.store.host.read('plannerGoogleCalendarFields', { item });
     const patch = buildFieldPatch({
       etag: google.etag,
       base: patchable(google.base),
-      next: patchable(itemFields(item, guestsOfItem(this.ports.store, item))),
+      next: patchable(local),
       fields: PATCH_FIELDS,
     });
     if (patch !== null) await this.patch(ctx, item, patch, retried);
   }
 
-  private settle(ctx: Ctx, item: PlannerItemRow, event: GoogleEvent): PlannerItemRow {
-    const base = eventFields(event, eventZone(event, ctx.zone));
-    const settled = this.ports.store.plannerItems.update(item.id, ctx.run.profileId, {
-      google: {
-        id: event.id,
-        calendarOrListId: ctx.calendarId,
-        etag: event.etag,
-        base,
-        state: 'synced',
-      },
-    });
-    pullAttendees(this.ports.store, {
-      item: settled,
+  private settle(ctx: Ctx, item: PlannerItemRow, event: GoogleEvent): Promise<PlannerItemRow> {
+    return this.ports.store.host.write('plannerGoogleCalendarSettle', {
+      scope: ctx.scope(),
+      item,
       event,
-      merged: base,
-      at: this.ports.now().toISOString(),
     });
-    return settled;
   }
 
   private async insert(ctx: Ctx, item: PlannerItemRow): Promise<void> {
     const { profileId } = ctx.run;
     const id = item.google?.id ?? deterministicEventId(profileId, item.id);
-    const sending = this.ports.store.plannerItems.update(item.id, profileId, {
-      google: { id, calendarOrListId: ctx.calendarId, etag: null, base: {}, state: 'sending' },
+    const sending = await this.ports.store.host.write('plannerGoogleCalendarSending', {
+      scope: ctx.scope(),
+      itemId: item.id,
+      id,
     });
     const body = {
-      ...itemFields(sending, guestsOfItem(this.ports.store, sending)),
+      ...sending.fields,
       id,
       extendedProperties: { private: { smarteverythingId: item.id } },
     };
@@ -163,13 +133,13 @@ export class CalendarPusher {
         body,
         headers: JSON_HEADERS,
       });
-      this.settle(ctx, sending, event);
+      await this.settle(ctx, sending.row, event);
       ctx.run.count('pushed');
     } catch (cause) {
       if (!failed(cause, 'already_exists')) throw cause;
       const event = await this.fetch(ctx, id);
       if (event === null) throw cause;
-      await this.pushItem(ctx, this.settle(ctx, sending, event), true);
+      await this.pushItem(ctx, await this.settle(ctx, sending.row, event), true);
     }
   }
 
@@ -177,7 +147,12 @@ export class CalendarPusher {
     const master =
       item.series_id === null
         ? undefined
-        : this.ports.store.plannerItems.find(item.series_id, ctx.run.profileId);
+        : await this.ports.store.host.call(
+            'plannerItems',
+            'find',
+            item.series_id,
+            ctx.run.profileId,
+          );
     const masterId = master?.google?.state === 'synced' ? master.google.id : null;
     if (master === undefined || masterId === null || item.original_start === null) return;
     const event = await this.fetch(
@@ -188,7 +163,7 @@ export class CalendarPusher {
       log.warn('Skipped an exception Google does not know', { item: item.id });
       return;
     }
-    await this.pushItem(ctx, this.settle(ctx, item, event), false);
+    await this.pushItem(ctx, await this.settle(ctx, item, event), false);
   }
 
   private async fetch(ctx: Ctx, id: string): Promise<GoogleEvent | null> {
@@ -222,7 +197,7 @@ export class CalendarPusher {
         body: patch.body,
         headers: patch.headers,
       });
-      this.settle(ctx, item, event);
+      await this.settle(ctx, item, event);
       ctx.run.count('pushed');
     } catch (cause) {
       if (!failed(cause, 'precondition_failed')) throw cause;
@@ -236,28 +211,30 @@ export class CalendarPusher {
     id: string,
     retried: boolean,
   ): Promise<void> {
-    const { plannerItems } = this.ports.store;
+    const { host } = this.ports.store;
     const { profileId } = ctx.run;
     const remote = await this.fetch(ctx, id);
     if (remote === null || remote.status === 'cancelled') {
-      plannerItems.update(item.id, profileId, { google: null });
+      await host.call('plannerItems', 'update', item.id, profileId, { google: null });
       ctx.run.conflict({ item_id: item.id, field: 'deleted', winner: 'app', losing_value: true });
       return;
     }
     if (retried) {
-      this.markConflict(ctx, item.id);
+      await this.markConflict(ctx, item.id);
       return;
     }
-    this.ports.reconcile(ctx, item, remote, eventFields(remote, eventZone(remote, ctx.zone)));
-    const fresh = plannerItems.find(item.id, profileId);
+    const fresh = ctx.absorb(
+      await host.write('plannerGoogleCalendarReconcile', { ...ctx.scoped(), item, remote }),
+    );
     if (fresh !== undefined) await this.pushItem(ctx, fresh, true);
   }
 
   private async remove(ctx: Ctx, item: PlannerItemRow): Promise<void> {
+    const { host } = this.ports.store;
     const google = item.google;
     const id = google?.id ?? null;
     if (google === null || id === null) {
-      this.ports.store.plannerItems.purge(item.id, ctx.run.profileId);
+      await host.call('plannerItems', 'purge', item.id, ctx.run.profileId);
       return;
     }
     try {
@@ -271,30 +248,19 @@ export class CalendarPusher {
       ctx.run.count('pushed');
     } catch (cause) {
       if (failed(cause, 'precondition_failed')) {
-        await this.resolveDelete(ctx, item, id, google.etag ?? '');
+        const remote = await this.fetch(ctx, id);
+        ctx.absorb(
+          await host.write('plannerGoogleCalendarDropLocal', {
+            ...ctx.scoped(),
+            item,
+            remote,
+            baseEtag: google.etag ?? '',
+          }),
+        );
         return;
       }
       if (!failed(cause, 'gone', 'not_found')) throw cause;
     }
-    this.ports.store.plannerItems.purge(item.id, ctx.run.profileId);
-  }
-
-  private async resolveDelete(
-    ctx: Ctx,
-    item: PlannerItemRow,
-    id: string,
-    baseEtag: string,
-  ): Promise<void> {
-    const remote = await this.fetch(ctx, id);
-    this.ports.store.plannerItems.purge(item.id, ctx.run.profileId);
-    if (remote === null) return;
-    const outcome = resolveLocalDelete({
-      baseEtag,
-      remoteEtag: remote.etag,
-      remoteDeleted: remote.status === 'cancelled',
-    });
-    if (outcome !== 'resurrect') return;
-    this.ports.create(ctx, remote, eventFields(remote, eventZone(remote, ctx.zone)));
-    ctx.run.conflict({ item_id: item.id, field: 'deleted', winner: 'google', losing_value: true });
+    await host.call('plannerItems', 'purge', item.id, ctx.run.profileId);
   }
 }

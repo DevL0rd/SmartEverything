@@ -1,4 +1,5 @@
-import { JSON_VALUE } from '@smarteverything/domain';
+import { JSON_VALUE, RUN_CAUSE } from '@smarteverything/domain';
+import type { NewRunRecord } from '../store/repositories/automation-run-records';
 import type {
   StoredAutomationRow,
   AutomationV3,
@@ -156,5 +157,32 @@ export function restartedSubject(
     plan: stored.plan,
     callees: state.planRefs.slice(1),
     lookup: stored.lookup,
+  };
+}
+
+export function runRecordOf(
+  subject: Subject,
+  request: StartRequest,
+  runId: string,
+  trigger: SignalInput,
+): NewRunRecord {
+  return {
+    id: runId,
+    automationId: subject.id,
+    revision: subject.revision,
+    ownerProfileId: null,
+    controlKey: subject.program.policy.key ?? null,
+    parentRunId: request.parentRunId,
+    status: 'queued',
+    mode: 'live',
+    planHash: subject.hash,
+    trigger: jsonRecord(trigger),
+    causeChain: z.array(RUN_CAUSE).parse(
+      request.causeChain.map((link) => ({
+        automation_id: link.automationId,
+        run_id: link.runId,
+      })),
+    ),
+    startedBy: request.startedBy,
   };
 }

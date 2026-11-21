@@ -1,6 +1,6 @@
 import { ApiError, type DriveZipEntry } from '@smarteverything/domain';
 import { messageOf } from '@smarteverything/logging';
-import { classify } from '../scanner-commit';
+import { classify } from '../file-type';
 import { isFileItem } from '../file-item';
 import { DrivePathError, resolveInRoot } from '../paths';
 import type { DriveExchange } from '../../server/drive-files';
@@ -10,6 +10,7 @@ import type { DriveItemsRepository } from '../../store/repositories/drive-items'
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import { locateZipEntry, ZipEntryError, type ZipEntrySource } from './zip-index';
 import { ZipReadError } from './zip-file';
+import { isZipItem } from './zip-item';
 
 export interface ZipEntryServing {
   readonly store: {
@@ -20,10 +21,6 @@ export interface ZipEntryServing {
   };
   readonly links: Pick<MediaLinks, 'verifyDrive'>;
   readonly now: () => Date;
-}
-
-export function isZipItem(item: { readonly name: string; readonly mime: string }): boolean {
-  return item.mime === 'application/zip' || item.name.toLowerCase().endsWith('.zip');
 }
 
 export function zipFailure(cause: unknown): never {

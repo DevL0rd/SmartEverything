@@ -10,6 +10,7 @@ import type { Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import type { RunningHub } from '../hub';
 import type { Store } from '../store/store';
+import { PendingWork } from './pending-work';
 
 const MINUTE_MS = 60_000;
 
@@ -19,7 +20,7 @@ const HIGHEST_LEVEL = 100;
 
 const STEPS = HIGHEST_LEVEL - LOWEST_LEVEL + 1;
 
-export type SunriseStore = Pick<Store, 'devices'>;
+export type SunriseStore = Pick<Store, 'host'>;
 
 export interface SunriseRampOptions {
   readonly store: SunriseStore;
@@ -81,8 +82,14 @@ export function levelAt(index: number): number {
 
 export class SunriseRamp {
   private readonly armed = new Map<string, Armed>();
+  private readonly work = new PendingWork('planner.sunrise_step_failed');
+  private steps: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: SunriseRampOptions) {}
+
+  settled(): Promise<void> {
+    return this.work.settled();
+  }
 
   arm(alarm: PlannerAlarmRow, ringAt: Date): void {
     const { sunrise } = alarm;
@@ -122,7 +129,12 @@ export class SunriseRamp {
   private schedule(ramp: Ramp, key: string, index: number): void {
     const at = new Date(Math.round(ramp.startMs + index * ramp.spacingMs));
     const cancel = this.options.clock.at(at, () => {
-      this.apply(ramp, index);
+      this.steps = this.steps
+        .then(() => this.apply(ramp, index))
+        .catch((cause: unknown) => {
+          this.options.log.error('planner.sunrise_step_failed', cause, { alarmId: ramp.alarmId });
+        });
+      this.work.run(this.steps, { alarmId: ramp.alarmId });
       if (index < STEPS - 1) {
         this.schedule(ramp, key, index + 1);
       } else {
@@ -132,9 +144,9 @@ export class SunriseRamp {
     this.armed.set(ramp.alarmId, { key, cancel });
   }
 
-  private apply(ramp: Ramp, index: number): void {
+  private async apply(ramp: Ramp, index: number): Promise<void> {
     for (const deviceId of ramp.sunrise.lights) {
-      const device = this.options.store.devices.find(deviceId);
+      const device = await this.options.store.host.call('devices', 'find', deviceId);
       if (device === undefined) {
         this.options.log.warn('planner.sunrise_light_missing', {
           alarmId: ramp.alarmId,

@@ -19,7 +19,6 @@ import { helperAnswerQuote } from '../message-quote';
 import type { AssistantFiles } from '../files';
 import type { EngineRegistry } from '../engines/registry';
 import { helperReplyWasRelayed } from '../engines/dsh/helper-reply';
-import { HUB_RESTARTED, interruptionCode } from '../interruption';
 import { admitChatExecution } from '../native-helpers';
 import { ownedUploads, queueEvent } from '../request-events';
 import type { Sender } from '../requests';
@@ -191,8 +190,8 @@ function assertTarget(store: Store, parent: AiChatRow, target: AiChatRow): void 
     target.profile_id !== parent.profile_id
   )
     throw new ApiError('forbidden', 'Choose a direct helper of this conversation.');
-  store.aiChats.assertWorkAllowed(parent.id);
-  store.aiChats.assertWorkAllowed(target.id);
+  store.live.chatWork.assertWorkAllowed(parent.id);
+  store.live.chatWork.assertWorkAllowed(target.id);
   admitChatExecution(target);
   if (target.archived_at !== null)
     throw new ApiError('conflict', 'This helper is archived. Reopen it before sending a message.');
@@ -340,67 +339,46 @@ function childAttachmentIds(
   return child.attachments.map(({ id }) => id);
 }
 
-export function reconcileHelperDialogue(
+export async function reconcileHelperDialogue(
   store: Store,
   finish: (event: StoredEvent, text: string, ok: boolean) => void,
-): void {
-  const { assistantChat, assistantEvents } = store;
-  for (const event of assistantEvents.settledHelperEvents()) {
-    if (store.harnessDeliveries.find(event.id)?.state === 'admitted') continue;
-    const message = event.message_id === null ? undefined : assistantChat.find(event.message_id);
-    store.write(() => {
-      assistantEvents.mark(event.id, 'answered_at');
-      const reply = restoreAnsweredHelperMessage(assistantChat, message);
-      if (reply !== undefined || message?.state === 'answered')
-        finish(event, reply?.text ?? '', true);
-      else finish(event, message?.reason ?? HUB_RESTARTED, false);
-    });
-  }
-}
-
-function restoreAnsweredHelperMessage(
-  assistantChat: Store['assistantChat'],
-  message: AssistantMessageRow | undefined,
-): AssistantMessageRow | undefined {
-  if (message === undefined) return undefined;
-  const reply = assistantChat.repliesTo(message.id).findLast((row) => row.state === 'answered');
-  if (reply !== undefined && message.state !== 'answered')
-    assistantChat.updateMessage(message.id, {
-      state: 'answered',
-      reason: null,
-      reason_code: null,
-    });
-  return reply;
+): Promise<void> {
+  const reconciled = await store.host.write('helperDialogueReconcile', null);
+  for (const { event, text, ok } of reconciled) finish(event, text, ok);
 }
 
 export function settleHelperDialogue(
-  ports: Pick<DialoguePorts, 'store' | 'conversation'>,
+  ports: Pick<DialoguePorts, 'store'>,
   event: StoredEvent,
   text: string,
   ok: boolean,
-): boolean {
+): Promise<void> | null {
   const id = helperParentMessageId(event);
-  if (id === null) return false;
-  const { store, conversation } = ports;
-  store.write(() => {
-    const row = store.assistantChat.find(id);
-    const dialogue = row === undefined ? undefined : helperDialogueOf(row);
-    if (row === undefined || dialogue?.direction !== 'to_helper' || row.state !== null) return;
-    if (!ok) {
-      conversation.failedMessage(row.id, text, interruptionCode(text) ?? 'unknown');
-      return;
-    }
-    if (text.trim() !== '' && !helperReplyWasRelayed(store, event, row.chat_id)) {
-      conversation.responderInChat({
-        chat: store.aiChats.chat(row.chat_id),
-        replyTo: null,
-        text,
-        messageId: event.id,
-        helperDialogue: { ...dialogue, direction: 'from_helper' },
-        quote: messageQuoteOf(row),
-      });
-    }
-    conversation.stateOf(row.id, 'answered');
+  if (id === null) return null;
+  return recordHelperSettlement(ports.store, { id, event, text, ok });
+}
+
+async function recordHelperSettlement(
+  store: Store,
+  settled: {
+    readonly id: string;
+    readonly event: StoredEvent;
+    readonly text: string;
+    readonly ok: boolean;
+  },
+): Promise<void> {
+  const { id, event, text, ok } = settled;
+  const row = await store.host.call('assistantChat', 'find', id);
+  const relayed =
+    ok &&
+    row !== undefined &&
+    text.trim() !== '' &&
+    (await helperReplyWasRelayed(store, event, row.chat_id));
+  await store.host.write('helperDialogueSettle', {
+    parentMessageId: id,
+    eventId: event.id,
+    text,
+    ok,
+    relayed,
   });
-  return true;
 }

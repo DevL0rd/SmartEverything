@@ -14,6 +14,7 @@ import {
   type ReleaseSource,
 } from '@smarteverything/domain';
 import type { HubLayout } from '../data-layout';
+import { storeUnit } from '../store/host/unit';
 import type { Store } from '../store/store';
 
 export class BuildSourceMissingError extends Error {
@@ -28,8 +29,6 @@ export class BuildSourceMissingError extends Error {
 
 const STORED_SETTINGS = z.strictObject({ settings: z.string() });
 
-type SettingsStore = Pick<Store, 'settingsKv' | 'write'>;
-
 function sourceOf(
   saved: Readonly<Record<string, unknown>> | null,
   artifact: ReleaseArtifact,
@@ -38,17 +37,16 @@ function sourceOf(
   return BUILD_SOURCE_SETTING_VALUE.parse(saved).source;
 }
 
-export function readBuildSources(store: Pick<Store, 'settingsKv'>): BuildSourceSettings {
+function readBuildSources(store: Pick<Store, 'settingsKv'>): BuildSourceSettings {
   return buildSourcesFrom((artifact) =>
     sourceOf(store.settingsKv.read(buildSourceSettingId(artifact)), artifact),
   );
 }
 
-export function updateBuildSources(
-  store: SettingsStore,
-  update: BuildSourceSettingsUpdate,
-): BuildSourceSettings {
-  return store.write(() => {
+export const BUILD_SOURCES_UNIT = storeUnit((store, _input: null) => readBuildSources(store));
+
+export const BUILD_SOURCES_UPDATE_UNIT = storeUnit(
+  (store, update: BuildSourceSettingsUpdate): BuildSourceSettings => {
     const current = readBuildSources(store);
     const next = BUILD_SOURCE_SETTINGS.parse({
       ...current,
@@ -60,8 +58,8 @@ export function updateBuildSources(
         store.settingsKv.save(buildSourceSettingId(artifact), { source });
     }
     return next;
-  });
-}
+  },
+);
 
 export function buildSourceOf(layout: HubLayout, component: PipelineComponent): ReleaseSource {
   const artifact = releaseArtifactOf(component);

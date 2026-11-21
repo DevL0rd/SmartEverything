@@ -40,7 +40,7 @@ export interface ManagerCompletion {
 export interface ManagerModelParts {
   readonly selected: () => string;
   readonly complete: (request: ManagerCompletion) => Promise<string>;
-  readonly nameOf: (profileId: string) => string;
+  readonly nameOf: (profileId: string) => Promise<string>;
   readonly now: () => Date;
   readonly sleep: (ms: number) => Promise<void>;
 }
@@ -68,7 +68,7 @@ export class ManagerModel {
     permitted: () => boolean = () => true,
   ): Promise<readonly MemoryOperation[]> {
     const operations = await this.converse(
-      { chatId: request.chatId, system: MANAGER_SYSTEM, input: this.inputOf(request) },
+      { chatId: request.chatId, system: MANAGER_SYSTEM, input: await this.inputOf(request) },
       (raw) => {
         const parsed = parseOperations(raw);
         return parsed.ok ? { ok: true, value: parsed.operations } : parsed;
@@ -127,7 +127,7 @@ export class ManagerModel {
   }
 
   async judge(request: ManagerRequest): Promise<readonly MemoryOperation[] | null> {
-    const raw = await this.ask(request, this.modelId(), this.inputOf(request));
+    const raw = await this.ask(request, this.modelId(), await this.inputOf(request));
     const parsed = parseOperations(raw);
     if (!parsed.ok) log.warn('memory.judge_unreadable', { reason: parsed.reason });
     return parsed.ok ? parsed.operations : null;
@@ -147,9 +147,9 @@ export class ManagerModel {
     return this.parts.now().toISOString().slice(0, 10);
   }
 
-  private inputOf(request: ManagerRequest): string {
+  private async inputOf(request: ManagerRequest): Promise<string> {
     return managerInput(
-      { name: this.parts.nameOf(request.who.profileId), role: request.who.role },
+      { name: await this.parts.nameOf(request.who.profileId), role: request.who.role },
       this.today(),
       request.memories,
       request.subject,

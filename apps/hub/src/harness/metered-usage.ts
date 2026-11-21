@@ -54,7 +54,9 @@ export class MeteredUsageStream {
   private generationId: string | undefined;
   private model: string | undefined;
   snapshot: SupplierUsageSnapshot | undefined;
-  constructor(private readonly observed: (snapshot: SupplierUsageSnapshot) => void) {}
+  private recorded: Promise<void> = Promise.resolve();
+  private failure: { readonly cause: unknown } | null = null;
+  constructor(private readonly observed: (snapshot: SupplierUsageSnapshot) => Promise<void>) {}
 
   response(response: Response): Response {
     if (!response.ok || response.body === null) return response;
@@ -65,9 +67,11 @@ export class MeteredUsageStream {
             this.parser.feed(this.decoder.decode(bytes, { stream: true }));
             controller.enqueue(bytes);
           },
-          flush: (): void => {
+          flush: async (): Promise<void> => {
             this.parser.feed(this.decoder.decode());
             this.parser.reset({ consume: true });
+            await this.recorded;
+            if (this.failure !== null) throw this.failure.cause;
           },
         }),
       ),
@@ -83,7 +87,17 @@ export class MeteredUsageStream {
     const next = nextSnapshot(this.snapshot, this.generationId, this.model, parsed.usage);
     if (next === undefined) return;
     this.snapshot = next;
-    this.observed(next);
+    this.recorded = this.recorded.then(() => this.record(next));
+  }
+
+  private async record(snapshot: SupplierUsageSnapshot): Promise<void> {
+    if (this.failure !== null) return;
+    try {
+      await this.observed(snapshot);
+    } catch (cause) {
+      this.failure = { cause };
+      this.log.error('metered_usage.record_failed', cause, { generationId: snapshot.generationId });
+    }
   }
 
   private parsed(data: string): z.infer<typeof FRAME> | undefined {

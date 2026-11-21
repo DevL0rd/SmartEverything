@@ -7,7 +7,7 @@ import { phoneViewerOfActor } from '../../src/extensions/mcp/tools/person-reach'
 import type { ToolActor } from '../../src/extensions/mcp/tools/registry';
 import { placedDevice } from '../../src/extensions/mcp/tools/targets';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { visibleState } from '../../src/computers/computer-access';
+import { visibleState } from '../../src/computers/computer-visibility';
 import { phoneViewerOfClient } from '../../src/phones/phone-detail';
 import {
   otherPhoneTiers,
@@ -230,7 +230,7 @@ describe('place names in events and the AI tools', () => {
     expect(shown?.table === 'events' ? shown.record?.details['place'] : 'x').toBeNull();
   });
 
-  it('cuts what the AI of another member reads from the device, its history and its events', () => {
+  it('cuts what the AI of another member reads from the device, its history and its events', async () => {
     addEvents();
     test.store.state.write(
       ['battery', 'now_playing', 'phone_context'].map((capability) => ({
@@ -243,14 +243,14 @@ describe('place names in events and the AI tools', () => {
     const actor = (person: TestPerson, role: 'owner' | 'member'): { actor: ToolActor } => ({
       actor: { clientId: person.client.id, profileId: person.profileId, chatId: null, role },
     });
-    const placed = placedDevice(test.store, null, phoneId);
-    const details = (person: TestPerson, role: 'owner' | 'member'): string =>
+    const placed = await placedDevice(test.store, null, phoneId);
+    const details = async (person: TestPerson, role: 'owner' | 'member'): Promise<string> =>
       JSON.stringify(
-        deviceDetails(test.store, null, phoneViewerOfActor(actor(person, role)), placed),
+        await deviceDetails(test.store, null, phoneViewerOfActor(actor(person, role)), placed),
       );
-    expect(details(dana, 'member')).toContain(PLACE);
-    expect(details(sam, 'member')).not.toContain(PLACE);
-    expect(details(owner, 'owner')).not.toContain(PLACE);
+    expect(await details(dana, 'member')).toContain(PLACE);
+    expect(await details(sam, 'member')).not.toContain(PLACE);
+    expect(await details(owner, 'owner')).not.toContain(PLACE);
     const range = {
       deviceId: phoneId,
       capability: 'now_playing',
@@ -259,17 +259,17 @@ describe('place names in events and the AI tools', () => {
       bucket: 'raw' as const,
       limit: 50,
     };
-    const playingPoints = (person: TestPerson, role: 'owner' | 'member'): unknown =>
-      historyOf(test.store, null, phoneViewerOfActor(actor(person, role)), range)['points'];
-    expect(playingPoints(dana, 'member')).toHaveLength(1);
-    expect(playingPoints(sam, 'member')).toEqual([]);
-    const listed = (person: TestPerson, role: 'owner' | 'member'): string =>
+    const playingPoints = async (person: TestPerson, role: 'owner' | 'member'): Promise<unknown> =>
+      (await historyOf(test.store, null, phoneViewerOfActor(actor(person, role)), range))['points'];
+    expect(await playingPoints(dana, 'member')).toHaveLength(1);
+    expect(await playingPoints(sam, 'member')).toEqual([]);
+    const listed = async (person: TestPerson, role: 'owner' | 'member'): Promise<string> =>
       JSON.stringify(
-        eventsOf(test.store, null, phoneViewerOfActor(actor(person, role)), { limit: 50 }),
+        await eventsOf(test.store, null, phoneViewerOfActor(actor(person, role)), { limit: 50 }),
       );
-    expect(listed(dana, 'member')).toContain(PLACE);
-    expect(listed(sam, 'member')).not.toContain(PLACE);
-    expect(listed(owner, 'owner')).not.toContain(PLACE);
+    expect(await listed(dana, 'member')).toContain(PLACE);
+    expect(await listed(sam, 'member')).not.toContain(PLACE);
+    expect(await listed(owner, 'owner')).not.toContain(PLACE);
   });
 
   it('keeps the doing out of the log another member reads for the phone', () => {
@@ -350,7 +350,7 @@ describe('activity feed rows from signals', () => {
     expect(heardBy(sam)).toEqual(['home_wide']);
   });
 
-  it('cuts what the AI of a member lists the same way', () => {
+  it('cuts what the AI of a member lists the same way', async () => {
     addFeedRows();
     const actor = {
       clientId: sam.client.id,
@@ -359,7 +359,10 @@ describe('activity feed rows from signals', () => {
       role: 'member',
     } as const;
     const listed = JSON.stringify(
-      eventsOf(test.store, null, phoneViewerOfActor({ actor }), { kinds: ['signal'], limit: 50 }),
+      await eventsOf(test.store, null, phoneViewerOfActor({ actor }), {
+        kinds: ['signal'],
+        limit: 50,
+      }),
     );
     expect(listed).toContain('home_wide');
     expect(listed).not.toContain('call_of_dana');

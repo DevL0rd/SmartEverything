@@ -5,68 +5,58 @@ import {
   type AutomationProgramReply,
   type AutomationProgramRevisionSummary,
   type AutomationRevisionRow,
-  type StoredAutomationRow,
-  type AutomationV4,
-  type Layout,
 } from '@smarteverything/domain';
-import { lintProblems, reply, tally, type ProgramEnv } from './service-programs-analysis';
-import { comparePrograms } from './service-programs-compare';
+import { pluginKindsOf, programData } from './program-data';
+import type { DraftInput } from './program-history-units';
+import { reply } from './service-programs-analysis';
+import type { ProgramEnv } from './service-programs';
 
-export interface DraftInput {
-  readonly program: AutomationV4;
-  readonly layout: Layout;
-  readonly expectedRevision: number;
-}
-
-export function draftView(env: ProgramEnv, id: string): AutomationProgramDraftView {
-  const row = env.programs.byId(id);
+export async function draftView(env: ProgramEnv, id: string): Promise<AutomationProgramDraftView> {
+  const row = await env.store.host.call('automations', 'byId', id);
   return {
     id,
     name: row.name,
     revision: row.revision,
     drafted: row.draft !== null,
-    program: row.draft?.program ?? row.definition,
-    layout: row.draft?.layout ?? row.layout,
+    program: row.draft === null ? row.definition : row.draft.program,
+    layout: row.draft === null ? row.layout : row.draft.layout,
   };
 }
 
-export function saveDraft(env: ProgramEnv, id: string, input: DraftInput): AutomationProgramReply {
-  const row = env.programs.saveDraft(
+export function saveDraft(
+  env: ProgramEnv,
+  id: string,
+  draft: DraftInput,
+): Promise<AutomationProgramReply> {
+  return env.store.host.write('saveAutomationDraft', {
+    data: programData(env.kinds, env.secrets),
     id,
-    { program: input.program, layout: input.layout },
-    input.expectedRevision,
-    env.kinds,
-  );
-  const problems = lintProblems(env, input.program);
-  return reply(true, `Draft saved. ${tally(problems)}.`, { id, revision: row.revision }, problems);
+    draft,
+  });
 }
 
-export function discardDraft(
+export async function discardDraft(
   env: ProgramEnv,
   id: string,
   expectedRevision: number,
-): AutomationProgramReply {
-  const row = env.programs.discardDraft(id, expectedRevision);
+): Promise<AutomationProgramReply> {
+  const row = await env.store.host.call('automations', 'discardDraft', id, expectedRevision);
   return reply(true, 'Draft discarded.', { id, revision: row.revision }, []);
 }
 
-export function revisions(env: ProgramEnv, id: string): AutomationProgramRevisionSummary[] {
-  env.programs.byId(id);
-  return env.revisions.list(id).map(({ revision, saved_at, author, plan_hash }) => ({
-    revision,
-    saved_at,
-    author,
-    plan_hash,
-  }));
+export function revisions(
+  env: ProgramEnv,
+  id: string,
+): Promise<AutomationProgramRevisionSummary[]> {
+  return env.store.host.read('automationProgramRevisions', id);
 }
 
-export function revision(env: ProgramEnv, id: string, number: number): AutomationRevisionRow {
-  return env.revisions.byRevision(id, number);
-}
-
-function draftOf(row: StoredAutomationRow): AutomationV4 {
-  if (row.draft === null) throw new ApiError('conflict', 'The automation has no draft to compare.');
-  return row.draft.program;
+export function revision(
+  env: ProgramEnv,
+  id: string,
+  number: number,
+): Promise<AutomationRevisionRow> {
+  return env.store.host.call('automationRevisions', 'byRevision', id, number);
 }
 
 export function compare(
@@ -74,9 +64,47 @@ export function compare(
   id: string,
   from: number,
   to: number | 'draft',
-): AutomationProgramComparison {
-  const earlier = env.revisions.byRevision(id, from).definition;
-  const later =
-    to === 'draft' ? draftOf(env.programs.byId(id)) : env.revisions.byRevision(id, to).definition;
-  return { from, to, changes: [...comparePrograms(earlier, later, env.kinds)] };
+): Promise<AutomationProgramComparison> {
+  return env.store.host.read('compareAutomationProgram', {
+    kinds: pluginKindsOf(env.kinds),
+    id,
+    from,
+    to,
+  });
+}
+
+export async function setEnabled(
+  env: ProgramEnv,
+  id: string,
+  enabled: boolean,
+): Promise<AutomationProgramReply> {
+  const row = await env.store.host.call('automations', 'setEnabled', id, enabled);
+  await env.engine.settled();
+  const summary = `${row.name} is ${enabled ? 'on' : 'off'}.`;
+  return reply(true, summary, { id: row.id, revision: row.revision }, []);
+}
+
+export async function rename(
+  env: ProgramEnv,
+  id: string,
+  name: string,
+): Promise<AutomationProgramReply> {
+  const renamed = await env.store.host.write('renameAutomationProgram', { id, name });
+  await env.engine.settled();
+  return renamed;
+}
+
+export async function remove(env: ProgramEnv, id: string): Promise<void> {
+  const user = await env.store.host.read('automationProgramUser', {
+    data: programData(env.kinds, env.secrets),
+    id,
+  });
+  if (user !== null) {
+    throw new ApiError(
+      'conflict',
+      `The automation ${user} runs this automation. Remove that step first.`,
+    );
+  }
+  await env.engine.retire(id);
+  await env.store.host.write('removeAutomationProgram', id);
 }

@@ -57,11 +57,11 @@ export class OpenRouterEraser implements Eraser {
   constructor(
     private readonly client: OpenRouterClient,
     private readonly meter: PhotosMeter,
-    private readonly model: () => string,
+    private readonly model: () => Promise<string>,
   ) {}
 
   async erase(request: EraseRequest, signal: AbortSignal): Promise<Buffer> {
-    const model = this.model();
+    const model = await this.model();
     try {
       const answer = await this.client.image(
         {
@@ -77,7 +77,7 @@ export class OpenRouterEraser implements Eraser {
         IMAGE_RESPONSE_WIRE,
         signal,
       );
-      this.meter(eraseUsageEntry(request, model, answer.usage));
+      await this.meter(eraseUsageEntry(request, model, answer.usage));
       const [first] = answer.data;
       if (first === undefined)
         throw new ApiError('upstream_failed', 'The eraser returned no image.');

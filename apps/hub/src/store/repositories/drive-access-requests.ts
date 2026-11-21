@@ -72,6 +72,7 @@ export class DriveAccessRequestPendingError extends Error {
 }
 
 export interface DriveAccessRequestInput {
+  readonly id?: string | undefined;
   readonly itemId: string;
   readonly requesterProfileId: string;
   readonly role: DriveGrantRole;
@@ -120,7 +121,7 @@ export class DriveAccessRequestsRepository {
 
   create(input: DriveAccessRequestInput): DriveAccessRequest {
     return this.context.write(() => {
-      const id = this.context.newId();
+      const id = input.id ?? this.context.newId();
       this.context.sql.run(
         'create the drive access request',
         `insert into drive_access_requests (id, item_id, requester_profile_id, role, message, state,

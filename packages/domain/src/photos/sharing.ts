@@ -63,9 +63,18 @@ export const ALBUM_ACTIVITY = z
 
 export type AlbumActivity = z.infer<typeof ALBUM_ACTIVITY>;
 
+const ACTIVITY_CLIENT_ID = ID.optional().describe(
+  'Id the client generated for the new comment or like; repeating the add with the same id returns the one already made',
+);
+
 export const ALBUM_ACTIVITY_CREATE = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('comment'), text: NAME, itemId: ID.optional() }),
-  z.strictObject({ kind: z.literal('like'), itemId: ID.optional() }),
+  z.strictObject({
+    kind: z.literal('comment'),
+    text: NAME,
+    itemId: ID.optional(),
+    id: ACTIVITY_CLIENT_ID,
+  }),
+  z.strictObject({ kind: z.literal('like'), itemId: ID.optional(), id: ACTIVITY_CLIENT_ID }),
 ]);
 
 export type AlbumActivityCreate = z.infer<typeof ALBUM_ACTIVITY_CREATE>;

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, type Hash } from 'node:crypto';
 import { open, type FileHandle } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError, type DriveItem } from '@smarteverything/domain';
@@ -12,10 +12,12 @@ import {
 import { z } from 'zod';
 import { sendError } from '../../server/http';
 import type { DriveBlocks } from '../../store/repositories/drive-blocks';
-import { hashHandle } from '../blocks';
+import { sha256Hex } from '../digest';
+import { FileHashSkippedError, type ContentHash } from '../hasher';
 import { canRead, itemAccess } from '../access';
 import { requireExport } from '../sharing/export-guard';
-import { DriveWriteError, locate, type DriveWriteRoot } from '../intents';
+import { locate, type DriveWriteRoot } from '../intents';
+import { DriveWriteError } from '../write-error';
 import { openResolved, resolveInRoot } from '../paths';
 import { blocksHashOf } from './server-index';
 import {
@@ -34,9 +36,7 @@ const BYTES = z.instanceof(Uint8Array);
 const INDEX = /^\d+$/;
 const HASH_BYTES = 32;
 
-export function sha256Of(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
+const VERIFY_SLICE = 1024 * 1024;
 
 function blocksFit(item: FileItem, blocks: DriveBlocks): boolean {
   return blocks.hashes.length === blockCount(item.bytes, blocks.blockSize) * HASH_BYTES;
@@ -46,7 +46,7 @@ export async function readExactly(
   handle: FileHandle,
   position: number,
   length: number,
-): Promise<Buffer> {
+): Promise<Buffer<ArrayBuffer>> {
   const buffer = Buffer.allocUnsafe(length);
   let filled = 0;
   while (filled < length) {
@@ -63,6 +63,29 @@ export async function openLive(root: DriveWriteRoot, relPath: string): Promise<F
   return openResolved(await resolveInRoot(root.path, relPath), 'read');
 }
 
+async function hashedBlocks(
+  env: SyncEnv,
+  root: DriveWriteRoot,
+  item: FileItem,
+): Promise<ContentHash> {
+  const identity = env.store.driveItems.identityOf(item.id);
+  if (identity === null) throw changedOutsideSync();
+  const { dev, ino } = identity;
+  try {
+    return await env.hasher.hash(
+      { rootPath: root.path, relPath: item.relPath, dev: BigInt(dev), ino: BigInt(ino) },
+      true,
+    );
+  } catch (cause) {
+    if (cause instanceof FileHashSkippedError) throw changedOutsideSync();
+    throw cause;
+  }
+}
+
+function changedOutsideSync(): ApiError {
+  return new ApiError('conflict', 'The file changed on the hub outside sync; it is being scanned.');
+}
+
 export async function blocksOf(
   env: SyncEnv,
   root: DriveWriteRoot,
@@ -70,19 +93,9 @@ export async function blocksOf(
 ): Promise<DriveBlocks> {
   const stored = env.store.driveBlocks.find(item.id, item.rev);
   if (stored !== undefined && blocksFit(item, stored)) return stored;
-  const handle = await openLive(root, item.relPath);
-  try {
-    const hashed = await hashHandle(handle, item.bytes, true);
-    if (hashed.bytes !== item.bytes || hashed.blocks === null) {
-      throw new ApiError(
-        'conflict',
-        'The file changed on the hub outside sync; it is being scanned.',
-      );
-    }
-    return env.store.driveBlocks.put({ itemId: item.id, rev: item.rev, ...hashed.blocks });
-  } finally {
-    await handle.close();
-  }
+  const hashed = await hashedBlocks(env, root, item);
+  if (hashed.bytes !== item.bytes || hashed.blocks === null) throw changedOutsideSync();
+  return env.store.driveBlocks.put({ itemId: item.id, rev: item.rev, ...hashed.blocks });
 }
 
 export function hexHashesOf(blocks: DriveBlocks): readonly string[] {
@@ -122,7 +135,7 @@ async function copyBlocks(
     const range = blockRange(meta.bytes, meta.blockSize, index);
     const block =
       held[index] === hash ? await readExactly(source, range.start, range.end - range.start) : null;
-    if (block === null || sha256Of(block) !== hash) {
+    if (block === null || (await sha256Hex(block)) !== hash) {
       missing.push(index);
       continue;
     }
@@ -161,6 +174,20 @@ export interface Assembled {
   readonly bytes: number;
 }
 
+async function sliceHashes(
+  handle: FileHandle,
+  range: { readonly start: number; readonly end: number },
+  whole: Hash,
+): Promise<string> {
+  const block = createHash('sha256');
+  for (let at = range.start; at < range.end; at += VERIFY_SLICE) {
+    const slice = await readExactly(handle, at, Math.min(VERIFY_SLICE, range.end - at));
+    block.update(slice);
+    whole.update(slice);
+  }
+  return block.digest('hex');
+}
+
 export async function verifyAssembled(root: DriveWriteRoot, txn: SyncTxn): Promise<Assembled> {
   const { hashes, meta } = txn.spec;
   const handle = await open(await locate(root, txn.spec.tmpRel), 'r');
@@ -168,11 +195,9 @@ export async function verifyAssembled(root: DriveWriteRoot, txn: SyncTxn): Promi
     const whole = createHash('sha256');
     for (const [index, hash] of hashes.entries()) {
       const range = blockRange(meta.bytes, meta.blockSize, index);
-      const block = await readExactly(handle, range.start, range.end - range.start);
-      if (sha256Of(block) !== hash) {
+      if ((await sliceHashes(handle, range, whole)) !== hash) {
         throw new DriveWriteError('corrupt', `Block ${String(index)} does not match its checksum.`);
       }
-      whole.update(block);
     }
     const { size } = await handle.stat();
     if (size !== meta.bytes) {
@@ -194,8 +219,8 @@ export async function guarded(response: ServerResponse, work: () => Promise<void
   }
 }
 
-export function nodeOf(env: SyncEnv, request: IncomingMessage): SyncNode {
-  const node = env.authenticate(request);
+export async function nodeOf(env: SyncEnv, request: IncomingMessage): Promise<SyncNode> {
+  const node = await env.authenticate(request);
   if (node === null) throw new ApiError('unauthorized', 'Sign in with a paired computer.');
   return node;
 }
@@ -226,7 +251,7 @@ function indexOf(params: Readonly<Record<string, string>>): number {
   return Number(raw);
 }
 
-async function receive(request: IncomingMessage, length: number): Promise<Buffer> {
+async function receive(request: IncomingMessage, length: number): Promise<Buffer<ArrayBuffer>> {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of request) {
@@ -255,7 +280,7 @@ export class SyncBlockRoutes {
     params: Readonly<Record<string, string>>,
   ): Promise<void> {
     return guarded(response, async () => {
-      const node = nodeOf(this.env, request);
+      const node = await nodeOf(this.env, request);
       const { root, item } = this.located(node, params);
       const blocks = await blocksOf(this.env, root, item);
       const index = indexOf(params);
@@ -267,7 +292,7 @@ export class SyncBlockRoutes {
       try {
         const bytes = await readExactly(handle, range.start, range.end - range.start);
         const hash = hexHashesOf(blocks)[index];
-        if (hash !== sha256Of(bytes)) {
+        if (hash !== (await sha256Hex(bytes))) {
           throw new ApiError('conflict', 'The file changed on the hub; refresh the index.');
         }
         response.writeHead(200, {
@@ -289,7 +314,7 @@ export class SyncBlockRoutes {
     params: Readonly<Record<string, string>>,
   ): Promise<void> {
     return guarded(response, async () => {
-      const node = nodeOf(this.env, request);
+      const node = await nodeOf(this.env, request);
       const txn = txnOf(this.txns, params, node);
       const index = indexOf(params);
       if (!txn.wants(index)) throw new ApiError('conflict', 'The hub does not need that block.');
@@ -308,7 +333,7 @@ export class SyncBlockRoutes {
     const { meta, hashes } = txn.spec;
     const range = blockRange(meta.bytes, meta.blockSize, index);
     const block = await receive(request, range.end - range.start);
-    if (sha256Of(block) !== hashes[index]) {
+    if ((await sha256Hex(block)) !== hashes[index]) {
       throw new ApiError('invalid_request', 'The block does not match its announced checksum.');
     }
     const root = this.env.store.driveRoots.byId(txn.spec.rootId);

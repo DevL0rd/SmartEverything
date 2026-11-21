@@ -69,6 +69,7 @@ function wake(amplitude: number): Parameters<PhoneEars['claim']>[1] {
 beforeEach(async () => {
   testing = false;
   opened = await testStore();
+  await opened.store.live.home.load();
   clock = new FakeClock(START);
   claims = new WakeClaims({ clock, log: testLogger('claims') });
   online = new Set([CLIENT]);
@@ -89,7 +90,7 @@ beforeEach(async () => {
     },
     log: testLogger('listening'),
   });
-  registry.start();
+  await registry.start();
   pause = new EndOfSpeechPause(opened.store);
   ears = new PhoneEars({
     test: { ...idleWakeTest, active: (): boolean => testing },
@@ -116,7 +117,7 @@ beforeEach(async () => {
   });
   ears.start();
   phone = device(CLIENT, 'Pixel');
-  new DeviceListeningSwitches(opened.store).save(phone, { wake: true });
+  await new DeviceListeningSwitches(opened.store).save(phone, { wake: true });
 });
 
 afterEach(async () => {

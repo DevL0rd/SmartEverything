@@ -67,7 +67,7 @@ export function effectRun(
     },
     late: (cause): void => {
       const activation = lateActivation(request, cause, ports.clock.now());
-      if (activation !== undefined) ports.repositories.nodes.append(scope.runId, [activation]);
+      if (activation !== undefined) ports.repositories.runs.append(scope.runId, [activation]);
     },
   };
 }

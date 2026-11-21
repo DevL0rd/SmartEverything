@@ -58,10 +58,14 @@ describe('who is asked to approve', () => {
   });
 });
 
+async function asked(): Promise<void> {
+  while (sent.length === 0) await new Promise((resolve) => setImmediate(resolve));
+}
+
 describe('approving a risky machine action from a phone', () => {
   it('lets the action go ahead when the asked phone allows it', async () => {
     const running = approvals.require(request(memberProfile));
-    await vi.advanceTimersByTimeAsync(0);
+    await asked();
     expect(sent.map((item) => item.clientId)).toEqual([member]);
     const requestId = sent[0]?.requestId ?? '';
     expect(approvals.has(requestId)).toBe(true);
@@ -73,7 +77,7 @@ describe('approving a risky machine action from a phone', () => {
   it('refuses with the phone words when the phone denies', async () => {
     const running = approvals.require(request(null));
     const failure = expect(running).rejects.toThrow(MachineApprovalDeniedError);
-    await vi.advanceTimersByTimeAsync(0);
+    await asked();
     approvals.answer(owner, sent[0]?.requestId ?? '', {
       ok: false,
       detail: 'Denied on the phone.',
@@ -84,6 +88,7 @@ describe('approving a risky machine action from a phone', () => {
   it('refuses when nobody answers within a minute', async () => {
     const running = approvals.require(request(null));
     const failure = expect(running).rejects.toThrow('within 60 s');
+    await asked();
     await vi.advanceTimersByTimeAsync(60_000);
     await failure;
   });
@@ -96,7 +101,7 @@ describe('approving a risky machine action from a phone', () => {
   it('does not accept an answer from a phone that was not asked', async () => {
     const running = approvals.require(request(memberProfile));
     const failure = expect(running).rejects.toThrow(MachineApprovalDeniedError);
-    await vi.advanceTimersByTimeAsync(0);
+    await asked();
     const requestId = sent[0]?.requestId ?? '';
     expect(() => {
       approvals.answer(owner, requestId, { ok: true, detail: 'Allowed' });

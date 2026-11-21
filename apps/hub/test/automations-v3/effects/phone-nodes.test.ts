@@ -105,7 +105,7 @@ async function home(): Promise<Rig> {
     store: db.store,
     ownerProfileId: () => OWNER,
     tools: {
-      check: (): ToolCheck => ({ ok: true, tool: TOOL }),
+      check: (): Promise<ToolCheck> => Promise.resolve({ ok: true, tool: TOOL }),
       call: async (_name, args, caller): Promise<HubToolResult> => {
         const operation = args['arguments'];
         const fields = operation !== null && typeof operation === 'object' ? operation : {};

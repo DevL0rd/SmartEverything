@@ -5,7 +5,7 @@ import { ApiError, type DriveItem, type EditJob, type VideoEdit } from '@smartev
 import { background, messageOf } from '@smarteverything/logging';
 import { commitContent } from '../../drive/changes';
 import { locate } from '../../drive/intents';
-import { checkDriveWrite } from '../../drive/quotas';
+import { checkLoadedDriveWrite } from '../../drive/quotas';
 import { changeActorOf, type DriveCaller } from '../../drive/service-write-support';
 import { stageBytes } from '../../drive/versions';
 import { probeVideo, type VideoProbe } from '../pipeline/probe';
@@ -56,14 +56,22 @@ function trimOf(edit: VideoEdit, probe: VideoProbe): VideoPlan['trim'] {
   return { startMs: edit.trim.startMs, endMs };
 }
 
-function copyPath(deps: EditDeps, target: EditTarget<VideoItem>, extension: string): string {
+async function copyPath(
+  deps: EditDeps,
+  target: EditTarget<VideoItem>,
+  extension: string,
+): Promise<string> {
   const { stem } = stemOf(target.item.name);
   const folder = posix.dirname(target.item.relPath);
   for (let attempt = 1; ; attempt += 1) {
     const tag = attempt === 1 ? ' (edited)' : ` (edited ${String(attempt)})`;
     const name = `${stem}${tag}${extension}`;
     const relPath = folder === '.' ? name : `${folder}/${name}`;
-    if (deps.store.driveItems.byPath(target.root.id, relPath, null) === undefined) return relPath;
+    if (
+      (await deps.store.host.call('driveItems', 'byPath', target.root.id, relPath, null)) ===
+      undefined
+    )
+      return relPath;
   }
 }
 
@@ -77,8 +85,12 @@ export class VideoEditService {
     });
   }
 
-  start(caller: DriveCaller, itemId: string, edit: VideoEdit): { readonly jobId: string } {
-    const target = videoTarget(this.deps, caller, itemId);
+  async start(
+    caller: DriveCaller,
+    itemId: string,
+    edit: VideoEdit,
+  ): Promise<{ readonly jobId: string }> {
+    const target = await videoTarget(this.deps, caller, itemId);
     const refusal = edit.mode === 'version' ? versionRefusal(target) : null;
     if (refusal !== null) throw new ApiError('invalid_request', refusal);
     const jobId = this.jobs.create(itemId, caller.profileId);
@@ -177,7 +189,7 @@ export class VideoEditService {
     const { deps } = this;
     const size = (await stat(plan.target)).size;
     if (size === 0) throw new Error('ffmpeg wrote an empty video.');
-    await checkDriveWrite(deps.guard, {
+    await checkLoadedDriveWrite(deps.store, deps.space, {
       profileId: target.caller.profileId,
       addBytes: size,
       releasedBytes: 0,
@@ -185,25 +197,17 @@ export class VideoEditService {
     });
     const staged = await stageBytes(deps.env, target.root, createReadStream(plan.target));
     const relPath =
-      edit.mode === 'version' ? target.item.relPath : copyPath(deps, target, extension);
-    try {
-      const written = await commitContent(deps.env, {
-        root: target.root,
-        staged,
-        relPath,
-        actor: changeActorOf(target.caller),
-        ...(edit.mode === 'copy'
-          ? {
-              alongside: (item: DriveItem): void => {
-                stackWithOriginal(deps, target.item, item);
-              },
-            }
-          : {}),
-      });
-      return written.item;
-    } catch (cause) {
+      edit.mode === 'version' ? target.item.relPath : await copyPath(deps, target, extension);
+    const written = await commitContent(deps.env, {
+      root: target.root,
+      staged,
+      relPath,
+      actor: changeActorOf(target.caller),
+    }).catch(async (cause: unknown) => {
       await deps.env.files.remove(await locate(target.root, staged.relPath));
       throw cause;
-    }
+    });
+    if (edit.mode === 'copy') await stackWithOriginal(deps, target.item, written.item);
+    return written.item;
   }
 }

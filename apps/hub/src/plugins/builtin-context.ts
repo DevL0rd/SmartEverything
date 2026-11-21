@@ -11,8 +11,8 @@ import type {
   PluginFiles,
   PluginHostContext,
   PluginPeopleView,
-  PluginRecords,
   PluginTool,
+  PluginViewers,
   Unsubscribe,
 } from './builtin/contract';
 import { metricsOf, viewersOf, type DriverServices } from './driver-services';
@@ -25,6 +25,10 @@ import type { PluginSecrets } from './plugin-secrets';
 import type { ContributionSinks } from './runtime';
 import { presenceSignal } from '../automations/world-v3/presence';
 import { pluginLogger } from './plugin-logs';
+import type { PluginRecordMirror } from './plugin-records';
+import type { WorldSource } from '../automations/world-v3/world-mirror';
+
+export type PluginHomeFacts = Pick<WorldSource, 'settings' | 'profiles' | 'phoneContexts' | 'load'>;
 
 export interface BuiltinContextOptions {
   readonly store: Store;
@@ -34,7 +38,7 @@ export interface BuiltinContextOptions {
   readonly speakers: PluginSpeakers;
   readonly voice: PluginVoiceServices;
   readonly conversations: Pick<PluginConversations, 'forPlugin'>;
-  readonly attachments: (chatId: string) => readonly string[];
+  readonly attachments: (chatId: string) => Promise<readonly string[]>;
   readonly machineFile: PluginFiles['fromMachine'];
   readonly uploadFile: PluginFiles['fromUpload'];
   readonly pictureFile: PluginFiles['fromPicture'];
@@ -46,6 +50,7 @@ export interface BuiltinContextOptions {
   ) => Promise<void>;
   readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
   readonly signals: { readonly emit: (signal: SignalInput) => void };
+  readonly home: PluginHomeFacts;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -58,28 +63,18 @@ export interface BuiltinSession {
   readonly track: (stop: Unsubscribe) => Unsubscribe;
   readonly watchSettings: PluginHostContext['watchSettings'];
   readonly options: PluginHostContext['options']['register'];
-}
-
-function recordsOf(store: Store, id: string, collection: string): PluginRecords {
-  return {
-    get: (key) => store.pluginData.record(id, collection, key),
-    list: () => store.pluginData.records(id, collection),
-    put: (key, value): void => {
-      store.pluginData.putRecord(id, collection, key, value);
-    },
-    remove: (key): void => {
-      store.pluginData.removeRecord(id, collection, key);
-    },
-  };
+  readonly records: PluginRecordMirror;
 }
 
 function healthWriter(store: Store, manifest: PluginManifest): PluginHostContext['health'] {
   const sourceApp = `smarteverything.plugin.${manifest.id}`;
   const source = { device: manifest.name, appVersion: manifest.version };
   return {
-    write: (profileId, records: readonly HealthRecord[]): Promise<void> => {
-      store.profiles.byId(profileId);
-      store.health.ingest(
+    write: async (profileId, records: readonly HealthRecord[]): Promise<void> => {
+      await store.host.call('profiles', 'byId', profileId);
+      await store.host.call(
+        'health',
+        'ingest',
         {
           records: records.map((record) => ({ ...record, sourceApp })),
           deletions: [],
@@ -88,7 +83,6 @@ function healthWriter(store: Store, manifest: PluginManifest): PluginHostContext
         },
         profileId,
       );
-      return Promise.resolve();
     },
   };
 }
@@ -101,7 +95,7 @@ function peopleOf(
   return {
     save: (externalId, change) => people.set(pluginId, externalId, change),
     find: (externalId) => people.find(pluginId, externalId) ?? null,
-    list: () => people.list(pluginId),
+    list: () => people.current(pluginId),
     requesterOf: (externalId) => people.requesterOf(pluginId, externalId),
     watch: (listener) => track(people.watch(pluginId, listener)),
   };
@@ -150,19 +144,34 @@ function devicesOf(
 }
 
 function homeOf(
-  store: Store,
+  home: PluginHomeFacts,
   signals: BuiltinContextOptions['signals'],
 ): PluginHostContext['home'] {
   return {
-    timeZone: (): string => store.settings.read().time_zone,
-    profiles: () => store.profiles.list().map(({ id, name }) => ({ id, name })),
+    timeZone: (): string => home.settings.read().time_zone,
+    profiles: () => home.profiles.list().map(({ id, name }) => ({ id, name })),
     phone: (profileId): { readonly paired: boolean; readonly place: string | null } => {
-      const entry = store.phoneContexts.latestOf(profileId);
+      const entry = home.phoneContexts.latestOf(profileId);
       return { paired: entry !== undefined, place: entry?.place ?? null };
     },
     presenceChanged: (move): void => {
       signals.emit(presenceSignal(move));
     },
+  };
+}
+
+function viewerPublisher(
+  options: BuiltinContextOptions,
+  sinks: Pick<ContributionSinks, 'viewerData'>,
+  log: Logger,
+): PluginViewers['publish'] {
+  return (externalId, stream, value): void => {
+    const deviceId = options.drivers.deviceIdOf(externalId);
+    if (deviceId === undefined) {
+      log.warn('plugin.viewer_data_without_device', { externalId, stream });
+      return;
+    }
+    sinks.viewerData({ stream, value, at: options.now().toISOString() }, deviceId);
   };
 }
 
@@ -190,10 +199,10 @@ export function builtinContext(
     options: { register: session.options },
     search: { replace: sinks.search },
     health: healthWriter(options.store, session.manifest),
-    records: (collection) => recordsOf(options.store, id, collection),
+    records: (collection) => session.records.collection(collection),
     configure: (change, by) => options.configure(id, change, by),
     watchSettings: session.watchSettings,
-    viewers: viewersOf(options.store, options.drivers, track),
+    viewers: viewersOf(options.store, options.drivers, track, viewerPublisher(options, sinks, log)),
     clients: clientsOf(options.store, track),
     metrics: metricsOf(options.drivers, (externalId) => {
       log.warn('plugin.metric_without_device', { externalId });
@@ -210,6 +219,6 @@ export function builtinContext(
       fromUpload: options.uploadFile,
       fromPicture: options.pictureFile,
     }),
-    home: homeOf(options.store, options.signals),
+    home: homeOf(options.home, options.signals),
   };
 }

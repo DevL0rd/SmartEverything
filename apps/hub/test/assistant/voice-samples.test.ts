@@ -19,6 +19,7 @@ let directory: string;
 
 beforeEach(async () => {
   opened = await testStore();
+  await Promise.all([opened.store.live.home.load(), opened.store.live.aiModels.load()]);
   directory = await mkdtemp(join(tmpdir(), 'voice-samples-'));
 });
 

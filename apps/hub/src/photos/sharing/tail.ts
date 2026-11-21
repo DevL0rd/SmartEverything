@@ -6,33 +6,36 @@ export type TailStore = Pick<Store, 'context' | 'photoAlbumActivity'>;
 
 const ID = z.strictObject({ id: z.string(), created_at: z.string() });
 
-export class ActivityTail {
-  private at: string;
-  private handled = new Set<string>();
+export interface ActivityCursor {
+  readonly at: string;
+  readonly handled: readonly string[];
+}
 
-  constructor(private readonly store: TailStore) {
-    this.at = store.context.now();
-    this.drain();
-  }
+export interface DrainedActivity {
+  readonly cursor: ActivityCursor;
+  readonly rows: PhotoAlbumActivityRow[];
+}
 
-  drain(): readonly PhotoAlbumActivityRow[] {
-    const rows = this.store.context.sql
-      .all(
-        ID,
-        `select id, created_at from photo_album_activity
-          where created_at >= $at order by created_at, id`,
-        { at: this.at },
-      )
-      .filter((row) => !(row.created_at === this.at && this.handled.has(row.id)));
-    const last = rows.at(-1);
-    if (last === undefined) return [];
-    this.at = last.created_at;
-    this.handled = new Set(
-      rows.filter((row) => row.created_at === last.created_at).map((row) => row.id),
-    );
-    return rows.flatMap((row) => {
-      const found = this.store.photoAlbumActivity.find(row.id);
+export function drainActivity(store: TailStore, cursor: ActivityCursor): DrainedActivity {
+  const handled = new Set(cursor.handled);
+  const rows = store.context.sql
+    .all(
+      ID,
+      `select id, created_at from photo_album_activity
+        where created_at >= $at order by created_at, id`,
+      { at: cursor.at },
+    )
+    .filter((row) => !(row.created_at === cursor.at && handled.has(row.id)));
+  const last = rows.at(-1);
+  if (last === undefined) return { cursor, rows: [] };
+  return {
+    cursor: {
+      at: last.created_at,
+      handled: rows.filter((row) => row.created_at === last.created_at).map((row) => row.id),
+    },
+    rows: rows.flatMap((row) => {
+      const found = store.photoAlbumActivity.find(row.id);
       return found === undefined ? [] : [found];
-    });
-  }
+    }),
+  };
 }

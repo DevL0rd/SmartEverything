@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { PhoneNodes } from '../../src/phones/phone-nodes';
 import { phoneWatchSource } from '../../src/phones/phone-watch';
 import { captureLogs } from '../support/logs';
 import {
@@ -15,6 +16,7 @@ let dana: TestPerson;
 let sam: TestPerson;
 let owner: TestPerson;
 let phoneId: string;
+let nodes: PhoneNodes;
 
 beforeEach(async () => {
   captureLogs();
@@ -28,14 +30,18 @@ beforeEach(async () => {
     name: 'Dana phone',
   }).device.id;
   test.store.phoneDetails.merge(phoneId, STORED_DETAIL);
+  await test.store.live.home.load();
+  nodes = idlePhoneNodes(test);
+  await nodes.details.load();
 });
 
 afterEach(async () => {
+  nodes.stop();
   await test.close();
 });
 
 function source(): ReturnType<typeof phoneWatchSource> {
-  return phoneWatchSource(test.store, idlePhoneNodes(test), {
+  return phoneWatchSource(test.store, nodes, {
     hold: (): void => undefined,
     release: (): void => undefined,
   });

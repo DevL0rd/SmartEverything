@@ -32,7 +32,7 @@ function directPair(store: Store, chatId: string, profile: string): Pair {
   if (parent.profile_id !== profile)
     throw new ApiError('forbidden', 'The helper’s parent belongs to another profile.');
   for (const chat of [helper, parent]) {
-    store.aiChats.assertWorkAllowed(chat.id);
+    store.live.chatWork.assertWorkAllowed(chat.id);
     admitChatExecution(chat);
   }
   return { helper, parent, helperName: helper.helper_name };
@@ -78,7 +78,7 @@ function initiatingHelper(caller: Caller): {
 
 export function helperArtifactScope(store: Store, caller: Caller): HelperArtifactScope {
   const { authority, chatId } = initiatingHelper(caller);
-  const profile = profileIdOf(store, caller);
+  const profile = profileIdOf(caller);
   const event = store.assistantEvents.event(authority.event_id);
   if (authority.profile_id !== profile || event.profile_id !== profile || event.chat_id !== chatId)
     throw new ApiError('forbidden', 'The initiating grant belongs to another conversation.');

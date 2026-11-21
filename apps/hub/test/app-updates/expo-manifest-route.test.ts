@@ -156,16 +156,13 @@ beforeEach(async () => {
     role: 'member',
     tokenHash: hashClientToken(createClientToken()),
   });
-  key = appUpdateKeyOf(test.store, { kind: 'client', client }).key;
+  key = (await appUpdateKeyOf(test.store, { kind: 'client', client })).key;
   await mkdir(join(layout.system.updates.appUpdates, 'keys'), { recursive: true });
   await writeFile(
     join(layout.system.updates.appUpdates, 'keys', 'private-key.pem'),
     pair.privateKey.export({ type: 'pkcs8', format: 'pem' }),
   );
-  signer = await ManifestSigner.start(
-    layout.system.updates.appUpdates,
-    testLogger('app-updates'),
-  );
+  signer = await ManifestSigner.start(layout.system.updates.appUpdates, testLogger('app-updates'));
   await startServer(signer);
 });
 
@@ -213,7 +210,7 @@ describe('the expo manifest route', () => {
       role: 'member',
       tokenHash: hashClientToken(createClientToken()),
     });
-    const otherKey = appUpdateKeyOf(test.store, { kind: 'client', client: other }).key;
+    const otherKey = (await appUpdateKeyOf(test.store, { kind: 'client', client: other })).key;
     await publish([targeted]);
     const selected = partOf(await ask(expoHeaders()));
     expect(MANIFEST.parse(JSON.parse(selected.body)).id).toBe(targeted.id);
@@ -228,7 +225,7 @@ describe('the expo manifest route', () => {
     const otherResponse = partOf(await ask(expoHeaders(current, otherKey)));
     expect(JSON.parse(otherResponse.body)).toEqual({ type: 'noUpdateAvailable' });
   });
-  it('hands the update key only to the paired device itself', () => {
+  it('hands the update key only to the paired device itself', async () => {
     const direct = test.store.clients.byId(key.split('.')[0] ?? '');
     const delegated = [
       { via: 'assistant' },
@@ -236,11 +233,11 @@ describe('the expo manifest route', () => {
       { pluginId: 'plugin' },
     ] as const;
     for (const extra of delegated) {
-      expect(() =>
+      await expect(
         appUpdateKeyOf(test.store, { kind: 'client', client: direct, ...extra }),
-      ).toThrow(ApiError);
+      ).rejects.toThrow(ApiError);
     }
-    expect(appUpdateKeyOf(test.store, { kind: 'client', client: direct }).key).toBe(key);
+    expect((await appUpdateKeyOf(test.store, { kind: 'client', client: direct })).key).toBe(key);
   });
   it('refuses a call with no key, a forged key or the key of a device no longer paired', async () => {
     await publish([entry()]);
@@ -260,25 +257,25 @@ describe('the expo manifest route', () => {
     expect(JSON.stringify(logs.records)).not.toContain(mac);
   });
 
-  it('gives each device its own key, so one device key never opens another', () => {
+  it('gives each device its own key, so one device key never opens another', async () => {
     const other = test.store.clients.create({
       name: 'Phone',
       platform: 'android',
       role: 'member',
       tokenHash: hashClientToken(createClientToken()),
     });
-    const otherKey = appUpdateKeyOf(test.store, { kind: 'client', client: other }).key;
+    const otherKey = (await appUpdateKeyOf(test.store, { kind: 'client', client: other })).key;
     expect(otherKey).not.toBe(key);
     expect(otherKey.startsWith(`${other.id}.`)).toBe(true);
-    expect(() => appUpdateKeyOf(test.store, { kind: 'anonymous' })).toThrow(ApiError);
+    await expect(appUpdateKeyOf(test.store, { kind: 'anonymous' })).rejects.toThrow(ApiError);
     for (const delegated of [
       { via: 'assistant' },
       { mcpOrigin: 'personal' },
       { pluginId: 'plugin' },
     ] as const) {
-      expect(() =>
+      await expect(
         appUpdateKeyOf(test.store, { kind: 'client', client: other, ...delegated }),
-      ).toThrow(ApiError);
+      ).rejects.toThrow(ApiError);
     }
   });
 

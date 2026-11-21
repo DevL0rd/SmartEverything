@@ -3,21 +3,22 @@ import type { DriveFiles } from '../intents';
 import type { Barrier } from '../trash';
 import type { DriveRootLanes } from '../root-lanes';
 import { currentClaim, unclaimed, type ReplayClaim } from '../replay-claims';
+import type { DriveOp, DriveOpResult } from '../units/ops';
 import { guarded, posix } from './errors';
 import type { PosixScope } from './env';
-import type { PosixNode } from './nodes';
+import type { PosixNode } from '../units/posix';
 
 export interface BatchSlot {
   readonly barrier: Barrier;
   readonly reserved: Set<string>;
-  readonly folders: Map<PosixScope, Map<number, PosixNode>>;
+  readonly folders: Map<PosixScope, Map<number, Promise<PosixNode>>>;
   readonly touched: Map<number, PosixNode>;
 }
 
 export interface Landed<T> {
-  readonly settle: () => void;
+  readonly ops: readonly DriveOp[];
   readonly abandon: () => Promise<void>;
-  readonly reply: () => Promise<T>;
+  readonly reply: (results: readonly DriveOpResult[]) => Promise<T>;
 }
 
 interface Waiting<T> {
@@ -32,13 +33,16 @@ interface Ready<T> {
   readonly landed: Landed<T>;
 }
 
+interface Kept<T> extends Ready<T> {
+  readonly results: readonly DriveOpResult[];
+}
+
 export interface BatchEnv {
   readonly lanes: DriveRootLanes;
   readonly files: Pick<DriveFiles, 'syncPaths'>;
-  readonly write: <R>(work: () => R) => R;
+  readonly write: (ops: readonly DriveOp[]) => Promise<DriveOpResult[]>;
   readonly settled: () => void;
-  readonly claim: (claim: ReplayClaim) => void;
-  readonly touch: (folders: Iterable<PosixNode>) => void;
+  readonly touch: (folders: Iterable<PosixNode>) => DriveOp[];
   readonly log: Logger;
 }
 
@@ -130,45 +134,58 @@ export class NameBatches<T> {
     await turn;
     const kept = await this.settle(ready, slot);
     this.env.settled();
-    for (const { waiting, landed } of kept) {
-      guarded(landed.reply).then(waiting.resolve, waiting.reject);
+    for (const { waiting, landed, results } of kept) {
+      guarded(() => landed.reply(results)).then(waiting.resolve, waiting.reject);
     }
   }
 
-  private settleOne(entry: Ready<T>): void {
-    entry.landed.settle();
-    if (entry.waiting.claim !== undefined) this.env.claim(entry.waiting.claim);
+  private opsOf(entry: Ready<T>): DriveOp[] {
+    const { claim } = entry.waiting;
+    return claim === undefined
+      ? [...entry.landed.ops]
+      : [...entry.landed.ops, { kind: 'claim', claim }];
   }
 
-  private touchFolders(slot: BatchSlot): void {
-    this.env.touch(slot.touched.values());
+  private touchOps(slot: BatchSlot): DriveOp[] {
+    const ops = this.env.touch(slot.touched.values());
     slot.touched.clear();
+    return ops;
   }
 
-  private async settle(ready: readonly Ready<T>[], slot: BatchSlot): Promise<readonly Ready<T>[]> {
+  private async together(ready: readonly Ready<T>[], slot: BatchSlot): Promise<Kept<T>[]> {
+    const owned = ready.map((entry) => ({ entry, ops: this.opsOf(entry) }));
+    const results = await this.env.write([
+      ...owned.flatMap(({ ops }) => ops),
+      ...this.touchOps(slot),
+    ]);
+    let offset = 0;
+    return owned.map(({ entry, ops }) => {
+      const kept = { ...entry, results: results.slice(offset, offset + ops.length) };
+      offset += ops.length;
+      return kept;
+    });
+  }
+
+  private async settle(ready: readonly Ready<T>[], slot: BatchSlot): Promise<readonly Kept<T>[]> {
+    const touches = [...slot.touched.values()];
     if (ready.length > 1) {
       try {
-        this.env.write(() => {
-          for (const entry of ready) this.settleOne(entry);
-          this.touchFolders(slot);
-        });
-        return ready;
+        return await this.together(ready, slot);
       } catch (cause) {
-        slot.touched.clear();
         this.env.log.warn('drive.name_batch_split', {
           items: ready.length,
           reason: messageOf(cause),
         });
       }
     }
-    const kept: Ready<T>[] = [];
+    const kept: Kept<T>[] = [];
+    let pending = touches;
     for (const entry of ready) {
+      const own = this.opsOf(entry);
       try {
-        this.env.write(() => {
-          this.settleOne(entry);
-          this.touchFolders(slot);
-        });
-        kept.push(entry);
+        const results = await this.env.write([...own, ...this.env.touch(pending)]);
+        pending = [];
+        kept.push({ ...entry, results: results.slice(0, own.length) });
       } catch (failure) {
         await entry.landed.abandon();
         entry.waiting.reject(failure);

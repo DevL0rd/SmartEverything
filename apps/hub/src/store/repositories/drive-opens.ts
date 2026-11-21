@@ -1,7 +1,4 @@
-import { z } from 'zod';
 import type { StoreContext } from '../context';
-
-const OPEN = z.strictObject({ item_id: z.string(), opened_at: z.string() });
 
 export function openedAtBy(profile = '$viewer', item = 'i.id'): string {
   return `(select o.opened_at from drive_opens o where o.item_id = ${item} and o.profile_id = ${profile})`;
@@ -20,16 +17,5 @@ export class DriveOpensRepository {
         { profileId, itemId, at },
       );
     });
-  }
-
-  latestInDrive(rootId: string): Map<string, string> {
-    const rows = this.context.sql.all(
-      OPEN,
-      `select o.item_id, max(o.opened_at) as opened_at
-        from drive_opens o join drive_items i on i.id = o.item_id
-        where i.root_id = $rootId group by o.item_id`,
-      { rootId },
-    );
-    return new Map(rows.map((row) => [row.item_id, row.opened_at]));
   }
 }

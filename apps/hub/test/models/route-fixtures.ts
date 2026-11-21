@@ -24,9 +24,13 @@ import { ModelAssetsRepository } from '../../src/store/repositories/model-assets
 import { ModelCatalogRepository } from '../../src/store/repositories/model-catalog';
 import { ModelOverridesRepository } from '../../src/store/repositories/model-overrides';
 import { profileIdOf } from '../../src/server/auth';
+import { ResponseEncoder } from '../../src/server/responses/encoder';
+import { GlbWorker } from '../../src/models/glb-worker';
 import { Sql } from '../../src/store/sql';
 import { testStore, type TestStore } from '../support/store';
 import { testLogger } from '../support/logs';
+import { bundledCodecWorker } from '../support/codec-worker';
+import { temporaryDirectory } from '../support/server';
 import { jsonBytes, specOf } from './model-fixtures';
 
 const NOW = '2026-10-25T10:00:00.000Z';
@@ -67,6 +71,10 @@ function clientOf(
 
 export async function harness(defaults: ModelDefaults = NO_DEFAULTS): Promise<Harness> {
   const test = await testStore();
+  const directory = await temporaryDirectory();
+  const codecWorker = await bundledCodecWorker(directory.path);
+  const encoder = new ResponseEncoder(codecWorker, testLogger('responses'));
+  const glb = new GlbWorker(codecWorker, testLogger('models'));
   const database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
   const sql = new Sql(database);
   migrate(sql, MIGRATIONS, NOW, testLogger());
@@ -84,7 +92,7 @@ export async function harness(defaults: ModelDefaults = NO_DEFAULTS): Promise<Ha
     assets,
     metadata: createModelMetadataIndex([]),
     defaults: () => defaults,
-    profileOf: (caller) => profileIdOf(test.store, caller),
+    profileOf: (caller) => profileIdOf(caller),
     authorize: modelAuthorizer(test.store),
   };
   return {
@@ -98,9 +106,12 @@ export async function harness(defaults: ModelDefaults = NO_DEFAULTS): Promise<Ha
     member: member.caller,
     tokens: { owner: owner.token, member: member.token },
     routes: modelRoutes(services),
-    rawRoutes: modelAssetRoutes(services),
+    rawRoutes: modelAssetRoutes(services, { encoder, glb }),
     close: async (): Promise<void> => {
       database.close();
+      await encoder.close();
+      await glb.close();
+      await directory.remove();
       await test.close();
     },
   };

@@ -11,34 +11,59 @@ import { z } from 'zod';
 import { ComputerNativeMcpPolicyRepository } from './computer-native-mcp-policy';
 import type { StoreContext } from '../context';
 import { jsonText, SQL_JSON } from '../sql';
+import type { StoredComputerAi } from './computer-runtimes';
 
 const ROW = z.strictObject({
-  settings: SQL_JSON.pipe(COMPUTER_AI_SETTINGS),
-  capabilities: SQL_JSON.pipe(COMPUTER_AI_CAPABILITIES).nullable(),
-  models: SQL_JSON.pipe(z.array(COMPUTER_AI_MODEL)),
+  settings: SQL_JSON,
+  capabilities: SQL_JSON.nullable(),
+  models: SQL_JSON,
 });
+
+export function aiSettingsOf(row: StoredComputerAi | undefined): ComputerAiSettings {
+  return row === undefined
+    ? DEFAULT_COMPUTER_AI_SETTINGS
+    : COMPUTER_AI_SETTINGS.parse(row.settings);
+}
+
+export function aiCapabilitiesOf(row: StoredComputerAi | undefined): ComputerAiCapabilities | null {
+  const value = row?.capabilities;
+  return value === null || value === undefined ? null : COMPUTER_AI_CAPABILITIES.parse(value);
+}
+
+export function aiModelsOf(row: StoredComputerAi | undefined): ComputerAiModel[] {
+  return row === undefined ? [] : z.array(COMPUTER_AI_MODEL).parse(row.models);
+}
+
+export function storedAiDiscovery(
+  capabilities: ComputerAiCapabilities,
+  models: readonly ComputerAiModel[],
+): { readonly capabilities: unknown; readonly models: unknown } {
+  return {
+    capabilities: COMPUTER_AI_CAPABILITIES.parse(capabilities),
+    models: z.array(COMPUTER_AI_MODEL).parse(models),
+  };
+}
+
+export function localAiSettings(autoLink: boolean): ComputerAiSettings {
+  return {
+    ...DEFAULT_COMPUTER_AI_SETTINGS,
+    control: { enabled: true, auto_link: autoLink, mcp_areas: null },
+  };
+}
+
 export class ComputerAiRepository {
-  private localDevice: string | null = null;
   constructor(private readonly context: StoreContext) {}
 
-  bindLocal(deviceId: string): void {
-    this.localDevice = deviceId;
-  }
-
-  isLocal(deviceId: string): boolean {
-    return this.localDevice === deviceId;
-  }
-
   settings(deviceId: string): ComputerAiSettings {
-    return this.row(deviceId)?.settings ?? DEFAULT_COMPUTER_AI_SETTINGS;
+    return aiSettingsOf(this.row(deviceId));
   }
 
   capabilities(deviceId: string): ComputerAiCapabilities | null {
-    return this.row(deviceId)?.capabilities ?? null;
+    return aiCapabilitiesOf(this.row(deviceId));
   }
 
   models(deviceId: string): ComputerAiModel[] {
-    return this.row(deviceId)?.models ?? [];
+    return aiModelsOf(this.row(deviceId));
   }
 
   saveSettings(deviceId: string, settings: ComputerAiSettings): ComputerAiSettings {
@@ -58,20 +83,12 @@ export class ComputerAiRepository {
     });
   }
 
-  initialiseLocal(deviceId: string, autoLink: boolean): ComputerAiSettings {
-    this.bindLocal(deviceId);
-    if (this.row(deviceId) !== undefined) return this.settings(deviceId);
-    return this.saveSettings(deviceId, {
-      ...DEFAULT_COMPUTER_AI_SETTINGS,
-      control: { enabled: true, auto_link: autoLink, mcp_areas: null },
-    });
-  }
-
   cache(
     deviceId: string,
     capabilities: ComputerAiCapabilities,
     models: readonly ComputerAiModel[],
   ): void {
+    const stored = storedAiDiscovery(capabilities, models);
     this.context.write(() => {
       this.saveSettings(deviceId, this.settings(deviceId));
       this.context.sql.run(
@@ -79,8 +96,8 @@ export class ComputerAiRepository {
         `update computer_ai set capabilities = $capabilities, models = $models, updated_at = $now where device_id = $deviceId and runtime = 'claude'`,
         {
           deviceId,
-          capabilities: jsonText(COMPUTER_AI_CAPABILITIES.parse(capabilities)),
-          models: jsonText(z.array(COMPUTER_AI_MODEL).parse(models)),
+          capabilities: jsonText(stored.capabilities),
+          models: jsonText(stored.models),
           now: this.context.now(),
         },
       );

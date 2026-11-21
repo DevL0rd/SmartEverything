@@ -26,7 +26,6 @@ import {
 import { fullOf } from '@smarteverything/ble';
 import type { BrushBrand, RuntimePort } from '../../src/local/toothbrush/brand';
 import { brushCapabilities } from '../../src/local/sonicare/capabilities';
-import { homeClock } from '../../src/local/toothbrush/clock';
 import { DeviceState, Fleet, type FleetOptions } from '../../src/local/toothbrush/fleet';
 import { BrushIngest } from '../../src/local/toothbrush/ingest';
 import { Publisher } from '../../src/local/toothbrush/publisher';
@@ -203,29 +202,39 @@ class BrandFleet extends Fleet {
   private readonly own = new Map<string, DeviceState>();
 
   constructor(
-    private readonly settings: FleetOptions,
+    settings: FleetOptions,
     private readonly definition: BrushBrand,
   ) {
     super(settings);
   }
 
-  override of(device: DeviceRow): DeviceState {
+  override ensure(device: DeviceRow): Promise<DeviceState> {
+    return Promise.resolve(this.of(device));
+  }
+
+  override of(device: Pick<DeviceRow, 'id'>): DeviceState {
     const known = this.own.get(device.id);
     if (known !== undefined) {
       return known;
     }
-    const entry = this.settings.store.localDevices.byExternalId(device.external_id);
+    const row = this.roster.device(device.id);
+    if (row === undefined) {
+      throw new Error(`The test brush ${device.id} is not in the roster.`);
+    }
+    const entry = this.roster.entryOf(row.external_id);
     const port: RuntimePort = {
       entry: () => entry,
       persist: () => undefined,
       known: () => false,
     };
     const runtime = new BrushRuntime(this.definition, entry, port);
-    const state = new DeviceState(device.id, entry, runtime, {
-      phase: 'asleep',
-      rssi: null,
-      detail: null,
-      heardAt: null,
+    const state = new DeviceState({
+      deviceId: device.id,
+      roster: this.roster,
+      externalId: entry.externalId,
+      runtime,
+      link: { phase: 'asleep', rssi: null, detail: null, heardAt: null },
+      records: { handleIds: [], heads: [] },
     });
     this.own.set(device.id, state);
     return state;
@@ -263,7 +272,6 @@ function ingestOf(
         return Promise.resolve();
       },
     },
-    clock: homeClock(test.store),
     live: {
       watched: (): boolean => capture.watched.value,
       publish: (deviceId, noticeFor): void => {
@@ -290,6 +298,7 @@ export async function sonicareRig(
   const capture = new Capture();
   const { test, clock } = seeded;
   const { fleet, ingest } = ingestOf(seeded, capture, definition);
+  const unfollow = await fleet.start();
   return {
     ...seeded,
     fleet,
@@ -314,7 +323,11 @@ export async function sonicareRig(
       });
     },
     row: (): DeviceRow => test.store.devices.byId(seeded.device.id),
-    close: test.close,
+    close: async (): Promise<void> => {
+      unfollow();
+      await ingest.idle();
+      await test.close();
+    },
   };
 }
 

@@ -6,7 +6,7 @@ import {
   type ImageOperationReceipt,
   type ImageEndpoint,
 } from '@smarteverything/domain';
-import { Logger, messageOf } from '@smarteverything/logging';
+import { Logger, background, messageOf } from '@smarteverything/logging';
 import pLimit from 'p-limit';
 import type { ImageActor, ImageFailure, ImageServiceOptions } from './contract';
 import { ImageOperationError } from './errors';
@@ -14,7 +14,6 @@ import { Generation } from './generation';
 import { ownedChat, readInputs, resolveInputs, type ResolvedImage } from './inputs';
 import { keepResults } from './results';
 import { imagePreview } from './preview';
-import { recordImageUsage } from './usage';
 import { withDefaults } from '../../openrouter/image-defaults';
 import { admitOptions } from '../../openrouter/image-options';
 
@@ -28,10 +27,13 @@ interface RunningImage {
 }
 export class ImageOperationService {
   private readonly running = new Map<string, RunningImage>();
+  private readonly cancelling = new Map<string, Promise<ImageOperationReceipt>>();
   private readonly queue = pLimit(PROVIDER_CONCURRENCY);
   private accepting = true;
+  private readonly recovered: Promise<void>;
   constructor(private readonly options: ImageServiceOptions) {
-    options.repository.recover((receipt) => recordImageUsage(options.store, receipt));
+    this.recovered = options.store.host.write('imageRecover', null);
+    background(this.recovered, 'image.recover_failed');
   }
   availability(): { readonly accepting: boolean; readonly active: number } {
     return { accepting: this.accepting, active: this.running.size };
@@ -49,6 +51,7 @@ export class ImageOperationService {
     this.options.publish(receipt);
   }
   async start(actor: ImageActor, value: unknown): Promise<ImageOperationReceipt> {
+    await this.recovered;
     const asked = IMAGE_OPERATION_REQUEST.parse(value);
     ownedChat(this.options, actor, asked.chat_id);
     const endpoint = await this.options.catalog.endpointFor(asked);
@@ -93,16 +96,23 @@ export class ImageOperationService {
         () => {
           if (!queued) return;
           queued = false;
-          try {
-            resolve(this.cancelQueued(receipt.id, signal));
-          } catch (cause) {
-            reject(
-              new ImageOperationError(
-                'unknown',
-                `The queued cancellation was not recorded: ${messageOf(cause)}`,
-              ),
-            );
-          }
+          const cancelled = this.cancelQueued(receipt.id, signal);
+          this.cancelling.set(receipt.id, cancelled);
+          cancelled.then(
+            (next) => {
+              this.cancelling.delete(receipt.id);
+              resolve(next);
+            },
+            (cause: unknown) => {
+              this.cancelling.delete(receipt.id);
+              reject(
+                new ImageOperationError(
+                  'unknown',
+                  `The queued cancellation was not recorded: ${messageOf(cause)}`,
+                ),
+              );
+            },
+          );
         },
         { once: true },
       );
@@ -113,8 +123,8 @@ export class ImageOperationService {
       }).catch(reject);
     });
   }
-  private cancelQueued(id: string, signal: AbortSignal): ImageOperationReceipt {
-    const next = this.failure(this.options.repository.read(id), signal.reason, signal, false);
+  private async cancelQueued(id: string, signal: AbortSignal): Promise<ImageOperationReceipt> {
+    const next = await this.failure(this.options.repository.read(id), signal.reason, signal, false);
     this.publish(next);
     return next;
   }
@@ -139,12 +149,13 @@ export class ImageOperationService {
     await untilSettled(this.settled(actor, id), signal);
     return this.read(actor, id);
   }
-  cancel(actor: ImageActor, id: string): ImageOperationReceipt {
+  async cancel(actor: ImageActor, id: string): Promise<ImageOperationReceipt> {
     const receipt = this.read(actor, id);
     const running = this.running.get(id);
     if (running === undefined) return receipt;
     this.publish(this.options.repository.update({ ...receipt, cancellation_requested: true }));
     running.controller.abort();
+    await this.cancelling.get(id);
     return this.options.repository.read(id);
   }
   async stop(): Promise<void> {
@@ -209,7 +220,7 @@ export class ImageOperationService {
       const result = await run.produce(images, signal);
       run.receipt = await keepResults(this.options, run.receipt, { result, signal });
     } catch (cause) {
-      run.receipt = this.failure(run.receipt, cause, signal, run.submitted);
+      run.receipt = await this.failure(run.receipt, cause, signal, run.submitted);
     }
     this.publish(run.receipt);
     return run.receipt;
@@ -237,7 +248,7 @@ export class ImageOperationService {
     cause: unknown,
     signal: AbortSignal,
     submitted: boolean,
-  ): ImageOperationReceipt {
+  ): Promise<ImageOperationReceipt> {
     const shutdown =
       signal.reason instanceof ImageOperationError && signal.reason.code === 'unknown';
     const cancelled = signal.aborted && !shutdown;
@@ -246,16 +257,9 @@ export class ImageOperationService {
     const state = failureState(cancelled, submitted, definitive);
     const reason = reasonOf(state, cause, submitted);
     this.options.failed(receipt.id, failureOf(cause, 'operation'));
-    return this.options.store.write(() =>
-      this.options.repository.update(
-        recordImageUsage(this.options.store, {
-          ...receipt,
-          state,
-          reason,
-          cancellation_requested: cancelled,
-        }),
-      ),
-    );
+    return this.options.store.host.write('imageSettle', {
+      receipt: { ...receipt, state, reason, cancellation_requested: cancelled },
+    });
   }
 }
 export type { ImageActor, ImageFailure, ImageServiceOptions } from './contract';

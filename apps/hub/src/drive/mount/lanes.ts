@@ -57,7 +57,7 @@ export function resolversOf(
     commitInode: (commit): number => commits.commitOf(session, commit).inodeId,
     child: async (entry): Promise<number | null> => {
       try {
-        return (await posix.lookup(session.scopeOf(store, entry.parent), entry)).ino;
+        return (await posix.lookup(await session.scopeOf(store, entry.parent), entry)).ino;
       } catch (cause) {
         const known = posixErrorOf(cause);
         if (known instanceof PosixError && known.code === 'ENOENT') return null;

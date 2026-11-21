@@ -32,7 +32,7 @@ beforeEach(async () => {
   users = {};
   secrets = automationSecrets(
     store,
-    (id) => users[id] ?? [],
+    (id) => Promise.resolve(users[id] ?? []),
     () => NOW,
   );
 });
@@ -90,7 +90,7 @@ describe('automation secrets service', () => {
     const first = await secrets.set({ name: 'Webhook', value: 'one' });
     const later = automationSecrets(
       store,
-      () => [],
+      () => Promise.resolve([]),
       () => new Date('2026-10-19T00:00:00.000Z'),
     );
     const second = await later.set({ name: 'Webhook', value: 'two' });

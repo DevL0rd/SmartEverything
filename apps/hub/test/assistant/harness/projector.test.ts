@@ -19,6 +19,8 @@ import { addMessage } from './support/native-conversation';
 import { captureLogs } from '../../support/logs';
 import { CONTINUE_NOTE } from '../../../src/assistant/interruption';
 import { RETRY_WAIT_MS } from '../../../src/assistant/engines/dsh/turn-retry';
+import { completionFailure } from '../../../src/assistant/engines/dsh/projector-completion';
+import { STOPPED_BY_USER } from '../../../src/assistant/interruption';
 
 let rig: Rig;
 useRig((made) => {
@@ -36,7 +38,7 @@ interface Fixture {
   readonly text: (seq: number, delta: string) => AiHarnessEvent;
   readonly continued: (kind: 'state' | 'completed', seq: number, id: string) => AiHarnessEvent;
   readonly addSteered: () => StoredEvent;
-  readonly failed: (seq: number, message: string) => AiHarnessEvent;
+  readonly failed: (seq: number, message: string) => Extract<AiHarnessEvent, { kind: 'failed' }>;
   readonly resumed: { readonly id: string; readonly text: string }[];
   readonly notices: (ChatActivityNotice | ChatStreamNotice)[];
   readonly control: { rejectResume: boolean };
@@ -45,7 +47,7 @@ interface Fixture {
 async function startedTurn(): Promise<Fixture> {
   const { store } = rig.opened;
   const chat = rig.newChat(rig.hub.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
   const current = store.aiChats.chat(chat.id);
   const conversation = new ConversationLog(store);
@@ -116,7 +118,7 @@ async function startedTurn(): Promise<Fixture> {
     resumed,
     notices,
     control,
-    failed: (seq, message): AiHarnessEvent => ({
+    failed: (seq, message): Extract<AiHarnessEvent, { kind: 'failed' }> => ({
       ...base,
       seq,
       kind: 'failed',
@@ -174,13 +176,16 @@ describe('a turn that is moving to another machine', () => {
   it('ignores the old machine ending its work while held, and ends normally after release', async () => {
     const mine = await startedTurn();
     mine.deliver(mine.event('tool', 1));
+    await mine.streams.settled();
     mine.streams.hold(mine.turn);
 
     mine.deliver(mine.event('completed', 2));
+    await mine.streams.settled();
     expect(mine.streams.active.has(mine.turn.event.id)).toBe(true);
 
     mine.streams.release(mine.turn);
     mine.deliver(mine.event('completed', 3));
+    await mine.streams.settled();
     expect(mine.streams.active.has(mine.turn.event.id)).toBe(false);
   });
 
@@ -188,11 +193,13 @@ describe('a turn that is moving to another machine', () => {
     const mine = await startedTurn();
     mine.streams.hold(mine.turn);
     mine.deliver(mine.event('completed', 2));
+    await mine.streams.settled();
     const carried = randomUUID();
     mine.streams.continueAs(mine.turn, carried);
 
     mine.deliver(mine.continued('state', 3, carried));
     mine.deliver(mine.continued('completed', 4, carried));
+    await mine.streams.settled();
 
     expect(mine.streams.active.has(mine.turn.event.id)).toBe(false);
     expect(mine.finished).toStrictEqual([{ id: mine.turn.event.id, ok: true }]);
@@ -203,6 +210,7 @@ describe('a turn that is moving to another machine', () => {
 
     mine.deliver(mine.event('tool', 1));
     mine.deliver(mine.event('tool', 2));
+    await mine.streams.settled();
 
     expect(mine.toolsFinished).toStrictEqual([mine.turn.event.id]);
   });
@@ -222,12 +230,14 @@ describe('a provider that is retrying', () => {
     } as const;
 
     mine.deliver({ ...base, seq: 1, session: { ...session, reconnecting: true } });
+    await mine.streams.settled();
     expect(mine.turn.stream.current()).toMatchObject({
       state: 'thinking',
       reason: CHAT_RETRYING_REASON,
     });
 
     mine.deliver({ ...base, seq: 2, session: { ...session, reconnecting: false } });
+    await mine.streams.settled();
     expect(mine.turn.stream.current().reason).toBeNull();
   });
 });
@@ -249,9 +259,11 @@ describe('the delivery log', () => {
 
     mine.deliver({ ...base, seq: 1, assistant_attempt: { id: 'step:1', state: 'started' } });
     mine.deliver({ ...base, seq: 2, assistant_attempt: { id: 'step:1', state: 'committed' } });
+    await mine.streams.settled();
     expect(logs.events()).not.toContain('dsh.turn_reconnecting');
 
     mine.deliver({ ...base, seq: 3, session: { ...session, reconnecting: true } });
+    await mine.streams.settled();
     expect(logs.events().filter((event) => event === 'dsh.turn_reconnecting')).toHaveLength(1);
   });
 });
@@ -262,8 +274,10 @@ describe('messages the person sent while the turn worked', () => {
     const steered = mine.addSteered();
     mine.turn.steered.push(steered);
     mine.deliver(mine.event('tool', 1));
+    await mine.streams.settled();
 
     mine.deliver(mine.event('completed', 2));
+    await mine.streams.settled();
 
     expect(mine.finished.map((entry) => entry.id)).toContain(steered.id);
     expect(mine.streams.ofChat(mine.chat.id)).toBeUndefined();
@@ -276,6 +290,7 @@ describe('output after an interleaved message', () => {
     const { store } = rig.opened;
     const other = new ConversationLog(store);
     mine.deliver(mine.text(1, 'Before'));
+    await mine.streams.settled();
     const report = other.responderInChat({ chat: mine.chat, replyTo: null, text: 'Helper report' });
     expect(() =>
       store.write(() => {
@@ -285,6 +300,7 @@ describe('output after an interleaved message', () => {
     ).toThrow('Rollback fixture');
     mine.deliver(mine.text(2, 'After'));
     mine.deliver(mine.event('completed', 3));
+    await mine.streams.settled();
     const saved = store.assistantChat.message(mine.turn.replyId);
     const timeline = CHAT_TIMELINE_EMBED.parse(
       saved.embeds.find((embed) => embed.kind === 'chat_timeline'),
@@ -300,9 +316,11 @@ describe('output after an interleaved message', () => {
     const mine = await startedTurn();
     const firstReply = mine.turn.replyId;
     mine.deliver(mine.text(1, 'before. '));
+    await mine.streams.settled();
     const steered = mine.addSteered();
     mine.deliver(mine.text(2, 'after.'));
     mine.deliver(mine.event('completed', 3));
+    await mine.streams.settled();
 
     const reply = rig.opened.store.assistantChat.message(firstReply);
     const timeline = CHAT_TIMELINE_EMBED.parse(
@@ -318,13 +336,16 @@ describe('output after an interleaved message', () => {
     const mine = await startedTurn();
     const firstReply = mine.turn.replyId;
     mine.deliver(mine.event('tool', 1));
+    await mine.streams.settled();
     const steered = mine.addSteered();
     mine.deliver(mine.text(2, 'still running.'));
+    await mine.streams.settled();
     const running = mine.event('tool', 1);
     mine.deliver(running.kind === 'tool' ? { ...running, seq: 3, state: 'completed' } : running);
     mine.deliver(mine.event('tool', 5));
     mine.deliver(mine.text(6, 'now.'));
     mine.deliver(mine.event('completed', 7));
+    await mine.streams.settled();
 
     const reply = rig.opened.store.assistantChat.message(firstReply);
     const timeline = CHAT_TIMELINE_EMBED.parse(
@@ -359,11 +380,13 @@ describe('output after an interleaved message', () => {
     mine.deliver(mine.text(1, 'committed.'));
     mine.deliver(attempt(2, 'started'));
     mine.deliver(mine.text(3, 'discard me.'));
+    await mine.streams.settled();
     const steered = mine.addSteered();
     mine.deliver(mine.text(4, 'discard me too.'));
     mine.deliver(attempt(5, 'discarded'));
     mine.deliver(mine.text(6, 'replacement.'));
     mine.deliver(mine.event('completed', 7));
+    await mine.streams.settled();
 
     const reply = rig.opened.store.assistantChat.message(mine.turn.replyId);
     const timeline = CHAT_TIMELINE_EMBED.parse(
@@ -388,6 +411,7 @@ describe('a turn that fails', () => {
     const logs = captureLogs();
     const mine = await startedTurn();
     mine.deliver(mine.failed(1, 'IMAGE_OFFLOAD_REQUIRED: request images exceed the bound'));
+    await mine.streams.settled();
 
     expect(mine.finished).toStrictEqual([]);
     expect(mine.streams.active.has(mine.turn.event.id)).toBe(true);
@@ -413,6 +437,7 @@ describe('a turn that fails', () => {
     vi.useFakeTimers();
     const mine = await startedTurn();
     mine.deliver(mine.failed(1, 'first'));
+    await mine.streams.settled();
     await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS);
     const note = mine.resumed[0]?.id ?? '';
     mine.deliver(mine.continued('state', 2, note));
@@ -426,6 +451,7 @@ describe('a turn that fails', () => {
 
     mine.deliver(mine.continued('state', 4, note));
     mine.deliver({ ...mine.text(5, 'Back again'), delivery_id: note, native_turn: 2 });
+    await mine.streams.settled();
     expect(mine.turn.stream.current().reason).toBeNull();
     await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS * 5);
     expect(mine.resumed).toHaveLength(2);
@@ -437,6 +463,7 @@ describe('a turn that fails', () => {
     const mine = await startedTurn();
     mine.control.rejectResume = true;
     mine.deliver(mine.failed(1, 'offline'));
+    await mine.streams.settled();
     await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS * 3);
     const failures = logs.records.filter((record) => record.event === 'turn.retry_send_failed');
     expect(failures).toHaveLength(3);
@@ -446,20 +473,64 @@ describe('a turn that fails', () => {
     expect(mine.resumed).toHaveLength(1);
   });
 
+  it('sends one continue note when the native session reports the same failure twice', async () => {
+    vi.useFakeTimers();
+    const mine = await startedTurn();
+    mine.deliver(mine.failed(1, 'TRANSPORT: socket hang up'));
+    mine.deliver(mine.failed(2, 'TRANSPORT: socket hang up'));
+    await mine.streams.settled();
+
+    await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS * 2);
+
+    expect(mine.resumed).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    ['quota_exhausted', 'credits'],
+    ['route_unavailable', 'model_unavailable'],
+  ] as const)(
+    'ends the turn with the %s error at once instead of retrying',
+    async (code, reasonCode) => {
+      vi.useFakeTimers();
+      const logs = captureLogs();
+      const mine = await startedTurn();
+      const message = 'AUTH: 403: Key limit exceeded (monthly limit).';
+      mine.deliver(mine.failed(1, message));
+      mine.deliver({
+        ...mine.failed(2, message),
+        failure: { code, message, retry_at: null },
+      });
+      await mine.streams.settled();
+
+      expect(mine.finished).toStrictEqual([{ id: mine.turn.event.id, ok: false }]);
+      expect(mine.streams.active.size).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      const reply = rig.opened.store.assistantChat.message(mine.turn.replyId);
+      expect(reply).toMatchObject({ state: 'failed', reason_code: reasonCode });
+      expect(logs.records.find((record) => record.event === 'dsh.turn_failed_final')).toBeDefined();
+      await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS * 5);
+      expect(mine.resumed).toStrictEqual([]);
+    },
+  );
+
   it('stops at once on Stop, ends the turn as stopped and leaves no timer behind', async () => {
     vi.useFakeTimers();
     const mine = await startedTurn();
     mine.deliver(mine.failed(1, 'down'));
+    await mine.streams.settled();
     expect(vi.getTimerCount()).toBeGreaterThan(0);
 
-    expect(mine.streams.stopRetrying(mine.chat.id)).toBe(true);
+    await expect(mine.streams.stopRetrying(mine.chat.id)).resolves.toBe(true);
+    await mine.streams.settled();
 
     expect(mine.finished).toStrictEqual([{ id: mine.turn.event.id, ok: false }]);
     expect(mine.streams.active.size).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
     await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS * 5);
     expect(mine.resumed).toStrictEqual([]);
-    expect(mine.streams.stopRetrying(mine.chat.id)).toBe(false);
+    await expect(mine.streams.stopRetrying(mine.chat.id)).resolves.toBe(false);
+    await mine.streams.settled();
   });
 });
 
@@ -467,6 +538,7 @@ describe('work the native session reports without a hub delivery', () => {
   it('shows as a live turn of that chat until the session says it is idle', async () => {
     const mine = await startedTurn();
     mine.deliver(mine.event('completed', 1));
+    await mine.streams.settled();
     const session = rig.service.state(rig.owner, mine.chat.id);
     const own = {
       session_id: session.session_id,
@@ -501,5 +573,28 @@ describe('work the native session reports without a hub delivery', () => {
       (notice) => notice.type === 'chat_activity' && notice.turnId === live?.turnId,
     );
     expect(last).toMatchObject({ type: 'chat_activity', state: 'idle' });
+  });
+});
+
+describe('queued input the native session discarded', () => {
+  it('reads as stopped by the person when nothing failed', () => {
+    expect(completionFailure({ kind: 'completed', interrupted: true }, false)).toStrictEqual({
+      reason: STOPPED_BY_USER,
+      code: 'stopped',
+    });
+  });
+
+  it('carries the provider message of the failed turn that left it behind', () => {
+    const message = 'AUTH: 403: Key limit exceeded (monthly limit).';
+    expect(
+      completionFailure(
+        {
+          kind: 'completed',
+          interrupted: true,
+          failure: { code: 'route_unavailable', message, retry_at: null },
+        },
+        false,
+      ),
+    ).toStrictEqual({ reason: message, code: 'model_unavailable' });
   });
 });

@@ -64,7 +64,7 @@ function logWater(ports: HealthEffectPorts): EffectHandler {
           run,
         ),
       );
-      const day = todayAt({ store: ports.store, clock: ports.clock });
+      const day = todayAt({ world: ports.store, clock: ports.clock });
       return {
         ok: true,
         value: outputs({

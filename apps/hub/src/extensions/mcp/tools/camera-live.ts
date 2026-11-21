@@ -33,11 +33,20 @@ export interface Shot {
   readonly image: ToolImage | null;
 }
 
-function chosenCameras(context: ToolContext, input: Look): Placed[] {
-  const cameras = new Set(context.store.cameras.list().map((camera) => camera.device_id));
+async function chosenCameras(context: ToolContext, input: Look): Promise<Placed[]> {
+  const cameras = new Set(
+    (await context.store.host.call('cameras', 'list')).map((camera) => camera.device_id),
+  );
   const scope = deviceScopeOfActor(context);
-  const wanted = input.deviceIds?.map((ref) => placedDevice(context.store, scope, ref).device.id);
-  return placedDevices(context.store, scope).filter(
+  const wanted =
+    input.deviceIds === undefined
+      ? undefined
+      : await Promise.all(
+          input.deviceIds.map(
+            async (ref) => (await placedDevice(context.store, scope, ref)).device.id,
+          ),
+        );
+  return (await placedDevices(context.store, scope)).filter(
     ({ device, room }) =>
       cameras.has(device.id) &&
       (wanted === undefined || wanted.includes(device.id)) &&
@@ -52,12 +61,13 @@ export interface ShotContext {
   readonly clock: Clock;
 }
 
-function blocked(context: ShotContext, { device }: Placed): string | null {
+async function blocked(context: ShotContext, { device }: Placed): Promise<string | null> {
   if (!device.online) {
     return 'offline';
   }
   const privacy = privacySwitchOf(device);
-  return privacy !== null && isPrivate(privacy, context.store.state.value(device.id, privacy.key))
+  return privacy !== null &&
+    isPrivate(privacy, await context.store.host.call('state', 'value', device.id, privacy.key))
     ? 'privacy_on'
     : null;
 }
@@ -68,7 +78,7 @@ export async function shotOf(context: ShotContext, placed: Placed, size: MediaSi
     camera: placed.name,
     room: placed.room?.name ?? null,
   };
-  const reason = blocked(context, placed);
+  const reason = await blocked(context, placed);
   if (reason !== null) {
     return { item: { ...item, status: reason }, image: null };
   }
@@ -97,7 +107,7 @@ export const LIVE_CAMERA_TOOL: Tool = defineTool({
   annotations: { ...READS, idempotentHint: false, openWorldHint: true },
   run: async (context, input) => {
     const shots = await Promise.all(
-      chosenCameras(context, input).map((placed) => shotOf(context, placed, input.size)),
+      (await chosenCameras(context, input)).map((placed) => shotOf(context, placed, input.size)),
     );
     return {
       structured: {

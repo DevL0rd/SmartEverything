@@ -17,7 +17,7 @@ import { START_TOOL, startTreadmill, type BeltControl, type TreadmillControls } 
 export const TREADMILL_ERROR_CODES = { notFound: 'treadmill_not_found' } as const;
 
 export interface TreadmillToolPorts {
-  readonly find: (deviceId: string) => DeviceRow | null;
+  readonly find: (deviceId: string) => Promise<DeviceRow | null>;
   readonly issue: (device: DeviceRow, control: BeltControl, value: JsonValue) => Promise<JsonValue>;
 }
 
@@ -32,7 +32,7 @@ function startTool(ports: TreadmillToolPorts): DriverTool {
     input: START_TOOL.input,
     run: async (args): Promise<DriverToolReply> => {
       const input = START_TOOL.input.parse(args);
-      const device = ports.find(input.device);
+      const device = await ports.find(input.device);
       if (device === null) {
         return refusal('This treadmill is no longer added.', TREADMILL_ERROR_CODES.notFound);
       }
@@ -54,12 +54,12 @@ export function treadmillAutomationRuntime(ports: TreadmillToolPorts): DriverRun
 }
 
 export interface HubCommandPorts {
-  readonly store: Pick<Store, 'commands' | 'feed'>;
+  readonly store: Pick<Store, 'host' | 'feed'>;
   readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
 }
 
 function finishedRow(store: HubCommandPorts['store'], row: CommandRow): Promise<CommandRow> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const unsubscribe = store.feed.subscribe((change) => {
       if (
         change.table === 'commands' &&
@@ -70,11 +70,18 @@ function finishedRow(store: HubCommandPorts['store'], row: CommandRow): Promise<
         resolve(change.record);
       }
     });
-    const current = store.commands.byId(row.id);
-    if (isFinished(current.status)) {
-      unsubscribe();
-      resolve(current);
-    }
+    store.host.call('commands', 'byId', row.id).then(
+      (current) => {
+        if (isFinished(current.status)) {
+          unsubscribe();
+          resolve(current);
+        }
+      },
+      (cause: unknown) => {
+        unsubscribe();
+        reject(cause instanceof Error ? cause : new Error(String(cause)));
+      },
+    );
   });
 }
 

@@ -13,7 +13,7 @@ useRig((made) => {
 
 async function openSession(): Promise<string> {
   const chat = rig.newChat(rig.hub.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
   return open.claim.session_id;
 }
@@ -60,7 +60,7 @@ async function openOpenRouterSession(effort: string | null): Promise<{
       permission: { sandbox: 'danger-full-access', approval: 'never' },
     },
   });
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
   return { sessionId: open.claim.session_id, route };
 }

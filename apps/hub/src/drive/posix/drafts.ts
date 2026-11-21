@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import { utf8Bytes } from '@smarteverything/domain/drive-mount';
 import type { DriveItemDraft } from '../../store/repositories/drive-items';
-import type { NewItem } from '../changes';
+import type { NewItem } from '../change-rows';
 
 export const NO_IDENTITY = { dev: '0', ino: '0' } as const;
 

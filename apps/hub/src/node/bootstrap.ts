@@ -13,7 +13,8 @@ import { NodeHarnessRuntime } from './harness-runtime';
 import { NodeAiRuntime } from './ai-runtime';
 import { nodeIdentity } from './identity';
 import { nodeRuntimeHosts } from './runtime-hosts';
-import { collectorFor, UnsupportedPlatformError } from './collectors/collector';
+import { UnsupportedPlatformError } from './collectors/collector';
+import { BUNDLED_METRICS_WORKER, workerMetrics } from './metrics/worker-metrics';
 import { ComputerNode } from './computer-node';
 import { controlsFor } from './controls/controls';
 import { mprisPlayers } from './controls/linux/mpris';
@@ -225,7 +226,7 @@ function createComputerNode(
   const now = (): Date => new Date();
   try {
     const computer = new ComputerNode({
-      collector: collectorFor(process.platform, { log, machineId, now: Date.now }),
+      metrics: workerMetrics({ script: BUNDLED_METRICS_WORKER, machineId }),
       controls: controlsFor(process.platform, { now, log, media: mprisPlayers }),
       link,
       now,
@@ -293,13 +294,11 @@ async function startNodeTransport(
     throw cause;
   }
   const transport = nodeHubTransport(authority, canonical, {
-    endpoint: (runtime, address, token): string => broker.openMcp(runtime, address, token),
+    endpoint: (runtime, address, token): Promise<string> => broker.openMcp(runtime, address, token),
     release: (runtime): void => {
       broker.closeOwner(`mcp:${runtime}`);
     },
-    revoke: (runtime): void => {
-      broker.revokeMcp(runtime);
-    },
+    revoke: (runtime): Promise<void> => broker.revokeMcp(runtime),
   });
   return { broker, transport };
 }

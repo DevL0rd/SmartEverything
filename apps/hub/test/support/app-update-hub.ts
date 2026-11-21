@@ -62,7 +62,7 @@ function requestListener(
       ({ endpoint }) => endpoint.method === request.method && endpoint.path === url.pathname,
     );
     if (entry !== undefined) {
-      const caller = authenticate(store, request, entry.endpoint.access, false);
+      const caller = await authenticate(store, request, entry.endpoint.access, false);
       assertOwnerRoute(store, caller, entry.endpoint);
       const body = parseJsonBody(request, await readBody(request, BODY_LIMIT));
       const result = await entry.run(

@@ -1,4 +1,4 @@
-import { ApiError, type PhotoAiReanalyse, type PhotoAiReanalysed } from '@smarteverything/domain';
+import { ApiError, type PhotoAiReanalyse } from '@smarteverything/domain';
 import type { StoreContext } from '../../store/context';
 import type { PhotoConsent } from './consent';
 import { itemsIn, type SubjectScope } from './scope';
@@ -11,7 +11,6 @@ export interface ReanalysisEnvironment {
   readonly models: PhotoAiModelStore;
   readonly status: PhotoAiStatusReader;
   readonly owner: () => string;
-  readonly reconcile: () => Promise<number>;
 }
 
 export class PhotoAiReanalysis {
@@ -24,7 +23,7 @@ export class PhotoAiReanalysis {
     return { subjects: subjects.length, micros: photos * status.unitMicros() };
   }
 
-  async run(request: PhotoAiReanalyse): Promise<PhotoAiReanalysed> {
+  forget(request: PhotoAiReanalyse): { readonly estimateMicros: number } {
     const current = this.estimate(request.everything);
     if (current.micros !== request.estimateMicros) {
       throw new ApiError(
@@ -38,11 +37,11 @@ export class PhotoAiReanalysis {
     this.env.context.write(() => {
       for (const subject of subjects) {
         if (!this.env.consent.smartSearch(subject.profileId)) continue;
-        this.forget(subject.scope, models);
+        this.forgetOtherModels(subject.scope, models);
         if (request.everything) this.forgetAnalysed(subject.scope);
       }
     });
-    return { queued: await this.env.reconcile(), estimateMicros: current.micros };
+    return { estimateMicros: current.micros };
   }
 
   private forgetAnalysed(scope: SubjectScope): void {
@@ -54,7 +53,10 @@ export class PhotoAiReanalysis {
     );
   }
 
-  private forget(scope: SubjectScope, models: ReturnType<PhotoAiModelStore['read']>): void {
+  private forgetOtherModels(
+    scope: SubjectScope,
+    models: ReturnType<PhotoAiModelStore['read']>,
+  ): void {
     const items = itemsIn(scope);
     const parameters = { ...scope.parameters };
     const run = (label: string, text: string, extra: Record<string, string> = {}): void => {

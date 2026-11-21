@@ -2,7 +2,7 @@ import { remoteRefusal, resolveOutFile } from './out-file-path';
 import mime from 'mime-types';
 import type { HubLayout } from '../data-layout';
 import type { ProjectFilesService } from '../projects/service';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID, webcrypto } from 'node:crypto';
 import { appendFile, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import {
@@ -15,6 +15,7 @@ import type {
   AssistantChatRepository,
   StoredAttachment,
 } from '../store/repositories/assistant-chat';
+import type { AttachmentCleanup } from '../store/repositories/assistant-files';
 import { imageSize } from './image/dimensions';
 import { audioLevels } from '../media/audio-levels';
 import { attachmentNote } from '@smarteverything/domain';
@@ -48,6 +49,7 @@ export interface UploadStart {
 export interface FilesOptions {
   readonly layout: HubLayout;
   readonly chat: AssistantChatRepository;
+  readonly attachments: AttachmentCleanup;
   readonly now: () => Date;
   readonly projects?: ProjectFilesService;
 }
@@ -57,6 +59,12 @@ function safeName(name: string): string {
     .replace(/[^\p{L}\p{N}._ -]+/gu, '_')
     .trim();
   return cleaned === '' || cleaned.startsWith('.') ? `file${cleaned}` : cleaned.slice(0, 120);
+}
+
+async function sha256Of(content: Buffer): Promise<string> {
+  return Buffer.from(await webcrypto.subtle.digest('SHA-256', new Uint8Array(content))).toString(
+    'hex',
+  );
 }
 
 export function attachmentMimeOf(name: string): string {
@@ -218,10 +226,7 @@ export class AssistantFiles {
 
   async bytesOf(file: StoredAttachment): Promise<Buffer> {
     const content = await readFile(this.pathOf(file));
-    if (
-      content.length !== file.bytes ||
-      createHash('sha256').update(content).digest('hex') !== file.sha256
-    )
+    if (content.length !== file.bytes || (await sha256Of(content)) !== file.sha256)
       throw new ApiError('conflict', `The stored bytes for ${file.name} could not be verified.`);
     return content;
   }
@@ -260,7 +265,7 @@ export class AssistantFiles {
     const unbound = files.filter(
       (file) => this.options.chat.findAttachment(file.id)?.message_id === null,
     );
-    return this.options.chat.attachmentCleanup.discard(unbound, async (file) => {
+    return this.options.attachments.discard(unbound, async (file) => {
       await this.remove([file]);
       this.options.chat.removeAttachments([file.id]);
     });
@@ -314,7 +319,7 @@ export class AssistantFiles {
       width: size?.width ?? null,
       height: size?.height ?? null,
       storage_path: storagePath,
-      sha256: createHash('sha256').update(input.content).digest('hex'),
+      sha256: await sha256Of(input.content),
       levels: input.levels ?? (await this.levelsOf(input.mime, input.content)),
     });
     if (input.transcript !== undefined && input.transcript !== null) {

@@ -24,8 +24,8 @@ import { ConversationLog } from '../../../src/assistant/conversation-log';
 import { sendHelperDialogue } from '../../../src/assistant/delegation/helper-dialogue';
 import { EngineRegistry } from '../../../src/assistant/engines/registry';
 import { AssistantFiles } from '../../../src/assistant/files';
+import { adoptNativeChild } from '../../../src/assistant/engines/dsh/children-adoption';
 import {
-  adoptNativeChild,
   lastAssistantText,
   nativeChildOutcome,
   settleNativeChild,
@@ -75,16 +75,16 @@ function turnEnd(seq: number, kind: string): DshSessionEvent {
   return { type: 'turn/end', seq, time: 1_000 + seq, data: { turn: 0, reason: { kind } } };
 }
 
-function launched(): {
+async function launched(): Promise<{
   readonly rig: Rig;
   readonly parentChatId: string;
   readonly parentSession: string;
   readonly adopt: () => ReturnType<typeof adoptNativeChild>;
-} {
+}> {
   const made = rig;
   if (made === undefined) throw new Error('The rig is missing.');
   const chat = made.newChat(made.hub.target);
-  const open = made.service.prepare(made.owner, chat.id, made.authority, made.clientId);
+  const open = await made.service.prepare(made.owner, chat.id, made.authority, made.clientId);
   const host = made.service.directory.get(made.hub.target).host;
   const principal = made.service.hostPrincipal(made.owner.profileId, host);
   const header = DSH_SESSION_HEADER.parse({
@@ -102,7 +102,7 @@ function launched(): {
     parentChatId: chat.id,
     parentSession: open.claim.session_id,
     adopt: () =>
-      adoptNativeChild(made.opened.store, new ConversationLog(made.opened.store), {
+      adoptedHere(made.opened.store, {
         principal,
         attach: {
           target: open.claim.target,
@@ -118,10 +118,19 @@ function launched(): {
   };
 }
 
+function adoptedHere(
+  store: Rig['opened']['store'],
+  launch: Parameters<typeof adoptNativeChild>[1],
+): ReturnType<typeof adoptNativeChild> {
+  return store.durableWrite(() =>
+    adoptNativeChild(store, launch, store.live.chatWork.holds.held()),
+  );
+}
+
 describe('a native child of a native conversation', () => {
   it('appears as the same helper chat and agent row a hub-started helper has', async () => {
     rig = await harnessRig();
-    const world = launched();
+    const world = await launched();
     const { chat, run, opened } = world.adopt();
     const { store } = world.rig.opened;
 
@@ -149,7 +158,7 @@ describe('a native child of a native conversation', () => {
 
   it('is settled once with the final answer when its turn ends', async () => {
     rig = await harnessRig();
-    const world = launched();
+    const world = await launched();
     const { run } = world.adopt();
     const { store } = world.rig.opened;
     const sessionId = run.session_id ?? '';
@@ -160,7 +169,7 @@ describe('a native child of a native conversation', () => {
     const claim = store.dshSessions.attached(sessionId, world.rig.owner.profileId);
     if (claim === null) throw new Error('The child lost its writer.');
     watchNativeSessions(store, new ConversationLog(store), () => new Date(NOW));
-    store.dshSessions.append(
+    await store.live.dshSessions.append(
       {
         claim,
         operation_id: randomUUID(),
@@ -187,15 +196,16 @@ describe('a native child of a native conversation', () => {
 
   it('takes an owner message while running and refuses one after it settled', async () => {
     rig = await harnessRig();
-    const world = launched();
+    const world = await launched();
     const { chat, run } = world.adopt();
     const { store } = world.rig.opened;
     const sent: [string, string][] = [];
     const ports = {
       store,
       interrupt: (): Promise<void> => Promise.resolve(),
-      send: (to: { readonly id: string }, text: string): void => {
+      send: (to: { readonly id: string }, text: string): Promise<void> => {
         sent.push([to.id, text]);
+        return Promise.resolve();
       },
       computer: (): undefined => undefined,
     };
@@ -212,7 +222,7 @@ describe('a native child of a native conversation', () => {
 
   it('refuses a child that does not name a parent session of the same profile', async () => {
     rig = await harnessRig();
-    const world = launched();
+    const world = await launched();
     const { store } = world.rig.opened;
     const orphan = DSH_SESSION_HEADER.parse({
       version: 4,
@@ -226,7 +236,7 @@ describe('a native child of a native conversation', () => {
     );
 
     expect(() =>
-      adoptNativeChild(store, new ConversationLog(store), {
+      adoptedHere(store, {
         principal,
         attach: {
           target: world.rig.hub.target,
@@ -256,13 +266,13 @@ function subagentHeader(parentSession: string): SessionHeader {
   };
 }
 
-function parented(made: Rig): {
+async function parented(made: Rig): Promise<{
   readonly persistence: LocalHarnessPersistence;
   readonly parentChatId: string;
   readonly parentSession: string;
-} {
+}> {
   const chat = made.newChat(made.hub.target);
-  const open = made.service.prepare(made.owner, chat.id, made.authority, made.clientId);
+  const open = await made.service.prepare(made.owner, chat.id, made.authority, made.clientId);
   const persistence = new LocalHarnessPersistence(made.service);
   persistence.bind(open.claim);
   return { persistence, parentChatId: chat.id, parentSession: open.claim.session_id };
@@ -271,7 +281,7 @@ function parented(made: Rig): {
 describe('a native child created through the hub session persistence', () => {
   it('gets its agent row, chat and execution grant when the plugin creates its session', async () => {
     rig = await harnessRig();
-    const { persistence, parentChatId, parentSession } = parented(rig);
+    const { persistence, parentChatId, parentSession } = await parented(rig);
     const header = subagentHeader(parentSession);
 
     const writer = await persistence.create(header, 0);
@@ -308,7 +318,7 @@ describe('a native child created through the hub session persistence', () => {
 
   it('refuses a session that is not a subagent of a session this hub is writing', async () => {
     rig = await harnessRig();
-    const { persistence } = parented(rig);
+    const { persistence } = await parented(rig);
     const plain: SessionHeader = {
       version: SESSION_FORMAT_VERSION,
       id: SessionId(randomUUID()),
@@ -324,7 +334,7 @@ describe('a native child created through the hub session persistence', () => {
 
   it('names its chat and row from the descriptor and takes the task from its first message', async () => {
     rig = await harnessRig();
-    const { persistence, parentSession } = parented(rig);
+    const { persistence, parentSession } = await parented(rig);
     const header = subagentHeader(parentSession);
     const writer = await persistence.create(header, 0);
     const { store } = rig.opened;
@@ -333,7 +343,7 @@ describe('a native child created through the hub session persistence', () => {
       rig.owner.profileId,
       rig.service.directory.get(rig.hub.target).host,
     );
-    store.dshSessions.append(
+    await store.live.dshSessions.append(
       {
         claim: writer.claim,
         operation_id: randomUUID(),
@@ -374,7 +384,7 @@ describe('a native child created through the hub session persistence', () => {
 describe('a native child running inside its parent session', () => {
   it('shows its task and answers in its own chat and keeps its latest activity time', async () => {
     rig = await harnessRig();
-    const { persistence, parentSession } = parented(rig);
+    const { persistence, parentSession } = await parented(rig);
     const header = subagentHeader(parentSession);
     const writer = await persistence.create(header, 0);
     const { store } = rig.opened;
@@ -383,8 +393,8 @@ describe('a native child running inside its parent session', () => {
       rig.owner.profileId,
       rig.service.directory.get(rig.hub.target).host,
     );
-    const append = (events: readonly unknown[]): void => {
-      store.dshSessions.append(
+    const append = async (events: readonly unknown[]): Promise<void> => {
+      await store.live.dshSessions.append(
         {
           claim: writer.claim,
           operation_id: randomUUID(),
@@ -393,7 +403,7 @@ describe('a native child running inside its parent session', () => {
         principal,
       );
     };
-    append([
+    await append([
       {
         type: 'user/message',
         seq: 0,
@@ -422,7 +432,7 @@ describe('a native child running inside its parent session', () => {
 describe('the model inference grant of a native child through the hub session persistence', () => {
   it('is bound to the child own task event so metered work is accounted as subagent work', async () => {
     rig = await harnessRig();
-    const { persistence, parentChatId, parentSession } = parented(rig);
+    const { persistence, parentChatId, parentSession } = await parented(rig);
     const { store } = rig.opened;
     const parentEvent = store.assistantEvents.add({
       id: randomUUID(),
@@ -476,7 +486,7 @@ function homeHub(callers: ToolCaller[]): ToolHub {
         callers.push(caller);
         return Promise.resolve({ response: { rooms: 2 }, line: '', pictures: [] });
       },
-      validate: (): null => null,
+      validate: (): Promise<null> => Promise.resolve(null),
       changes: (): (() => void) => (): void => undefined,
     },
   ]);
@@ -485,7 +495,7 @@ function homeHub(callers: ToolCaller[]): ToolHub {
 describe('a hub tool called by a native child through the hub session persistence', () => {
   it('runs under the parent profile and authority against the child chat', async () => {
     rig = await harnessRig();
-    const { persistence, parentSession } = parented(rig);
+    const { persistence, parentSession } = await parented(rig);
     const header = subagentHeader(parentSession);
     await persistence.create(header, 0);
     const callers: ToolCaller[] = [];
@@ -506,7 +516,7 @@ describe('a hub tool called by a native child through the hub session persistenc
 
   it('is limited to the tools the parent chat allows', async () => {
     rig = await harnessRig();
-    const { persistence, parentChatId, parentSession } = parented(rig);
+    const { persistence, parentChatId, parentSession } = await parented(rig);
     rig.opened.store.aiChats.update(parentChatId, { tools: ['home_read'] });
     const header = subagentHeader(parentSession);
     await persistence.create(header, 0);
@@ -540,7 +550,7 @@ describe('reading how a native child ended', () => {
 
 it('keeps a settled helper in its original continuation when its transcript is opened', async () => {
   rig = await harnessRig();
-  const { persistence, parentSession } = parented(rig);
+  const { persistence, parentSession } = await parented(rig);
   const { claim } = await persistence.create(subagentHeader(parentSession), 0);
   const { store } = rig.opened;
   const run = store.aiAgentRuns.currentOfSession(claim.session_id);
@@ -573,7 +583,7 @@ it('keeps a settled helper in its original continuation when its transcript is o
 
 it('can answer a helper approval after its runtime reopens under the same epoch', async () => {
   rig = await harnessRig();
-  const { persistence, parentSession } = parented(rig);
+  const { persistence, parentSession } = await parented(rig);
   const { claim } = await persistence.create(subagentHeader(parentSession), 0);
   const { store } = rig.opened;
   const state = store.harnessSessions.state(claim.session_id);
@@ -609,12 +619,12 @@ it('can answer a helper approval after its runtime reopens under the same epoch'
   );
 });
 
-function retainChildSettlement(
+async function retainChildSettlement(
   fixture: Rig,
   persistence: LocalHarnessPersistence,
   parentSession: string,
   child: DshWriterClaim,
-): void {
+): Promise<void> {
   const priorParent = persistence.claim(parentSession);
   const principal = fixture.service.hostPrincipal(
     fixture.owner.profileId,
@@ -623,7 +633,7 @@ function retainChildSettlement(
   const { store } = fixture.opened;
   const metadata = store.dshSessions.stat(parentSession, fixture.owner.profileId);
   if (metadata === undefined) throw new Error('The parent session was not retained.');
-  store.dshSessions.append(
+  await store.live.dshSessions.append(
     {
       claim: priorParent,
       operation_id: randomUUID(),
@@ -660,10 +670,10 @@ it.each([
   ['retry after the first replacement dies before binding', 'retry'],
 ] as const)('handles cold helper continuation for %s', async (_description, settlement) => {
   rig = await harnessRig();
-  const { persistence, parentChatId, parentSession } = parented(rig);
+  const { persistence, parentChatId, parentSession } = await parented(rig);
   const old = (await persistence.create(subagentHeader(parentSession), 0)).claim;
   const { store } = rig.opened;
-  store.dshSessions.append(
+  await store.live.dshSessions.append(
     {
       claim: old,
       operation_id: randomUUID(),
@@ -679,7 +689,7 @@ it.each([
     },
     rig.service.hostPrincipal(rig.owner.profileId, rig.service.directory.get(rig.hub.target).host),
   );
-  if (settlement !== 'without') retainChildSettlement(rig, persistence, parentSession, old);
+  if (settlement !== 'without') await retainChildSettlement(rig, persistence, parentSession, old);
   const { child, grant } = adoptedHelper(rig, old.session_id);
   const host = rig.service.directory.get(rig.hub.target);
   const manifest = host.host.manifest;
@@ -711,7 +721,7 @@ it.each([
       },
     });
     fixture.service.routes.publish(route);
-    const parent = fixture.service.prepare(
+    const parent = await fixture.service.prepare(
       fixture.owner,
       parentChatId,
       fixture.authority,
@@ -798,13 +808,14 @@ function helperFeatures(fixture: Rig): DirectedFilesFixture['setFeatures'] {
 async function directedFilesFixture(fixture: Rig): Promise<DirectedFilesFixture> {
   const { service, opened, owner, clientId } = fixture;
   const { store } = opened;
-  const { persistence, parentSession, parentChatId } = parented(fixture);
+  const { persistence, parentSession, parentChatId } = await parented(fixture);
   const { claim } = await persistence.create(subagentHeader(parentSession), 0);
   const { child } = adoptedHelper(fixture, claim.session_id);
   fixture.hub.held.set(parentSession, persistence.claim(parentSession).epoch);
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: (): Date => new Date(),
   });
   const conversation = new ConversationLog(store);
@@ -934,7 +945,11 @@ it('delivers a quoted reply with ordered child file and image copies to a capabl
   });
   const submit = (input: typeof event): Promise<void> =>
     submitHelperContinuation(service, child, input, { role, expected });
-  const reply = conversation.startReply(child, event.message_id, 'model-a');
+  const reply = await conversation.startReply({
+    chat: child,
+    replyTo: event.message_id,
+    model: 'model-a',
+  });
   store.harnessDeliveries.admit(event.id, expected.child.session_id, () => reply.id);
   await expect(submit({ ...event, message_id: submitted.id })).rejects.toThrow('unavailable');
   setFeatures(['subagent-send']);

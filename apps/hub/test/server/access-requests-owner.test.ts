@@ -52,13 +52,13 @@ function kid(): ProfileRow {
   return profile;
 }
 
-function byHand(profileId: string, change: PersonAccessChange): void {
-  requests.changeByOwner(profileId, change);
+async function byHand(profileId: string, change: PersonAccessChange): Promise<void> {
+  await requests.changeByOwner(profileId, change);
 }
 
-function timedBudget(profileId: string): string {
-  const row = requests.create(profileId, { kind: 'budget', target: '5', note: '' });
-  requests.decide(row.id, owner, { approve: true, until: UNTIL, target: null });
+async function timedBudget(profileId: string): Promise<string> {
+  const row = await requests.create(profileId, { kind: 'budget', target: '5', note: '' });
+  await requests.decide(row.id, owner, { approve: true, until: UNTIL, target: null });
   return row.id;
 }
 
@@ -67,19 +67,23 @@ function budgetOf(profileId: string): unknown {
 }
 
 describe('the target a person asked for', () => {
-  it('is kept when the owner denies with a different target', () => {
+  it('is kept when the owner denies with a different target', async () => {
     const person = kid();
-    const row = requests.create(person.id, { kind: 'area', target: 'settings', note: '' });
-    expect(() =>
+    const row = await requests.create(person.id, { kind: 'area', target: 'settings', note: '' });
+    await expect(
       requests.decide(row.id, owner, { approve: false, until: null, target: 'cameras' }),
-    ).toThrow(/already names its target/u);
-    const denied = requests.decide(row.id, owner, { approve: false, until: null, target: null });
+    ).rejects.toThrow(/already names its target/u);
+    const denied = await requests.decide(row.id, owner, {
+      approve: false,
+      until: null,
+      target: null,
+    });
     expect(denied).toMatchObject({ status: 'denied', target: 'settings' });
   });
 
-  it('cannot be swapped by a decision written straight to the store', () => {
+  it('cannot be swapped by a decision written straight to the store', async () => {
     const person = kid();
-    const row = requests.create(person.id, { kind: 'area', target: 'settings', note: '' });
+    const row = await requests.create(person.id, { kind: 'area', target: 'settings', note: '' });
     expect(() =>
       opened.store.accessRequests.decide(row.id, owner, {
         approve: true,
@@ -95,29 +99,29 @@ describe('the target a person asked for', () => {
 });
 
 describe('a timed grant next to what the owner set by hand', () => {
-  it('leaves an AI budget the owner set by hand alone when it ends', () => {
+  it('leaves an AI budget the owner set by hand alone when it ends', async () => {
     const person = kid();
-    const id = timedBudget(person.id);
+    const id = await timedBudget(person.id);
     expect(budgetOf(person.id)).toMatchObject({ daily_usd: 6, monthly_usd: 15 });
-    byHand(person.id, { budget: { ...BUDGET, daily_usd: 20, monthly_usd: 50 } });
+    await byHand(person.id, { budget: { ...BUDGET, daily_usd: 20, monthly_usd: 50 } });
     expect(opened.store.accessRequests.byId(id).lapsed_at).toBe(START);
     expect(opened.store.accessRequests.nextLapse(START)).toBeUndefined();
     moment = new Date(UNTIL);
-    expect(requests.lapse()).toStrictEqual([]);
+    expect(await requests.lapse()).toStrictEqual([]);
     expect(budgetOf(person.id)).toMatchObject({ daily_usd: 20, monthly_usd: 50 });
     expect(opened.store.accessAudit.list(10, person.id)[0]?.detail).toContain(
       'Replaced by the AI budget the owner set',
     );
   });
 
-  it('still takes back its amount when the owner changed only the warning level', () => {
+  it('still takes back its amount when the owner changed only the warning level', async () => {
     const person = kid();
-    timedBudget(person.id);
-    byHand(person.id, {
+    await timedBudget(person.id);
+    await byHand(person.id, {
       budget: { ...BUDGET, daily_usd: 6, monthly_usd: 15, warn_at_percent: 50 },
     });
     moment = new Date(UNTIL);
-    expect(requests.lapse()).toStrictEqual([person.id]);
+    expect(await requests.lapse()).toStrictEqual([person.id]);
     expect(budgetOf(person.id)).toMatchObject({
       daily_usd: 1,
       monthly_usd: 10,
@@ -125,13 +129,13 @@ describe('a timed grant next to what the owner set by hand', () => {
     });
   });
 
-  it('keeps an area the owner saved by hand through the access change', () => {
+  it('keeps an area the owner saved by hand through the access change', async () => {
     const person = kid();
-    const row = requests.create(person.id, { kind: 'area', target: 'settings', note: '' });
-    requests.decide(row.id, owner, { approve: true, until: UNTIL, target: null });
-    byHand(person.id, { scopes: opened.store.personAccess.byProfile(person.id).scopes });
+    const row = await requests.create(person.id, { kind: 'area', target: 'settings', note: '' });
+    await requests.decide(row.id, owner, { approve: true, until: UNTIL, target: null });
+    await byHand(person.id, { scopes: opened.store.personAccess.byProfile(person.id).scopes });
     moment = new Date(UNTIL);
-    expect(requests.lapse()).toStrictEqual([]);
+    expect(await requests.lapse()).toStrictEqual([]);
     expect(opened.store.personAccess.byProfile(person.id).scopes.areas).toContain('settings');
   });
 });

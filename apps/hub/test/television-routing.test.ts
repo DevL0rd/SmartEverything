@@ -8,9 +8,11 @@ import {
   type ProviderAdapter,
 } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProviderNotRunningError } from '../src/commands/command-errors';
 import { TelevisionRouting } from '../src/commands/television-routing';
 import { TelevisionWake } from '../src/commands/television-wake';
 import type { DeviceRecord } from '../src/database/port';
+import { adapterDirectory } from './support/adapter-directory';
 import { captureLogs, testLogger } from './support/logs';
 
 const DEVICE_ID = '11111111-1111-4111-8111-111111111111';
@@ -98,27 +100,28 @@ beforeEach(() => {
     running,
     attached: null,
     routing: new TelevisionRouting({
-      adapters: {
-        adapterFor: (provider) =>
-          running.has(provider)
-            ? Object.entries(adapters).find(([name]) => name === provider)?.[1]
-            : undefined,
-      },
+      adapters: adapterDirectory((provider) =>
+        running.has(provider)
+          ? Object.entries(adapters).find(([name]) => name === provider)?.[1]
+          : undefined,
+      ),
       valueOf: (_device, capability) => state.get(capability),
       settingsOf: (deviceId) =>
-        current.attached === deviceId
-          ? {
-              device_id: deviceId,
-              direct_host: '192.168.1.40',
-              direct_mac: 'a1:b2:c3:d4:e5:f6',
-              input_names: {},
-              wake_macs: [],
-              wake_worked_at: null,
-            }
-          : undefined,
+        Promise.resolve(
+          current.attached === deviceId
+            ? {
+                device_id: deviceId,
+                direct_host: '192.168.1.40',
+                direct_mac: 'a1:b2:c3:d4:e5:f6',
+                input_names: {},
+                wake_macs: [],
+                wake_worked_at: null,
+              }
+            : undefined,
+        ),
       wake: new TelevisionWake({
         wake: () => Promise.resolve(),
-        settingsOf: () => undefined,
+        settingsOf: () => Promise.resolve(undefined),
         woke: () => undefined,
         online: () => true,
         subscribe: () => () => undefined,
@@ -132,25 +135,25 @@ beforeEach(() => {
 });
 
 describe('which commands the television routing takes', () => {
-  it('takes every remote key of a SmartThings television', () => {
-    expect(rig.routing.handles(TV, commandOf('remote_key', 'up'))).toBe(true);
+  it('takes every remote key of a SmartThings television', async () => {
+    expect(await rig.routing.handles(TV, commandOf('remote_key', 'up'))).toBe(true);
   });
 
-  it('takes every power on, so a sleeping screen can be woken', () => {
-    expect(rig.routing.handles(TV, commandOf('power', true))).toBe(true);
+  it('takes every power on, so a sleeping screen can be woken', async () => {
+    expect(await rig.routing.handles(TV, commandOf('power', true))).toBe(true);
   });
 
-  it('takes power off and apps only when that television has its own direct link', () => {
-    expect(rig.routing.handles(TV, commandOf('power', false))).toBe(false);
-    expect(rig.routing.handles(TV, commandOf('app_launch', 'YouTube'))).toBe(false);
+  it('takes power off and apps only when that television has its own direct link', async () => {
+    expect(await rig.routing.handles(TV, commandOf('power', false))).toBe(false);
+    expect(await rig.routing.handles(TV, commandOf('app_launch', 'YouTube'))).toBe(false);
     rig.attached = DEVICE_ID;
-    expect(rig.routing.handles(TV, commandOf('power', false))).toBe(true);
-    expect(rig.routing.handles(TV, commandOf('app_launch', 'YouTube'))).toBe(true);
+    expect(await rig.routing.handles(TV, commandOf('power', false))).toBe(true);
+    expect(await rig.routing.handles(TV, commandOf('app_launch', 'YouTube'))).toBe(true);
     rig.running.delete('samsung_tv');
-    expect(rig.routing.handles(TV, commandOf('power', false))).toBe(false);
+    expect(await rig.routing.handles(TV, commandOf('power', false))).toBe(false);
     rig.running.add('samsung_tv');
     rig.attached = '33333333-3333-4333-8333-333333333333';
-    expect(rig.routing.handles(TV, commandOf('power', false))).toBe(false);
+    expect(await rig.routing.handles(TV, commandOf('power', false))).toBe(false);
   });
 
   it('turns on a screen SmartThings can reach through SmartThings when no link is attached', async () => {
@@ -160,13 +163,13 @@ describe('which commands the television routing takes', () => {
     expect(rig.direct).not.toHaveBeenCalled();
   });
 
-  it('leaves other capabilities and other devices alone', () => {
-    expect(rig.routing.handles(TV, commandOf('volume', 5))).toBe(false);
-    expect(rig.routing.handles({ ...TV, kind: 'light' }, commandOf('remote_key', 'up'))).toBe(
+  it('leaves other capabilities and other devices alone', async () => {
+    expect(await rig.routing.handles(TV, commandOf('volume', 5))).toBe(false);
+    expect(await rig.routing.handles({ ...TV, kind: 'light' }, commandOf('remote_key', 'up'))).toBe(
       false,
     );
     expect(
-      rig.routing.handles({ ...TV, provider: 'samsung_tv' }, commandOf('remote_key', 'up')),
+      await rig.routing.handles({ ...TV, provider: 'samsung_tv' }, commandOf('remote_key', 'up')),
     ).toBe(false);
   });
 });
@@ -239,7 +242,7 @@ describe('pressing a remote key', () => {
   it('fails when the provider that owns the chosen path is not running', async () => {
     rig.running.delete('smartthings');
     await expect(rig.routing.execute(TV, commandOf('remote_key', 'up'))).rejects.toThrow(
-      new CommandRefusedError('remote_key', 'the smartthings provider is not running'),
+      new ProviderNotRunningError('smartthings'),
     );
   });
 });

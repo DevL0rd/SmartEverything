@@ -6,6 +6,7 @@ import {
 } from '@smarteverything/domain';
 import type { PluginContext, PluginStop } from '../contract';
 import { RouterCollector } from './collector';
+import type { WireAudience } from '../wire-gate';
 import { registerRouterPickers } from './pickers';
 import { RouterPresence } from './presence';
 import { runRouterCommand } from './controls';
@@ -29,17 +30,19 @@ type Context = PluginContext<RouterSettings>;
 export function startRouter(ctx: Context): PluginStop {
   const presence = new RouterPresence(ctx);
   const sync = new DeviceMirror(routerMirror(ctx.metrics));
-  const streams = new RouterStreams(ctx.data.publish);
-  const publish = (enriched: RouterSnapshot, full: boolean): void => {
-    streams.publish(enriched, full);
+  const streams = new RouterStreams(ctx.data.publish, (stream, value) => {
+    ctx.viewers.publish(ROUTER_EXTERNAL_ID, stream, value);
+  });
+  const publish = (enriched: RouterSnapshot, full: boolean, audience: WireAudience): void => {
+    streams.publish(enriched, full, audience);
     presence.index(enriched);
   };
   const collector = createCollector(ctx, {
     record: (snapshot) => {
       sync.update(presence.enrich(snapshot));
     },
-    publish: (snapshot, full) => {
-      publish(presence.enrich(snapshot), full);
+    publish: (snapshot, full, audience) => {
+      publish(presence.enrich(snapshot), full, audience);
     },
   });
   const latest = (): RouterSnapshot =>
@@ -48,7 +51,7 @@ export function startRouter(ctx: Context): PluginStop {
     if (collector !== null) {
       const enriched = presence.enrich(collector.latest);
       sync.update(enriched);
-      publish(enriched, true);
+      publish(enriched, true, 'everyone');
     }
   };
   const speedTests = new SpeedTestRunner(ctx);
@@ -69,7 +72,7 @@ export function startRouter(ctx: Context): PluginStop {
   );
   registerRouterPickers(ctx, { snapshot: latest });
   if (collector === null) {
-    streams.publish(notSetUp(), true);
+    streams.publish(notSetUp(), true, 'everyone');
     return () => Promise.resolve();
   }
   return startMonitoring(ctx, collector, sync);

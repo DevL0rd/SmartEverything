@@ -16,7 +16,7 @@ function context(chat: AiChatRow): { owner: Rig['owner']; chatId: string; client
 
 async function openOnDesk(): Promise<{ chat: AiChatRow; epoch: number }> {
   const chat = rig.newChat(rig.desk.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.desk.target, randomUUID(), open);
   return { chat: rig.opened.store.aiChats.chat(chat.id), epoch: open.claim.epoch };
 }

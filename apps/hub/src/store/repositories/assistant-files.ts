@@ -46,12 +46,15 @@ export function summaryOf(file: StoredAttachment): AssistantAttachment {
 
 export class AttachmentCleanup {
   private readonly pending = new Map<string, 'removing' | 'retry'>();
+  private readonly attaching = new Map<string, number>();
 
   async discard(
     candidates: readonly StoredAttachment[],
     remove: (file: StoredAttachment) => Promise<void>,
   ): Promise<void> {
-    const claimed = candidates.filter((file) => this.pending.get(file.id) !== 'removing');
+    const claimed = candidates.filter(
+      (file) => this.pending.get(file.id) !== 'removing' && !this.attaching.has(file.id),
+    );
     claimed.forEach((file) => this.pending.set(file.id, 'removing'));
     await Promise.all(
       claimed.map(async (file) => {
@@ -69,6 +72,28 @@ export class AttachmentCleanup {
   assertAvailable(id: string): void {
     if (this.pending.has(id)) throw expiredUpload();
   }
+
+  async attach<T>(ids: readonly string[], work: () => Promise<T>): Promise<T> {
+    for (const id of ids) this.assertAvailable(id);
+    for (const id of ids) this.attaching.set(id, (this.attaching.get(id) ?? 0) + 1);
+    try {
+      return await work();
+    } finally {
+      for (const id of ids) this.released(id);
+    }
+  }
+
+  attachNow<T>(ids: readonly string[], work: () => T): T {
+    for (const id of ids) this.assertAvailable(id);
+    return work();
+  }
+
+  private released(id: string): void {
+    const count = this.attaching.get(id);
+    if (count === undefined) throw new Error(`The attachment ${id} was not being attached.`);
+    if (count === 1) this.attaching.delete(id);
+    else this.attaching.set(id, count - 1);
+  }
 }
 
 function expiredUpload(): ApiError {
@@ -79,13 +104,11 @@ const ATTACHMENT_ID = z.strictObject({ id: z.uuid() });
 
 export function attachFiles(
   context: StoreContext,
-  cleanup: AttachmentCleanup,
   messageId: string,
   ids: readonly string[],
 ): void {
   context.write(() => {
     for (const id of ids) {
-      cleanup.assertAvailable(id);
       const changed = context.sql.run(
         'attach the file to the assistant message',
         'update assistant_attachments set message_id = $message where id = $id and message_id is null',

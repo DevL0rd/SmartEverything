@@ -6,6 +6,7 @@ import { FeedService } from '../../src/planner/feeds';
 import { composeRange } from '../../src/planner/range';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { inProcessCalendars } from '../support/ical';
 
 const START = '2026-11-14T12:00:00.000Z';
 
@@ -23,7 +24,12 @@ beforeEach(async () => {
   ownerId = owner.id;
   test.store.profiles.update(ownerId, { name: 'Sam', birth_date: '1984-03-04' });
   annId = test.store.profiles.create({ name: 'Ann', birth_date: '1990-07-21' }).id;
-  service = new FeedService({ store: test.store, clock, log: testLogger('feeds') });
+  service = new FeedService({
+    store: test.store,
+    clock,
+    calendars: inProcessCalendars,
+    log: testLogger('feeds'),
+  });
   service.start();
 });
 
@@ -61,6 +67,7 @@ const on = (collection: PlannerCollectionRow, from: string, to: string): string[
 describe('the birthdays calendar', () => {
   it('holds one yearly all-day item per profile with a birth date', async () => {
     test.store.profiles.create({ name: 'Cat' });
+    await service.settled();
     const collection = await create();
     expect(collection).toMatchObject({ source: 'feed', feed: { kind: 'birthdays' } });
     expect(titles(collection)).toEqual(['Ann’s birthday', 'Sam’s birthday']);
@@ -88,6 +95,7 @@ describe('the birthdays calendar', () => {
 
   it('keeps a leap day birthday on the last day of February every year', async () => {
     test.store.profiles.update(annId, { birth_date: '1992-02-29' });
+    await service.settled();
     const collection = await create();
     expect(on(collection, '2027-02-01T00:00:00Z', '2027-03-01T00:00:00Z')).toEqual([
       '2027-02-28 Ann’s birthday',
@@ -99,6 +107,7 @@ describe('the birthdays calendar', () => {
 
   it('says My birthday for the profile named Me', async () => {
     test.store.profiles.update(ownerId, { name: 'Me' });
+    await service.settled();
     const collection = await create();
     expect(titles(collection)).toContain('My birthday');
   });
@@ -106,15 +115,19 @@ describe('the birthdays calendar', () => {
   it('follows a birth date, a name, a new profile and a removed profile', async () => {
     const collection = await create();
     test.store.profiles.update(annId, { birth_date: '1991-08-02', name: 'Annie' });
+    await service.settled();
     expect(titles(collection)).toEqual(['Annie’s birthday', 'Sam’s birthday']);
     expect(items(collection).find((item) => item.title.startsWith('Annie'))?.start_local).toBe(
       '1991-08-02',
     );
     const catId = test.store.profiles.create({ name: 'Cat', birth_date: '2015-01-09' }).id;
+    await service.settled();
     expect(titles(collection)).toEqual(['Annie’s birthday', 'Cat’s birthday', 'Sam’s birthday']);
     test.store.profiles.update(catId, { birth_date: null });
+    await service.settled();
     expect(titles(collection)).toEqual(['Annie’s birthday', 'Sam’s birthday']);
     test.store.profiles.remove(annId);
+    await service.settled();
     expect(titles(collection)).toEqual(['Sam’s birthday']);
   });
 
@@ -125,6 +138,7 @@ describe('the birthdays calendar', () => {
       tables.push(change.table);
     });
     test.store.profiles.update(annId, { height_cm: 170 });
+    await service.settled();
     stop();
     expect(tables).toEqual(['profiles']);
     expect(items(collection)).toHaveLength(2);
@@ -134,10 +148,11 @@ describe('the birthdays calendar', () => {
     const collection = await create();
     service.stop();
     test.store.profiles.update(annId, { birth_date: '1991-08-02' });
+    await service.settled();
     expect(items(collection).find((item) => item.title === 'Ann’s birthday')?.start_local).toBe(
       '1990-07-21',
     );
-    service.registry.prepare([collection], {
+    await service.registry.prepare([collection], {
       from: '2026-11-01T00:00:00.000Z',
       to: '2026-12-01T00:00:00.000Z',
     });
@@ -162,6 +177,7 @@ describe('the birthdays calendar', () => {
       created_by: 'person',
     });
     test.store.profiles.update(annId, { birth_date: null });
+    await service.settled();
     expect(titles(collection)).toEqual(['Grandma’s birthday', 'Sam’s birthday']);
     expect(on(collection, '2026-12-01T00:00:00Z', '2026-12-02T00:00:00Z')).toEqual([
       '2026-12-01 Grandma’s birthday',

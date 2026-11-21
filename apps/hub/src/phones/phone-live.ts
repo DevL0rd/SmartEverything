@@ -10,7 +10,7 @@ export const LIVE_RENEW_MS = 9 * 60 * 1000;
 const LIVE_TOPIC = 'live';
 
 export interface PhoneLiveOptions {
-  readonly store: Pick<Store, 'devices' | 'feed'>;
+  readonly store: Pick<Store, 'live' | 'feed'>;
   readonly viewers: Pick<Viewers<DeviceDetail>, 'follow'>;
   readonly actions: Pick<PhoneActionBroker, 'live'>;
   readonly target: (device: DeviceRow) => PhoneTarget;
@@ -71,7 +71,7 @@ export class PhoneLive {
   constructor(private readonly options: PhoneLiveOptions) {}
 
   start(): void {
-    this.options.store.devices
+    this.options.store.live.home.devices
       .list()
       .filter((device) => device.kind === 'phone')
       .forEach((device) => {
@@ -125,7 +125,7 @@ export class PhoneLive {
   }
 
   private push(deviceId: string, lease: Lease, on: boolean): void {
-    const device = this.options.store.devices.find(deviceId);
+    const device = this.options.store.live.home.devices.find(deviceId);
     if (device === undefined) return;
     if (on) {
       lease.arm(() => {

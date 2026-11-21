@@ -571,7 +571,7 @@ describe('locks protect writes of DAV clients', () => {
   it('does not protect a file from a write that never goes through DAV', async () => {
     await put('a.txt', 'x');
     await lock('a.txt');
-    const root = writableRoot();
+    const root = await writableRoot();
     const staged = await stageBytes(depsOf().env, root, Readable.from([Buffer.from('direct')]));
     const actor = { actorProfileId: memberProfile, via: 'app', deviceId: null } as const;
     await commitContent(depsOf().env, { root, staged, relPath: 'a.txt', actor });

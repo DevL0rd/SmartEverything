@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CommandRow, DeviceCommand, JsonValue } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolCaller } from '../../src/ai-tools/hub-tool';
 import type { DeviceDriver } from '../../src/local/device-driver';
 import { commandPorts } from '../../src/plugins/plugin-device-command';
@@ -87,6 +87,9 @@ describe('plugin device command port', () => {
       { externalId: EXTERNAL, capability: 'power', value: true },
       caller,
     );
+    await vi.waitFor(() => {
+      expect(submitted).toHaveLength(1);
+    });
     const [row] = submitted;
     if (row === undefined) throw new Error('The command was not submitted.');
     const command = {

@@ -20,12 +20,13 @@ import {
   status,
   type PlacementWorld,
 } from './placement-fixture';
+import { placementChangeIn, type PlacementChange } from '../../src/drive/units/placements';
 
 let world: PlacementWorld;
 
-function refusal(work: () => unknown): ApiError {
+async function refusal(work: () => unknown): Promise<ApiError> {
   try {
-    work();
+    await work();
   } catch (cause) {
     if (cause instanceof ApiError) return cause;
     throw cause;
@@ -60,9 +61,9 @@ afterEach(async () => {
 });
 
 describe('setting a placement', () => {
-  it('mounts the whole My Drive of the computer’s person, starting and unreported', () => {
+  it('mounts the whole My Drive of the computer’s person, starting and unreported', async () => {
     const seen = changes();
-    const mounted = world.placements.setMount(world.robin, {
+    const mounted = await world.placements.setMount(world.robin, {
       deviceId: world.robinDesk,
       enabled: true,
     });
@@ -82,14 +83,17 @@ describe('setting a placement', () => {
     expect(seen.map((change) => change.operation)).toEqual(['INSERT']);
   });
 
-  it('turns the one mount of a computer off and on without a second row', () => {
-    const on = world.placements.setMount(world.robin, { deviceId: world.robinDesk, enabled: true });
-    const off = world.placements.setMount(world.robin, {
+  it('turns the one mount of a computer off and on without a second row', async () => {
+    const on = await world.placements.setMount(world.robin, {
+      deviceId: world.robinDesk,
+      enabled: true,
+    });
+    const off = await world.placements.setMount(world.robin, {
       deviceId: world.robinDesk,
       enabled: false,
     });
     expect(off).toMatchObject({ id: on.id, enabled: false, rootId: ROBIN_DRIVE });
-    const again = world.placements.setMount(world.robin, {
+    const again = await world.placements.setMount(world.robin, {
       deviceId: world.robinDesk,
       enabled: true,
     });
@@ -97,37 +101,40 @@ describe('setting a placement', () => {
     expect(world.store.drivePlacements.forDevice(world.robinDesk)).toHaveLength(1);
   });
 
-  it('starts a mount that was never turned on as off', () => {
-    const off = world.placements.setMount(world.ida, { deviceId: world.idaDesk, enabled: false });
+  it('starts a mount that was never turned on as off', async () => {
+    const off = await world.placements.setMount(world.ida, {
+      deviceId: world.idaDesk,
+      enabled: false,
+    });
     expect(off).toMatchObject({ rootId: IDA_DRIVE, enabled: false });
-    expect(world.placements.activeFor(world.idaDesk)).toEqual([]);
+    expect(await world.placements.activeFor(world.idaDesk)).toEqual([]);
   });
 
-  it('keeps a whole-drive sync beside the whole-drive mount', () => {
-    const mounted = world.placements.setMount(world.robin, {
+  it('keeps a whole-drive sync beside the whole-drive mount', async () => {
+    const mounted = await world.placements.setMount(world.robin, {
       deviceId: world.robinDesk,
       enabled: true,
     });
     const synced = place(world, world.robin, world.robinDesk, { rootId: ROBIN_DRIVE });
     expect(synced.id).not.toBe(mounted.id);
     expect(
-      world.placements
-        .activeFor(world.robinDesk)
-        .map((row) => row.mode)
-        .sort(),
+      (await world.placements.activeFor(world.robinDesk)).map((row) => row.mode).sort(),
     ).toEqual(['mounted', 'synced']);
   });
 
-  it('refuses a mount on another person’s computer and a computer with a stray mount', () => {
+  it('refuses a mount on another person’s computer and a computer with a stray mount', async () => {
     expect(
-      refusal(() =>
+      await refusal(async () =>
         world.placements.setMount(world.owner, { deviceId: world.idaDesk, enabled: true }),
       ),
     ).toMatchObject({ code: 'not_found' });
     place(world, world.robin, world.robinDesk, { mode: 'mounted', folderItemId: ROMS });
     expect(
-      refusal(() =>
-        world.placements.setMount(world.robin, { deviceId: world.robinDesk, enabled: true }),
+      await refusal(async () =>
+        world.placements.setMount(world.robin, {
+          deviceId: world.robinDesk,
+          enabled: true,
+        }),
       ),
     ).toMatchObject({ code: 'conflict' });
   });
@@ -162,10 +169,10 @@ describe('setting a placement', () => {
     });
   });
 
-  it('refuses a malformed excluded folder', () => {
+  it('refuses a malformed excluded folder', async () => {
     for (const excluded of ['/Photos', 'a//b', '../out', './here']) {
       expect(
-        refusal(() =>
+        await refusal(() =>
           place(world, world.robin, world.robinDesk, {
             rootId: ROBIN_DRIVE,
             folderItemId: ROBIN_TRIP,
@@ -177,36 +184,38 @@ describe('setting a placement', () => {
     }
   });
 
-  it('refuses a computer that is not paired, revoked or bound to nobody', () => {
+  it('refuses a computer that is not paired, revoked or bound to nobody', async () => {
     expect(
-      refusal(() =>
+      await refusal(async () =>
         world.placements.set(world.owner, placementRequest('0e000000-0000-4000-8000-000000000999')),
       ),
     ).toMatchObject({ code: 'not_found' });
     world.store.computerNodes.revoke(world.robinDesk);
     expect(
-      refusal(() => world.placements.set(world.robin, placementRequest(world.robinDesk))),
+      await refusal(async () =>
+        world.placements.set(world.robin, placementRequest(world.robinDesk)),
+      ),
     ).toMatchObject({ code: 'not_found' });
   });
 
-  it('refuses placing on another person computer, the Hub owner included', () => {
+  it('refuses placing on another person computer, the Hub owner included', async () => {
     expect(
-      refusal(() => world.placements.set(world.robin, placementRequest(world.idaDesk))),
+      await refusal(async () => world.placements.set(world.robin, placementRequest(world.idaDesk))),
     ).toMatchObject({ code: 'not_found' });
     expect(
-      refusal(() => world.placements.set(world.owner, placementRequest(world.idaDesk))),
+      await refusal(async () => world.placements.set(world.owner, placementRequest(world.idaDesk))),
     ).toMatchObject({ code: 'not_found' });
     expect(world.store.drivePlacements.list()).toEqual([]);
   });
 
-  it('refuses another person drive and folder, the Hub owner included', () => {
+  it('refuses another person drive and folder, the Hub owner included', async () => {
     expect(
-      refusal(() =>
+      await refusal(() =>
         place(world, world.owner, world.ownerDesk, { rootId: IDA_DRIVE, mode: 'synced' }),
       ),
     ).toMatchObject({ code: 'not_found' });
     expect(
-      refusal(() =>
+      await refusal(() =>
         place(world, world.owner, world.ownerDesk, {
           rootId: IDA_DRIVE,
           folderItemId: IDA_PRIVATE,
@@ -214,7 +223,7 @@ describe('setting a placement', () => {
       ),
     ).toMatchObject({ code: 'not_found' });
     expect(
-      refusal(() =>
+      await refusal(() =>
         place(world, world.owner, world.ownerDesk, {
           rootId: ROBIN_DRIVE,
           folderItemId: ROBIN_PRIVATE,
@@ -224,19 +233,19 @@ describe('setting a placement', () => {
     expect(world.store.drivePlacements.list()).toEqual([]);
   });
 
-  it('refuses a missing drive, a folder of another drive and a file', () => {
+  it('refuses a missing drive, a folder of another drive and a file', async () => {
     expect(
-      refusal(() =>
+      await refusal(() =>
         place(world, world.robin, world.robinDesk, {
           rootId: '0d000000-0000-4000-8000-000000000999',
         }),
       ),
     ).toMatchObject({ code: 'not_found' });
     expect(
-      refusal(() => place(world, world.robin, world.robinDesk, { folderItemId: ROBIN_TRIP })),
+      await refusal(() => place(world, world.robin, world.robinDesk, { folderItemId: ROBIN_TRIP })),
     ).toMatchObject({ code: 'not_found' });
     expect(
-      refusal(() => place(world, world.robin, world.robinDesk, { folderItemId: NOTES })),
+      await refusal(() => place(world, world.robin, world.robinDesk, { folderItemId: NOTES })),
     ).toMatchObject({ code: 'invalid_request' });
   });
 
@@ -290,13 +299,13 @@ describe('what a grant allows', () => {
     expect(inner.status.readOnly).toBe(false);
   });
 
-  it('refuses the whole drive of the person who shared one folder, and any unshared folder', () => {
+  it('refuses the whole drive of the person who shared one folder, and any unshared folder', async () => {
     grant(ROBIN_TRIP, world.ida.profileId, 'edit');
     expect(
-      refusal(() => place(world, world.ida, world.idaDesk, { rootId: ROBIN_DRIVE })),
+      await refusal(() => place(world, world.ida, world.idaDesk, { rootId: ROBIN_DRIVE })),
     ).toMatchObject({ code: 'not_found' });
     expect(
-      refusal(() =>
+      await refusal(() =>
         place(world, world.ida, world.idaDesk, {
           rootId: ROBIN_DRIVE,
           folderItemId: ROBIN_PRIVATE,
@@ -310,26 +319,28 @@ describe('nesting of synced folders on one computer', () => {
   const synced = (fields: Parameters<typeof place>[3]): DrivePlacement =>
     place(world, world.robin, world.robinDesk, { rootId: ROBIN_DRIVE, mode: 'synced', ...fields });
 
-  it('refuses a synced folder inside a synced folder and the folder that holds one', () => {
+  it('refuses a synced folder inside a synced folder and the folder that holds one', async () => {
     synced({ folderItemId: ROBIN_TRIP, localPath: '/a' });
-    const inner = refusal(() => synced({ folderItemId: ROBIN_TRIP_DEEP, localPath: '/b' }));
+    const inner = await refusal(() => synced({ folderItemId: ROBIN_TRIP_DEEP, localPath: '/b' }));
     expect(inner.code).toBe('conflict');
     expect(inner.message).toContain('/a');
     world.store.drivePlacements.remove(world.store.drivePlacements.list()[0]?.id ?? '');
     synced({ folderItemId: ROBIN_TRIP_DEEP, localPath: '/b' });
-    const outer = refusal(() => synced({ folderItemId: ROBIN_TRIP, localPath: '/a' }));
+    const outer = await refusal(() => synced({ folderItemId: ROBIN_TRIP, localPath: '/a' }));
     expect(outer.code).toBe('conflict');
     expect(outer.message).toContain('/b');
   });
 
-  it('refuses a whole synced drive next to a synced folder of it, and the reverse', () => {
+  it('refuses a whole synced drive next to a synced folder of it, and the reverse', async () => {
     synced({ folderItemId: ROBIN_TRIP, localPath: '/a' });
-    expect(refusal(() => synced({ folderItemId: null, localPath: '/b' }))).toMatchObject({
+    expect(await refusal(() => synced({ folderItemId: null, localPath: '/b' }))).toMatchObject({
       code: 'conflict',
     });
     world.store.drivePlacements.remove(world.store.drivePlacements.list()[0]?.id ?? '');
     synced({ folderItemId: null, localPath: '/b' });
-    expect(refusal(() => synced({ folderItemId: ROBIN_TRIP, localPath: '/a' }))).toMatchObject({
+    expect(
+      await refusal(() => synced({ folderItemId: ROBIN_TRIP, localPath: '/a' })),
+    ).toMatchObject({
       code: 'conflict',
     });
   });
@@ -421,43 +432,45 @@ describe('the stored uniqueness', () => {
 });
 
 describe('listing', () => {
-  it('shows each person only the placements on their own computers, the Hub owner included', () => {
+  it('shows each person only the placements on their own computers, the Hub owner included', async () => {
     place(world, world.owner, world.ownerDesk);
     place(world, world.robin, world.robinDesk);
     place(world, world.ida, world.idaDesk);
-    expect(world.placements.list(world.owner).map((row) => row.deviceId)).toEqual([
+    expect((await world.placements.list(world.owner)).map((row) => row.deviceId)).toEqual([
       world.ownerDesk,
     ]);
-    expect(world.placements.list(world.robin).map((row) => row.deviceId)).toEqual([
+    expect((await world.placements.list(world.robin)).map((row) => row.deviceId)).toEqual([
       world.robinDesk,
     ]);
-    expect(world.placements.list(world.ida).map((row) => row.deviceId)).toEqual([world.idaDesk]);
+    expect((await world.placements.list(world.ida)).map((row) => row.deviceId)).toEqual([
+      world.idaDesk,
+    ]);
   });
 
-  it('removes only for the person of the computer, the Hub owner included', () => {
+  it('removes only for the person of the computer, the Hub owner included', async () => {
     const placed = place(world, world.robin, world.robinDesk);
     for (const other of [world.ida, world.owner]) {
       expect(
-        refusal(() => {
-          world.placements.removeFor(other, placed.id);
+        await refusal(async () => {
+          await world.placements.removeFor(other, placed.id);
         }),
       ).toMatchObject({ code: 'not_found' });
     }
     expect(world.store.drivePlacements.list()).toHaveLength(1);
     const seen = changes();
-    world.placements.removeFor(world.robin, placed.id);
+    await world.placements.removeFor(world.robin, placed.id);
     expect(world.store.drivePlacements.list()).toEqual([]);
     expect(seen.map((change) => change.operation)).toEqual(['DELETE']);
     expect(
-      refusal(() => {
-        world.placements.removeFor(world.robin, placed.id);
+      await refusal(async () => {
+        await world.placements.removeFor(world.robin, placed.id);
       }),
     ).toMatchObject({ code: 'not_found' });
   });
 });
 
 describe('active placements', () => {
-  it('sends only enabled placements without a hold', () => {
+  it('sends only enabled placements without a hold', async () => {
     const kept = place(world, world.robin, world.robinDesk);
     const off = place(world, world.robin, world.robinDesk, { rootId: ROBIN_DRIVE, enabled: false });
     const held = place(world, world.robin, world.robinDesk, {
@@ -465,25 +478,27 @@ describe('active placements', () => {
       folderItemId: MUSIC,
       mountName: 'm',
     });
-    world.placements.setHold(held.id, 'trashed');
-    expect(world.placements.activeFor(world.robinDesk).map((row) => row.id)).toEqual([kept.id]);
-    world.placements.setHold(held.id, null);
-    expect(world.placements.activeFor(world.robinDesk).map((row) => row.id)).toEqual([
+    await world.placements.setHold(held.id, 'trashed');
+    expect((await world.placements.activeFor(world.robinDesk)).map((row) => row.id)).toEqual([
+      kept.id,
+    ]);
+    await world.placements.setHold(held.id, null);
+    expect((await world.placements.activeFor(world.robinDesk)).map((row) => row.id)).toEqual([
       kept.id,
       held.id,
     ]);
     expect(off.enabled).toBe(false);
   });
 
-  it('keeps a held placement visible with its hold', () => {
+  it('keeps a held placement visible with its hold', async () => {
     const placed = place(world, world.robin, world.robinDesk);
-    world.placements.setHold(placed.id, 'no_access');
-    expect(world.placements.list(world.robin)[0]).toMatchObject({ hold: 'no_access' });
+    await world.placements.setHold(placed.id, 'no_access');
+    expect((await world.placements.list(world.robin))[0]).toMatchObject({ hold: 'no_access' });
   });
 });
 
 describe('status reports', () => {
-  it('writes the status of a placement of that computer and publishes it', () => {
+  it('writes the status of a placement of that computer and publishes it', async () => {
     const placed = place(world, world.robin, world.robinDesk);
     const seen = changes();
     const reported = status({
@@ -491,18 +506,18 @@ describe('status reports', () => {
       lastSyncedAt: '2026-11-08T00:00:00.000Z',
       errors: [{ relPath: 'a.txt', message: 'locked', at: '2026-11-08T00:00:00.000Z' }],
     });
-    const written = world.placements.writeStatus(world.robinDesk, placed.id, reported);
+    const written = await world.placements.writeStatus(world.robinDesk, placed.id, reported);
     expect(written.status).toEqual(reported);
     expect(seen.map((change) => change.operation)).toEqual(['UPDATE']);
   });
 
-  it('refuses a status from another computer and a missing placement', () => {
+  it('refuses a status from another computer and a missing placement', async () => {
     const placed = place(world, world.robin, world.robinDesk);
     expect(
-      refusal(() => world.placements.writeStatus(world.idaDesk, placed.id, status())),
+      await refusal(async () => world.placements.writeStatus(world.idaDesk, placed.id, status())),
     ).toMatchObject({ code: 'forbidden' });
     expect(
-      refusal(() =>
+      await refusal(async () =>
         world.placements.writeStatus(
           world.robinDesk,
           '0a000000-0000-4000-8000-0000000fffff',
@@ -512,10 +527,10 @@ describe('status reports', () => {
     ).toMatchObject({ code: 'not_found' });
   });
 
-  it('stores basic limits', () => {
+  it('stores basic limits', async () => {
     const placed = place(world, world.robin, world.robinDesk);
     const limits = { maxFileBytes: 50_000_000, wholeFileOpen: true, offline: false } as const;
-    const written = world.placements.writeStatus(
+    const written = await world.placements.writeStatus(
       world.robinDesk,
       placed.id,
       status({ tier: 'basic', basicLimits: limits }),
@@ -538,24 +553,30 @@ describe('the device change listener', () => {
     expect(heard).toEqual([[world.robinDesk]]);
   });
 
-  it('fires once for several changes in one transaction and names each changed device', async () => {
-    world.store.context.write(() => {
-      place(world, world.robin, world.robinDesk);
-      place(world, world.robin, world.robinDesk, { rootId: ROBIN_DRIVE, mountName: 'b' });
-      place(world, world.robin, world.secondRobinDesk);
+  it('names each changed device of several changes in one write', () => {
+    const request = (deviceId: string): PlacementChange => ({
+      op: 'set',
+      actor: world.robin,
+      input: placementRequest(deviceId),
+      id: newId(),
     });
-    await nextTick();
-    expect(heard).toHaveLength(1);
-    expect([...(heard[0] ?? [])].sort()).toEqual([world.robinDesk, world.secondRobinDesk].sort());
+    const result = world.store.write(() =>
+      placementChangeIn(world.store, [
+        request(world.robinDesk),
+        request(world.secondRobinDesk),
+        request(world.robinDesk),
+      ]),
+    );
+    expect([...result.devices].sort()).toEqual([world.robinDesk, world.secondRobinDesk].sort());
   });
 
   it('stays quiet for status writes and for a change that leaves the active set alone', async () => {
     const placed = place(world, world.robin, world.robinDesk, { enabled: false });
     await nextTick();
     heard.length = 0;
-    world.placements.writeStatus(world.robinDesk, placed.id, status());
+    await world.placements.writeStatus(world.robinDesk, placed.id, status());
     place(world, world.robin, world.robinDesk, { enabled: false });
-    world.placements.setHold(placed.id, 'trashed');
+    await world.placements.setHold(placed.id, 'trashed');
     await nextTick();
     expect(heard).toEqual([]);
   });
@@ -567,9 +588,9 @@ describe('the device change listener', () => {
     });
     await nextTick();
     heard.length = 0;
-    world.placements.setHold(placed.id, 'no_access');
+    await world.placements.setHold(placed.id, 'no_access');
     await nextTick();
-    world.placements.setHold(placed.id, null);
+    await world.placements.setHold(placed.id, null);
     await nextTick();
     place(world, world.robin, world.robinDesk, {
       rootId: ROBIN_DRIVE,
@@ -584,7 +605,7 @@ describe('the device change listener', () => {
       excluded: ['Old'],
     });
     await nextTick();
-    world.placements.remove(placed.id);
+    await world.placements.remove(placed.id);
     await nextTick();
     expect(heard).toEqual(Array.from({ length: 5 }, () => [world.robinDesk]));
   });
@@ -597,7 +618,7 @@ describe('the device change listener', () => {
     });
     await nextTick();
     heard.length = 0;
-    world.placements.setReadOnly(placed.id, true);
+    await world.placements.setReadOnly(placed.id, true);
     await nextTick();
     expect(world.store.drivePlacements.byId(placed.id).status.readOnly).toBe(true);
     expect(heard).toEqual([[world.idaDesk]]);
@@ -612,13 +633,10 @@ describe('the device change listener', () => {
     expect(heard).toEqual([[world.idaDesk]]);
   });
 
-  it('stays quiet when the transaction rolls back and still works afterwards', async () => {
-    expect(() =>
-      world.store.context.write(() => {
-        place(world, world.robin, world.robinDesk);
-        throw new Error('rolled back');
-      }),
-    ).toThrow('rolled back');
+  it('stays quiet when the write fails and still works afterwards', async () => {
+    await expect(
+      world.placements.set(world.robin, placementRequest(world.idaDesk)),
+    ).rejects.toMatchObject({ code: 'not_found' });
     await nextTick();
     expect(heard).toEqual([]);
     expect(world.store.drivePlacements.list()).toEqual([]);

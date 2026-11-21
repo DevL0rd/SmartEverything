@@ -233,23 +233,39 @@ function kindsByOwner(kinds: readonly NodeKind[]): Map<string, NodeKind[]> {
   return byOwner;
 }
 
+export interface KindBatch {
+  readonly publish: readonly { readonly owner: string; readonly kinds: readonly NodeKind[] }[];
+  readonly switchOff: readonly string[];
+}
+
+export function persistKindBatch(
+  store: Pick<PluginKindStore, 'publish' | 'switchOff' | 'prune'>,
+  batch: KindBatch,
+  used: () => ReadonlySet<string>,
+): void {
+  for (const { owner, kinds } of batch.publish) store.publish(owner, kinds);
+  for (const owner of batch.switchOff) store.switchOff(owner);
+  store.prune(used());
+}
+
+export type KindWrites = (batch: KindBatch) => Promise<void>;
+
 export function persistPluginKinds(
   catalog: Pick<KindCatalog, 'kinds' | 'owners' | 'changes'>,
-  store: Pick<PluginKindStore, 'publish' | 'switchOff' | 'prune'>,
-  used: () => ReadonlySet<string>,
+  writes: KindWrites,
 ): () => void {
   let present: ReadonlySet<string> = new Set();
   const write = (): void => {
-    try {
-      const byOwner = kindsByOwner(catalog.kinds());
-      const owners = new Set([...catalog.owners(), ...byOwner.keys()]);
-      for (const owner of owners) store.publish(owner, byOwner.get(owner) ?? []);
-      for (const owner of present) if (!owners.has(owner)) store.switchOff(owner);
-      present = owners;
-      store.prune(used());
-    } catch (cause) {
+    const byOwner = kindsByOwner(catalog.kinds());
+    const owners = new Set([...catalog.owners(), ...byOwner.keys()]);
+    const batch: KindBatch = {
+      publish: [...owners].map((owner) => ({ owner, kinds: byOwner.get(owner) ?? [] })),
+      switchOff: [...present].filter((owner) => !owners.has(owner)),
+    };
+    present = owners;
+    writes(batch).catch((cause: unknown) => {
       log.error('plugin_kinds.persist_failed', cause);
-    }
+    });
   };
   write();
   return catalog.changes(write);

@@ -62,7 +62,7 @@ export function releaseChunkRoute(store: Store, staging: ReleaseStaging): RawRou
     method: 'PUT',
     path: RELEASE_UPLOAD_CHUNK_PATH,
     handle: async (request, response, params): Promise<void> => {
-      const caller = authenticate(store, request, 'owner', false);
+      const caller = await authenticate(store, request, 'owner', false);
       assertOwnerRoute(store, caller, {
         access: 'owner',
         method: 'PUT',

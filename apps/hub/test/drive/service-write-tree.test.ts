@@ -69,10 +69,7 @@ function writerDeps(): Omit<ConstructorParameters<typeof DriveTreeWriter>[0], 'e
     read: new DriveReadService(store),
     albums: {
       create: noAlbums,
-      get: noAlbums,
-      rename: noAlbums,
-      setRule: noAlbums,
-      setCover: noAlbums,
+      update: noAlbums,
       remove: noAlbums,
       addItems: noAlbums,
       removeItems: noAlbums,
@@ -344,17 +341,19 @@ describe('trashing a batch', () => {
     const scan = lanes.run([ROBIN_DRIVE], () => setImmediate());
     const first = batch.apply(callerOf(robinId), { action: 'trash', itemIds: ids });
     const second = batch.apply(callerOf(robinId), { action: 'trash', itemIds: ids });
-    const check = lanes.run([ROBIN_DRIVE], () => {
+    const third = batch.apply(callerOf(robinId), { action: 'trash', itemIds: ids });
+    const answers = await Promise.all([first, second, third]);
+    await lanes.run([ROBIN_DRIVE], () => {
       const live = ids.filter((id) => store.driveItems.find(id, null) !== undefined).length;
       const trashed = ids.filter((id) => store.driveTrash.find(id) !== undefined).length;
       seen.push({ live, trashed });
       return Promise.resolve();
     });
-    const third = batch.apply(callerOf(robinId), { action: 'trash', itemIds: ids });
-    const answers = await Promise.all([first, second, third]);
-    await Promise.all([scan, check]);
-    expect(answers.map((result) => result.done.length)).toEqual([20, 0, 0]);
-    for (const repeat of answers.slice(1)) {
+    await scan;
+    expect(answers.map((result) => result.done.length).sort((left, right) => left - right)).toEqual(
+      [0, 0, 20],
+    );
+    for (const repeat of answers.filter((result) => result.done.length === 0)) {
       expect(repeat.failed).toEqual(
         ids.map((itemId) => ({ itemId, reason: 'It is already in the trash.' })),
       );

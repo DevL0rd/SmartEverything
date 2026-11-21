@@ -1,10 +1,7 @@
-import {
-  ApiError,
-  type DriveFeedOp,
-  type DriveItem,
-  type DriveOfflineItem,
-  type DriveOfflineReport,
-  type DriveOfflineSet,
+import type {
+  DriveOfflineItem,
+  DriveOfflineReport,
+  DriveOfflineSet,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { background, type Logger } from '@smarteverything/logging';
@@ -12,39 +9,15 @@ import type { PushCommandChannel } from '../extensions/push/commands';
 import type { DriveOfflineKey } from '../store/repositories/drive-offline';
 import { Coalesced } from '../store/reader';
 import type { Store } from '../store/store';
-import { canRead, itemAccess, mayExport, type DriveActor } from './access';
+import type { DriveActor } from './access';
 import { decodeCursor, encodeCursor } from './search';
-import { requireExport } from './sharing/export-guard';
 
 const OFFLINE_PAGE_SIZE = 200;
 
-const FEED_BATCH = 500;
-
-const CHANGING: ReadonlySet<DriveFeedOp> = new Set([
-  'create',
-  'update',
-  'rename',
-  'move',
-  'restore',
-  'trash',
-]);
-
 const OFFLINE_CURSOR = z.strictObject({ clientId: z.uuid(), itemId: z.uuid() });
 
-export type OfflineStore = Pick<
-  Store,
-  | 'clients'
-  | 'profiles'
-  | 'driveOffline'
-  | 'driveItems'
-  | 'driveRoots'
-  | 'driveGrants'
-  | 'driveFeed'
-  | 'feed'
->;
-
 export interface OfflineEnv {
-  readonly store: OfflineStore;
+  readonly store: Pick<Store, 'host' | 'feed'>;
   readonly push: Pick<PushCommandChannel, 'send'>;
   readonly log: Logger;
 }
@@ -54,21 +27,25 @@ export interface OfflinePage {
   readonly next: string | null;
 }
 
-function noPhone(): ApiError {
-  return new ApiError('not_found', 'There is no phone of yours with that id.');
-}
-
 function cursorOf(key: DriveOfflineKey | null): string | null {
   return key === null ? null : encodeCursor(key);
 }
 
+export class DriveOfflineNotStartedError extends Error {
+  override readonly name = 'DriveOfflineNotStartedError';
+
+  constructor() {
+    super('The drive offline catch up ran before the offline service started.');
+  }
+}
+
 export class DriveOffline {
-  private seen: number;
+  private seen: number | null = null;
+  private baseline: Promise<number> | undefined;
   private readonly pass: Coalesced;
   private stopFeed: (() => void) | undefined;
 
   constructor(private readonly env: OfflineEnv) {
-    this.seen = env.store.driveFeed.latestSeq();
     this.pass = new Coalesced(
       () => this.drain(),
       (cause) => {
@@ -77,9 +54,21 @@ export class DriveOffline {
     );
   }
 
+  async ready(): Promise<void> {
+    if (this.baseline === undefined) throw new DriveOfflineNotStartedError();
+    await this.baseline;
+  }
+
+  idle(): Promise<void> {
+    return this.pass.idle();
+  }
+
   start(): () => void {
+    this.baseline = this.env.store.host.call('driveFeed', 'latestSeq');
     this.stopFeed = this.env.store.feed.subscribeNotices((notice) => {
-      if (notice.type === 'drive_changed' && notice.cursor > this.seen) this.catchUp();
+      if (notice.type === 'drive_changed' && (this.seen === null || notice.cursor > this.seen)) {
+        this.pass.trigger();
+      }
     });
     return (): void => {
       this.stopFeed?.();
@@ -88,9 +77,15 @@ export class DriveOffline {
     };
   }
 
-  list(actor: DriveActor, clientId: string | undefined, cursor: string | undefined): OfflinePage {
+  async list(
+    actor: DriveActor,
+    clientId: string | undefined,
+    cursor: string | undefined,
+  ): Promise<OfflinePage> {
     const after = cursor === undefined ? null : decodeCursor(OFFLINE_CURSOR, cursor);
-    const window = this.env.store.driveOffline.forProfile(
+    const window = await this.env.store.host.call(
+      'driveOffline',
+      'forProfile',
       actor.profileId,
       clientId ?? null,
       after,
@@ -99,89 +94,38 @@ export class DriveOffline {
     return { items: window.items, next: cursorOf(window.next) };
   }
 
-  set(actor: DriveActor, input: DriveOfflineSet): void {
-    const { store } = this.env;
-    this.phoneOf(actor, input.clientId);
-    if (!input.on) {
-      store.driveOffline.set(input.clientId, input.itemId, actor.profileId, false);
-      return;
-    }
-    const item = store.driveItems.find(input.itemId, actor.profileId);
-    const access =
-      item === undefined
-        ? 'none'
-        : itemAccess(store, actor, store.driveRoots.byId(item.rootId), item);
-    if (item === undefined || !canRead(access)) {
-      throw new ApiError('not_found', 'There is no such file or folder for this caller.');
-    }
-    requireExport(access, item);
-    store.driveOffline.set(input.clientId, item.id, actor.profileId, true);
-    this.send(input.clientId, [item.id]);
+  async set(actor: DriveActor, input: DriveOfflineSet): Promise<void> {
+    const pushed = await this.env.store.host.write('driveOfflineSet', { actor, set: input });
+    if (pushed !== null) this.send(input.clientId, [pushed]);
   }
 
-  report(actor: DriveActor, input: DriveOfflineReport): void {
-    this.phoneOf(actor, input.clientId);
-    this.env.store.driveOffline.report(input.clientId, input.items);
-  }
-
-  private phoneOf(actor: DriveActor, clientId: string): void {
-    const client = this.env.store.clients.find(clientId);
-    if (
-      client?.platform !== 'android' ||
-      this.env.store.profiles.activeOf(clientId).id !== actor.profileId
-    ) {
-      throw noPhone();
-    }
-  }
-
-  private catchUp(): void {
-    this.pass.trigger();
+  async report(actor: DriveActor, input: DriveOfflineReport): Promise<void> {
+    await this.env.store.host.write('driveOfflineReport', { actor, report: input });
   }
 
   private async drain(): Promise<void> {
-    const { store } = this.env;
-    if (!store.driveOffline.held()) {
-      this.seen = store.driveFeed.latestSeq();
-      return;
-    }
+    const { host } = this.env.store;
+    if (this.baseline === undefined) throw new DriveOfflineNotStartedError();
+    let seen = this.seen ?? (await this.baseline);
     const changed = new Map<string, Set<string>>();
     for (;;) {
-      const window = store.driveFeed.since(this.seen, FEED_BATCH);
-      const last = window.rows.at(-1);
-      if (last !== undefined) this.seen = last.seq;
-      this.gather(
-        window.rows.filter((row) => CHANGING.has(row.op)).map((row) => row.itemId),
-        changed,
-      );
-      if (window.next === null) break;
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
+      const gathered = await host.read('driveOfflineGather', { after: seen });
+      if (gathered.kind === 'idle') {
+        seen = gathered.latest;
+        break;
+      }
+      if (gathered.last !== null) seen = gathered.last;
+      for (const { clientId, itemId } of gathered.changes) {
+        const ids = changed.get(clientId) ?? new Set<string>();
+        ids.add(itemId);
+        changed.set(clientId, ids);
+      }
+      if (!gathered.more) break;
     }
+    this.seen = seen;
     for (const [clientId, itemIds] of changed) {
       this.send(clientId, [...itemIds]);
     }
-  }
-
-  private gather(itemIds: readonly string[], changed: Map<string, Set<string>>): void {
-    if (itemIds.length === 0) return;
-    const { store } = this.env;
-    for (const held of store.driveOffline.holdersOfEach([...new Set(itemIds)])) {
-      const item = store.driveItems.find(held.itemId, null);
-      if (item === undefined || !this.holds(held.profileId, item)) continue;
-      const ids = changed.get(held.clientId) ?? new Set<string>();
-      ids.add(item.id);
-      changed.set(held.clientId, ids);
-    }
-  }
-
-  private holds(profileId: string, item: DriveItem): boolean {
-    const { store } = this.env;
-    const actor = { profileId };
-    const view = store.driveItems.find(item.id, profileId);
-    if (view === undefined) return false;
-    const access = itemAccess(store, actor, store.driveRoots.byId(view.rootId), view);
-    return canRead(access) && mayExport(access, view.locked);
   }
 
   private send(clientId: string, itemIds: readonly string[]): void {

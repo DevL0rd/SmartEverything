@@ -22,7 +22,7 @@ export function matchesEntityTag(header: string | undefined, tag: string): boole
 export function sendTagged(
   request: IncomingMessage,
   response: ServerResponse,
-  body: unknown,
+  text: string,
   tag: string,
 ): void {
   const headers = { etag: quoted(tag), 'cache-control': 'private, no-cache' };
@@ -31,7 +31,6 @@ export function sendTagged(
     response.end();
     return;
   }
-  const text = JSON.stringify(body);
   response.writeHead(OK, {
     ...headers,
     'content-type': 'application/json; charset=utf-8',

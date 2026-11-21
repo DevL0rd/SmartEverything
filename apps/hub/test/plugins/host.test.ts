@@ -24,6 +24,7 @@ import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { testLogStore } from '../support/log-worker';
 import { testStore, type TestStore } from '../support/store';
 import { writeFakePlugin } from './fake-plugin';
+import { storePluginHome } from '../support/plugin-home';
 
 const CALLER: ToolCaller = {
   profileId: 'p1',
@@ -147,13 +148,14 @@ async function rigged(): Promise<Rig> {
         log: testLogger('plugin-voice'),
       },
       conversations: { forPlugin: unused },
-      attachments: (): string[] => [],
+      attachments: (): Promise<string[]> => Promise.resolve([]),
       machineFile: (): Promise<null> => Promise.resolve(null),
       uploadFile: (): Promise<null> => Promise.resolve(null),
       pictureFile: (): Promise<null> => Promise.resolve(null),
       layout: hubLayout(directory, {}),
       submit: (): [] => [],
       signals: { emit: nothing },
+      home: storePluginHome(store),
       now,
     },
     contributions: {
@@ -231,10 +233,12 @@ describe('plugin host', () => {
     const id = await addPlugin(false);
     await hostOf().host.launch(id);
     await expect
-      .poll(() => readPluginLines(runtimeLogsOf(), id).map((entry) => entry.line))
+      .poll(async () => (await readPluginLines(runtimeLogsOf(), id)).map((entry) => entry.line))
       .toContain('ready');
     await hostOf().host.halt(id);
-    expect(readPluginLines(runtimeLogsOf(), id).map((entry) => entry.line)).toContain('ready');
+    expect((await readPluginLines(runtimeLogsOf(), id)).map((entry) => entry.line)).toContain(
+      'ready',
+    );
     expect(hostOf().messages).toStrictEqual([]);
   });
 

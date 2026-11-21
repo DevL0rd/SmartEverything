@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import type { UsageEntry } from '@smarteverything/domain';
 import { meteredBudget } from '../harness/metered-accounting';
-import { ledgerChange } from '../harness/metered-change';
 import { MeteredUsageStream } from '../harness/metered-usage';
 import { assertModelAllowed } from '../server/person-scope';
 import type { Store } from '../store/store';
@@ -46,11 +45,9 @@ export function auxAccountingFetch(
     const entry = entryOf(store, charge);
     assertModelAllowed(store, entry.profile_id, charge.model);
     meteredBudget(store).check(entry.work, { profileId: entry.profile_id, background: true });
-    const row = store.ledger.record(entry, true);
-    const observation = new MeteredUsageStream((snapshot): void => {
-      store.durableWrite(() => {
-        store.ledger.amend(row.id, ledgerChange(snapshot, store.ledger.get(row.id), false));
-      });
+    const row = await store.host.write('ledgerRecordDurable', entry);
+    const observation = new MeteredUsageStream(async (snapshot): Promise<void> => {
+      await store.host.write('ledgerMeteredAmend', { id: row.id, snapshot, tokensFromDsh: false });
     });
     return observation.response(await fetcher(input, withSessionKey(init, charge.sessionKey)));
   };

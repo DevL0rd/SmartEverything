@@ -7,7 +7,6 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { callerFor, operate, type ActingContext } from './acting';
-import { ownedAttachment } from '../../../assistant/chat-directory';
 import { chatOwnerOf } from '../../../server/auth';
 import { showWidgets } from '../../../chat-widgets/show-widgets';
 import type { StoredAttachment } from '../../../store/repositories/assistant-chat';
@@ -39,13 +38,13 @@ async function transcriptOf(context: ToolContext, file: StoredAttachment): Promi
   }
 }
 
-export function readableAttachment(context: ActingContext, id: string): StoredAttachment {
+export async function readableAttachment(
+  context: ActingContext,
+  id: string,
+): Promise<StoredAttachment> {
   const authority = context.actor?.authority;
-  const owner = chatOwnerOf(context.store, callerFor(context));
-  const file =
-    owner.role === 'owner'
-      ? context.store.assistantChat.attachment(id)
-      : ownedAttachment(context.store, owner, id);
+  const owner = chatOwnerOf(await callerFor(context));
+  const file = await context.store.host.read('mcpReadableAttachment', { owner, id });
   if (authority !== undefined && file.profile_id !== authority.profile_id)
     throw new ToolError('Attachment belongs to another initiating profile.', 'forbidden');
   return file;
@@ -55,7 +54,7 @@ async function attachment(
   context: ToolContext,
   id: string,
 ): Promise<{ structured: Record<string, unknown>; images?: { data: string; mimeType: string }[] }> {
-  const file = readableAttachment(context, id);
+  const file = await readableAttachment(context, id);
   const summary = {
     id: file.id,
     name: file.name,
@@ -144,7 +143,7 @@ export const ASSISTANT_TOOLS: readonly Tool[] = [
     name: 'widget_show',
     input: SHOW_WIDGETS_INPUT,
     annotations: WRITES,
-    run: (context, input) => ({ structured: showWidgets(context, input.widgets) }),
+    run: async (context, input) => ({ structured: await showWidgets(context, input.widgets) }),
   }),
   defineTool({
     name: 'read_assistant_attachment',

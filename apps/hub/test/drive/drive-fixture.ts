@@ -17,9 +17,14 @@ import { DrivePlacementsRepository } from '../../src/store/repositories/drive-pl
 import { DriveRootsRepository, type StoredDrive } from '../../src/store/repositories/drive-roots';
 import { SettingsKvRepository } from '../../src/store/repositories/settings-kv';
 import { Sql } from '../../src/store/sql';
+import { driveFolderOf, type DriveFolders } from '../../src/data-layout/drive-folders';
 import { testLogger } from '../support/logs';
 
 export const NOW = '2026-11-07T00:00:00.000Z';
+
+const FIXTURE_HOME = '/fixture/home/drive';
+
+const FIXTURE_PEOPLE = { parent: '/fixture/people', leaf: 'drive' };
 
 export interface DriveFixture {
   readonly database: DatabaseSync;
@@ -28,6 +33,7 @@ export interface DriveFixture {
   readonly roots: DriveRootsRepository;
   readonly placements: DrivePlacementsRepository;
   readonly syncRoot: (rootId: string) => void;
+  readonly folders: DriveFolders;
   readonly addDrive: (root: DriveRoot, path: string) => StoredDrive;
   readonly items: DriveItemsRepository;
   readonly blocks: DriveBlocksRepository;
@@ -43,13 +49,8 @@ export function openDriveFixture(): DriveFixture {
   const sql = new Sql(database);
   const context = new StoreContext(sql, feed, () => new Date(NOW));
   migrate(sql, MIGRATIONS, NOW, log);
-  const paths = new Map<string, string>();
-  const roots = new DriveRootsRepository(context, (scope, owner) => {
-    const path = paths.get(`${scope}:${String(owner)}`);
-    if (path === undefined)
-      throw new Error(`The fixture drive ${scope}:${String(owner)} has no folder.`);
-    return path;
-  });
+  const folders: DriveFolders = { home: FIXTURE_HOME, people: FIXTURE_PEOPLE };
+  const roots = new DriveRootsRepository(context, folders);
   return {
     database,
     context,
@@ -70,8 +71,11 @@ export function openDriveFixture(): DriveFixture {
         .run(randomUUID(), randomUUID(), rootId, randomUUID(), NOW, NOW);
       database.exec('pragma foreign_keys = on');
     },
+    folders,
     addDrive: (root, path): StoredDrive => {
-      paths.set(`${root.scope}:${String(root.ownerProfileId)}`, path);
+      if (root.scope === 'home') folders.home = path;
+      else if (driveFolderOf(folders, root.scope, root.ownerProfileId) !== path)
+        throw new Error(`The fixture places a personal drive at its owner's folder, not ${path}.`);
       return roots.insert(root);
     },
     items: new DriveItemsRepository(context),
@@ -145,6 +149,19 @@ export async function bundleMetadataWorker(): Promise<BundledWorker> {
     banner: { js: ESM_BANNER },
     logLevel: 'silent',
   });
+  return {
+    script,
+    dispose: (): void => {
+      rmSync(folder, { recursive: true, force: true });
+    },
+  };
+}
+
+export async function bundleHashWorker(): Promise<BundledWorker> {
+  mkdirSync(REPOSITORY_TMP, { recursive: true });
+  const folder = mkdtempSync(join(REPOSITORY_TMP, 'hub-hash-worker-'));
+  const script = join(folder, 'hasher-worker.mjs');
+  await bundleWorker('hasher-worker.ts', script);
   return {
     script,
     dispose: (): void => {

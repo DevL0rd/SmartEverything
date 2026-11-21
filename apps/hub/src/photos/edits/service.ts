@@ -21,12 +21,14 @@ import { previewDataUrl } from './base';
 import {
   canEditItem,
   capabilityOf,
-  editOf,
+  editFacts,
   imageTarget,
+  liveEditOf,
   originalOf,
   readableImage,
   type EditTarget,
   type ImageItem,
+  type LiveEdit,
 } from './target';
 
 export class PhotoEditService {
@@ -38,8 +40,8 @@ export class PhotoEditService {
   }
 
   async read(caller: DriveCaller, itemId: string): Promise<PhotoEdit> {
-    const item = readableImage(this.deps, caller, itemId);
-    if (!canEditItem(this.deps, caller, item)) {
+    const item = await readableImage(this.deps, caller, itemId);
+    if (!(await canEditItem(this.deps, caller, item))) {
       return {
         itemId,
         recipe: null,
@@ -50,10 +52,11 @@ export class PhotoEditService {
         copyOnlyReason: 'You can only view this photo; you cannot change it.',
       };
     }
-    const target = imageTarget(this.deps, caller, itemId);
-    const { row } = editOf(this.deps, target);
+    const target = await imageTarget(this.deps, caller, itemId);
+    const facts = await editFacts(this.deps, target);
+    const { row } = liveEditOf(target, facts.row);
     const original = await originalOf(this.deps, target, row);
-    const capability = capabilityOf(this.deps, target);
+    const capability = capabilityOf(target, facts);
     const kept = row !== undefined && original.baseVersionId !== null;
     return {
       itemId,
@@ -66,14 +69,15 @@ export class PhotoEditService {
   }
 
   async readPatch(caller: DriveCaller, itemId: string, patchId: string): Promise<PhotoEditPatch> {
-    imageTarget(this.deps, caller, itemId);
+    await imageTarget(this.deps, caller, itemId);
     const png = await this.patches.read(itemId, patchId);
     return { patchId, png: `data:image/png;base64,${png.toString('base64')}` };
   }
 
   async readBase(caller: DriveCaller, itemId: string): Promise<PhotoEditBase> {
-    const target = imageTarget(this.deps, caller, itemId);
-    const original = await originalOf(this.deps, target, editOf(this.deps, target).row);
+    const target = await imageTarget(this.deps, caller, itemId);
+    const { row } = liveEditOf(target, (await editFacts(this.deps, target)).row);
+    const original = await originalOf(this.deps, target, row);
     return {
       itemId,
       baseVersionId: original.baseVersionId,
@@ -95,26 +99,33 @@ export class PhotoEditService {
     );
   }
 
-  private liveEdit(target: EditTarget<ImageItem>): {
-    readonly stale: boolean;
-    readonly row: PhotoEditRow | undefined;
-  } {
-    const live = editOf(this.deps, target);
-    if (live.stale) this.deps.store.photoEdits.remove(target.item.id, target.caller.profileId);
+  private async liveEdit(
+    target: EditTarget<ImageItem>,
+    row: PhotoEditRow | undefined,
+  ): Promise<LiveEdit> {
+    const live = liveEditOf(target, row);
+    if (live.stale)
+      await this.deps.store.host.call(
+        'photoEdits',
+        'remove',
+        target.item.id,
+        target.caller.profileId,
+      );
     return live;
   }
 
   save(caller: DriveCaller, itemId: string, body: PhotoEditSave): Promise<PhotoEditSaved> {
     return this.lane.run(async () => {
-      const target = imageTarget(this.deps, caller, itemId);
-      const capability = capabilityOf(this.deps, target);
+      const target = await imageTarget(this.deps, caller, itemId);
+      const facts = await editFacts(this.deps, target);
+      const capability = capabilityOf(target, facts);
       if (body.mode === 'version' && !capability.canSaveVersion) {
         throw new ApiError(
           'invalid_request',
           capability.copyOnlyReason ?? 'Save as a copy instead.',
         );
       }
-      const { row } = this.liveEdit(target);
+      const { row } = await this.liveEdit(target, facts.row);
       const original = await originalOf(this.deps, target, row);
       const saved = await saveRendered(this.deps, {
         target,
@@ -125,21 +136,21 @@ export class PhotoEditService {
         signal: new AbortController().signal,
       });
       if (body.mode === 'version') {
-        this.deps.store.photoEdits.save(itemId, caller.profileId, {
+        await this.deps.store.host.call('photoEdits', 'save', itemId, caller.profileId, {
           recipe: body.recipe,
           baseVersionId: original.baseVersionId ?? saved.versionId,
           resultSha256: saved.sha256,
         });
       }
-      await this.patches.keepOnly(itemId, this.referenced(caller, itemId, body));
+      await this.patches.keepOnly(itemId, await this.referenced(caller, itemId, body));
       return { itemId: saved.item.id, rev: saved.item.rev };
     });
   }
 
   revert(caller: DriveCaller, itemId: string): Promise<PhotoEditSaved> {
     return this.lane.run(async () => {
-      const target = imageTarget(this.deps, caller, itemId);
-      const { row, stale } = this.liveEdit(target);
+      const target = await imageTarget(this.deps, caller, itemId);
+      const { row, stale } = await this.liveEdit(target, (await editFacts(this.deps, target)).row);
       if (stale) {
         throw new ApiError(
           'conflict',
@@ -151,20 +162,26 @@ export class PhotoEditService {
         throw new ApiError('invalid_request', 'This photo has no edit to revert.');
       }
       const restored = await restoreOriginal(this.deps, target, original.baseVersionId);
-      this.deps.store.photoEdits.remove(itemId, caller.profileId);
+      await this.deps.store.host.call('photoEdits', 'remove', itemId, caller.profileId);
       await this.patches.keepOnly(itemId, new Set());
       return { itemId: restored.id, rev: restored.rev };
     });
   }
 
-  private referenced(caller: DriveCaller, itemId: string, body: PhotoEditSave): Set<string> {
-    const stored = this.deps.store.photoEdits.find(itemId, caller.profileId)?.recipe.patches ?? [];
+  private async referenced(
+    caller: DriveCaller,
+    itemId: string,
+    body: PhotoEditSave,
+  ): Promise<Set<string>> {
+    const row = await this.deps.store.host.call('photoEdits', 'find', itemId, caller.profileId);
+    const stored = row?.recipe.patches ?? [];
     return new Set([...stored, ...body.recipe.patches].map((patch) => patch.patchId));
   }
 
   async erase(caller: DriveCaller, itemId: string, body: PhotoErase): Promise<PhotoErased> {
-    const target = imageTarget(this.deps, caller, itemId);
-    const original = await originalOf(this.deps, target, editOf(this.deps, target).row);
+    const target = await imageTarget(this.deps, caller, itemId);
+    const { row } = liveEditOf(target, (await editFacts(this.deps, target)).row);
+    const original = await originalOf(this.deps, target, row);
     const signal = new AbortController().signal;
     const photo = await this.open(target, original.path, signal);
     const patch = await eraseStrokes(await rasterOf(photo.image), {

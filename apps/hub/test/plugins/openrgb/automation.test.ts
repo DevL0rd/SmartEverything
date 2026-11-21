@@ -392,7 +392,7 @@ function performer(
         ? Promise.resolve(failure(`no tool ${tool.name}`))
         : found.run(args, caller);
     },
-    validate: (tool, args) => byName.get(tool.name)?.validate(args) ?? null,
+    validate: (tool, args) => Promise.resolve(byName.get(tool.name)?.validate(args) ?? null),
     changes: () => () => undefined,
   };
   const handlers = pluginNodeEffects({

@@ -16,21 +16,26 @@ function needsRescan(change: DriveRootChange): boolean {
 export class DriveAdmin {
   constructor(private readonly deps: DriveAdminDeps) {}
 
-  update(caller: DriveCaller, rootId: string, change: DriveRootChange): DriveRoot {
-    const drive = this.settable(caller, rootId);
-    const { path: _path, ...updated } = this.deps.store.driveRoots.update(drive.id, change);
+  async update(caller: DriveCaller, rootId: string, change: DriveRootChange): Promise<DriveRoot> {
+    const drive = await this.settable(caller, rootId);
+    const { path: _path, ...updated } = await this.deps.store.host.call(
+      'driveRoots',
+      'update',
+      drive.id,
+      change,
+    );
     if (needsRescan(change)) {
       this.deps.scan(drive.id);
     }
     return updated;
   }
 
-  scan(caller: DriveCaller, rootId: string): void {
-    this.deps.scan(this.settable(caller, rootId).id);
+  async scan(caller: DriveCaller, rootId: string): Promise<void> {
+    this.deps.scan((await this.settable(caller, rootId)).id);
   }
 
-  private settable(caller: DriveCaller, rootId: string): StoredDrive {
-    const drive = this.deps.read.rootFor(caller, rootId);
+  private async settable(caller: DriveCaller, rootId: string): Promise<StoredDrive> {
+    const drive = await this.deps.read.rootFor(caller, rootId);
     if (drive.scope === 'home') {
       requireOwner(caller);
     }

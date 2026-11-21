@@ -17,7 +17,7 @@ export async function readableSpeechSources(
 ): Promise<ResponseOf<'listSpeechSources'>> {
   const caller = speechToolCaller(store, principal);
   const devices = await readableDevices(store, principal, listening);
-  const plugins = store.speech.plugins().flatMap(([id, reader]) => {
+  const plugins = store.live.speechReaders.plugins().flatMap(([id, reader]) => {
     try {
       pluginReader(store, id);
       admitSpeechReadTool(store, principal, reader.readTool());

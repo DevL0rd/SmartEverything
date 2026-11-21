@@ -60,14 +60,12 @@ export type DshSessionListener = (
   write: DshSessionWrite,
 ) => void;
 
+export type DshSessionAdmission = (sessionId: string, events: DshSessionAppend['events']) => void;
+
 export class DshSessionsRepository {
   private readonly rows: DshSessionRows;
   private readonly claims: DshSessionClaims;
   private readonly events: DshSessionEvents;
-  private readonly appended = new Set<DshSessionListener>();
-  private readonly admissions = new Set<
-    (sessionId: string, events: DshSessionAppend['events']) => void
-  >();
   constructor(private readonly context: StoreContext) {
     this.rows = new DshSessionRows(context);
     this.claims = new DshSessionClaims(context);
@@ -91,24 +89,27 @@ export class DshSessionsRepository {
       };
     });
   }
-  append(input: unknown, authority: DshSessionPrincipal): DshSessionMetadata {
+  append(
+    input: unknown,
+    authority: DshSessionPrincipal,
+    admit: DshSessionAdmission,
+  ): { readonly metadata: DshSessionMetadata; readonly request: DshSessionAppend } {
     const request = DSH_SESSION_APPEND.parse(input);
     const principal = DSH_SESSION_PRINCIPAL.parse(authority);
     const metadata = durableSessionWrite(this.context, () => {
       const row = this.rows.get(request.claim.session_id, principal.profile_id);
       assertChatNotRetired(this.context, row.chat_id);
       requireWriter(row, request.claim, principal);
-      for (const admit of this.admissions) admit(request.claim.session_id, request.events);
+      admit(request.claim.session_id, request.events);
       return this.events.append(row, request);
     });
-    this.announce(request.claim.session_id, request.events, 'append');
-    return metadata;
+    return { metadata, request };
   }
   rewrite(
     sessionId: string,
     profileId: string,
     events: readonly DshSessionEvent[],
-  ): DshSessionMetadata {
+  ): { readonly metadata: DshSessionMetadata; readonly events: DshSessionAppend['events'] } {
     const id = DSH_SESSION_ID.parse(sessionId);
     const written = DSH_SESSION_EVENTS_WRITE.parse(events);
     const metadata = durableSessionWrite(this.context, () => {
@@ -117,14 +118,7 @@ export class DshSessionsRepository {
       this.claims.detach(row);
       return this.events.write(row, written);
     });
-    this.announce(id, written, 'rewrite');
-    return metadata;
-  }
-  onAppend(listener: DshSessionListener): void {
-    this.appended.add(listener);
-  }
-  admitAppend(admit: (sessionId: string, events: DshSessionAppend['events']) => void): void {
-    this.admissions.add(admit);
+    return { metadata, events: written };
   }
   flush(input: unknown, authority: DshSessionPrincipal): DshSessionMetadata {
     const request = DSH_SESSION_FLUSH.parse(input);
@@ -242,13 +236,6 @@ export class DshSessionsRepository {
       );
       return choice;
     });
-  }
-  private announce(
-    sessionId: string,
-    events: DshSessionAppend['events'],
-    write: DshSessionWrite,
-  ): void {
-    for (const listener of this.appended) listener(sessionId, events, write);
   }
   private createStored(
     request: DshSessionCreate,

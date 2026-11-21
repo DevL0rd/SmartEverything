@@ -15,8 +15,8 @@ import {
   missingFromOutput,
   publishStage,
   runtimePackageNames,
-  type Bundle,
 } from './build-service.ts';
+import type { Bundle } from './service-bundles.ts';
 import { DRIVE_MOUNT_BUILD_OUTPUT, stageDriveMount } from './drive-mount/build.ts';
 import { copyComputerWakeAssets, VOICE_ASSET_PACKAGE_NAMES } from './copy-voice-assets.ts';
 import {
@@ -68,6 +68,12 @@ const BUNDLES: readonly Bundle[] = [
     external: [],
   },
   { entry: join(hub, 'src', 'claude', 'hook-helper.ts'), file: 'hook-helper.mjs', external: [] },
+  {
+    entry: join(hub, 'src', 'node', 'metrics', 'metrics-worker.ts'),
+    file: 'computer-metrics.mjs',
+    external: [],
+    banner: BANNER,
+  },
   {
     entry: join(desktop, 'src', 'drive-sync', 'blocks-worker.ts'),
     file: 'drive-blocks.mjs',

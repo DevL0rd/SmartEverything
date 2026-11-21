@@ -54,8 +54,10 @@ function createMonitor(
     record: (snapshot): void => {
       sync.update(snapshot);
     },
-    publish: (snapshot): void => {
-      ctx.data.publish(SNAPSHOT_STREAM, snapshot);
+    publish: (snapshot, audience): void => {
+      if (audience === 'viewers')
+        ctx.viewers.publish(SYNCTHING_EXTERNAL_ID, SNAPSHOT_STREAM, snapshot);
+      else ctx.data.publish(SNAPSHOT_STREAM, snapshot);
       const signature = syncthingSearchSignature(snapshot);
       if (signature !== searched) {
         searched = signature;

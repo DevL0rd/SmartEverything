@@ -80,21 +80,61 @@ export function foldAuthorities(
   };
 }
 
+export interface AuthorityScope {
+  readonly sources: readonly ConversationAuthority[];
+  readonly providerBan: boolean;
+  readonly repairOrigin: string | null;
+}
+
+export function authorityScope(
+  source?: ConversationAuthority,
+  repairOrigin?: string,
+): AuthorityScope {
+  return {
+    sources: [
+      ...new Map(
+        [source, currentExecutionAuthority()]
+          .filter((value): value is ConversationAuthority => value !== undefined)
+          .map((parent) => [parent.event_id, parent] as const),
+      ).values(),
+    ],
+    providerBan: providerHubOsBan(),
+    repairOrigin: repairOrigin ?? null,
+  };
+}
+
+export function withAuthoritySource(
+  scope: AuthorityScope,
+  source: ConversationAuthority | undefined,
+): AuthorityScope {
+  if (source === undefined) return scope;
+  return {
+    ...scope,
+    sources: [
+      ...new Map(
+        [source, ...scope.sources].map((parent) => [parent.event_id, parent] as const),
+      ).values(),
+    ],
+  };
+}
+
 export function eventAuthority(
   store: Store,
   event: StoredEvent,
   source?: ConversationAuthority,
   repairOrigin?: string,
 ): ConversationAuthority {
+  return issueEventAuthority(store, event, authorityScope(source, repairOrigin));
+}
+
+export function issueEventAuthority(
+  store: Store,
+  event: StoredEvent,
+  scope: AuthorityScope,
+): ConversationAuthority {
   const retained = store.harnessRecovery.authority(event.id);
   if (retained !== undefined) return retained;
-  const sources = [
-    ...new Map(
-      [source, currentExecutionAuthority()]
-        .filter((value): value is ConversationAuthority => value !== undefined)
-        .map((parent) => [parent.event_id, parent] as const),
-    ).values(),
-  ];
+  const { sources } = scope;
   if (sources.some((parent) => parent.profile_id !== event.profile_id))
     throw new ApiError('forbidden', 'Delegated event cannot change its initiating profile.');
   const chat = store.aiChats.chat(event.chat_id);
@@ -110,10 +150,10 @@ export function eventAuthority(
     kind: principal.kind,
     role: issuedRole(store, { principal, sources, profileId: event.profile_id, origin }),
     hub_os_ban:
-      hubSource || providerHubOsBan() || chat.engine.kind === 'dsh' || sources.some(banned),
+      hubSource || scope.providerBan || chat.engine.kind === 'dsh' || sources.some(banned),
     tools: intersectTools([effectiveTools(store, chat), ...sources.map((parent) => parent.tools)]),
     ...origin,
-    ...(repairOrigin === undefined ? {} : { repair_origin: repairOrigin }),
+    ...(scope.repairOrigin === null ? {} : { repair_origin: scope.repairOrigin }),
   });
   store.harnessRecovery.authorize(authority);
   return authority;
@@ -201,6 +241,14 @@ export function admitExecutionTarget(
   chat: AiChatRow,
   authority: ConversationAuthority,
 ): void {
+  admitExecutionOn(chat, authority, (id) => store.live.computers.isLocal(id));
+}
+
+export function admitExecutionOn(
+  chat: AiChatRow,
+  authority: ConversationAuthority,
+  isLocal: (deviceId: string) => boolean,
+): void {
   if (chat.profile_id !== authority.profile_id)
     throw new ApiError('forbidden', 'Delegated execution cannot leave its initiating profile.');
   if (chat.engine.kind === 'dsh' && chat.engine.execution_target.kind === 'device') {
@@ -208,7 +256,7 @@ export function admitExecutionTarget(
     return;
   }
   const id = executionDevice(chat);
-  if (hubOriginated(authority) && id !== null && store.computerAi.isLocal(id))
+  if (hubOriginated(authority) && id !== null && isLocal(id))
     throw new ApiError(
       'forbidden',
       'Hub-originated work cannot obtain hub-local OS access through another engine, relay or child.',
@@ -226,6 +274,6 @@ export function outputAuthority(store: Store, chatId: string): () => void {
   const signal = currentRequestSignal();
   return (): void => {
     signal?.throwIfAborted();
-    store.aiChats.assertWorkAllowed(chatId);
+    store.live.chatWork.assertWorkAllowed(chatId);
   };
 }

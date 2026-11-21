@@ -143,7 +143,7 @@ export const LEARNED_KEYS_ENCODER: IrEncoder = { id: LEARNED_ENCODER, frames: le
 
 export interface IrEncoderFamily {
   readonly prefix: string;
-  readonly encoder: (name: string) => IrEncoder;
+  readonly encoder: (name: string) => Promise<IrEncoder>;
 }
 
 export class IrEncoders {
@@ -158,7 +158,7 @@ export class IrEncoders {
     });
   }
 
-  of(id: string): IrEncoder {
+  async of(id: string): Promise<IrEncoder> {
     const encoder = this.byId.get(id);
     if (encoder !== undefined) {
       return encoder;

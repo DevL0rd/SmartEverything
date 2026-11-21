@@ -6,7 +6,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { Logger } from '@smarteverything/logging';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openStore } from '../../apps/hub/src/store/store.ts';
-import { bundle, SERVICE_EXTERNALS } from '../build-service.ts';
+import { testStoreHost } from '../../apps/hub/test/support/store-host.ts';
+import { bundle } from '../build-service.ts';
+import { SERVICE_EXTERNALS } from '../service-bundles.ts';
 import { UPDATE_ENTRY_DIRECTORY, UPDATE_ENTRY_FILES } from '../hub-install-layout.ts';
 import { UPDATE_ENTRIES } from '../self-update-files.ts';
 
@@ -46,9 +48,8 @@ function createFixture(database: string): void {
     log: new Logger('tool.migration-fixture'),
     now: () => new Date(),
     systemTimeZone: 'UTC',
-    drivePathOf: () => {
-      throw new Error('The migration fixture opens the database without Drive paths.');
-    },
+    driveFolders: null,
+    host: testStoreHost(),
   }).close();
 }
 

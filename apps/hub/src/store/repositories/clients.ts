@@ -16,6 +16,11 @@ const COLUMNS = 'id, name, platform, kind, role, built_in, profile_id, created_a
 
 const SEEN_EVERY_MS = 60_000;
 
+export function seenDue(client: Pick<ClientRow, 'last_seen_at'>, now: string): boolean {
+  const last = client.last_seen_at === null ? 0 : Date.parse(client.last_seen_at);
+  return Date.parse(now) - last >= SEEN_EVERY_MS;
+}
+
 export interface NewClient {
   readonly name: string;
   readonly platform: ClientRow['platform'];
@@ -181,9 +186,8 @@ export class ClientsRepository {
   }
 
   seen(client: ClientRow): void {
-    const last = client.last_seen_at === null ? 0 : Date.parse(client.last_seen_at);
     const now = this.context.now();
-    if (Date.parse(now) - last < SEEN_EVERY_MS) {
+    if (!seenDue(client, now)) {
       return;
     }
     this.context.write(() => {

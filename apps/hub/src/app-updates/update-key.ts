@@ -15,12 +15,12 @@ function macOf(clientId: string, tokenHash: string): Buffer {
   return createHmac('sha256', tokenHash).update(`${PURPOSE}\n${clientId}`).digest();
 }
 
-export function appUpdateKeyOf(store: Store, caller: Caller): AppUpdateKeyReply {
+export async function appUpdateKeyOf(store: Store, caller: Caller): Promise<AppUpdateKeyReply> {
   const client = directClient(caller);
   if (client === undefined) {
     throw new ApiError('forbidden', 'Only the paired device itself can read its app update key.');
   }
-  const tokenHash = store.clients.tokenHashOf(client.id);
+  const tokenHash = await store.host.call('clients', 'tokenHashOf', client.id);
   if (tokenHash === undefined) {
     throw new ApiError('unauthorized', 'This device is no longer paired with the home.');
   }
@@ -44,19 +44,19 @@ function matches(clientId: string, tokenHash: string, mac: string): boolean {
   return presented.length === expected.length && timingSafeEqual(expected, presented);
 }
 
-export function clientForUpdateKey(
+export async function clientForUpdateKey(
   store: Store,
   request: IncomingMessage,
   key: string | null,
   log: Logger,
-): ClientRow {
+): Promise<ClientRow> {
   if (key === null) throw refused(log, 'missing');
   const [clientId = '', mac = ''] = key.split('.');
-  const tokenHash = store.clients.tokenHashOf(clientId);
+  const tokenHash = await store.host.call('clients', 'tokenHashOf', clientId);
   if (tokenHash === undefined) throw refused(log, 'unknown_device');
   if (!matches(clientId, tokenHash, mac)) throw refused(log, 'mismatch');
-  const client = store.clients.byId(clientId);
-  const effective = effectiveClient(store, client, accessEntryOf(request, false));
-  store.clients.seen(client);
+  const client = await store.host.call('clients', 'byId', clientId);
+  const effective = await effectiveClient(store, client, accessEntryOf(request, false));
+  await store.host.call('clients', 'seen', client);
   return effective;
 }

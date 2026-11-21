@@ -12,7 +12,7 @@ import { DriveTrashRepository } from '../../src/store/repositories/drive-trash';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-14T00:00:00.000Z';
 const MODIFIED = '2026-10-01T12:34:56.789Z';
@@ -127,7 +127,7 @@ beforeEach(() => {
   );
   const context = new StoreContext(sql, new ChangeFeed(log), () => new Date(NOW));
   const owner = new ProfilesRepository(context).create({ name: 'Robin' }).id;
-  const roots = new DriveRootsRepository(context, drivePathOf);
+  const roots = new DriveRootsRepository(context, driveFolders);
   roots.insert(sharedDriveRoot(ROOT));
   roots.insert(personalDriveRoot(EMPTY_ROOT, owner));
   insert('drive_items', folder(FOLDER, { rel_path: 'docs', name: 'docs' }));
@@ -311,7 +311,7 @@ describe('migrating drive items to inodes', () => {
   it('creates a root inode for a drive added after the migration', () => {
     const context = new StoreContext(sql, new ChangeFeed(log), () => new Date(NOW));
     const other = new ProfilesRepository(context).create({ name: 'Sam' }).id;
-    new DriveRootsRepository(context, drivePathOf).insert(
+    new DriveRootsRepository(context, driveFolders).insert(
       personalDriveRoot('0d000000-0000-4000-8000-000000000003', other),
     );
     expect(count('select count(*) as count from drive_inodes where is_root = 1')).toBe(3);

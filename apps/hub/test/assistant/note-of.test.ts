@@ -57,6 +57,7 @@ beforeEach(async () => {
   files = new AssistantFiles({
     layout: hubLayout(test.directory, {}),
     chat: test.store.assistantChat,
+    attachments: test.store.live.attachments,
     now: (): Date => new Date(),
   });
   const transcription: TranscriptionProvider = {
@@ -67,7 +68,7 @@ beforeEach(async () => {
       provider: new Provider(),
       transcriptionProvider: transcription,
       chat: test.store.assistantChat,
-      ledger: test.store.ledger,
+      ledger: test.store.host,
       filesRoot: test.directory,
       describeImages: (): boolean => describeImages,
       inputModalities: (): readonly string[] | null => modalities,

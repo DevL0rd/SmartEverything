@@ -1,3 +1,4 @@
+import { inlineMetrics } from '../../src/node/metrics/node-metrics';
 import {
   COMPUTER_ROLE_MODELS,
   DEFAULT_COMPUTER_SCOPES,
@@ -89,9 +90,9 @@ describe('the local hub computer', () => {
       directory,
       placements: NO_PLACEMENTS,
       records: {
-        originOf: () => ({ source: 'app', client: null, clientId: null }),
-        visibleTo: () => true,
-        macsOf: () => [],
+        originOf: () => Promise.resolve({ source: 'app', client: null, clientId: null }),
+        visibleTo: () => Promise.resolve(true),
+        macsOf: () => Promise.resolve([]),
         wake: () => Promise.resolve(),
         approve: () => Promise.resolve(),
       },
@@ -99,10 +100,10 @@ describe('the local hub computer', () => {
       signals: { emit: () => undefined },
       personOf: () => null,
       hub: { hostname: 'nas', osName: 'Linux' },
-      bindHubDevice: () => undefined,
+      bindHubDevice: () => Promise.resolve(),
       createLocal: (link) =>
         new ComputerNode({
-          collector: {
+          metrics: inlineMetrics({
             hello: () => HELLO,
             readers: {
               summary: () => SUMMARY,
@@ -116,7 +117,7 @@ describe('the local hub computer', () => {
             },
             track: () => undefined,
             stop: stopped,
-          },
+          }),
           controls: stubControls(),
           link,
           now: () => NOW,

@@ -12,12 +12,14 @@ import {
   type SyncHubMessage,
   type SyncIndexEntry,
 } from '@smarteverything/domain/drive-sync';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ContentHasher } from '../../src/drive/hasher';
+import { bundleHashWorker, type BundledWorker } from './drive-fixture';
 import WebSocket from 'ws';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
 import { commitContent } from '../../src/drive/changes';
 import { syncAuthentication, type SyncEnv } from '../../src/drive/sync/server-ops';
-import { blocksHashOf, indexPages } from '../../src/drive/sync/server-index';
+import { blocksHashOf, firstIndexCursor, indexPage } from '../../src/drive/sync/server-index';
 import { createDriveSync, type DriveSyncParts } from '../../src/drive/sync/server-push';
 import { resolveScope } from '../../src/drive/sync/placement-scope';
 import {
@@ -96,6 +98,18 @@ function route(request: IncomingMessage, response: ServerResponse): Promise<void
   return undefined;
 }
 
+let hashWorker: BundledWorker;
+let hasher: ContentHasher;
+
+beforeAll(async () => {
+  hashWorker = await bundleHashWorker();
+  hasher = new ContentHasher(hashWorker.script);
+}, 60_000);
+
+afterAll(() => {
+  hashWorker.dispose();
+});
+
 beforeEach(async () => {
   opened = await driveTestStore(() => NOW);
   directory = await mkdtemp(join(tmpdir(), 'drive-sync-two-'));
@@ -110,20 +124,11 @@ beforeEach(async () => {
     purge: { rearm: (): void => undefined },
     posix: syncPosixOf(opened.store, () => NOW),
     conflicts: {
-      insert: (conflict): void => {
-        conflictRows.set(conflict.id, conflict);
-      },
       find: (id): DriveConflict | undefined => conflictRows.get(id),
-      resolve: (id, resolution, at): DriveConflict => {
-        const found = conflictRows.get(id);
-        if (found === undefined) throw new Error('missing');
-        const resolved = { ...found, resolution, resolvedAt: at };
-        conflictRows.set(id, resolved);
-        return resolved;
-      },
     },
     space: (): ReturnType<SyncEnv['space']> =>
       Promise.resolve({ totalBytes: Number.MAX_SAFE_INTEGER, freeBytes: Number.MAX_SAFE_INTEGER }),
+    hasher,
     authenticate: (request): ReturnType<SyncEnv['authenticate']> =>
       syncAuthentication(opened.store, new ComputerNodeAccess(opened.store, () => NOW))(request),
   };
@@ -146,12 +151,10 @@ beforeEach(async () => {
     });
   });
   server.on('upgrade', (request, socket, head) => {
-    try {
-      hub.upgrade(request, socket, head);
-    } catch (cause) {
+    hub.upgrade(request, socket, head).catch((cause: unknown) => {
       if (!(cause instanceof ApiError)) throw cause;
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
-    }
+    });
   });
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve);
@@ -443,7 +446,10 @@ describe('two computers on one folder', () => {
       xattrs: [],
     });
     await answerSettled(a, 'op-a4');
-    await until(() => seen(b, 'tool.sh')?.mode === 0o600, 'B sees the new mode');
+    await until(() => {
+      const latest = seen(b, 'tool.sh');
+      return latest?.mode === 0o600 && latest.xattrs.length === 0;
+    }, 'B sees the new mode and attributes');
     expect(seen(b, 'tool.sh')).toMatchObject({ xattrs: [], mtimeNs: '1767323045123456789' });
     expect(seen(b, 'tool.sh')?.rev).toBe(accepted.rev);
   });
@@ -651,7 +657,7 @@ describe('two computers on one folder', () => {
     expect(await onDisk('beta/note.txt')).toEqual(bytesOf(1, 'beta'));
     for (const one of placed) {
       const scope = resolveScope(opened.store, one.placementId, identity.deviceId, 'sync');
-      const entries = [...indexPages(opened.store, scope)].flat();
+      const entries = indexPage(opened.store, scope, firstIndexCursor(scope)).entries;
       expect(entries.map((entry) => entry.relPath)).toEqual(['note.txt']);
       expect(entries[0]?.itemId).toBe(
         opened.store.driveItems.byPath(root.id, `${one.name}/note.txt`, null)?.id,

@@ -53,15 +53,21 @@ function snapshot(patch: Partial<RouterSnapshot> = {}): RouterSnapshot {
 interface Sent {
   readonly stream: string;
   readonly bytes: number;
+  readonly viewers: boolean;
 }
 
 function streamsRig(): { readonly streams: RouterStreams; readonly sent: Sent[] } {
   const sent: Sent[] = [];
   return {
     sent,
-    streams: new RouterStreams((stream, value) => {
-      sent.push({ stream, bytes: JSON.stringify(value).length });
-    }),
+    streams: new RouterStreams(
+      (stream, value) => {
+        sent.push({ stream, bytes: JSON.stringify(value).length, viewers: false });
+      },
+      (stream, value) => {
+        sent.push({ stream, bytes: JSON.stringify(value).length, viewers: true });
+      },
+    ),
   };
 }
 
@@ -73,28 +79,45 @@ describe('the router streams', () => {
   it('send the live part every time and the client list only when it changes', () => {
     const { streams, sent } = streamsRig();
     const clients = [client(PHONE, true)];
-    streams.publish(snapshot({ clients }), true);
+    streams.publish(snapshot({ clients }), true, 'everyone');
     for (let second = 1; second <= 9; second += 1) {
-      streams.publish(snapshot({ at: new Date(T0 + second * 1000).toISOString(), clients }), false);
+      streams.publish(
+        snapshot({ at: new Date(T0 + second * 1000).toISOString(), clients }),
+        false,
+        'everyone',
+      );
     }
     expect(count(sent, LIVE_STREAM)).toBe(10);
     expect(count(sent, SNAPSHOT_STREAM)).toBe(1);
-    streams.publish(snapshot({ clients: [client(PHONE, false)] }), false);
+    streams.publish(snapshot({ clients: [client(PHONE, false)] }), false, 'everyone');
     expect(count(sent, SNAPSHOT_STREAM)).toBe(2);
-    streams.publish(snapshot({ clients: [client(PHONE, false)] }), true);
+    streams.publish(snapshot({ clients: [client(PHONE, false)] }), true, 'everyone');
     expect(count(sent, SNAPSHOT_STREAM)).toBe(3);
+  });
+
+  it('send viewer-only live frames to viewers and keep the client list for everyone', () => {
+    const { streams, sent } = streamsRig();
+    streams.publish(snapshot({ clients: [client(PHONE, true)] }), true, 'viewers');
+    streams.publish(snapshot({ clients: [client(PHONE, true)] }), false, 'viewers');
+    expect(
+      sent.filter((entry) => entry.stream === LIVE_STREAM).map((entry) => entry.viewers),
+    ).toEqual([true, true]);
+    expect(
+      sent.filter((entry) => entry.stream === SNAPSHOT_STREAM).map((entry) => entry.viewers),
+    ).toEqual([false]);
   });
 
   it('ignore per-second traffic and uptime when deciding to resend the client list', () => {
     const { streams, sent } = streamsRig();
     const info = { model: null, firmware: null, lanIp: null, uptimeSeconds: 10 };
-    streams.publish(snapshot({ info, clients: [client(PHONE, true)] }), true);
+    streams.publish(snapshot({ info, clients: [client(PHONE, true)] }), true, 'everyone');
     streams.publish(
       snapshot({
         info: { ...info, uptimeSeconds: 11 },
         clients: [{ ...client(PHONE, true), trafficBytesPerSecond: 900 }],
       }),
       false,
+      'everyone',
     );
     expect(count(sent, SNAPSHOT_STREAM)).toBe(1);
     expect(count(sent, LIVE_STREAM)).toBe(2);
@@ -136,8 +159,12 @@ describe('the router stream while the page is watched', () => {
       pingTarget: '1.1.1.1',
       log: testLogger('router'),
       record: (): void => undefined,
-      publish: (frame, full): void => {
-        streams.publish({ ...frame, clients: registry.observe(frame.clients, new Date()) }, full);
+      publish: (frame, full, audience): void => {
+        streams.publish(
+          { ...frame, clients: registry.observe(frame.clients, new Date()) },
+          full,
+          audience,
+        );
       },
     });
     collector.setCadence('fast');

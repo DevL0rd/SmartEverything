@@ -69,7 +69,7 @@ function earlierInstant(request: z.output<typeof COMPARE_PAST>, now: Date, zone:
 
 function windowStats(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
   const request = parseInputs('state.window_stats', WINDOW_STATS, inputs);
-  const device = deviceById(deps.store, request.device);
+  const device = deviceById(deps.world, request.device);
   readableControl(device, request.control);
   const to = deps.clock.now().getTime();
   const buckets = deps.store.state.buckets({
@@ -87,7 +87,7 @@ function windowStats(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
 
 function comparePast(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
   const request = parseInputs('state.compare_past', COMPARE_PAST, inputs);
-  const device = deviceById(deps.store, request.device);
+  const device = deviceById(deps.world, request.device);
   readableControl(device, request.control);
   const key = controlKey(request.control);
   if (isSampledCapability(key)) {
@@ -97,7 +97,7 @@ function comparePast(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
   if (typeof current !== 'number') {
     throw new ReadFailure('TypeError', `${request.control} of ${device.name} is not a number`);
   }
-  const moment = earlierInstant(request, deps.clock.now(), homeZone(deps.store));
+  const moment = earlierInstant(request, deps.clock.now(), homeZone(deps.world));
   const [row] = deps.store.state.history({
     capabilities: [key],
     deviceIds: [device.id],

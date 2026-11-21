@@ -22,7 +22,7 @@ export function reportedSql(database: DatabaseSync, log: Logger): ReportedSql {
       slow.warn('store.statement_slow', `${statement.kind}|${statement.text}`, {
         kind: statement.kind,
         durationMs: Math.round(statement.durationMs),
-        rows: statement.rows,
+        ...(statement.rows === undefined ? {} : { rows: statement.rows }),
         statement: statement.text.replaceAll(/\s+/g, ' ').slice(0, STATEMENT_LOGGED_CHARS),
       });
     },

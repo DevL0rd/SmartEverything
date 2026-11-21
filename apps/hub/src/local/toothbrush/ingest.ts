@@ -16,9 +16,9 @@ import {
 import { background, type Logger } from '@smarteverything/logging';
 import type { Cancel } from '../../clock';
 import type { Store } from '../../store/store';
+import { IngestQueues } from '../ingest-queue';
 import type { LocalDevices } from '../local-devices';
 import { ownsSessions } from './access';
-import type { HomeClock } from './clock';
 import { entrySettingsOf } from './config';
 import { admitEvent, eventOf, type EventSpec } from './events';
 import type { DeviceState, Fleet } from './fleet';
@@ -27,7 +27,8 @@ import type { BatchOutcome, Found } from './outcome';
 import type { Publisher } from './publisher';
 import type { MachineEvent } from './session-machine';
 import { pressureEntries } from './session-open';
-import { BrushingLog, type LogContext, type Logged } from './sessions';
+import type { BrushLogged } from './brush-units';
+import type { LogContext } from './sessions';
 
 const RECENT_SESSION_MS = 15 * 60_000;
 
@@ -40,12 +41,11 @@ export interface LivePublisher {
 }
 
 export interface IngestDeps {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host' | 'profiles'>;
   readonly fleet: Fleet;
   readonly publisher: Publisher;
   readonly sink: () => AdapterSink;
   readonly local: Pick<LocalDevices, 'observe'>;
-  readonly clock: HomeClock;
   readonly live: LivePublisher;
   readonly now: () => Date;
   readonly at: (moment: Date, action: () => void) => Cancel;
@@ -82,17 +82,10 @@ function pressureFacts(session: BrushingSession): Record<string, JsonValue> {
 }
 
 export class BrushIngest {
-  private readonly sessions: BrushingLog;
   private readonly deadlines = new Map<string, Cancel>();
+  private readonly queues = new IngestQueues();
 
-  constructor(private readonly deps: IngestDeps) {
-    this.sessions = new BrushingLog({
-      ...deps,
-      changed: (deviceId): void => {
-        deps.fleet.known(deviceId)?.sessionsChanged();
-      },
-    });
-  }
+  constructor(private readonly deps: IngestDeps) {}
 
   stop(): void {
     this.deadlines.forEach((cancel) => {
@@ -101,12 +94,24 @@ export class BrushIngest {
     this.deadlines.clear();
   }
 
+  idle(): Promise<void> {
+    return this.queues.idle();
+  }
+
   process(
     device: DeviceRow,
     client: Pick<ClientRow, 'id'>,
     batch: BrushFrameBatch,
-  ): BrushBatchResult {
-    const state = this.deps.fleet.of(device);
+  ): Promise<BrushBatchResult> {
+    return this.queues.run(device.id, () => this.ingest(device, client, batch));
+  }
+
+  private async ingest(
+    device: DeviceRow,
+    client: Pick<ClientRow, 'id'>,
+    batch: BrushFrameBatch,
+  ): Promise<BrushBatchResult> {
+    const state = await this.deps.fleet.ensure(device);
     const now = this.deps.now().toISOString();
     const before = state.link.phase;
     state.setLink(batch.link, now);
@@ -116,7 +121,7 @@ export class BrushIngest {
     if (before !== batch.link.phase) {
       this.linkChanged(state, outcome, batch.link.phase, now);
     }
-    this.apply(device, state, outcome, now);
+    await this.apply(device, state, outcome, now);
     this.arm(device, state);
     this.deps.log.debug('toothbrush.batch_ingested', () => ({
       device: device.id,
@@ -129,7 +134,7 @@ export class BrushIngest {
       accepted: batch.frames.length,
       ...state.runtime.brand.fetch({
         state,
-        stored: () => new Set(this.deps.store.brushingSessions.handleIds(device.id)),
+        stored: () => state.storedHandleIds(),
         nowMs: Date.parse(now),
       }),
     };
@@ -159,15 +164,19 @@ export class BrushIngest {
     this.deadlines.set(
       device.id,
       this.deps.at(new Date(due), () => {
-        this.expire(device, state);
+        background(
+          this.queues.run(device.id, () => this.expire(device, state)),
+          'toothbrush.expire_failed',
+          { device: device.id },
+        );
       }),
     );
   }
 
-  private expire(device: DeviceRow, state: DeviceState): void {
+  private async expire(device: DeviceRow, state: DeviceState): Promise<void> {
     this.deadlines.delete(device.id);
     const now = this.deps.now().toISOString();
-    this.apply(device, state, state.runtime.expire(now), now);
+    await this.apply(device, state, state.runtime.expire(now), now);
     this.arm(device, state);
   }
 
@@ -185,24 +194,30 @@ export class BrushIngest {
     outcome.absorb(state.runtime.linkChanged(phase, now));
   }
 
-  private apply(device: DeviceRow, state: DeviceState, outcome: BatchOutcome, now: string): void {
+  private async apply(
+    device: DeviceRow,
+    state: DeviceState,
+    outcome: BatchOutcome,
+    now: string,
+  ): Promise<void> {
     this.logOddities(device, outcome);
     for (const event of outcome.events) {
-      this.handle(device, state, event);
+      await this.handle(device, state, event);
     }
     for (const found of outcome.records) {
-      this.record(device, state, found);
+      await this.record(device, state, found);
     }
     outcome.ended.forEach((id) => {
       state.fetching.delete(id);
       state.unavailable.add(id);
     });
-    this.head(device, state, outcome, now);
+    await this.head(device, state, outcome, now);
     this.faults(device, state, outcome, now);
     this.deps.publisher.snapshot(state, outcome.touched, now);
     this.deps.publisher.link(state, now);
     this.observe(device, state, outcome, now);
     this.publishLive(device, state, now);
+    await state.settled();
   }
 
   private personOf(state: DeviceState): string | null {
@@ -218,15 +233,18 @@ export class BrushIngest {
     };
   }
 
-  private handle(device: DeviceRow, state: DeviceState, event: MachineEvent): void {
+  private async handle(device: DeviceRow, state: DeviceState, event: MachineEvent): Promise<void> {
     if (event.kind !== 'finished') {
       return;
     }
-    const logged = this.sessions.observed(this.contextOf(device, state), event.session);
+    const logged = await this.deps.store.host.write('brushObserved', {
+      context: this.contextOf(device, state),
+      session: event.session,
+    });
     this.finished(state, logged, event.at);
   }
 
-  private record(device: DeviceRow, state: DeviceState, found: Found): void {
+  private async record(device: DeviceRow, state: DeviceState, found: Found): Promise<void> {
     state.fetching.delete(found.sessionId);
     const draft = found.draft(this.deps.now());
     if (draft === null) {
@@ -240,11 +258,18 @@ export class BrushIngest {
       state.unavailable.add(found.sessionId);
       return;
     }
-    this.finished(state, this.sessions.retained(this.contextOf(device, state), draft), found.at);
+    const logged = await this.deps.store.host.write('brushRetained', {
+      context: this.contextOf(device, state),
+      draft,
+    });
+    this.finished(state, logged, found.at);
   }
 
-  private finished(state: DeviceState, logged: Logged, at: string): void {
+  private finished(state: DeviceState, logged: BrushLogged, at: string): void {
     const { session } = logged;
+    if (logged.changed) {
+      state.stored(session.handleSessionId);
+    }
     const endedMs = Date.parse(session.startedAt) + session.durationS * 1000;
     const since = (state.linkStartedAtMs ?? 0) - RECENT_SESSION_MS;
     if (!logged.created || endedMs < since || !this.admit(state, at)) {
@@ -253,14 +278,12 @@ export class BrushIngest {
     this.emit(state, {
       kind: 'activity',
       at: session.startedAt,
-      details: this.summary(session),
+      details: this.summary(session, logged.personName),
       occurrence: `brushing:${session.id}`,
     });
   }
 
-  private summary(session: BrushingSession): Record<string, JsonValue> {
-    const person =
-      session.personId === null ? null : this.deps.store.profiles.byId(session.personId).name;
+  private summary(session: BrushingSession, person: string | null): Record<string, JsonValue> {
     return {
       brushing: 'finished',
       complete: session.complete,
@@ -281,19 +304,22 @@ export class BrushIngest {
     this.deps.sink().event(eventOf(state, spec));
   }
 
-  private head(device: DeviceRow, state: DeviceState, outcome: BatchOutcome, now: string): void {
+  private async head(
+    device: DeviceRow,
+    state: DeviceState,
+    outcome: BatchOutcome,
+    now: string,
+  ): Promise<void> {
     const { head } = state.runtime.state;
     if (!outcome.touched.has('head') || typeof head.serial !== 'string' || head.usageS === null) {
       return;
     }
     const limitS = head.limitS ?? SONICARE_HEAD_LIFETIME_SECONDS;
-    this.deps.store.brushingSessions.saveHead(device.id, {
-      serial: head.serial,
-      type: head.type,
-      at: now,
-      usageS: head.usageS,
-      limitS,
+    const heads = await this.deps.store.host.write('brushSaveHead', {
+      deviceId: device.id,
+      head: { serial: head.serial, type: head.type, at: now, usageS: head.usageS, limitS },
     });
+    state.useHeads(heads);
     this.wear(state, head.serial, wearPercentOf(head.usageS, limitS), now);
   }
 

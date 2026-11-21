@@ -1,8 +1,10 @@
-import type { DriveRoot, DriveRootScope } from '@smarteverything/domain';
+import type { DriveRoot } from '@smarteverything/domain';
+import type { DriveFolders } from '../../src/data-layout/drive-folders';
 
-export function drivePathOf(scope: DriveRootScope, ownerProfileId: string | null): string {
-  return scope === 'home' ? '/data/home/drive' : `/data/people/${String(ownerProfileId)}/drive`;
-}
+export const driveFolders: DriveFolders = {
+  home: '/data/home/drive',
+  people: { parent: '/data/people', leaf: 'drive' },
+};
 
 const HEALTH = {
   hashedShare: 0,

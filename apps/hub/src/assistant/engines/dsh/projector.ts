@@ -1,15 +1,15 @@
 import { helperParentMessageId } from '../../delegation/helper-dialogue';
-import { Logger, messageOf } from '@smarteverything/logging';
+import { Logger, background, messageOf } from '@smarteverything/logging';
 import type { ProjectedOp } from '@smarteverything/harness/process';
 import { retainInputRefusal } from '../../../harness/input-refusal';
 import {
   completeNativeTurn,
-  completionFailure,
+  settleSteered,
   type NativeCompletion,
   type ReplayedReply,
 } from './projector-completion';
 import { TurnStream } from '../../conversation/stream';
-import { TurnRetries } from './turn-retry';
+import { TurnRetries, finalFailure } from './turn-retry';
 import { feedOp, feedTool, followSession } from './turn-feed';
 import { DeliveryCorrelation } from './projector-correlation';
 import { NativeSessionActivity } from './session-activity';
@@ -30,6 +30,8 @@ export class ConversationProjector {
   private readonly correlation: DeliveryCorrelation;
   private readonly admitted = new Set<string>();
   private readonly held = new Set<string>();
+  private readonly completing = new Set<string>();
+  private readonly completions = new Map<string, Promise<void>>();
   private readonly retries: TurnRetries<ActiveTurn>;
   readonly sessions: NativeSessionActivity;
   constructor(
@@ -51,11 +53,12 @@ export class ConversationProjector {
     });
   }
 
-  stopRetrying(chatId: string): boolean {
+  async stopRetrying(chatId: string): Promise<boolean> {
     const stopped = [...this.active.values()].filter(
       (turn) => turn.chat.id === chatId && this.retries.cancel(turn),
     );
     for (const turn of stopped) this.complete(turn, { kind: 'completed', interrupted: true });
+    await Promise.allSettled(stopped.flatMap((turn) => this.completions.get(turn.event.id) ?? []));
     return stopped.length > 0;
   }
   hold(turn: ActiveTurn): void {
@@ -119,11 +122,13 @@ export class ConversationProjector {
     });
     stream.bindTimeline(
       (timeline): void => {
-        const spoken =
+        background(
           turn.restored && stream.spoken === ''
-            ? this.conversation.savedText(turn.replyId)
-            : stream.spoken;
-        this.conversation.progress(turn.replyId, spoken, timeline);
+            ? this.conversation.timeline(turn.replyId, timeline)
+            : this.conversation.progress(turn.replyId, stream.spoken, timeline),
+          'dsh.reply_progress_failed',
+          { eventId: event.id, chatId: chat.id },
+        );
       },
       (listener) => this.conversation.onMessage(chat.id, listener),
     );
@@ -195,16 +200,15 @@ export class ConversationProjector {
       )
         throw cause;
       const refusal = new ApiError('command_refused', messageOf(cause));
-      retainInputRefusal(this.service.store, event, refusal, () => {
-        this.complete(
-          turn,
-          {
-            kind: 'failed',
-            failure: { code: 'operation_failed', message: refusal.message, retry_at: null },
-          },
-          true,
-        );
-      });
+      retainInputRefusal(this.service.store, event, refusal);
+      this.complete(
+        turn,
+        {
+          kind: 'failed',
+          failure: { code: 'operation_failed', message: refusal.message, retry_at: null },
+        },
+        true,
+      );
       throw refusal;
     }
   }
@@ -247,7 +251,9 @@ export class ConversationProjector {
     if (current?.id !== turn.event.id) return;
     const message = this.service.store.assistantChat.message(messageId);
     if (message.state !== 'queued' && message.state !== 'delivered') return;
-    this.conversation.stateOf(messageId, 'working');
+    background(this.conversation.stateOf(messageId, 'working'), 'dsh.message_state_failed', {
+      eventId: turn.event.id,
+    });
   }
   private completedEvent(
     turn: ActiveTurn,
@@ -260,10 +266,16 @@ export class ConversationProjector {
       steered: turn.steered.length,
       spokenLength: turn.stream.spoken.length,
     });
-    this.service.store.harnessDeliveries.cut(
-      turn.event.id,
-      this.service.store.harnessDeliveries.find(turn.event.id)?.start_seq ?? 0,
-      event.kind === 'completed' ? event.durable_seq : null,
+    background(
+      this.service.store.host.call(
+        'harnessDeliveries',
+        'cut',
+        turn.event.id,
+        0,
+        event.kind === 'completed' ? event.durable_seq : null,
+      ),
+      'dsh.delivery_cut_failed',
+      { eventId: turn.event.id },
     );
     this.complete(turn, event);
   }
@@ -276,9 +288,14 @@ export class ConversationProjector {
       state: event.state,
     });
     this.toolEvent(turn, event);
-    const todos = chatTodosOf(event.name, event.input);
-    if (todos !== null) this.conversation.todos(turn.replyId, todos);
+    this.recordTodos(turn, chatTodosOf(event.name, event.input));
     if (event.state !== 'running') this.toolFinished(turn);
+  }
+  private recordTodos(turn: ActiveTurn, todos: ReturnType<typeof chatTodosOf>): void {
+    if (todos === null) return;
+    background(this.conversation.todos(turn.replyId, todos), 'dsh.reply_todos_failed', {
+      eventId: turn.event.id,
+    });
   }
   private toolEvent(turn: ActiveTurn, event: Extract<AiHarnessEvent, { kind: 'tool' }>): void {
     feedTool(turn.stream, {
@@ -299,8 +316,7 @@ export class ConversationProjector {
     for (const op of ops) {
       feedOp(turn.stream, op);
       if (op.op !== 'tool') continue;
-      const todos = chatTodosOf(op.tool.name, op.tool.input);
-      if (todos !== null) this.conversation.todos(turn.replyId, todos);
+      this.recordTodos(turn, chatTodosOf(op.tool.name, op.tool.input));
     }
     if (reply.timeline !== undefined) turn.stream.replayBoundaries(reply.timeline);
     this.complete(turn, event, false, reply);
@@ -317,10 +333,42 @@ export class ConversationProjector {
       replayed === undefined &&
       helperParentMessageId(turn.event) === null
     ) {
-      this.retries.failed(turn, event.failure);
+      if (!finalFailure(event.failure)) {
+        this.retries.failed(turn, event.failure);
+        return;
+      }
+      log.warn('dsh.turn_failed_final', {
+        eventId: turn.event.id,
+        chatId: turn.chat.id,
+        failureCode: event.failure.code,
+        reason: event.failure.message,
+      });
+    }
+    if (this.completing.has(turn.event.id)) {
+      log.debug('dsh.turn_already_completing', { eventId: turn.event.id, chatId: turn.chat.id });
       return;
     }
-    completeNativeTurn({
+    this.completing.add(turn.event.id);
+    const completion = this.completion(turn, event, admissionRefused, replayed).finally(() => {
+      this.completions.delete(turn.event.id);
+    });
+    this.completions.set(turn.event.id, completion);
+    background(completion, 'dsh.turn_complete_failed', {
+      eventId: turn.event.id,
+      chatId: turn.chat.id,
+    });
+  }
+  async settled(): Promise<void> {
+    while (this.completions.size > 0) await Promise.allSettled([...this.completions.values()]);
+    await this.conversation.settled();
+  }
+  private completion(
+    turn: ActiveTurn,
+    event: NativeCompletion,
+    admissionRefused: boolean,
+    replayed: ReplayedReply | undefined,
+  ): Promise<void> {
+    return completeNativeTurn({
       service: this.service,
       conversation: this.conversation,
       turn,
@@ -329,24 +377,16 @@ export class ConversationProjector {
       ...(replayed === undefined ? {} : { replay: replayed }),
       finished: this.options.finished,
       retire: (): void => {
+        this.completing.delete(turn.event.id);
         this.retries.forget(turn);
         this.active.delete(turn.event.id);
         this.correlation.retire(turn);
         this.admitted.delete(turn.event.id);
         this.held.delete(turn.event.id);
-        this.settleSteered(turn, event);
+        settleSteered(this.conversation, this.options.finished, turn, event);
         this.sessions.sync(turn.chat.id);
         turn.done();
       },
     });
-  }
-  private settleSteered(turn: ActiveTurn, event: NativeCompletion): void {
-    const ok = event.kind === 'completed' && !event.interrupted;
-    const failure = completionFailure(event, false);
-    for (const steered of turn.steered) {
-      if (ok) this.conversation.stateOf(steered.message_id, 'answered');
-      else this.conversation.failedMessage(steered.message_id, failure.reason, failure.code);
-      this.options.finished(steered, ok ? turn.stream.spoken : failure.reason, ok);
-    }
   }
 }

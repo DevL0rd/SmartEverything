@@ -85,7 +85,7 @@ function rig(
     pictures,
     computers,
     tools: {
-      check: (): ToolCheck => ({ ok: true, tool: TOOL }),
+      check: (): Promise<ToolCheck> => Promise.resolve({ ok: true, tool: TOOL }),
       call: (name, args): Promise<HubToolResult> => {
         seen.toolCalls.push({ name, args });
         if (options.toolFails !== undefined) return Promise.reject(options.toolFails);
@@ -304,7 +304,7 @@ describe('health, signal and webhook effects', () => {
         },
         computers: new AutomationComputersSlot(),
         tools: {
-          check: (): ToolCheck => ({ ok: true, tool: TOOL }),
+          check: (): Promise<ToolCheck> => Promise.resolve({ ok: true, tool: TOOL }),
           call: () => Promise.reject(new Error('unused')),
         },
         signals: { emit: (): void => undefined },

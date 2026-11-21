@@ -54,27 +54,28 @@ async function run(
   return { response, line: '', pictures: [] };
 }
 
-export function latestPersonMessage(
-  store: Pick<Store, 'assistantChat'>,
+export async function latestPersonMessage(
+  store: Pick<Store, 'host'>,
   chatId: string,
-): LatestMessage | null {
-  const latest = store.assistantChat.latestPersonText(chatId);
+): Promise<LatestMessage | null> {
+  const latest = await store.host.call('assistantChat', 'latestPersonText', chatId);
   return latest === undefined ? null : { id: latest.id, text: latest.text };
 }
 
 export function voiceMemory(
   service: MemoryService,
-  latest: (chatId: string) => LatestMessage | null,
+  latest: (chatId: string) => Promise<LatestMessage | null>,
 ): VoiceMemory {
   return {
-    prepare: (who) => service.prepare(who, who.chatId === null ? null : latest(who.chatId)),
+    prepare: async (who) =>
+      service.prepare(who, who.chatId === null ? null : await latest(who.chatId)),
     recall: (who) => renderRecall(service.recall(who), new Date()),
     source: (who) => ({
       tools: () => (service.offered(who()) ? [MEMORY_HUB_TOOL] : []),
       call: (_tool, args, caller) => run(service, args, caller),
-      validate: (_tool, args): string | null => {
+      validate: (_tool, args): Promise<string | null> => {
         const parsed = AI_MEMORY_TOOL_ARGUMENTS.safeParse(args);
-        return parsed.success ? null : z.prettifyError(parsed.error);
+        return Promise.resolve(parsed.success ? null : z.prettifyError(parsed.error));
       },
       changes: () => () => undefined,
     }),

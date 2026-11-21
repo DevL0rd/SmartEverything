@@ -79,9 +79,7 @@ export class ComputerThumbs {
         if (version === null) {
           throw new ApiError('invalid_request', 'This media link carries no file version.');
         }
-        await guarded(() => {
-          this.options.service.access.require(deviceId, 'files', viewer);
-        });
+        await guarded(() => this.options.service.access.require(deviceId, 'files', viewer));
         const key = thumbKey(deviceId, path, version);
         const target = derivedPath(this.options.layout, key);
         const asker = { viewer, deviceId };

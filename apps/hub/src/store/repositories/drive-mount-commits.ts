@@ -225,6 +225,14 @@ export class DriveMountCommitsRepository {
     );
   }
 
+  placed(placementId: string): DriveMountCommit[] {
+    return this.context.sql.all(
+      COMMIT_ROW,
+      `select ${COLUMNS} from drive_mount_commits where placement_id = $placementId order by id`,
+      { placementId },
+    );
+  }
+
   open(placementId: string): DriveMountCommit[] {
     return this.context.sql.all(
       COMMIT_ROW,

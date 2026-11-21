@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { Session } from 'node:inspector';
 import { join } from 'node:path';
 import { env } from 'node:process';
@@ -31,7 +31,6 @@ export class BenchProbe {
     private readonly dir: string,
     private readonly metrics: MountMetrics,
   ) {
-    mkdirSync(dir, { recursive: true });
     this.inspector.connect();
     this.delay.enable();
     process.on('SIGUSR2', () => {
@@ -46,15 +45,16 @@ export class BenchProbe {
   }
 
   private async startProfiler(): Promise<void> {
+    await mkdir(this.dir, { recursive: true });
     await post(this.inspector, 'Profiler.enable');
     await post(this.inspector, 'Profiler.setSamplingInterval', { interval: SAMPLING_US });
     await post(this.inspector, 'Profiler.start');
   }
 
-  private publish(name: string, content: string): void {
+  private async publish(name: string, content: string): Promise<void> {
     const staged = join(this.dir, `${name}.tmp`);
-    writeFileSync(staged, content);
-    renameSync(staged, join(this.dir, name));
+    await writeFile(staged, content);
+    await rename(staged, join(this.dir, name));
   }
 
   private async dump(): Promise<void> {
@@ -79,7 +79,7 @@ export class BenchProbe {
     this.cpu = process.cpuUsage();
     this.elu = performance.eventLoopUtilization();
     this.delay.reset();
-    this.publish(`hub-${segment}.cpuprofile`, JSON.stringify(profile));
-    this.publish(`hub-${segment}.json`, JSON.stringify(report));
+    await this.publish(`hub-${segment}.cpuprofile`, JSON.stringify(profile));
+    await this.publish(`hub-${segment}.json`, JSON.stringify(report));
   }
 }

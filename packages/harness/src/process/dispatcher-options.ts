@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { AiModelRoute, HarnessNativeFrame } from '@smarteverything/domain';
 import type { HarnessRuntimeOptions } from '../host/runtime';
-import type { HarnessAuthority } from '../host/server-policy';
+import type { HarnessAuthority } from '../host/authority';
 import type { NativeMediaNote } from './native-media-note';
 import type { HarnessControlPersistence } from './contracts';
 import type { HarnessAttachment } from './attachments';

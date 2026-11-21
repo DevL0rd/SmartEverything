@@ -1,14 +1,8 @@
 import { Logger, messageOf } from '@smarteverything/logging';
-import {
-  IMAGE_ARTIFACT,
-  type ImageOperationReceipt,
-  type AssistantMessageRow,
-} from '@smarteverything/domain';
+import { IMAGE_ARTIFACT, type ImageOperationReceipt } from '@smarteverything/domain';
 import { summaryOf, type StoredAttachment } from '../../store/repositories/assistant-chat';
-import { ConversationLog } from '../conversation-log';
 import type { ImageServiceOptions } from './contract';
 import type { ImageProviderResult } from '../../openrouter/image-provider';
-import { recordImageUsage } from './usage';
 
 const log = new Logger('hub.assistant');
 const EXTENSIONS = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' } as const;
@@ -20,21 +14,27 @@ export async function keepResults(
   const { result, signal } = outcome;
   const files = await saveImages(options, receipt, { images: result.images, signal });
   try {
-    const completed = options.store.write(() => {
-      const message = saveResultMessage(options, receipt, files);
-      return options.repository.update(
-        recordImageUsage(options.store, {
-          ...receipt,
-          state: 'completed',
-          results: resultArtifacts(receipt, files),
-          message_id: message.id,
-          usage: result.usage,
-          usage_source: result.usageSource,
-          usage_complete: true,
-          reason: null,
+    const completed = await options.store.live.attachments.attach(
+      files.map((file) => file.id),
+      () =>
+        options.store.host.write('imageSettle', {
+          receipt: {
+            ...receipt,
+            state: 'completed',
+            results: resultArtifacts(receipt, files),
+            usage: result.usage,
+            usage_source: result.usageSource,
+            usage_complete: true,
+            reason: null,
+          },
+          message: {
+            files,
+            ...(receipt.result_message_id === undefined
+              ? {}
+              : { messageId: receipt.result_message_id }),
+          },
         }),
-      );
-    });
+    );
     files.forEach((file) => {
       options.notes?.later(file);
     });
@@ -80,20 +80,6 @@ async function saveImages(
   return files;
 }
 
-function saveResultMessage(
-  options: ImageServiceOptions,
-  receipt: ImageOperationReceipt,
-  files: readonly StoredAttachment[],
-): AssistantMessageRow {
-  return new ConversationLog(options.store).responderInChat({
-    chat: options.store.aiChats.chat(receipt.chat_id),
-    replyTo: null,
-    text: receipt.request.prompt,
-    files,
-    model: receipt.request.model,
-    ...(receipt.result_message_id === undefined ? {} : { messageId: receipt.result_message_id }),
-  });
-}
 function resultArtifacts(
   receipt: ImageOperationReceipt,
   files: readonly StoredAttachment[],

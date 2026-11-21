@@ -174,8 +174,8 @@ function toggleActions(ask: z.infer<typeof TOGGLE_PARAMS>): Wanted {
   return [{ type: 'set_system_toggle', setting: ask.setting, on: ask.on }];
 }
 
-function phoneOf(store: Store, id: string): string {
-  const device = store.devices.find(id);
+async function phoneOf(store: Store, id: string): Promise<string> {
+  const device = await store.host.call('devices', 'find', id);
   if (device === undefined)
     throw new IntegrationError('NotFound', 'That phone is not in the home.');
   if (device.kind !== 'phone')
@@ -183,8 +183,8 @@ function phoneOf(store: Store, id: string): string {
   return device.id;
 }
 
-function phonesOf(store: Store, targets: Targets): readonly string[] {
-  if (targets.phone !== undefined) return [phoneOf(store, targets.phone)];
+async function phonesOf(store: Store, targets: Targets): Promise<readonly string[]> {
+  if (targets.phone !== undefined) return [await phoneOf(store, targets.phone)];
   const person = targets.person;
   const owned = store.devices
     .list()
@@ -236,7 +236,7 @@ function phoneNode<T extends Targets>(ports: PhoneEffectPorts, spec: Spec<T>): E
     const planned = actionsOf(wanted);
     if (!planned.ok) return planned;
     try {
-      const phones = phonesOf(ports.store, checked.value);
+      const phones = await phonesOf(ports.store, checked.value);
       await deliver({
         kind: request.kind,
         mode: modeOf(request),

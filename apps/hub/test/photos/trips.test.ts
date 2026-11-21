@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { TRIP } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
-import { localDay } from '../../src/server/handlers/photos';
+import { localDay } from '../../src/photos/insights-shapes';
 import { AWAY_KM, TripsReader, distanceKm, tripDrafts, type DayStat } from '../../src/photos/trips';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';

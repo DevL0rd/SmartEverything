@@ -26,9 +26,9 @@ export function daylightHandlers(deps: WorldReadDeps): ReadHandlers {
         },
         {
           now: deps.clock.now(),
-          timeZone: homeZone(deps.store),
+          timeZone: homeZone(deps.world),
           forecast: null,
-          location: homeLocation(deps.store),
+          location: homeLocation(deps.world),
         },
       );
       return outputsOf({ result });

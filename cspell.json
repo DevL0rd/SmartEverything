@@ -1521,6 +1521,7 @@
     "**/dist/**",
     "packages/xiaomi/test/fixtures/**",
     "packages/xiaomi/src/vacuum/pv11gl-catalog.json",
+    "apps/hub/src/extensions/mcp/tools/tool-schemas.json",
     "**/out/**",
     "apps/app/android/**",
     "apps/app/assets/licences.json",

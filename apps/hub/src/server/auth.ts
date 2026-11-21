@@ -15,8 +15,10 @@ import { RepeatGate } from './repeat-gate';
 import { executionRole } from '../assistant/turn-authority';
 import type { ChatOwner } from '../assistant/chat-directory';
 import type { Store } from '../store/store';
+import { StoreNotFoundError } from '../store/context';
 import { bearerOf } from './http';
-import { accessEntryOf, effectiveClient, type AccessEntry } from './person-access';
+import { accessEntryOf, admitted, type AccessEntry } from './person-access';
+import { seenDue } from '../store/repositories/clients';
 
 export type Caller =
   | { readonly kind: 'anonymous' }
@@ -72,7 +74,11 @@ export function directClient(caller: Caller): ClientRow | undefined {
   return caller.client;
 }
 
-export function clientForToken(store: Store, token: string | null, entry: AccessEntry): ClientRow {
+export async function clientForToken(
+  store: Store,
+  token: string | null,
+  entry: AccessEntry,
+): Promise<ClientRow> {
   if (token === null) {
     throw unauthorized('Send the device token as a bearer token.', 'missing', 'client', 0);
   }
@@ -84,8 +90,11 @@ export function clientForToken(store: Store, token: string | null, entry: Access
       token.length,
     );
   }
-  const client = store.clients.byTokenHash(hashClientToken(token));
-  if (client === undefined) {
+  const found = await store.host.read('tokenAdmission', {
+    tokenHash: hashClientToken(token),
+    entry,
+  });
+  if (found.kind === 'unknown') {
     throw unauthorized(
       'No paired device has this token; it may have been removed.',
       'unknown',
@@ -93,17 +102,19 @@ export function clientForToken(store: Store, token: string | null, entry: Access
       token.length,
     );
   }
-  const effective = effectiveClient(store, client, entry);
-  store.clients.seen(client);
+  const effective = admitted(store, found.admission);
+  if (seenDue(found.client, store.now().toISOString())) {
+    await store.host.call('clients', 'seen', found.client);
+  }
   return effective;
 }
 
-export function authenticate(
+export async function authenticate(
   store: Store,
   request: IncomingMessage,
   access: Access,
   statusOnly: boolean,
-): Caller {
+): Promise<Caller> {
   switch (access) {
     case 'public':
       return { kind: 'anonymous' };
@@ -111,9 +122,15 @@ export function authenticate(
     case 'owner':
       return {
         kind: 'client',
-        client: clientForToken(store, bearerOf(request), accessEntryOf(request, statusOnly)),
+        client: await clientForToken(store, bearerOf(request), accessEntryOf(request, statusOnly)),
       };
   }
+}
+
+function activeProfileOf(client: ClientRow): string {
+  if (client.profile_id === null)
+    throw new StoreNotFoundError('active profile of the client', client.id);
+  return client.profile_id;
 }
 
 class CallerKindError extends Error {
@@ -131,10 +148,10 @@ export function clientOf(caller: Caller): ClientRow {
   return caller.client;
 }
 
-export function profileIdOf(store: Store, caller: Caller): string {
+export function profileIdOf(caller: Caller): string {
   if (caller.kind === 'service') return caller.profileId;
   if (caller.kind === 'client') {
-    return caller.profileId ?? store.profiles.activeOf(caller.client.id).id;
+    return caller.profileId ?? activeProfileOf(caller.client);
   }
   throw new ApiError('forbidden', 'This token belongs to no paired app, so it has no profile.');
 }
@@ -162,10 +179,10 @@ export function confinedChatOf(caller: Caller): string | null | undefined {
   return caller.chatId ?? null;
 }
 
-export function chatOwnerOf(store: Store, caller: Caller): ChatOwner {
+export function chatOwnerOf(caller: Caller): ChatOwner {
   const confinedTo = confinedChatOf(caller);
   return {
-    profileId: profileIdOf(store, caller),
+    profileId: profileIdOf(caller),
     role: roleOfCaller(caller),
     ...(confinedTo === undefined ? {} : { confinedTo }),
   };

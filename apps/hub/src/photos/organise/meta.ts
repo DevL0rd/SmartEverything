@@ -1,5 +1,8 @@
 import { ApiError, type PhotoDateEdit, type PhotoMetaPatch } from '@smarteverything/domain';
+import type { StoreHost } from '../../store/host/host';
+import { storeUnit } from '../../store/host/unit';
 import type { Store } from '../../store/store';
+import { PlaceRecords } from '../places-records';
 import type { PhotoMetaOverrideWrite } from '../../store/repositories/photo-meta-overrides';
 import type { DriveActor } from '../../drive/access';
 import {
@@ -105,7 +108,7 @@ function merged(
   return { ...identity, ...dateOf(kept, moment), ...placeOf(kept, location) };
 }
 
-export class MetaEditor {
+export class MetaWriter {
   constructor(private readonly store: MetaStore) {}
 
   edit(actor: DriveActor, patch: PhotoMetaPatch): ItemsChanged {
@@ -180,5 +183,31 @@ export class MetaEditor {
       'update drive_media set place_id = null where item_id = $itemId',
       { itemId },
     );
+  }
+}
+
+export const PHOTO_META_EDIT_UNIT = storeUnit(
+  (
+    store,
+    input: { readonly actor: DriveActor; readonly patch: PhotoMetaPatch; readonly placed: boolean },
+  ) =>
+    store.write(() => {
+      const changed = new MetaWriter(store).edit(input.actor, input.patch);
+      if (input.placed && input.patch.location !== undefined) {
+        const places = new PlaceRecords(store.context);
+        for (const itemId of input.patch.itemIds) places.assign(itemId);
+      }
+      return changed;
+    }),
+);
+
+export class MetaEditor {
+  constructor(
+    private readonly host: StoreHost,
+    private readonly placed: boolean,
+  ) {}
+
+  edit(actor: DriveActor, patch: PhotoMetaPatch): Promise<ItemsChanged> {
+    return this.host.write('photoMetaEdit', { actor, patch, placed: this.placed });
   }
 }

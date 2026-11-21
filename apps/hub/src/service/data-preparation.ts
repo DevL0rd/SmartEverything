@@ -20,7 +20,7 @@ import { recoverIntents, type DriveFiles } from '../drive/intents';
 import { nodeFiles } from '../drive/versions';
 import { assertPhotosFolderPrepared, migratePhotosFolder } from '../photos/folder-migration';
 import { DriveBackupRepository } from '../store/repositories/drive-backup';
-import { openStore, type Store } from '../store/store';
+import { openStore, type Store, type StoreHostSetup } from '../store/store';
 import { removeUnlinkedFolders } from './unlinked-folders';
 
 export const PREPARE_DATA_ARGUMENT = '--prepare-data';
@@ -43,6 +43,7 @@ export async function preparationLayout(
 }
 
 interface PreparationOptions {
+  readonly host: StoreHostSetup;
   readonly files?: DriveFiles;
   readonly location?: Pick<Location, 'rootId' | 'state'>;
   readonly signal?: AbortSignal;
@@ -68,14 +69,14 @@ async function prepareStore(
     throw new Error('Drive intents could not be recovered before data preparation.');
   await removeUnlinkedFolders(store.context.sql, layout, log);
   await migratePhotosFolder(env, options.signal);
-  assertPhotosFolderPrepared(store.context.sql);
+  await assertPhotosFolderPrepared(store.host);
   options.signal?.throwIfAborted();
 }
 
 export async function prepareHubData(
   layout: HubLayout,
   log: Logger,
-  options: PreparationOptions = {},
+  options: PreparationOptions,
 ): Promise<void> {
   options.signal?.throwIfAborted();
   if (options.location?.state === 'active') await verifyMarker(layout, options.location.rootId);
@@ -87,8 +88,8 @@ export async function prepareHubData(
       log,
       now: () => new Date(),
       systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      drivePathOf: (scope, ownerProfileId) =>
-        scope === 'home' ? layout.home.drive : layout.person(String(ownerProfileId)).drive,
+      driveFolders: layout.drives,
+      host: options.host,
     });
     try {
       log.info('service.data_preparation_started');

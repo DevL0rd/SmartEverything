@@ -1,3 +1,4 @@
+import { PLACE_PARAMS } from '@smarteverything/domain';
 import { z } from 'zod';
 
 const ITEM_ID = z.uuid();
@@ -131,3 +132,7 @@ export const PHOTO_PLACE_DETAIL = z
 export type PhotoPlaceDetail = z.infer<typeof PHOTO_PLACE_DETAIL>;
 
 export const PHOTO_PLACE_PARAMS = z.strictObject({ placeId: z.string().min(1) });
+
+export function placeNumber(id: string): number {
+  return PLACE_PARAMS.shape.placeId.parse(id);
+}

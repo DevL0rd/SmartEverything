@@ -22,11 +22,11 @@ useRig((made) => {
 });
 
 describe('native history after an edit or a retry', () => {
-  it('hides a deleted message and its answer from the conversation the model sees', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('hides a deleted message and its answer from the conversation the model sees', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const [, , second, secondAnswer] = seeded.rows;
 
-    rewriteNativeHistory(
+    await rewriteNativeHistory(
       rig.service,
       seeded.chat,
       [second, secondAnswer].flatMap((row) => (row === undefined ? [] : [row])),
@@ -38,12 +38,12 @@ describe('native history after an edit or a retry', () => {
     ]);
   });
 
-  it('keeps the earlier messages untouched in the surface so their prompt cache is reused', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('keeps the earlier messages untouched in the surface so their prompt cache is reused', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const [, , second, secondAnswer] = seeded.rows;
     const before = foldSurface(storedHistory(rig, seeded.sessionId)).nodes;
 
-    rewriteNativeHistory(
+    await rewriteNativeHistory(
       rig.service,
       seeded.chat,
       [second, secondAnswer].flatMap((row) => (row === undefined ? [] : [row])),
@@ -58,11 +58,11 @@ describe('native history after an edit or a retry', () => {
     ]);
   });
 
-  it('records each edit as an ignorable plugin record and every unknown type as ignorable', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('records each edit as an ignorable plugin record and every unknown type as ignorable', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const [first] = seeded.rows;
 
-    rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
+    await rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
     const history = storedHistory(rig, seeded.sessionId);
 
     const records = history.flatMap((event) => pluginRecordOf(event) ?? []);
@@ -71,22 +71,22 @@ describe('native history after an edit or a retry', () => {
     expect(unknown.every((event) => event.ignorable === true)).toBe(true);
   });
 
-  it('edits a conversation whose images were offloaded', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
-    appendOffloadedImage(rig, seeded);
+  it('edits a conversation whose images were offloaded', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
+    await appendOffloadedImage(rig, seeded);
     const [first] = seeded.rows;
     const before = storedHistory(rig, seeded.sessionId).length;
 
-    rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
+    await rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
 
     expect(storedHistory(rig, seeded.sessionId).length).toBeGreaterThan(before);
   });
 
-  it('keeps every other message exactly as it was', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('keeps every other message exactly as it was', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const [first] = seeded.rows;
 
-    rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
+    await rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
 
     expect(visibleTexts(storedHistory(rig, seeded.sessionId))).toStrictEqual([
       'first answer',
@@ -95,24 +95,24 @@ describe('native history after an edit or a retry', () => {
     ]);
   });
 
-  it('adds nothing when the rows to remove were already removed', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('adds nothing when the rows to remove were already removed', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const [first] = seeded.rows;
     const rows = first === undefined ? [] : [first];
-    rewriteNativeHistory(rig.service, seeded.chat, rows);
+    await rewriteNativeHistory(rig.service, seeded.chat, rows);
     const length = storedHistory(rig, seeded.sessionId).length;
 
-    rewriteNativeHistory(rig.service, seeded.chat, rows);
+    await rewriteNativeHistory(rig.service, seeded.chat, rows);
 
     expect(storedHistory(rig, seeded.sessionId)).toHaveLength(length);
   });
 
-  it('accumulates successive edits instead of restoring an earlier removal', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('accumulates successive edits instead of restoring an earlier removal', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const [first, , , secondAnswer] = seeded.rows;
-    rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
+    await rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
 
-    rewriteNativeHistory(
+    await rewriteNativeHistory(
       rig.service,
       seeded.chat,
       secondAnswer === undefined ? [] : [secondAnswer],
@@ -124,20 +124,20 @@ describe('native history after an edit or a retry', () => {
     ]);
   });
 
-  it('never rewrites the history of a session that belongs to another conversation', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('never rewrites the history of a session that belongs to another conversation', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const other = rig.newChat({ kind: 'server' });
     const foreign = rig.opened.store.aiChats.update(other.id, {
       engine: rig.service.binding(seeded.chat),
     });
 
-    expect(() => {
-      rewriteNativeHistory(rig.service, foreign, seeded.rows.slice(0, 1));
-    }).toThrow(ApiError);
+    await expect(
+      rewriteNativeHistory(rig.service, foreign, seeded.rows.slice(0, 1)),
+    ).rejects.toThrow(ApiError);
   });
 
-  it('leaves chats that are not native conversations alone', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('leaves chats that are not native conversations alone', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const plain = rig.opened.store.aiChats.update(seeded.chat.id, {
       engine: ENGINE.parse({
         kind: 'claude',
@@ -147,15 +147,15 @@ describe('native history after an edit or a retry', () => {
     });
     const before = storedHistory(rig, seeded.sessionId).length;
 
-    rewriteNativeHistory(rig.service, plain, seeded.rows.slice(0, 1));
+    await rewriteNativeHistory(rig.service, plain, seeded.rows.slice(0, 1));
 
     expect(storedHistory(rig, seeded.sessionId)).toHaveLength(before);
   });
 });
 
 describe('the history up to a branch point', () => {
-  it('keeps only the messages up to the boundary', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('keeps only the messages up to the boundary', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const history = storedHistory(rig, seeded.sessionId);
     const [questionEnd, answerEnd] = turnEnds(history);
 
@@ -171,17 +171,17 @@ describe('the history up to a branch point', () => {
     ]);
   });
 
-  it('returns the history untouched when the boundary is its end', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('returns the history untouched when the boundary is its end', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const history = storedHistory(rig, seeded.sessionId);
 
     expect(nativeHistoryPrefix(history, history.length - 1)).toBe(history);
   });
 
-  it('keeps an earlier edit applied inside the branch', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('keeps an earlier edit applied inside the branch', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const [first] = seeded.rows;
-    rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
+    await rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
     const history = storedHistory(rig, seeded.sessionId);
     const answerEnd = turnEnds(history)[1];
 
@@ -197,11 +197,11 @@ describe('native history of conversations held on a machine', () => {
     { question: 'second question', answer: 'second answer' },
   ];
 
-  it('hides a deleted exchange and keeps the rest', () => {
-    const held = nativeConversation(rig, EXCHANGES);
+  it('hides a deleted exchange and keeps the rest', async () => {
+    const held = await nativeConversation(rig, EXCHANGES);
     const [question, answer] = held.rows.slice(2);
 
-    rewriteNativeHistory(
+    await rewriteNativeHistory(
       rig.service,
       held.chat,
       [question, answer].flatMap((row) => (row === undefined ? [] : [row])),
@@ -213,11 +213,11 @@ describe('native history of conversations held on a machine', () => {
     ]);
   });
 
-  it('hides only the answer when a reply is retried', () => {
-    const held = nativeConversation(rig, EXCHANGES);
+  it('hides only the answer when a reply is retried', async () => {
+    const held = await nativeConversation(rig, EXCHANGES);
     const answer = held.rows[3];
 
-    rewriteNativeHistory(rig.service, held.chat, answer === undefined ? [] : [answer]);
+    await rewriteNativeHistory(rig.service, held.chat, answer === undefined ? [] : [answer]);
 
     expect(visibleTexts(storedHistory(rig, held.sessionId))).toStrictEqual([
       'first question',
@@ -226,14 +226,14 @@ describe('native history of conversations held on a machine', () => {
     ]);
   });
 
-  it('rewrites a turn that was interrupted before its outcome was confirmed', () => {
-    const held = nativeConversation(rig, [
+  it('rewrites a turn that was interrupted before its outcome was confirmed', async () => {
+    const held = await nativeConversation(rig, [
       EXCHANGES[0] ?? { question: '', answer: '' },
       { question: 'pending question', answer: 'pending answer', confirmed: false },
     ]);
     const answer = held.rows[3];
 
-    rewriteNativeHistory(rig.service, held.chat, answer === undefined ? [] : [answer]);
+    await rewriteNativeHistory(rig.service, held.chat, answer === undefined ? [] : [answer]);
 
     expect(visibleTexts(storedHistory(rig, held.sessionId))).toStrictEqual([
       'first question',
@@ -244,12 +244,12 @@ describe('native history of conversations held on a machine', () => {
 });
 
 describe('changing the history of a chat whose machine is away', () => {
-  it('still hides a deleted exchange while the machine is offline', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES, rig.desk.target);
+  it('still hides a deleted exchange while the machine is offline', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES, rig.desk.target);
     rig.service.directory.offline(rig.desk.target);
     const [, , second, secondAnswer] = seeded.rows;
 
-    rewriteNativeHistory(
+    await rewriteNativeHistory(
       rig.service,
       seeded.chat,
       [second, secondAnswer].flatMap((row) => (row === undefined ? [] : [row])),
@@ -261,17 +261,17 @@ describe('changing the history of a chat whose machine is away', () => {
     ]);
   });
 
-  it('detaches the session so the next message attaches a machine to the changed history', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES, rig.desk.target);
+  it('detaches the session so the next message attaches a machine to the changed history', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES, rig.desk.target);
     const [first] = seeded.rows;
 
-    rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
+    await rewriteNativeHistory(rig.service, seeded.chat, first === undefined ? [] : [first]);
 
     expect(rig.opened.store.dshSessions.attached(seeded.sessionId, rig.owner.profileId)).toBeNull();
   });
 
   it('asks nothing of a machine that is offline before the change', async () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES, rig.desk.target);
+    const seeded = await seedConversation(rig, TWO_EXCHANGES, rig.desk.target);
     rig.service.directory.offline(rig.desk.target);
     rig.calls.length = 0;
 
@@ -282,7 +282,7 @@ describe('changing the history of a chat whose machine is away', () => {
 
   it('stops and closes a machine that holds the session before the change', async () => {
     const chat = rig.newChat(rig.desk.target);
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
     await rig.service.directory.execute(rig.desk.target, randomUUID(), open);
     rig.calls.length = 0;
 
@@ -293,7 +293,7 @@ describe('changing the history of a chat whose machine is away', () => {
 
   it('refuses to change a history while a machine change is under way', async () => {
     const chat = rig.newChat(rig.desk.target);
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
     await rig.service.directory.execute(rig.desk.target, randomUUID(), open);
     rig.opened.store.harnessSessions.markSwitching(open.claim.session_id);
 

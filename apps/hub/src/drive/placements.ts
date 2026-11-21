@@ -1,78 +1,33 @@
-import {
-  ApiError,
-  DRIVE_MOUNT_NAME,
-  DRIVE_PLACEMENT_STATUS,
-  type DriveItem,
-  type DriveMountSet,
-  type DrivePlacement,
-  type DrivePlacementHold,
-  type DrivePlacementSet,
-  type DrivePlacementStatus,
+import type {
+  DriveMountSet,
+  DrivePlacement,
+  DrivePlacementHold,
+  DrivePlacementSet,
+  DrivePlacementStatus,
 } from '@smarteverything/domain';
-import type { StoreContext } from '../store/context';
-import type { DrivePlacementTarget } from '../store/repositories/drive-placements';
 import type { Store } from '../store/store';
-import { canRead, type DriveActor, type ItemAccess } from './access';
-import { targetAccess, type PlacementAccessStore } from './placement-access';
-import { requireExport } from './sharing/export-guard';
+import type { DriveActor } from './access';
+import { isActive, type PlacementChange } from './units/placements';
 
-export type PlacementStore = PlacementAccessStore & Pick<Store, 'drivePlacements'>;
+export type PlacementStore = Pick<Store, 'host'>;
 
 export type DeviceChangeListener = (deviceIds: readonly string[]) => void;
 
 export interface DrivePlacementsDeps {
   readonly store: PlacementStore;
-  readonly context: StoreContext;
   readonly newId: () => string;
 }
 
-interface PlacementSpot {
-  readonly rootId: string;
-  readonly folderItemId: string | null;
-}
+export class DrivePlacementsResultError extends Error {
+  override readonly name = 'DrivePlacementsResultError';
 
-interface SyncSettings {
-  readonly excluded?: readonly string[] | undefined;
-  readonly ignorePatterns?: readonly string[] | undefined;
-  readonly conflictCopies?: boolean | undefined;
-}
-
-function noComputer(): ApiError {
-  return new ApiError('not_found', 'There is no paired computer with that id for this person.');
-}
-
-function noFolder(): ApiError {
-  return new ApiError('not_found', 'There is no such folder you can open on that computer.');
-}
-
-function conflicting(message: string): ApiError {
-  return new ApiError('conflict', message);
-}
-
-function invalid(message: string): ApiError {
-  return new ApiError('invalid_request', message);
-}
-
-function signatureOf(placements: readonly DrivePlacement[]): string {
-  return JSON.stringify(
-    placements.map((placement) => [
-      placement.id,
-      placement.rootId,
-      placement.folderItemId,
-      placement.mode,
-      placement.localPath,
-      placement.mountName,
-      placement.status.readOnly,
-      placement.excluded ?? null,
-      placement.ignorePatterns ?? null,
-      placement.conflictCopies ?? null,
-    ]),
-  );
+  constructor(readonly op: PlacementChange['op']) {
+    super(`The placement change ${op} returned no placement.`);
+  }
 }
 
 export class DrivePlacements {
   private readonly listeners = new Set<DeviceChangeListener>();
-  private readonly touched = new Map<string, string>();
 
   constructor(private readonly deps: DrivePlacementsDeps) {}
 
@@ -83,282 +38,67 @@ export class DrivePlacements {
     };
   }
 
-  list(actor: DriveActor): readonly DrivePlacement[] {
-    return this.deps.store.drivePlacements
-      .list()
-      .filter((placement) => this.mayManage(actor, placement.deviceId));
+  changed(devices: readonly string[]): void {
+    if (devices.length === 0) return;
+    for (const listener of this.listeners) listener(devices);
   }
 
-  activeFor(deviceId: string): readonly DrivePlacement[] {
-    return this.deps.store.drivePlacements.forDevice(deviceId).filter(isActive);
+  list(actor: DriveActor): Promise<DrivePlacement[]> {
+    return this.deps.store.host.read('drivePlacementList', actor);
   }
 
-  set(actor: DriveActor, input: DrivePlacementSet): DrivePlacement {
-    this.requireComputer(actor, input.deviceId);
-    const readOnly = this.verify(actor, input) === 'view';
-    return this.mutate(input.deviceId, () => {
-      const existing = this.deps.store.drivePlacements
-        .forDevice(input.deviceId)
-        .find((placement) => placement.mode === 'synced' && sameSpot(placement, input));
-      this.refuseNesting(input, existing?.id ?? null);
-      const target = {
-        mode: 'synced',
-        localPath: input.localPath,
-        mountName: null,
-        enabled: input.enabled,
-        ...syncSettingsOf(input),
-      } as const;
-      if (existing !== undefined) {
-        return this.deps.store.drivePlacements.retarget(existing.id, { ...target, readOnly });
-      }
-      return this.deps.store.drivePlacements.insert({
-        id: this.deps.newId(),
-        deviceId: input.deviceId,
-        rootId: input.rootId,
-        folderItemId: input.folderItemId,
-        createdBy: actor.profileId,
-        status: startingStatus(this.at(), readOnly),
-        ...target,
-      });
-    });
+  async activeFor(deviceId: string): Promise<DrivePlacement[]> {
+    const placements = await this.deps.store.host.call('drivePlacements', 'forDevice', deviceId);
+    return placements.filter(isActive);
   }
 
-  setMount(actor: DriveActor, input: DriveMountSet): DrivePlacement {
-    this.requireComputer(actor, input.deviceId);
-    const drive = this.deps.store.driveRoots.byIdentity('person', actor.profileId);
-    if (drive === undefined) throw new ApiError('not_found', 'You have no My Drive to mount yet.');
-    const spot = { rootId: drive.id, folderItemId: null };
-    const readOnly = targetAccess(this.deps.store, actor, spot) === 'view';
-    return this.mutate(input.deviceId, () => {
-      const existing = this.mountOn(input.deviceId, spot);
-      const target = {
-        mode: 'mounted',
-        localPath: null,
-        mountName: DRIVE_MOUNT_NAME,
-        enabled: input.enabled,
-      } as const;
-      if (existing !== undefined) {
-        return this.deps.store.drivePlacements.retarget(existing.id, { ...target, readOnly });
-      }
-      return this.deps.store.drivePlacements.insert({
-        id: this.deps.newId(),
-        deviceId: input.deviceId,
-        ...spot,
-        createdBy: actor.profileId,
-        status: startingStatus(this.at(), readOnly),
-        ...target,
-      });
-    });
+  private async change(change: PlacementChange): Promise<DrivePlacement | null> {
+    const result = await this.deps.store.host.write('drivePlacementChange', [change]);
+    this.changed(result.devices);
+    const [placement] = result.placements;
+    if (placement === undefined) throw new DrivePlacementsResultError(change.op);
+    return placement;
   }
 
-  removeFor(actor: DriveActor, placementId: string): void {
-    const placement = this.deps.store.drivePlacements.find(placementId);
-    if (placement === undefined || !this.mayManage(actor, placement.deviceId)) throw noComputer();
-    this.mutate(placement.deviceId, () => {
-      this.deps.store.drivePlacements.remove(placementId);
-    });
+  private async placed(change: PlacementChange): Promise<DrivePlacement> {
+    const placement = await this.change(change);
+    if (placement === null) throw new DrivePlacementsResultError(change.op);
+    return placement;
   }
 
-  remove(placementId: string): void {
-    const placement = this.deps.store.drivePlacements.byId(placementId);
-    this.mutate(placement.deviceId, () => {
-      this.deps.store.drivePlacements.remove(placementId);
-    });
+  set(actor: DriveActor, input: DrivePlacementSet): Promise<DrivePlacement> {
+    return this.placed({ op: 'set', actor, input, id: this.deps.newId() });
   }
 
-  setHold(placementId: string, hold: DrivePlacementHold | null): DrivePlacement {
-    const placement = this.deps.store.drivePlacements.byId(placementId);
-    return this.mutate(placement.deviceId, () =>
-      this.deps.store.drivePlacements.setHold(placementId, hold),
-    );
+  setMount(actor: DriveActor, input: DriveMountSet): Promise<DrivePlacement> {
+    return this.placed({ op: 'setMount', actor, input, id: this.deps.newId() });
   }
 
-  repoint(placementId: string, rootId: string): DrivePlacement {
-    const before = this.deps.store.drivePlacements.byId(placementId);
-    return this.mutate(before.deviceId, () => {
-      this.deps.context.sql.run(
-        'point the placement at the drive its folder moved to',
-        'update drive_placements set root_id = $rootId where id = $id',
-        { id: placementId, rootId },
-      );
-      const after = this.deps.store.drivePlacements.byId(placementId);
-      this.deps.context.changed('drive_placements', 'UPDATE', after, before);
-      return after;
-    });
+  async removeFor(actor: DriveActor, placementId: string): Promise<void> {
+    await this.change({ op: 'removeFor', actor, placementId });
   }
 
-  setReadOnly(placementId: string, readOnly: boolean): DrivePlacement {
-    const placement = this.deps.store.drivePlacements.byId(placementId);
-    return this.mutate(placement.deviceId, () =>
-      this.deps.store.drivePlacements.retarget(placementId, {
-        mode: placement.mode,
-        localPath: placement.localPath,
-        mountName: placement.mountName,
-        enabled: placement.enabled,
-        readOnly,
-        ...syncSettingsOf(placement),
-      }),
-    );
+  async remove(placementId: string): Promise<void> {
+    await this.change({ op: 'remove', placementId });
   }
 
-  writeStatus(deviceId: string, placementId: string, status: DrivePlacementStatus): DrivePlacement {
-    const placement = this.deps.store.drivePlacements.find(placementId);
-    if (placement === undefined)
-      throw new ApiError('not_found', 'There is no such folder placement.');
-    if (placement.deviceId !== deviceId) {
-      throw new ApiError('forbidden', 'That folder placement belongs to another computer.');
-    }
-    return this.deps.store.drivePlacements.writeStatus(
-      placementId,
-      DRIVE_PLACEMENT_STATUS.parse(status),
-    );
+  setHold(placementId: string, hold: DrivePlacementHold | null): Promise<DrivePlacement> {
+    return this.placed({ op: 'setHold', placementId, hold });
   }
 
-  private at(): string {
-    return this.deps.context.now();
+  repoint(placementId: string, rootId: string): Promise<DrivePlacement> {
+    return this.placed({ op: 'repoint', placementId, rootId });
   }
 
-  private mayManage(actor: DriveActor, deviceId: string): boolean {
-    return this.deps.store.computerNodes.personOf(deviceId) === actor.profileId;
+  setReadOnly(placementId: string, readOnly: boolean): Promise<DrivePlacement> {
+    return this.placed({ op: 'setReadOnly', placementId, readOnly });
   }
 
-  private requireComputer(actor: DriveActor, deviceId: string): void {
-    if (!this.mayManage(actor, deviceId)) throw noComputer();
+  writeStatus(
+    deviceId: string,
+    placementId: string,
+    status: DrivePlacementStatus,
+  ): Promise<DrivePlacement> {
+    return this.placed({ op: 'writeStatus', deviceId, placementId, status });
   }
-
-  private verify(actor: DriveActor, input: DrivePlacementSet): ItemAccess {
-    const access = targetAccess(this.deps.store, actor, input);
-    if (!canRead(access)) throw noFolder();
-    if (input.folderItemId !== null) {
-      const folder = this.deps.store.driveItems.find(input.folderItemId, null);
-      if (folder?.kind !== 'folder') throw invalid('A placement needs a folder, not a file.');
-      requireExport(access, folder);
-    }
-    for (const excluded of input.excluded) refuseExclusion(excluded);
-    return access;
-  }
-
-  private mountOn(deviceId: string, spot: PlacementSpot): DrivePlacement | undefined {
-    const mounts = this.deps.store.drivePlacements
-      .forDevice(deviceId)
-      .filter((placement) => placement.mode === 'mounted');
-    const stray = mounts.find((placement) => !sameSpot(placement, spot));
-    if (stray !== undefined) {
-      throw conflicting('This computer has a mounted drive that is not your My Drive.');
-    }
-    return mounts[0];
-  }
-
-  private refuseNesting(target: DrivePlacementSet, ownId: string | null): void {
-    const others = this.deps.store.drivePlacements
-      .forDevice(target.deviceId)
-      .filter(
-        (placement) =>
-          placement.rootId === target.rootId &&
-          placement.id !== ownId &&
-          placement.mode === 'synced',
-      );
-    for (const other of others) {
-      if (this.nests(target, other)) {
-        const where = other.localPath === null ? '' : ` at ${other.localPath}`;
-        throw conflicting(
-          `That folder and the synced folder${where} on this computer contain one another.`,
-        );
-      }
-    }
-  }
-
-  private nests(target: PlacementSpot, other: DrivePlacement): boolean {
-    if (target.folderItemId === null || other.folderItemId === null) return true;
-    return (
-      this.lineage(target.folderItemId).has(other.folderItemId) ||
-      this.lineage(other.folderItemId).has(target.folderItemId)
-    );
-  }
-
-  private lineage(folderId: string): ReadonlySet<string> {
-    const seen = new Set<string>();
-    let current: DriveItem | undefined = this.deps.store.driveItems.find(folderId, null);
-    while (current !== undefined && !seen.has(current.id)) {
-      seen.add(current.id);
-      current =
-        current.parentId === null
-          ? undefined
-          : this.deps.store.driveItems.find(current.parentId, null);
-    }
-    return seen;
-  }
-
-  private mutate<T>(deviceId: string, work: () => T): T {
-    return this.deps.context.write(() => {
-      if (!this.deps.context.sql.inTransaction()) this.touched.clear();
-      if (!this.touched.has(deviceId)) this.touched.set(deviceId, this.signature(deviceId));
-      this.deps.context.afterCommit(() => {
-        this.flush();
-      });
-      return work();
-    });
-  }
-
-  private signature(deviceId: string): string {
-    return signatureOf(this.activeFor(deviceId));
-  }
-
-  private flush(): void {
-    const changed = [...this.touched]
-      .filter(([deviceId, before]) => this.signature(deviceId) !== before)
-      .map(([deviceId]) => deviceId);
-    this.touched.clear();
-    if (changed.length === 0) return;
-    for (const listener of this.listeners) listener(changed);
-  }
-}
-
-function isActive(placement: DrivePlacement): boolean {
-  return placement.enabled && placement.hold === null;
-}
-
-function sameSpot(placement: DrivePlacement, target: PlacementSpot): boolean {
-  return placement.rootId === target.rootId && placement.folderItemId === target.folderItemId;
-}
-
-function syncSettingsOf(
-  input: SyncSettings,
-): Pick<DrivePlacementTarget, 'excluded' | 'ignorePatterns' | 'conflictCopies'> {
-  const settings: {
-    excluded?: readonly string[];
-    ignorePatterns?: readonly string[];
-    conflictCopies?: boolean;
-  } = {};
-  if (input.excluded !== undefined) settings.excluded = input.excluded;
-  if (input.ignorePatterns !== undefined) settings.ignorePatterns = input.ignorePatterns;
-  if (input.conflictCopies !== undefined) settings.conflictCopies = input.conflictCopies;
-  return settings;
-}
-
-function refuseExclusion(path: string): void {
-  const segments = path.split('/');
-  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) {
-    throw invalid(`An excluded folder is a path inside the placed folder, not "${path}".`);
-  }
-}
-
-function startingStatus(reportedAt: string, readOnly: boolean): DrivePlacementStatus {
-  return {
-    state: 'starting',
-    tier: null,
-    basicLimits: null,
-    readOnly,
-    route: null,
-    cacheBytes: 0,
-    pinnedBytes: 0,
-    openFiles: 0,
-    pendingUploads: 0,
-    needBytes: 0,
-    lastSyncedAt: null,
-    errors: [],
-    reason: null,
-    mountPoint: null,
-    reportedAt,
-  };
 }

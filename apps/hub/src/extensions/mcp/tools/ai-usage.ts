@@ -127,8 +127,8 @@ export const AI_USAGE_TOOLS: readonly Tool[] = [
     name: 'usage_totals',
     input: TOTALS_INPUT,
     annotations: READS,
-    run: (context, input) => {
-      const totals = context.store.ledger.totals(filterOf(context, input));
+    run: async (context, input) => {
+      const totals = await context.store.host.read('mcpUsageTotals', filterOf(context, input));
       return {
         structured: {
           from: totals.from,
@@ -145,12 +145,12 @@ export const AI_USAGE_TOOLS: readonly Tool[] = [
     name: 'usage_series',
     input: SERIES_INPUT,
     annotations: READS,
-    run: (context, input) => {
-      const series = context.store.ledger.report(
-        filterOf(context, input),
-        input.bucket,
-        input.split ?? null,
-      );
+    run: async (context, input) => {
+      const series = await context.store.host.read('mcpUsageReport', {
+        filter: filterOf(context, input),
+        bucket: input.bucket,
+        split: input.split ?? null,
+      });
       return { structured: { ...series, points: series.points.map(pointOf) } };
     },
   }),
@@ -158,8 +158,8 @@ export const AI_USAGE_TOOLS: readonly Tool[] = [
     name: 'usage_ledger',
     input: LEDGER_INPUT,
     annotations: READS,
-    run: (context, input) => {
-      const page = context.store.ledger.ledger({
+    run: async (context, input) => {
+      const page = await context.store.host.read('mcpUsageLedger', {
         filter: filterOf(context, input),
         cursor: input.cursor,
         limit: input.limit,

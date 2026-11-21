@@ -15,6 +15,7 @@ import {
   type UsageTotals,
 } from '@smarteverything/domain';
 import type { StoreContext } from '../store/context';
+import type { ChangeFeed } from '../store/feed';
 import { ledgerPageOf, positionOf } from './ledger-page';
 import {
   choicesOf,
@@ -49,21 +50,14 @@ class AlreadyFinalError extends Error {
   }
 }
 
-function subscribe<T>(set: Set<T>, item: T): Unsubscribe {
-  set.add(item);
-  return (): void => {
-    set.delete(item);
-  };
-}
-
 export class Ledger {
   private readonly rows: UsageStore;
-  private readonly listeners = new Set<UsageListener>();
-  private readonly sinks = new Set<CostSink>();
 
   constructor(
     private readonly context: StoreContext,
+    private readonly feed: ChangeFeed,
     private readonly timeZone: () => string,
+    private readonly rollup: CostSink,
   ) {
     this.rows = new UsageStore(context);
   }
@@ -79,12 +73,10 @@ export class Ledger {
       });
       this.rows.insert(row);
       this.context.changed('ai_usage', 'INSERT', row, null);
-      this.sink(row, row.cost_micros);
+      this.rollup(row, row.cost_micros);
       return row;
     };
-    const row = durable ? durableSessionWrite(this.context, write) : this.context.write(write);
-    this.tell(row);
-    return row;
+    return durable ? durableSessionWrite(this.context, write) : this.context.write(write);
   }
 
   amend(
@@ -103,7 +95,7 @@ export class Ledger {
       >
     >,
   ): AiUsageRow {
-    const row = durableSessionWrite(this.context, () => {
+    return durableSessionWrite(this.context, () => {
       const before = this.rows.get(id);
       if (before.cost_state === 'reconciled') return before;
       const after = AI_USAGE_ROW.parse({
@@ -113,11 +105,9 @@ export class Ledger {
       });
       this.rows.replace(before, after);
       this.context.changed('ai_usage', 'UPDATE', after, before);
-      this.sink(after, after.cost_micros - before.cost_micros);
+      this.rollup(after, after.cost_micros - before.cost_micros);
       return after;
     });
-    this.tell(row);
-    return row;
   }
 
   pendingGenerations(): AiUsageRow[] {
@@ -126,7 +116,7 @@ export class Ledger {
 
   reconcile(id: string, stats: UsageReconcile): AiUsageRow {
     const change = USAGE_RECONCILE.parse(stats);
-    const row = this.context.write(() => {
+    return this.context.write(() => {
       const before = this.rows.get(id);
       if (before.cost_state !== 'estimated' && before.cost_state !== 'reported') {
         throw new AlreadyFinalError(id, before.cost_state);
@@ -139,11 +129,9 @@ export class Ledger {
       });
       this.rows.replace(before, after);
       this.context.changed('ai_usage', 'UPDATE', after, before);
-      this.sink(after, after.cost_micros - before.cost_micros);
+      this.rollup(after, after.cost_micros - before.cost_micros);
       return after;
     });
-    this.tell(row);
-    return row;
   }
 
   get(id: string): AiUsageRow {
@@ -197,22 +185,8 @@ export class Ledger {
   }
 
   on(listener: UsageListener): Unsubscribe {
-    return subscribe(this.listeners, listener);
-  }
-
-  rollup(sink: CostSink): Unsubscribe {
-    return subscribe(this.sinks, sink);
-  }
-
-  private sink(row: AiUsageRow, delta: number): void {
-    for (const sink of this.sinks) {
-      sink(row, delta);
-    }
-  }
-
-  private tell(row: AiUsageRow): void {
-    for (const listener of this.listeners) {
-      listener(row);
-    }
+    return this.feed.subscribe((change) => {
+      if (change.table === 'ai_usage' && change.record !== null) listener(change.record);
+    });
   }
 }

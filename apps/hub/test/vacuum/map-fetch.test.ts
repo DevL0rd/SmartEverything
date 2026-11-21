@@ -34,6 +34,7 @@ import { FakeVacuumCloud, sealVacuumMap } from '../support/fake-vacuum-cloud';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import { FakeAccount, SSECURITY, USER_ID } from '../xiaomi/fake-account';
 import { dependencies, routedFetch } from '../xiaomi/harness';
+import { INLINE_MAP_DECODER } from './inline-decoder';
 
 const NOW = '2026-10-24T10:00:00.000Z';
 const ROBOT = 'robot';
@@ -157,6 +158,7 @@ beforeEach(() => {
     cache,
     identity: (): MapIdentity => ({ model: pv11glCatalog().model, did: IDENTITY.did }),
     pushed: (): PushedMapObjects => NO_PUSHED_MAP_OBJECTS,
+    decoder: INLINE_MAP_DECODER,
     published: (deviceId, scene): void => {
       published.push({ deviceId, scene });
     },

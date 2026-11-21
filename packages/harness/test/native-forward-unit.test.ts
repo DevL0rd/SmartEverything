@@ -200,6 +200,46 @@ describe('what the forwarder does on its own', () => {
     ]);
   });
 
+  it('sends the queued input that remains each time the inbox changes', async () => {
+    const { forward, sent, session } = forwarder();
+    const queued: AiHarnessSession['work'][number] = {
+      kind: 'delivery',
+      id: session,
+      reason: 'Native messages remain queued.',
+    };
+    let work: AiHarnessSession['work'] = [queued];
+    forward.workFor = (): AiHarnessSession['work'] => work;
+    await forward.open(openRequest(session));
+    const header = nativeHeader({ version: 4, id: session, createdAt: 1, isSeeded: false });
+    const message = { role: 'user', id: 'm1', content: [], source: { kind: 'user' } };
+    const [inserted, canceled] = nativeEvents(header, [
+      {
+        type: 'agent/inbox/spliced',
+        seq: 0,
+        time: 1,
+        data: { target: 'next-turn', start: 0, inserted: [message] },
+      },
+      {
+        type: 'agent/inbox/spliced',
+        seq: 1,
+        time: 2,
+        data: { target: 'next-turn', start: 0, removedCount: 1, inserted: [], outcome: 'canceled' },
+      },
+    ]);
+    if (inserted === undefined || canceled === undefined) throw new Error('Events were not built.');
+
+    forward.event({ kind: 'session', sessionId: session, event: inserted });
+    await forward.flush(session);
+    work = [];
+    forward.event({ kind: 'session', sessionId: session, event: canceled });
+    await forward.flush(session);
+
+    expect(sent.slice(1)).toMatchObject([
+      { kind: 'status', status: 'idle', work: [queued] },
+      { kind: 'status', status: 'idle', work: [] },
+    ]);
+  });
+
   it('makes the log durable after the events the hub reduces and after no others', async () => {
     const { forward, sent, session } = forwarder();
     await forward.open(openRequest(session));

@@ -60,6 +60,7 @@ export class DriveTransferAnsweredError extends Error {
 }
 
 export interface DriveTransferInput {
+  readonly id?: string | undefined;
   readonly itemId: string;
   readonly fromProfileId: string;
   readonly toProfileId: string;
@@ -107,7 +108,7 @@ export class DriveTransfersRepository {
   offer(input: DriveTransferInput): DriveTransfer {
     return this.context.write(() => {
       if (this.openFor(input.itemId) !== undefined) throw new DriveTransferOpenError(input.itemId);
-      const id = this.context.newId();
+      const id = input.id ?? this.context.newId();
       this.context.sql.run(
         'offer the drive item for transfer',
         `insert into drive_transfers (id, item_id, from_profile_id, to_profile_id, state, created_at)

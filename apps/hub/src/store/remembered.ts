@@ -1,14 +1,15 @@
 import type { StoreContext } from './context';
 
 export class Remembered<V> {
-  private readonly known = new WeakMap<StoreContext, Map<string, V>>();
+  private readonly known = new WeakMap<StoreContext, Map<string, { readonly value: V }>>();
 
   value(context: StoreContext, key: string, read: () => V): V {
     if (context.sql.inTransaction()) return read();
     const known = this.knownOf(context);
-    if (known.has(key)) return this.held(known, key, read);
+    const held = known.get(key);
+    if (held !== undefined) return held.value;
     const value = read();
-    known.set(key, value);
+    known.set(key, { value });
     return value;
   }
 
@@ -16,16 +17,14 @@ export class Remembered<V> {
     this.known.get(context)?.clear();
   }
 
-  private held(known: Map<string, V>, key: string, read: () => V): V {
-    const value = known.get(key);
-    return value === undefined ? read() : value;
-  }
-
-  private knownOf(context: StoreContext): Map<string, V> {
+  private knownOf(context: StoreContext): Map<string, { readonly value: V }> {
     const existing = this.known.get(context);
     if (existing !== undefined) return existing;
-    const created = new Map<string, V>();
+    const created = new Map<string, { readonly value: V }>();
     this.known.set(context, created);
+    context.onForeignCommit(() => {
+      created.clear();
+    });
     return created;
   }
 }

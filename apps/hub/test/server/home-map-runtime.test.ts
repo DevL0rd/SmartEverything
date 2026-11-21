@@ -33,6 +33,7 @@ beforeEach(async () => {
     now: () => new Date(NOW),
     log: testLogger('home-map'),
   });
+  await runtime.load();
   routes = homeMapSetRoutes({ homeMap: runtime, store: opened.store });
   const client: ClientRow = opened.store.clients.create(
     { name: 'Member', platform: 'desktop', role: 'member', tokenHash: 'a'.repeat(64) },

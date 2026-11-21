@@ -4,11 +4,11 @@ import {
   type DeviceTarget,
   type GroupCommandPlan,
 } from '@smarteverything/domain';
-import { prepareTargetCommands } from '../../device-groups/commands';
 import {
   admitMembers,
   admittedMembers,
   confirmed,
+  preparedPlans,
   restrictedTo,
   submitPlan,
   type DeviceSetPorts,
@@ -36,21 +36,16 @@ export class DeviceToggler {
 
   async toggle(request: DeviceToggleRequest, run: EffectRun): Promise<DeviceToggleResult> {
     const { store, executor } = this.ports;
-    const members = admittedMembers(store, request.target, request.control);
+    const members = await admittedMembers(store, request.target, request.control);
     const flipped = admitMembers(executor, members, run, async () => {
       const flips = members.map((member) => ({ member, value: this.flipped(member) }));
-      const plans = flips.map(({ member, value }) =>
-        store.write(() =>
-          prepareTargetCommands(
-            store,
-            {
-              target: { kind: 'devices', deviceIds: [member.deviceId] },
-              capability: member.capability,
-              value,
-            },
-            null,
-          ),
-        ),
+      const plans = await preparedPlans(
+        store,
+        flips.map(({ member, value }) => ({
+          target: { kind: 'devices', deviceIds: [member.deviceId] },
+          capability: member.capability,
+          value,
+        })),
       );
       const plan: GroupCommandPlan = restrictedTo(
         {

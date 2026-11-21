@@ -145,6 +145,10 @@ export class Sql {
     };
   }
 
+  committedElsewhere(): void {
+    for (const listener of this.commitListeners) listener();
+  }
+
   private committed(changes: number): void {
     if (changes === 0) return;
     for (const listener of this.commitListeners) listener();

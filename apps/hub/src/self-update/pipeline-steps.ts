@@ -31,7 +31,7 @@ const BUSY_RETRIES = 2;
 
 export interface StepDependencies {
   readonly layout: HubLayout;
-  readonly publicServer: () => string;
+  readonly publicServer: () => Promise<string>;
   readonly finished: (runId: string) => Promise<HubUpdateRelease>;
 }
 
@@ -200,7 +200,7 @@ export async function executePublication(
   const refused = refusedBuild(deps.layout, step.component);
   if (refused !== null) return refused;
   const { script, input } = await publicationInput(deps, revision, step);
-  const server = deps.publicServer();
+  const server = await deps.publicServer();
   const result = await whenIdle(
     () => untilIdle(deps.layout),
     () => runConfiguredUpdateCommand(script, deps.layout, { input, server }),

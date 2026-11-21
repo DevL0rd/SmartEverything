@@ -18,23 +18,22 @@ import {
 import type { PadRecord } from '@smarteverything/ble';
 import { background, type Logger } from '@smarteverything/logging';
 import type { Store } from '../../store/store';
+import { IngestQueues } from '../ingest-queue';
 import type { LocalDevices } from '../local-devices';
-import { keepRecords, reconcileRecord } from './backfill';
+import { replayNotes } from '../unit-notes';
+import { chosenWalkerOf } from './access';
+import { keepRecords } from './backfill';
 import { entrySettingsOf } from './config';
 import { admitActivity, eventOf, type EventSpec } from './events';
 import { contextOf } from './figures';
-import type { DeviceState, Fleet } from './fleet';
-import type { TreadmillHealth } from './health';
+import type { DeviceState, Fleet, WalkerNow } from './fleet';
 import {
   heartSourceOf,
   liveFrameOf,
   mayShowBody,
   noticeOf,
   shownState,
-  watchHeartRate,
-  weightOf,
   type FrameFacts,
-  type WalkerFacts,
 } from './live';
 import type { Publisher } from './publisher';
 import type { BatchResult } from './runtime';
@@ -50,28 +49,15 @@ export interface LivePublisher {
 }
 
 export interface IngestDeps {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host' | 'settings' | 'profiles'>;
   readonly fleet: Fleet;
   readonly publisher: Publisher;
   readonly sink: () => AdapterSink;
   readonly local: Pick<LocalDevices, 'observe'>;
-  readonly health: TreadmillHealth;
   readonly live: LivePublisher;
   readonly holderOf: (device: DeviceRow) => string | null;
   readonly now: () => Date;
   readonly log: Logger;
-}
-
-export function walkerProfileOf(
-  deps: Pick<IngestDeps, 'store' | 'holderOf'>,
-  device: DeviceRow,
-): string | null {
-  const chosen = device.details['walkerProfileId'];
-  if (typeof chosen === 'string') {
-    return chosen;
-  }
-  const holder = deps.holderOf(device);
-  return holder === null ? null : deps.store.profiles.activeOf(holder).id;
 }
 
 function goalReached(pad: PadPreferences, summary: SessionSummary): boolean {
@@ -89,33 +75,48 @@ function goalReached(pad: PadPreferences, summary: SessionSummary): boolean {
 }
 
 export class TreadmillIngest {
+  private readonly queues = new IngestQueues();
+
   constructor(private readonly deps: IngestDeps) {}
+
+  idle(): Promise<void> {
+    return this.queues.idle();
+  }
 
   process(
     device: DeviceRow,
     client: Pick<ClientRow, 'id'>,
     batch: TreadmillFrameBatch,
-  ): TreadmillBatchResult {
-    const state = this.deps.fleet.of(device);
+  ): Promise<TreadmillBatchResult> {
+    return this.queues.run(device.id, () => this.ingest(device, client, batch));
+  }
+
+  private async ingest(
+    device: DeviceRow,
+    client: Pick<ClientRow, 'id'>,
+    batch: TreadmillFrameBatch,
+  ): Promise<TreadmillBatchResult> {
+    const state = await this.deps.fleet.ensure(device);
     const now = this.deps.now().toISOString();
     const phaseBefore = state.link.phase;
     state.setLink(batch.link, now);
     state.note(batch.frames);
-    const walker = this.walkerFacts(device);
+    const walker = await this.walkerFacts(device);
+    state.walker = walker;
     const settings = entrySettingsOf(state.entry);
     const machine: MachineSettings = {
       weightKg: walker.weightKg,
       gradePercent: settings.gradePercent,
       runSwitchKmh: settings.runSwitchKmh,
     };
-    state.keeper.use(
+    await state.keeper.use(
       contextOf(settings, walker.weightKg, state.runtime.identity.inclineMaxPercent !== null),
     );
     if (batch.link.phase !== 'linked') {
       state.runtime.linkInterrupted();
     }
     const result = state.runtime.ingest(batch.frames, machine);
-    this.apply(device, state, result, walker);
+    await this.apply(device, state, result, walker);
     this.publishChanges(device, state, { phaseBefore, result, now });
     this.publishLive(device, state, walker, now);
     state.notifyWaiters();
@@ -128,38 +129,41 @@ export class TreadmillIngest {
     return { live: this.deps.live.watched(device.id), accepted: batch.frames.length };
   }
 
-  walkerFacts(device: DeviceRow): WalkerFacts {
-    const profileId = walkerProfileOf(this.deps, device);
-    return { profileId, weightKg: weightOf(this.deps.store, profileId) };
+  walkerFacts(device: DeviceRow): Promise<WalkerNow> {
+    return this.deps.store.host.read('treadmillWalker', {
+      chosen: chosenWalkerOf(device),
+      holder: this.deps.holderOf(device),
+      now: this.deps.now().toISOString(),
+    });
   }
 
-  private apply(
+  private async apply(
     device: DeviceRow,
     state: DeviceState,
     result: BatchResult,
-    walker: WalkerFacts,
-  ): void {
+    walker: WalkerNow,
+  ): Promise<void> {
     this.logOddities(device, result);
     for (const entry of result.timeline) {
       if (entry.kind === 'tick') {
         state.keeper.tick(entry.sample, entry.beltKcal);
       } else {
-        this.handle(state, entry.event, walker);
+        await this.handle(state, entry.event, walker);
       }
     }
     for (const record of result.records) {
-      this.recordFound(device, state, record, walker);
+      await this.recordFound(device, state, record, walker);
     }
     const last = result.snapshots.at(-1);
     if (last === undefined) {
       return;
     }
     if (state.keeper.active !== null) {
-      state.keeper.noteHeart(
-        heartSourceOf(this.deps.store, state, walker.profileId, this.deps.now()),
-      );
+      state.keeper.noteHeart(heartSourceOf(state, walker.heartRate));
     }
-    state.keeper.flush(state.runtime.machine, last.at, { walkerProfileId: walker.profileId });
+    await state.keeper.flush(state.runtime.machine, last.at, {
+      walkerProfileId: walker.profileId,
+    });
     for (const snapshot of result.snapshots) {
       this.deps.publisher.snapshot(
         state,
@@ -170,29 +174,28 @@ export class TreadmillIngest {
     this.checkGoal(state, last.at, walker);
   }
 
-  private recordFound(
+  private async recordFound(
     device: DeviceRow,
     state: DeviceState,
     record: PadRecord,
-    walker: WalkerFacts,
-  ): void {
+    walker: WalkerNow,
+  ): Promise<void> {
     const { store, now, log } = this.deps;
     const seen = device.details['padRecordSeen'];
     const timeZone = store.settings.read().time_zone;
-    const done = reconcileRecord(
-      { store, now, log },
-      {
+    const at = now();
+    const done = await store.host.write('treadmillReconcile', {
+      facts: {
         deviceId: device.id,
         walkerProfileId: walker.profileId,
-        zoneOffsetSeconds: zoneOffsetSeconds(timeZone, now()),
+        zoneOffsetSeconds: zoneOffsetSeconds(timeZone, at),
         seen: typeof seen === 'string' ? seen : null,
       },
       record,
-    );
+      now: at.toISOString(),
+    });
+    replayNotes(log, done.notes);
     state.setRecords(keepRecords(state.padRecords, done.view), record.remaining);
-    if (done.created !== null) {
-      this.deps.health.save(done.created);
-    }
     background(
       this.deps.local.observe(state.entry.externalId, {
         padRecordSeen: done.fingerprint,
@@ -222,11 +225,11 @@ export class TreadmillIngest {
     }
   }
 
-  private handle(state: DeviceState, event: MachineEvent, walker: WalkerFacts): void {
+  private async handle(state: DeviceState, event: MachineEvent, walker: WalkerNow): Promise<void> {
     const context = { walkerProfileId: walker.profileId };
     switch (event.kind) {
       case 'started':
-        state.keeper.begin(event, context);
+        await state.keeper.begin(event, context);
         state.armGoal();
         this.activity(state, event.at, { phase: 'started' }, walker);
         return;
@@ -235,7 +238,7 @@ export class TreadmillIngest {
         this.activity(state, event.at, { phase: event.kind }, walker);
         return;
       case 'finished':
-        this.finished(state, event.summary, walker);
+        await this.finished(state, event.summary, walker);
         return;
       case 'safety_stop':
         this.emit(state, { kind: 'fault', at: event.at, details: { code: 'safety_stop' } });
@@ -254,15 +257,11 @@ export class TreadmillIngest {
     this.deps.sink().event(eventOf(state, spec));
   }
 
-  private nameOf(profileId: string | null): JsonValue {
-    return profileId === null ? null : this.deps.store.profiles.byId(profileId).name;
-  }
-
   private activity(
     state: DeviceState,
     at: string,
     details: Readonly<Record<string, JsonValue>>,
-    walker: WalkerFacts,
+    walker: WalkerNow,
   ): void {
     if (!admitActivity(state, Date.parse(at), this.deps.log)) {
       return;
@@ -273,20 +272,23 @@ export class TreadmillIngest {
         at,
         details: {
           ...details,
-          walker: this.nameOf(walker.profileId),
+          walker: walker.name,
           profileId: walker.profileId,
         },
       }),
     );
   }
 
-  private finished(state: DeviceState, summary: SessionSummary, walker: WalkerFacts): void {
-    const session = state.keeper.finish(summary, { walkerProfileId: walker.profileId });
+  private async finished(
+    state: DeviceState,
+    summary: SessionSummary,
+    walker: WalkerNow,
+  ): Promise<void> {
+    const session = await state.keeper.finish(summary, { walkerProfileId: walker.profileId });
     state.wishRecord();
     if (session === null) {
       return;
     }
-    this.deps.health.save(session);
     this.activity(
       state,
       session.endedAt,
@@ -315,7 +317,7 @@ export class TreadmillIngest {
     }
   }
 
-  private checkGoal(state: DeviceState, at: string, walker: WalkerFacts): void {
+  private checkGoal(state: DeviceState, at: string, walker: WalkerNow): void {
     const summary = openSummary(state.runtime.machine, at);
     if (summary !== null && goalReached(state.runtime.pad, summary) && state.takeGoal()) {
       const { goalKind, goalValue } = state.runtime.pad;
@@ -378,16 +380,11 @@ export class TreadmillIngest {
     };
   }
 
-  private publishLive(
-    device: DeviceRow,
-    state: DeviceState,
-    walker: WalkerFacts,
-    now: string,
-  ): void {
+  private publishLive(device: DeviceRow, state: DeviceState, walker: WalkerNow, now: string): void {
     if (!this.deps.live.watched(device.id)) {
       return;
     }
-    const heartRate = watchHeartRate(this.deps.store, walker.profileId, this.deps.now());
+    const { heartRate } = walker;
     const scale = entrySettingsOf(state.entry).inclineScale;
     const facts: FrameFacts = { state, at: now, walker, heartRate, scale };
     this.deps.live.publish(device.id, (client) => {

@@ -107,6 +107,7 @@ function whoOf(call: Call): VoiceWho {
   return {
     caller: call.caller,
     chatId: call.chatId,
+    chatTools: call.chatTools,
     place: call.place,
     speaking: call.speaking,
     canSee: call.sight !== null,
@@ -114,23 +115,22 @@ function whoOf(call: Call): VoiceWho {
   };
 }
 
-const HEARD = new WeakMap<Call, string | null>();
+const HEARD = new WeakMap<Call, Promise<string | null>>();
 
-function heardBefore(options: CallDeskOptions, call: Call): string | null {
-  if (!HEARD.has(call)) {
-    HEARD.set(
-      call,
-      call.deviceId === null
-        ? null
-        : recentSpeechOf(options, {
-            callId: call.id,
-            deviceId: call.deviceId,
-            role: call.caller.role,
-            profileId: call.caller.profileId,
-          }),
-    );
-  }
-  return HEARD.get(call) ?? null;
+function heardBefore(options: CallDeskOptions, call: Call): Promise<string | null> {
+  const known = HEARD.get(call);
+  if (known !== undefined) return known;
+  const heard =
+    call.deviceId === null
+      ? Promise.resolve(null)
+      : recentSpeechOf(options, {
+          callId: call.id,
+          deviceId: call.deviceId,
+          role: call.caller.role,
+          profileId: call.caller.profileId,
+        });
+  HEARD.set(call, heard);
+  return heard;
 }
 
 type PromptHooks = Pick<
@@ -144,16 +144,16 @@ function promptHooks(options: CallDeskOptions, call: () => Call, hub: () => Tool
   const who = (): VoiceWho => whoOf(call());
   return {
     system: () => systemOf(kit, hub(), who()),
-    note: (known, starting) =>
+    note: async (known, starting) =>
       voiceNoteOf(kit, hub(), who(), {
-        recentSpeech: heardBefore(options, call()),
+        recentSpeech: await heardBefore(options, call()),
         known,
         starting,
       }),
     history: () => historyOf(store, call().chatId),
-    window: () => liveWindow(store.assistantChat.settings()),
+    window: () => liveWindow(store.live.home.assistant.read()),
     tools: () => declarationsOf(kit, hub(), who()),
-    webSearch: () => callSearchesWeb(kit, who()),
+    webSearch: () => callSearchesWeb(who()),
   };
 }
 
@@ -192,7 +192,7 @@ export function conversationHooks(
     speech,
     ...(pause === null ? {} : { pause }),
     ...(listening === null ? {} : { listening }),
-    settings: () => store.assistantChat.settings().voice,
+    settings: () => store.live.home.assistant.read().voice,
     ...promptHooks(options, call, hub),
     record: (turn): void => {
       recordTurn(call(), turn);

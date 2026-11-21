@@ -8,7 +8,7 @@ describe('pluginFiles', () => {
     const layout = hubLayout('/hub-root', {});
     const folder = layout.system.plugins('discord');
     const readers = {
-      attachmentsOf: (): string[] => ['a'],
+      attachmentsOf: (): Promise<string[]> => Promise.resolve(['a']),
       fromMachine: (): Promise<null> => Promise.resolve(null),
       fromUpload: (): Promise<null> => Promise.resolve(null),
       fromPicture: (): Promise<null> => Promise.resolve(null),
@@ -16,7 +16,7 @@ describe('pluginFiles', () => {
     const files = pluginFiles(folder, readers);
     expect(files.folder).toBe(folder);
     expect(files.outbox).toBe(join(folder, 'outbox'));
-    expect(files.attachmentsOf('chat')).toEqual(['a']);
+    expect(files.attachmentsOf).toBe(readers.attachmentsOf);
     expect(files.fromMachine).toBe(readers.fromMachine);
     expect(files.fromUpload).toBe(readers.fromUpload);
     expect(files.fromPicture).toBe(readers.fromPicture);

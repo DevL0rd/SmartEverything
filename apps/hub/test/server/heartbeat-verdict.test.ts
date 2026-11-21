@@ -10,9 +10,10 @@ import WebSocket, { WebSocketServer } from 'ws';
 import { z } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
 import { answersPing } from '../../src/server/live-reach';
-import { SocketEndpoint } from '../../src/server/socket-endpoint';
+import { SocketEndpoint, type SocketSession } from '../../src/server/socket-endpoint';
 import { pingWhenOpen } from '../../src/network/guarded-socket';
 import { testLogger } from '../support/logs';
+import { refusingUpgrades } from '../support/socket-client';
 import { testStore } from '../support/store';
 
 const PROBE_MS = 100;
@@ -107,7 +108,7 @@ describe('keeping peers through a hub stall longer than the heartbeat', () => {
       heartbeatMs: PROBE_MS,
       schema: z.strictObject({ type: z.literal('hello') }),
       log: testLogger('socket'),
-      open: () => ({
+      open: (): SocketSession<{ type: 'hello' }> => ({
         message: (): void => {
           if (stalls.length > 0) return;
           stalls.push(PROBE_MS * 3);
@@ -120,10 +121,15 @@ describe('keeping peers through a hub stall longer than the heartbeat', () => {
       }),
     });
     const http = createServer();
-    servers.push(http, { close: () => { endpoint.stop(); } });
-    http.on('upgrade', (request, socket, head) => {
-      endpoint.upgrade(request, socket, head);
+    servers.push(http, {
+      close: () => {
+        endpoint.stop();
+      },
     });
+    http.on(
+      'upgrade',
+      refusingUpgrades((request, socket, head) => endpoint.upgrade(request, socket, head)),
+    );
     http.listen(0, '127.0.0.1');
     await once(http, 'listening');
     const address = http.address();

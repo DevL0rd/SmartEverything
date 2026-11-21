@@ -1,58 +1,25 @@
-import { JSON_VALUE, type GoogleSyncTrigger, type PlannerItemRow } from '@smarteverything/domain';
+import type { GoogleSyncTrigger } from '@smarteverything/domain';
 import {
-  VENDOR_MAX_REMINDER_OVERRIDES,
   applyEventsPage,
   classifyApiFailure,
   EventsPageSchema,
   eventsListQuery,
-  mergeFields,
-  valuesEqual,
   type CalendarSyncState,
-  type EventTombstone,
-  type GoogleEvent,
 } from '@smarteverything/google';
-import { Logger } from '@smarteverything/logging';
-import { z } from 'zod';
 import type { GoogleTokens } from '../../google/tokens';
 import type { FetchLike } from '../../plugins/builtin/fetch-like';
-import type { PlannerItemInput } from '../../store/repositories/planner-items';
 import type { Store } from '../../store/store';
+import type { Batch } from './calendar-batch';
 import { CalendarMirror } from './calendar-list';
-import { jsonOr, recoverable, type Batch } from './calendar-batch';
-import { guestsOfItem, pullAttendees } from './calendar-guests';
-import {
-  eventFields,
-  eventZone,
-  itemFields,
-  localOf,
-  mappedItem,
-  meetAttachments,
-  patchable,
-  recurrenceLines,
-  type Fields,
-} from './calendar-map';
 import { CalendarPusher } from './calendar-push';
 import { GoogleCallError, Run, type Ctx, type RequestSpec } from './calendar-run';
 
 export { GoogleCallError } from './calendar-run';
 
-const log = new Logger('hub.planner');
-
-const FIELDS = z.record(z.string(), JSON_VALUE);
-
 export interface CalendarSyncDeps {
-  readonly store: Pick<
-    Store,
-    | 'plannerItems'
-    | 'plannerGuests'
-    | 'plannerCollections'
-    | 'googleAccounts'
-    | 'googleSyncState'
-    | 'googleSyncLog'
-  >;
+  readonly store: Pick<Store, 'host'>;
   readonly tokens: Pick<GoogleTokens, 'accessToken' | 'invalidate'>;
   readonly fetch: FetchLike;
-  readonly now: () => Date;
 }
 
 export class GoogleCalendarSync {
@@ -62,17 +29,7 @@ export class GoogleCalendarSync {
   constructor(private readonly deps: CalendarSyncDeps) {
     const request = <T>(spec: RequestSpec<T>): Promise<T> => this.request(spec);
     this.mirror = new CalendarMirror({ store: deps.store, request });
-    this.pusher = new CalendarPusher({
-      store: deps.store,
-      now: deps.now,
-      request,
-      reconcile: (ctx, item, event, fields): void => {
-        this.reconcile(ctx, item, event, fields);
-      },
-      create: (ctx, event, fields): void => {
-        this.create(ctx, event, fields);
-      },
-    });
+    this.pusher = new CalendarPusher({ store: deps.store, request });
   }
 
   async sync(profileId: string, trigger: GoogleSyncTrigger): Promise<Run> {
@@ -84,7 +41,7 @@ export class GoogleCalendarSync {
       error = cause instanceof Error ? cause.message : String(cause);
       throw cause;
     } finally {
-      this.deps.store.googleSyncLog.insert({
+      await this.deps.store.host.call('googleSyncLog', 'insert', {
         profile_id: profileId,
         trigger,
         product: 'calendar',
@@ -115,17 +72,20 @@ export class GoogleCalendarSync {
   }
 
   private async syncCalendar(ctx: Ctx): Promise<void> {
-    const { googleSyncState } = this.deps.store;
+    const { host } = this.deps.store;
     const resource = {
       profileId: ctx.run.profileId,
       product: 'calendar',
       resourceId: ctx.calendarId,
     } as const;
     try {
-      await this.pull(ctx, googleSyncState.find(resource)?.sync_token ?? null);
+      await this.pull(
+        ctx,
+        (await host.call('googleSyncState', 'find', resource))?.sync_token ?? null,
+      );
     } catch (cause) {
       if (!(cause instanceof GoogleCallError) || cause.failure.kind !== 'gone') throw cause;
-      googleSyncState.remove(resource);
+      await host.call('googleSyncState', 'remove', resource);
       await this.pull(ctx, null);
     }
     if (!ctx.readOnly) await this.pusher.push(ctx);
@@ -133,25 +93,16 @@ export class GoogleCalendarSync {
 
   private async pull(ctx: Ctx, token: string | null): Promise<void> {
     const batch = await this.fetchBatch(ctx, token);
-    this.applyBatch(ctx, batch);
-    const { googleSyncState } = this.deps.store;
-    const resource = {
-      profileId: ctx.run.profileId,
-      product: 'calendar',
-      resourceId: ctx.calendarId,
-    } as const;
-    googleSyncState.put({
-      profile_id: ctx.run.profileId,
-      product: 'calendar',
-      resource_id: ctx.calendarId,
-      sync_token: batch.syncToken,
-      channel: googleSyncState.find(resource)?.channel ?? null,
-      last_pull_at: this.deps.now().toISOString(),
-    });
+    ctx.absorb(
+      await this.deps.store.host.write('plannerGoogleCalendarPull', { ...ctx.scoped(), batch }),
+    );
   }
 
   private async fetchBatch(ctx: Ctx, token: string | null): Promise<Batch> {
-    const own = this.ownEtags(ctx);
+    const own = await this.deps.store.host.read('plannerGoogleCalendarEtags', {
+      profileId: ctx.run.profileId,
+      collectionId: ctx.collection.id,
+    });
     const batch: Batch = {
       upserts: [],
       tombstones: [],
@@ -180,209 +131,5 @@ export class GoogleCalendarSync {
     }
     batch.syncToken = state.syncToken;
     return batch;
-  }
-
-  private ownEtags(ctx: Ctx): Map<string, string> {
-    const own = new Map<string, string>();
-    const items = this.deps.store.plannerItems.list(ctx.run.profileId, {
-      collectionIds: [ctx.collection.id],
-    });
-    for (const item of items) {
-      const id = item.google?.id ?? null;
-      const etag = item.google?.etag ?? null;
-      if (id !== null && etag !== null) own.set(id, etag);
-    }
-    return own;
-  }
-
-  private applyBatch(ctx: Ctx, batch: Batch): void {
-    ctx.run.count('pulled', batch.upserts.length + batch.tombstones.length);
-    const masters = batch.upserts.filter((event) => event.recurringEventId === undefined);
-    const exceptions = batch.upserts.filter((event) => event.recurringEventId !== undefined);
-    for (const event of [...masters, ...exceptions]) {
-      try {
-        this.applyUpsert(ctx, event);
-      } catch (cause) {
-        if (!recoverable(cause)) throw cause;
-        log.warn('Skipped a Google event that cannot be shown', { event: event.id });
-      }
-    }
-    const plain = batch.tombstones.filter((entry) => entry.recurringEventId === null);
-    const instances = batch.tombstones.filter((entry) => entry.recurringEventId !== null);
-    for (const entry of [...plain, ...instances]) this.applyTombstone(ctx, entry);
-    if (batch.full) this.dropUnseen(ctx, batch.seen);
-  }
-
-  private locate(ctx: Ctx, event: GoogleEvent): PlannerItemRow | undefined {
-    const { plannerItems } = this.deps.store;
-    const { profileId } = ctx.run;
-    const linked = plannerItems.byGoogle(profileId, ctx.calendarId, event.id)[0];
-    if (linked !== undefined) return linked;
-    const own = event.extendedProperties?.private?.['smarteverythingId'];
-    const local = own === undefined ? undefined : plannerItems.find(own, profileId);
-    return local !== undefined && (local.google?.etag ?? null) === null ? local : undefined;
-  }
-
-  private applyUpsert(ctx: Ctx, event: GoogleEvent): void {
-    const fields = eventFields(event, eventZone(event, ctx.zone));
-    const item = this.locate(ctx, event);
-    if (item === undefined) this.create(ctx, event, fields);
-    else this.reconcile(ctx, item, event, fields);
-  }
-
-  private create(ctx: Ctx, event: GoogleEvent, fields: Fields): void {
-    const { plannerItems } = this.deps.store;
-    const master =
-      event.recurringEventId === undefined
-        ? undefined
-        : plannerItems.byGoogle(ctx.run.profileId, ctx.calendarId, event.recurringEventId)[0];
-    if (event.recurringEventId !== undefined && master === undefined) {
-      log.warn('Skipped an exception whose series is unknown', { event: event.id });
-      return;
-    }
-    const created = plannerItems.insert(this.newItem(ctx, event, fields, master));
-    this.takeAttendees(created, event, fields);
-    ctx.run.count('created');
-  }
-
-  private newItem(
-    ctx: Ctx,
-    event: GoogleEvent,
-    fields: Fields,
-    master: PlannerItemRow | undefined,
-  ): PlannerItemInput {
-    return {
-      ...mappedItem(fields, []),
-      profile_id: ctx.run.profileId,
-      collection_id: ctx.collection.id,
-      kind: 'event',
-      parent_id: null,
-      priority: null,
-      tags: [],
-      estimate_minutes: null,
-      due_date: null,
-      due_at: null,
-      series_id: master?.id ?? null,
-      original_start:
-        master === undefined ? null : localOf(event.originalStartTime, master.time_zone),
-      status: 'open',
-      position: ctx.next(),
-      completion: { kind: 'manual' },
-      attachments: meetAttachments(event, []),
-      google: this.link(ctx, event, fields),
-      assignee_id: null,
-      ical_uid: event.iCalUID ?? null,
-      ical_sequence: event.sequence ?? 0,
-      booking_page_id: null,
-      created_by: 'google',
-    };
-  }
-
-  private link(
-    ctx: Ctx,
-    event: GoogleEvent,
-    fields: Fields,
-  ): NonNullable<PlannerItemRow['google']> {
-    return {
-      id: event.id,
-      calendarOrListId: ctx.calendarId,
-      etag: event.etag,
-      base: fields,
-      state: 'synced',
-    };
-  }
-
-  private reconcile(ctx: Ctx, item: PlannerItemRow, event: GoogleEvent, fields: Fields): void {
-    const google = item.google;
-    if (item.deleted_at !== null || google === null || google.etag === event.etag) return;
-    const mine = this.mineOf(item);
-    const base = patchable(google.base);
-    const theirs = patchable(fields);
-    let target: Fields = theirs;
-    if (!valuesEqual(mine, base)) {
-      const merge = mergeFields({
-        base,
-        mine,
-        theirs,
-        mineUpdatedAt: Date.parse(item.updated_at),
-        theirsUpdatedAt: Date.parse(event.updated ?? this.deps.now().toISOString()),
-      });
-      target = FIELDS.parse(merge.merged);
-      for (const conflict of merge.conflicts) {
-        ctx.run.conflict({
-          item_id: item.id,
-          field: conflict.field,
-          winner: conflict.winner === 'mine' ? 'app' : 'google',
-          losing_value: jsonOr(conflict.lost),
-        });
-      }
-    }
-    const updated = this.deps.store.plannerItems.update(item.id, ctx.run.profileId, {
-      ...mappedItem(target, item.reminders.slice(VENDOR_MAX_REMINDER_OVERRIDES)),
-      attachments: meetAttachments(event, item.attachments),
-      google: this.link(ctx, event, fields),
-    });
-    this.takeAttendees(updated, event, target);
-    ctx.run.count('updated');
-  }
-
-  private applyTombstone(ctx: Ctx, entry: EventTombstone): void {
-    const { plannerItems } = this.deps.store;
-    const { profileId } = ctx.run;
-    const own = plannerItems.byGoogle(profileId, ctx.calendarId, entry.id)[0];
-    if (own !== undefined) {
-      const edited = own.deleted_at === null && this.edited(own);
-      if (entry.recurringEventId === null && edited) {
-        plannerItems.update(own.id, profileId, { google: null });
-        ctx.run.conflict({ item_id: own.id, field: 'deleted', winner: 'app', losing_value: true });
-      } else {
-        plannerItems.purge(own.id, profileId);
-        ctx.run.count('deleted');
-      }
-    }
-    if (entry.recurringEventId === null || entry.originalStartTime === null) return;
-    const master = plannerItems.byGoogle(profileId, ctx.calendarId, entry.recurringEventId)[0];
-    if (master !== undefined) this.exclude(ctx, master, entry.originalStartTime);
-  }
-
-  private takeAttendees(item: PlannerItemRow, event: GoogleEvent, merged: Fields): void {
-    const at = this.deps.now().toISOString();
-    pullAttendees(this.deps.store, { item, event, merged, at });
-  }
-
-  private mineOf(item: PlannerItemRow): Fields {
-    return patchable(itemFields(item, guestsOfItem(this.deps.store, item)));
-  }
-
-  private edited(item: PlannerItemRow): boolean {
-    return item.google !== null && !valuesEqual(this.mineOf(item), patchable(item.google.base));
-  }
-
-  private exclude(
-    ctx: Ctx,
-    master: PlannerItemRow,
-    original: EventTombstone['originalStartTime'],
-  ): void {
-    const google = master.google;
-    if (google === null || master.rrule === null || original === null) return;
-    const local = localOf(original, master.time_zone);
-    if (master.exdates.includes(local)) return;
-    const exdates = [...master.exdates, local];
-    const lines = recurrenceLines(master.rrule, exdates, master.time_zone);
-    this.deps.store.plannerItems.update(master.id, ctx.run.profileId, {
-      exdates,
-      google: { ...google, base: { ...google.base, recurrence: [...lines] } },
-    });
-  }
-
-  private dropUnseen(ctx: Ctx, seen: ReadonlySet<string>): void {
-    const items = this.deps.store.plannerItems.list(ctx.run.profileId, {
-      collectionIds: [ctx.collection.id],
-    });
-    for (const item of items) {
-      const id = item.google?.id ?? null;
-      if (id === null || item.google?.state === 'sending' || seen.has(id)) continue;
-      this.applyTombstone(ctx, { id, recurringEventId: null, originalStartTime: null });
-    }
   }
 }

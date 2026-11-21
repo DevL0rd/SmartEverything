@@ -1,6 +1,5 @@
 import type { Clock } from '../clock';
 import type { ServerContext } from '../server/context';
-import { ownerProfileOf } from '../transcripts/owner';
 import { hubMemoryOf } from './hub-memory';
 import { MemoryLearner } from './learner';
 import { Principals } from './principals';
@@ -18,8 +17,8 @@ export function startMemoryLearning(
 ): RunningMemoryLearning {
   const { store } = context;
   const { service, manager, model } = hubMemoryOf(context);
-  const zone = (): string => store.settings.read().time_zone;
-  const principals = new Principals(store, () => ownerProfileOf(store));
+  const zone = (): string => store.live.home.settings.read().time_zone;
+  const principals = new Principals(store, () => store.host.call('personAccess', 'homeOwner'));
   const review = new MemoryReview({
     store,
     model,

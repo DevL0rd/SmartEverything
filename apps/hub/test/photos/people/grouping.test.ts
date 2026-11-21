@@ -41,7 +41,7 @@ describe('grouping faces for each viewer', () => {
     addFace({ itemId: c1 ?? '', embedding: direction(9) });
     const service = people();
     expect(await service.regroup(alice.profileId, 'person')).toBe(3);
-    const view = service.people(alice);
+    const view = await service.people(alice);
     expect(view.groups.map((group) => group.count)).toEqual([2, 1, 1]);
     expect(view.groups.every((group) => group.kind === 'person' && group.name === null)).toBe(true);
   });
@@ -52,13 +52,14 @@ describe('grouping faces for each viewer', () => {
     const service = people();
     await service.regroup(alice.profileId, 'person');
     await service.regroup(bob.profileId, 'person');
-    const [mine] = service.people(alice).groups;
-    const [theirs] = service.people(bob).groups;
+    const [mine] = (await service.people(alice)).groups;
+    const [theirs] = (await service.people(bob)).groups;
     expect(mine?.id).not.toBe(theirs?.id);
-    service.update(alice, mine?.id ?? '', { name: 'Mum' });
-    expect(service.people(bob).groups[0]?.name).toBeNull();
-    expect(() => service.group(bob, mine?.id ?? '')).toThrow('no such person');
-    expect(() => service.update(bob, mine?.id ?? '', { name: 'X' })).toThrow('no such person');
+    const mineId = mine?.id ?? '';
+    await service.update(alice, mineId, { name: 'Mum' });
+    expect((await service.people(bob)).groups[0]?.name).toBeNull();
+    await expect(service.group(bob, mineId)).rejects.toThrow('no such person');
+    await expect(service.update(bob, mineId, { name: 'X' })).rejects.toThrow('no such person');
   });
 
   it('never shows groups or faces of photos the viewer cannot open', async () => {
@@ -69,10 +70,12 @@ describe('grouping faces for each viewer', () => {
     const service = people();
     await service.regroup(alice.profileId, 'person');
     await service.regroup(bob.profileId, 'person');
-    expect(service.people(alice).groups.map((group) => group.count)).toEqual([1]);
-    expect(service.people(bob).groups.map((group) => group.count)).toEqual([2]);
-    expect(() => service.itemFaces(alice, theirs ?? '')).toThrow('not in your Photos');
-    expect(service.itemFaces(bob, theirs ?? '').faces.map((face) => face.id)).toEqual([secret]);
+    expect((await service.people(alice)).groups.map((group) => group.count)).toEqual([1]);
+    expect((await service.people(bob)).groups.map((group) => group.count)).toEqual([2]);
+    await expect(service.itemFaces(alice, theirs ?? '')).rejects.toThrow('not in your Photos');
+    expect((await service.itemFaces(bob, theirs ?? '')).faces.map((face) => face.id)).toEqual([
+      secret,
+    ]);
     expect(groups().membershipsOf(alice.profileId, [secret])).toEqual([]);
   });
 
@@ -82,7 +85,7 @@ describe('grouping faces for each viewer', () => {
     consent.face.set(alice.profileId, false);
     const service = people();
     expect(await service.regroup(alice.profileId, 'person')).toBe(0);
-    expect(service.people(alice).groups).toEqual([]);
+    expect((await service.people(alice)).groups).toEqual([]);
   });
 
   it('keeps named groups pinned and sends new look-alike faces to them', async () => {
@@ -90,12 +93,12 @@ describe('grouping faces for each viewer', () => {
     addFace({ itemId: a1 ?? '', embedding: direction(0) });
     const service = people();
     await service.regroup(alice.profileId, 'person');
-    const [group] = service.people(alice).groups;
-    service.update(alice, group?.id ?? '', { name: 'Dad' });
+    const [group] = (await service.people(alice)).groups;
+    await service.update(alice, group?.id ?? '', { name: 'Dad' });
     addFace({ itemId: a2 ?? '', embedding: direction(0, 0.1) });
     await service.regroup(alice.profileId, 'person');
-    const [after] = service.people(alice).groups;
-    expect(service.people(alice).groups).toHaveLength(1);
+    const [after] = (await service.people(alice)).groups;
+    expect((await service.people(alice)).groups).toHaveLength(1);
     expect(after).toMatchObject({ id: group?.id, name: 'Dad', count: 2 });
     expect(
       groups()
@@ -110,11 +113,11 @@ describe('grouping faces for each viewer', () => {
     const stray = addFace({ itemId: a2 ?? '', embedding: direction(0, 0.1) });
     const service = people();
     await service.regroup(alice.profileId, 'person');
-    const [group] = service.people(alice).groups;
+    const [group] = (await service.people(alice)).groups;
     const left = await service.removeFaces(alice, group?.id ?? '', { faceIds: [stray] });
     expect(left?.count).toBe(1);
     await service.regroup(alice.profileId, 'person');
-    const after = service.people(alice).groups;
+    const after = (await service.people(alice)).groups;
     expect(after.map((entry) => entry.count)).toEqual([1, 1]);
     expect(groups().rejectedGroups(alice.profileId, stray)).toEqual([group?.id]);
     expect(groups().groupOfFace(alice.profileId, stray)?.id).not.toBe(group?.id);
@@ -127,7 +130,7 @@ describe('grouping faces for each viewer', () => {
     const service = people();
     await service.regroup(alice.profileId, 'person');
     const home = groups().groupOfFace(alice.profileId, other);
-    const target = service.people(alice).groups.find((entry) => entry.id !== home?.id);
+    const target = (await service.people(alice)).groups.find((entry) => entry.id !== home?.id);
     await expect(
       service.removeFaces(alice, target?.id ?? '', { faceIds: [other] }),
     ).rejects.toThrow();
@@ -141,18 +144,16 @@ describe('grouping faces for each viewer', () => {
     const service = people();
     await service.regroup(alice.profileId, 'person');
     await service.regroup(alice.profileId, 'pet');
-    const persons = service.people(alice, 'person').groups;
-    const pet = service.people(alice, 'pet').groups[0];
+    const persons = (await service.people(alice, 'person')).groups;
+    const pet = (await service.people(alice, 'pet')).groups[0];
     const [first, second] = persons;
-    expect(() =>
-      service.merge(alice, { targetId: first?.id ?? '', sourceIds: [pet?.id ?? ''] }),
-    ).toThrow('same kind');
-    const merged = service.merge(alice, {
-      targetId: first?.id ?? '',
-      sourceIds: [second?.id ?? ''],
-    });
+    const targetId = first?.id ?? '';
+    await expect(service.merge(alice, { targetId, sourceIds: [pet?.id ?? ''] })).rejects.toThrow(
+      'same kind',
+    );
+    const merged = await service.merge(alice, { targetId, sourceIds: [second?.id ?? ''] });
     expect(merged.count).toBe(2);
-    expect(service.people(alice, 'person').groups).toHaveLength(1);
+    expect((await service.people(alice, 'person')).groups).toHaveLength(1);
   });
 
   it('suggests merging groups that look like one person but were kept apart', async () => {
@@ -161,9 +162,9 @@ describe('grouping faces for each viewer', () => {
     addFace({ itemId: a2 ?? '', embedding: direction(0, 0.2) });
     const service = people();
     await service.regroup(alice.profileId, 'person');
-    const [group] = service.people(alice).groups;
+    const [group] = (await service.people(alice)).groups;
     await service.removeFaces(alice, group?.id ?? '', { faceIds: [first] });
-    const view = service.people(alice);
+    const view = await service.people(alice);
     expect(view.groups).toHaveLength(2);
     expect(view.mergeSuggestions).toHaveLength(1);
     expect(view.mergeSuggestions[0]?.similarity).toBeGreaterThan(0.9);
@@ -175,17 +176,17 @@ describe('grouping faces for each viewer', () => {
     addFace({ itemId: a2 ?? '', embedding: direction(0, 0.2) });
     const service = people();
     await service.regroup(alice.profileId, 'person');
-    const [group] = service.people(alice).groups;
+    const [group] = (await service.people(alice)).groups;
     await service.removeFaces(alice, group?.id ?? '', { faceIds: [first] });
-    const [suggestion] = service.people(alice).mergeSuggestions;
+    const [suggestion] = (await service.people(alice)).mergeSuggestions;
     const [left, right] = suggestion?.groupIds ?? ['', ''];
-    expect(() => {
-      service.dismissMerge(bob, { groupIds: [left, right] });
-    }).toThrow(expect.objectContaining({ code: 'not_found' }));
-    service.dismissMerge(alice, { groupIds: [right, left] });
-    service.dismissMerge(alice, { groupIds: [left, right] });
-    expect(service.people(alice).mergeSuggestions).toEqual([]);
-    expect(service.people(alice).groups).toHaveLength(2);
+    await expect(service.dismissMerge(bob, { groupIds: [left, right] })).rejects.toThrow(
+      expect.objectContaining({ code: 'not_found' }),
+    );
+    await service.dismissMerge(alice, { groupIds: [right, left] });
+    await service.dismissMerge(alice, { groupIds: [left, right] });
+    expect((await service.people(alice)).mergeSuggestions).toEqual([]);
+    expect((await service.people(alice)).groups).toHaveLength(2);
   });
 
   it('links a person to a household member and hides a group', async () => {
@@ -193,17 +194,17 @@ describe('grouping faces for each viewer', () => {
     addFace({ itemId: a1 ?? '', embedding: direction(0) });
     const service = people();
     await service.regroup(alice.profileId, 'person');
-    const [group] = service.people(alice).groups;
-    const linked = service.update(alice, group?.id ?? '', {
+    const [group] = (await service.people(alice)).groups;
+    const linked = await service.update(alice, group?.id ?? '', {
       linkedProfileId: bob.profileId,
       hidden: true,
     });
     expect(linked).toMatchObject({ linkedProfileId: bob.profileId, hidden: true });
-    expect(() =>
+    await expect(
       service.update(alice, group?.id ?? '', {
         linkedProfileId: '0f000000-0000-4000-8000-0000000000ff',
       }),
-    ).toThrow('household member');
+    ).rejects.toThrow('household member');
   });
 
   it('groups pets within their species and never mixes models', async () => {
@@ -213,12 +214,12 @@ describe('grouping faces for each viewer', () => {
     addFace({ itemId: a3 ?? '', embedding: direction(1), kind: 'pet', species: 'dog' });
     const service = people();
     await service.regroup(alice.profileId, 'pet');
-    const pets = service.people(alice, 'pet').groups;
+    const pets = (await service.people(alice, 'pet')).groups;
     expect(pets.map((pet) => [pet.species, pet.count]).sort()).toEqual([
       ['cat', 1],
       ['dog', 2],
     ]);
-    expect(service.people(alice, 'person').groups).toEqual([]);
+    expect((await service.people(alice, 'person')).groups).toEqual([]);
   });
 
   it('removes unnamed groups whose photos are gone', async () => {
@@ -227,7 +228,7 @@ describe('grouping faces for each viewer', () => {
     addFace({ itemId: a2 ?? '', embedding: direction(8) });
     const service = people();
     await service.regroup(alice.profileId, 'person');
-    expect(service.people(alice).groups).toHaveLength(2);
+    expect((await service.people(alice)).groups).toHaveLength(2);
     context.sql.run('drop the photo', 'delete from drive_items where id = $id', { id: a2 ?? '' });
     await service.regroup(alice.profileId, 'person');
     expect(groups().forProfile(alice.profileId)).toHaveLength(1);

@@ -6,6 +6,7 @@ import { SimulatedClock } from '../../src/clock/simulated';
 import { FeedService } from '../../src/planner/feeds';
 import { testLogger } from './logs';
 import { testStore, type TestStore } from './store';
+import { inProcessCalendars } from './ical';
 
 export const START = '2026-11-14T12:00:00.000Z';
 
@@ -120,8 +121,14 @@ export class FeedRig {
     const memberId = test.store.profiles.create({ name: 'Ann' }).id;
     const server = new FeedServer();
     await server.listen();
-    const service = new FeedService({ store: test.store, clock, log: testLogger('feeds') });
+    const service = new FeedService({
+      store: test.store,
+      clock,
+      calendars: inProcessCalendars,
+      log: testLogger('feeds'),
+    });
     service.start();
+    await service.settled();
     return new FeedRig({ test, clock, server, service, ownerId: owner.id, memberId });
   }
 

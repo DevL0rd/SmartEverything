@@ -95,7 +95,7 @@ function openState(found: PublicFileRequest): string | null {
   return null;
 }
 
-function page(
+async function page(
   env: FileRequestRouteEnv,
   request: IncomingMessage,
   response: ServerResponse,
@@ -103,7 +103,7 @@ function page(
 ): Promise<void> {
   const nonce = randomBytes(16).toString('base64');
   try {
-    const found = env.requests.open(params['token'] ?? '', remoteOf(request));
+    const found = await env.requests.open(params['token'] ?? '', remoteOf(request));
     const reason = openState(found);
     sendPage(
       response,
@@ -134,7 +134,6 @@ function page(
       nonce,
     );
   }
-  return Promise.resolve();
 }
 
 async function begin(
@@ -143,8 +142,8 @@ async function begin(
   response: ServerResponse,
   params: Params,
 ): Promise<void> {
-  const progress = await refused(response, () => {
-    const found = env.requests.receiving(params['token'] ?? '', remoteOf(request));
+  const progress = await refused(response, async () => {
+    const found = await env.requests.receiving(params['token'] ?? '', remoteOf(request));
     const intake = intakeOf(request);
     return env.intake.begin(found, {
       ...intake,
@@ -161,8 +160,8 @@ async function append(
   response: ServerResponse,
   params: Params,
 ): Promise<void> {
-  const progress = await refused(response, () => {
-    const found = env.requests.receiving(params['token'] ?? '', remoteOf(request));
+  const progress = await refused(response, async () => {
+    const found = await env.requests.receiving(params['token'] ?? '', remoteOf(request));
     const chunks: AsyncIterable<Uint8Array> = request;
     return env.intake.append(found, {
       ...intakeOf(request),
@@ -181,8 +180,8 @@ async function head(
   response: ServerResponse,
   params: Params,
 ): Promise<void> {
-  const progress = await refused(response, () => {
-    const found = env.requests.receiving(params['token'] ?? '', remoteOf(request));
+  const progress = await refused(response, async () => {
+    const found = await env.requests.receiving(params['token'] ?? '', remoteOf(request));
     return env.intake.status(found, params['uploadId'] ?? '');
   });
   if (progress === null) return;
@@ -201,7 +200,7 @@ async function cancel(
   params: Params,
 ): Promise<void> {
   const done = await refused(response, async () => {
-    const found = env.requests.receiving(params['token'] ?? '', remoteOf(request));
+    const found = await env.requests.receiving(params['token'] ?? '', remoteOf(request));
     await env.intake.cancel(found, params['uploadId'] ?? '');
     return true;
   });

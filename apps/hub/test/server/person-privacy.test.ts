@@ -37,7 +37,7 @@ function addScale(): string {
   return device.id;
 }
 
-function weigh(scaleUser: number, at: string, weightKg: number): BodyReadingRow {
+function weigh(scaleUser: number, at: string, weightKg: number): Promise<BodyReadingRow> {
   return scale.record({
     deviceId: scaleId,
     measuredAt: at,
@@ -114,10 +114,10 @@ describe('the body data in a snapshot', () => {
     });
   });
 
-  it('shows a member their own weigh-ins and the ones nobody claimed, never someone else’s', () => {
-    const danas = weigh(1, '2026-10-18T07:00:00.000Z', 61);
-    const sams = weigh(2, '2026-10-18T07:05:00.000Z', 80);
-    const unclaimed = weigh(7, '2026-10-18T07:10:00.000Z', 90);
+  it('shows a member their own weigh-ins and the ones nobody claimed, never someone else’s', async () => {
+    const danas = await weigh(1, '2026-10-18T07:00:00.000Z', 61);
+    const sams = await weigh(2, '2026-10-18T07:05:00.000Z', 80);
+    const unclaimed = await weigh(7, '2026-10-18T07:10:00.000Z', 90);
     expect(unclaimed.profile_id).toBeNull();
     const seen = bodyTables(test.store, { role: 'member', profileId: sam.profileId }).body_readings;
     expect(seen.map((reading) => reading.id).sort()).toStrictEqual([sams.id, unclaimed.id].sort());
@@ -149,8 +149,8 @@ function readingChange(
 }
 
 describe('the body data in live changes', () => {
-  it('does not send a member another person’s weigh-in', () => {
-    const danas = weigh(1, '2026-10-18T07:00:00.000Z', 61);
+  it('does not send a member another person’s weigh-in', async () => {
+    const danas = await weigh(1, '2026-10-18T07:00:00.000Z', 61);
     const change = readingChange(danas, null);
     expect(visible(hearing(sam), change, test.store)).toBe(false);
     expect(projected(hearing(sam), change, test.store)).toBeNull();
@@ -158,8 +158,8 @@ describe('the body data in live changes', () => {
     expect(projected(hearing(owner), change, test.store)).toStrictEqual(change);
   });
 
-  it('removes a pending weigh-in from a member who sees it claimed by someone else', () => {
-    const pending = weigh(7, '2026-10-18T07:10:00.000Z', 90);
+  it('removes a pending weigh-in from a member who sees it claimed by someone else', async () => {
+    const pending = await weigh(7, '2026-10-18T07:10:00.000Z', 90);
     const claimed: BodyReadingRow = { ...pending, profile_id: dana.profileId };
     const shown = projected(hearing(sam), readingChange(claimed, pending), test.store);
     expect(shown).toMatchObject({ table: 'body_readings', record: null, oldRecord: pending });

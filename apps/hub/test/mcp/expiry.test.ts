@@ -58,7 +58,7 @@ describe('waiting for a command', () => {
       clock,
       waitMs: 20_000,
       submit: () => Promise.resolve([row]),
-      current: () => row,
+      current: () => Promise.resolve(row),
     });
   }
 
@@ -113,7 +113,7 @@ describe('waiting for a command', () => {
         clock,
         waitMs: 20_000,
         submit: () => Promise.reject(new Error('refused')),
-        current: () => row,
+        current: () => Promise.resolve(row),
       }),
     ).rejects.toThrow('refused');
     expect(clock.pending()).toStrictEqual([]);

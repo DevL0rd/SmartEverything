@@ -1,6 +1,5 @@
 import type { DriveItem, DriveRoot } from '@smarteverything/domain';
-import mime from 'mime-types';
-import type { DriveInode, DriveInodesRepository } from '../store/repositories/drive-inodes';
+import type { DriveInodesRepository } from '../store/repositories/drive-inodes';
 import type { DriveInodePatch } from '../store/repositories/drive-item-inodes';
 import type { DriveItemDraft, DriveItemsRepository } from '../store/repositories/drive-items';
 import type { DriveMissingRepository } from '../store/repositories/drive-missing';
@@ -8,13 +7,16 @@ import {
   freshDraft,
   ownersOf,
   resolveUnreadable,
+  ScanStepError,
   type Common,
   type FileType,
+  type ScanEntry,
 } from './scanner-drafts';
 import {
   carriesFile,
   carriesLink,
   identityKey,
+  indexedFrom,
   isoOf,
   kindOf,
   linked,
@@ -25,7 +27,6 @@ import {
   under,
   type Indexed,
 } from './scanner-index';
-import { isFileItem } from './file-item';
 import {
   filesBySize,
   missingRecords,
@@ -44,32 +45,13 @@ export interface CommitDependencies {
   >;
   readonly inodes: Pick<DriveInodesRepository, 'findMany' | 'names' | 'ofItem'>;
   readonly missing: Pick<DriveMissingRepository, 'expire' | 'ofRoot' | 'reclaim' | 'record'>;
-  readonly hash: (entry: WalkEntry) => Promise<string | null>;
-  readonly write: <T>(work: () => T) => T;
   readonly now: () => Date;
   readonly newId: () => string;
 }
 
-const OCTET_STREAM = 'application/octet-stream';
-
-const DOCUMENT_MIMES: readonly string[] = [
-  'text/',
-  'application/pdf',
-  'application/msword',
-  'application/rtf',
-  'application/vnd.ms-',
-  'application/vnd.openxmlformats-officedocument',
-  'application/vnd.oasis.opendocument',
-];
-
-export function classify(name: string): FileType {
-  const found = mime.lookup(name);
-  const type = found === false ? OCTET_STREAM : found;
-  if (type.startsWith('image/')) return { mime: type, kind: 'image' };
-  if (type.startsWith('video/')) return { mime: type, kind: 'video' };
-  if (type.startsWith('audio/')) return { mime: type, kind: 'audio' };
-  const document = DOCUMENT_MIMES.some((prefix) => type.startsWith(prefix));
-  return { mime: type, kind: document ? 'document' : 'other' };
+interface Waiting {
+  readonly entry: ScanEntry;
+  readonly hashed: boolean;
 }
 
 export class ScanCommitter {
@@ -77,8 +59,13 @@ export class ScanCommitter {
   private readonly byIdentity = new Map<string, Indexed[]>();
   private readonly inodeOfIdentity = new Map<string, number>();
   private readonly seen = new Set<string>();
-  private readonly deferred: WalkEntry[] = [];
-  private readonly unknown: WalkEntry[] = [];
+  private readonly deferred: ScanEntry[] = [];
+  private readonly unknown: ScanEntry[] = [];
+  private waiting: readonly Waiting[] | null = null;
+  private sized: ReadonlyMap<number, readonly Indexed[]> | null = null;
+  private unreadable: readonly string[] = [];
+  private gone: readonly Indexed[] | null = null;
+  private swept = 0;
   private readonly reuse: ReuseIndex;
   private readonly known: boolean;
   private readonly count: number;
@@ -99,33 +86,53 @@ export class ScanCommitter {
     return this.count;
   }
 
-  apply(entries: readonly WalkEntry[]): void {
-    this.deps.write(() => {
-      for (const entry of entries) this.entry(entry);
-    });
+  apply(entries: readonly ScanEntry[]): void {
+    for (const entry of entries) this.entry(entry);
   }
 
-  async finish(unreadable: readonly string[]): Promise<void> {
-    this.deps.write(() => {
-      for (const entry of this.deferred.splice(0)) this.settle(entry);
-    });
+  settle(unreadable: readonly string[]): readonly WalkEntry[] {
+    for (const entry of this.deferred.splice(0)) this.settleEntry(entry);
+    this.unreadable = unreadable;
     const sized = filesBySize(this.unseen(unreadable));
-    const unknown: Unknown[] = [];
-    for (const entry of this.unknown.splice(0)) {
-      const hashed = this.reuse.wantsHash(entry, this.open(sized, entry));
-      unknown.push({ entry, sha256: hashed ? await this.deps.hash(entry) : null });
+    this.sized = sized;
+    this.waiting = this.unknown
+      .splice(0)
+      .map((entry) => ({ entry, hashed: this.reuse.wantsHash(entry, this.open(sized, entry)) }));
+    return this.waiting.filter((waiting) => waiting.hashed).map((waiting) => waiting.entry);
+  }
+
+  place(hashes: readonly (string | null)[]): void {
+    const { waiting, sized } = this;
+    if (waiting === null || sized === null) {
+      throw new ScanStepError('The scan placed its new entries before it settled.');
     }
-    this.deps.write(() => {
-      for (const found of unknown) this.place(found, this.open(sized, found.entry));
-    });
-    const gone = this.unseen(unreadable).sort(
+    const wanted = waiting.filter((entry) => entry.hashed).length;
+    if (hashes.length !== wanted) {
+      throw new ScanStepError(
+        `The scan asked for ${String(wanted)} hashes and got ${String(hashes.length)}.`,
+      );
+    }
+    let next = 0;
+    for (const { entry, hashed } of waiting) {
+      const sha256 = hashed ? hashes[next] : null;
+      if (sha256 === undefined)
+        throw new ScanStepError(`The scan has no hash for ${entry.relPath}.`);
+      if (hashed) next += 1;
+      this.placeEntry(entry, sha256, this.open(sized, entry));
+    }
+    this.waiting = null;
+    this.gone = this.unseen(this.unreadable).sort(
       (left, right) => left.relPath.length - right.relPath.length,
     );
-    for (let from = 0; from < gone.length; from += WALK_BATCH_ROWS) {
-      this.deps.write(() => {
-        for (const indexed of gone.slice(from, from + WALK_BATCH_ROWS)) this.sweep(indexed);
-      });
-    }
+  }
+
+  sweep(): boolean {
+    const { gone } = this;
+    if (gone === null) throw new ScanStepError('The scan swept before it placed its new entries.');
+    const batch = gone.slice(this.swept, this.swept + WALK_BATCH_ROWS);
+    for (const indexed of batch) this.sweepIndexed(indexed);
+    this.swept += batch.length;
+    return this.swept < gone.length;
   }
 
   private unseen(unreadable: readonly string[]): Indexed[] {
@@ -143,9 +150,9 @@ export class ScanCommitter {
     );
   }
 
-  private place(found: Unknown, open: readonly Indexed[]): void {
+  private placeEntry(entry: ScanEntry, sha256: string | null, open: readonly Indexed[]): void {
+    const found: Unknown = { entry, sha256 };
     const reuse = this.reuse.chosen(found, open);
-    const { entry, sha256 } = found;
     if (reuse?.kind === 'live') {
       this.live.delete(reuse.indexed.relPath);
       this.save(reuse.indexed, entry, sha256);
@@ -211,7 +218,7 @@ export class ScanCommitter {
     return folders;
   }
 
-  private entry(entry: WalkEntry): void {
+  private entry(entry: ScanEntry): void {
     const hit = this.live.get(entry.relPath);
     if (hit !== undefined && sameIdentity(hit, entry)) {
       this.keep(hit, entry);
@@ -225,7 +232,7 @@ export class ScanCommitter {
     this.unmatched(hit, entry);
   }
 
-  private unmatched(hit: Indexed | undefined, entry: WalkEntry): void {
+  private unmatched(hit: Indexed | undefined, entry: ScanEntry): void {
     if (linked(entry) || (hit !== undefined && hit.kind !== 'folder' && entry.kind === 'file')) {
       this.deferred.push(entry);
     } else if (hit === undefined && this.reuse.mayReuse(entry)) {
@@ -235,7 +242,7 @@ export class ScanCommitter {
     }
   }
 
-  private settle(entry: WalkEntry): void {
+  private settleEntry(entry: ScanEntry): void {
     const hit = this.live.get(entry.relPath);
     const mover = this.mover(entry);
     if (mover !== undefined) {
@@ -255,7 +262,7 @@ export class ScanCommitter {
     );
   }
 
-  private keep(hit: Indexed, entry: WalkEntry): void {
+  private keep(hit: Indexed, entry: ScanEntry): void {
     if (
       (entry.kind === 'folder' && entry.childCount === null) ||
       (sameContent(hit, entry) && !modeDrifts(hit.mode, entry))
@@ -266,21 +273,21 @@ export class ScanCommitter {
     this.save(hit, entry, null);
   }
 
-  private move(mover: Indexed, entry: WalkEntry, occupant: Indexed | undefined): void {
-    if (occupant !== undefined) this.sweep(occupant);
+  private move(mover: Indexed, entry: ScanEntry, occupant: Indexed | undefined): void {
+    if (occupant !== undefined) this.sweepIndexed(occupant);
     const occupied = this.deps.items.byPath(this.root.id, entry.relPath, null);
     if (occupied !== undefined && occupied.id !== mover.id) this.evict(occupied.id, entry.relPath);
     this.live.delete(mover.relPath);
     this.save(mover, entry, null);
   }
 
-  private save(previous: Indexed | null, entry: WalkEntry, sha256: string | null): void {
+  private save(previous: Indexed | null, entry: ScanEntry, sha256: string | null): void {
     const base = this.reusable(this.base(previous, entry), previous, entry);
     const resolved = resolveUnreadable(entry, base);
     const common = this.common(base?.id ?? this.deps.newId(), resolved, base);
-    const carried = base !== null && this.carries(base, resolved);
+    const carried = base !== null && this.carries(base, resolved, entry.type);
     const draft = withHash(
-      carried ? { ...base, ...common } : freshDraft(common, resolved, classify(resolved.name)),
+      carried ? { ...base, ...common } : freshDraft(common, resolved, entry.type),
       sha256,
     );
     const written = this.store(draft, resolved, base, carried);
@@ -312,7 +319,7 @@ export class ScanCommitter {
     if (inode !== undefined && entry.kind === 'file' && !this.inodeOfIdentity.has(key)) {
       this.inodeOfIdentity.set(key, inode.id);
     }
-    this.live.set(entry.relPath, this.indexed(written, entry, inode));
+    this.live.set(entry.relPath, indexedFrom(written, entry, inode));
   }
 
   private reusable(
@@ -362,7 +369,7 @@ export class ScanCommitter {
     );
   }
 
-  private carries(base: DriveItem, entry: WalkEntry): boolean {
+  private carries(base: DriveItem, entry: WalkEntry, type: FileType): boolean {
     switch (entry.kind) {
       case 'folder':
         return false;
@@ -371,7 +378,7 @@ export class ScanCommitter {
       case 'special':
         return base.kind === 'special';
       case 'file':
-        return carriesFile(base, entry, classify(entry.name).mime);
+        return carriesFile(base, entry, type.mime);
     }
   }
 
@@ -398,24 +405,7 @@ export class ScanCommitter {
     return parent.id;
   }
 
-  private indexed(item: DriveItem, entry: WalkEntry, inode: DriveInode | undefined): Indexed {
-    return {
-      id: item.id,
-      relPath: item.relPath,
-      kind: kindOf(item),
-      bytes: item.bytes,
-      modifiedAt: item.modifiedAt,
-      childCount: item.kind === 'folder' ? item.childCount : null,
-      target: item.kind === 'link' ? item.linkTarget : null,
-      dev: entry.dev,
-      ino: entry.ino,
-      inodeId: inode?.id ?? 0,
-      mode: inode?.mode ?? entry.mode,
-      sha256: isFileItem(item) ? item.sha256 : null,
-    };
-  }
-
-  private sweep(indexed: Indexed): void {
+  private sweepIndexed(indexed: Indexed): void {
     if (this.live.get(indexed.relPath)?.id !== indexed.id) return;
     const at = this.deps.now().toISOString();
     for (const record of missingRecords(this.root.id, indexed, this.live.values(), at)) {

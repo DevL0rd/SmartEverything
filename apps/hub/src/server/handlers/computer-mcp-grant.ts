@@ -18,7 +18,7 @@ export function computerMcpGrantRoute(context: ServerContext, runtimePath = fals
     path: runtimePath ? '/api/nodes/ai/:runtime/grant' : COMPUTER_MCP_GRANT_PATH,
     handle: async (request, response, params): Promise<void> => {
       const runtime = runtimePath ? COMPUTER_AI_RUNTIME.parse(params['runtime']) : 'claude';
-      const node = context.computerNodes.authenticate(bearerOf(request));
+      const node = await context.computerNodes.authenticate(bearerOf(request));
       const parsed = COMPUTER_MCP_GRANT_REQUEST.safeParse(
         parseJsonBody(request, await readBody(request, GRANT_BODY_LIMIT)),
       );
@@ -31,7 +31,7 @@ export function computerMcpGrantRoute(context: ServerContext, runtimePath = fals
         response,
         200,
         COMPUTER_MCP_GRANT_RESPONSE.parse(
-          manageComputerMcpGrant(context, node, parsed.data, runtime),
+          await manageComputerMcpGrant(context, node, parsed.data, runtime),
         ),
       );
     },
@@ -42,17 +42,19 @@ export function computerMcpPolicyRoute(context: ServerContext): RawRoute {
   return {
     method: 'GET',
     path: '/api/nodes/ai/:runtime/mcp-policy',
-    handle: (request, response, params): Promise<void> => {
+    handle: async (request, response, params): Promise<void> => {
       const runtime = COMPUTER_AI_RUNTIME.parse(params['runtime']);
-      const node = context.computerNodes.authenticate(bearerOf(request));
+      const node = await context.computerNodes.authenticate(bearerOf(request));
       sendJson(
         response,
         200,
         COMPUTER_NATIVE_MCP_POLICY.parse(
-          context.store.computerNativeMcpPolicy.read({ device_id: node.device_id, runtime }),
+          await context.store.host.call('computerNativeMcpPolicy', 'read', {
+            device_id: node.device_id,
+            runtime,
+          }),
         ),
       );
-      return Promise.resolve();
     },
   };
 }

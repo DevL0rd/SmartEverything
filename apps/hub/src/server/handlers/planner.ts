@@ -5,20 +5,14 @@ import {
   type PlannerPreferences,
   type TriggerCatalogue,
 } from '@smarteverything/domain';
-import { composeDayFromStore, frameOf } from '../../planner/day';
+import { frameOf } from '../../planner/day';
 import type { FeedService } from '../../planner/feeds';
-import { freeSlotsFromStore } from '../../planner/free-slots';
 import { parsePlannerText } from '../../planner/parse';
-import { acceptProposal, rejectProposal } from '../../planner/proposals';
-import { composeRange } from '../../planner/range';
 import { isoOf } from '../../planner/instants';
-import { visibleCollections, writableCollections } from '../../planner/sharing/visibility';
-import { sleepSpansOn } from '../../planner/sleep-nights';
-import { composeStats } from '../../planner/stats';
 import { suggestCompletions } from '../../planner/suggest-completion';
 import type { Caller } from '../auth';
 import { DONE_REPLY, bound, type RouteOf } from '../router';
-import { plannerProfileOf, type PlannerContext } from './planner-items';
+import { plannerProfileOf, type PlannerContext } from './planner-profile';
 import { personHour24 } from '../../clock/person-clock';
 
 export interface PlannerCoreDependencies {
@@ -32,10 +26,6 @@ export type PlannerCoreContext = PlannerContext;
 
 const PREVIEW_COUNT = 5;
 
-function instantOf(now: () => Date): Temporal.Instant {
-  return Temporal.Instant.fromEpochMilliseconds(now().getTime());
-}
-
 function zoneOf(context: PlannerCoreContext): string {
   return context.store.settings.read().time_zone;
 }
@@ -44,24 +34,30 @@ function dayRoute(
   context: PlannerCoreContext,
   deps: PlannerCoreDependencies,
 ): RouteOf<'readPlannerDay'> {
-  return bound(E.readPlannerDay, ({ query, caller }) => {
+  return bound(E.readPlannerDay, async ({ query, caller }) => {
     const profileId = plannerProfileOf(context, caller, query.personId);
-    const day = {
-      profileId,
+    const now = deps.now().getTime();
+    const preferences = deps.preferencesOf(profileId);
+    const timeZone = zoneOf(context);
+    const frame = frameOf({
       date: query.date,
-      timeZone: zoneOf(context),
-      now: instantOf(deps.now),
+      timeZone,
+      now: Temporal.Instant.fromEpochMilliseconds(now),
       lastOpen: null,
-      preferences: deps.preferencesOf(profileId),
-      sleep: sleepSpansOn(context.store, profileId, query.date, zoneOf(context)),
-      sessions: [],
-    };
-    const frame = frameOf(day);
-    deps.feeds.registry.prepare(visibleCollections(context.store, profileId), {
+      preferences,
+    });
+    const { host } = context.store;
+    await deps.feeds.registry.prepare(await host.read('plannerVisibleCollections', { profileId }), {
       from: isoOf(frame.lookbackFrom),
       to: isoOf(frame.dayEnd),
     });
-    return composeDayFromStore(context.store, day);
+    return host.read('plannerDayView', {
+      profileId,
+      date: query.date,
+      timeZone,
+      nowMs: now,
+      preferences,
+    });
   });
 }
 
@@ -69,20 +65,19 @@ function rangeRoute(
   context: PlannerCoreContext,
   deps: PlannerCoreDependencies,
 ): RouteOf<'readPlannerRange'> {
-  return bound(E.readPlannerRange, ({ query, caller }) => {
+  return bound(E.readPlannerRange, async ({ query, caller }) => {
     const profileId = plannerProfileOf(context, caller, query.personId);
-    deps.feeds.registry.prepare(visibleCollections(context.store, profileId), {
+    const { host } = context.store;
+    await deps.feeds.registry.prepare(await host.read('plannerVisibleCollections', { profileId }), {
       from: query.from,
       to: query.to,
     });
-    return composeRange(context.store, {
+    return host.read('plannerRangeView', {
       profileId,
-      window: {
-        from: Temporal.Instant.from(query.from),
-        to: Temporal.Instant.from(query.to),
-        timeZone: zoneOf(context),
-      },
-      now: instantOf(deps.now),
+      from: query.from,
+      to: query.to,
+      timeZone: zoneOf(context),
+      nowMs: deps.now().getTime(),
       collectionIds: query.collections,
     });
   });
@@ -93,10 +88,10 @@ function statsRoute(
   deps: PlannerCoreDependencies,
 ): RouteOf<'readPlannerStats'> {
   return bound(E.readPlannerStats, ({ query, caller }) =>
-    composeStats(context.store, {
+    context.store.host.read('plannerStatsView', {
       profileId: plannerProfileOf(context, caller, query.personId),
       range: query.range,
-      now: instantOf(deps.now),
+      nowMs: deps.now().getTime(),
       timeZone: zoneOf(context),
     }),
   );
@@ -130,9 +125,9 @@ function parseRoute(
   context: PlannerCoreContext,
   deps: PlannerCoreDependencies,
 ): RouteOf<'parsePlannerText'> {
-  return bound(E.parsePlannerText, ({ query, body, caller }) => {
+  return bound(E.parsePlannerText, async ({ query, body, caller }) => {
     const profileId = plannerProfileOf(context, caller, query.personId);
-    const collections = writableCollections(context.store, profileId);
+    const collections = await context.store.host.read('plannerWritableCollections', { profileId });
     const target = targetCollection(
       collections,
       body.collection_id,
@@ -164,16 +159,16 @@ function freeSlotsRoute(
   context: PlannerCoreContext,
   deps: PlannerCoreDependencies,
 ): RouteOf<'plannerFreeSlots'> {
-  return bound(E.plannerFreeSlots, ({ query, body, caller }) => [
-    ...freeSlotsFromStore(context.store, {
+  return bound(E.plannerFreeSlots, ({ query, body, caller }) =>
+    context.store.host.read('plannerFreeSlotsView', {
       profileId: plannerProfileOf(context, caller, query.personId),
-      from: Temporal.Instant.from(body.from),
-      to: Temporal.Instant.from(body.to),
+      from: body.from,
+      to: body.to,
       minutes: body.minutes,
       timeZone: zoneOf(context),
-      now: instantOf(deps.now),
+      nowMs: deps.now().getTime(),
     }),
-  ]);
+  );
 }
 
 function proposalRoutes(context: PlannerCoreContext): {
@@ -182,13 +177,15 @@ function proposalRoutes(context: PlannerCoreContext): {
 } {
   return {
     acceptPlannerProposal: bound(E.acceptPlannerProposal, ({ params, query, caller }) =>
-      context.store.write(() =>
-        acceptProposal(context.store, plannerProfileOf(context, caller, query.personId), params.id),
-      ),
+      context.store.host.write('plannerProposalAccept', {
+        profileId: plannerProfileOf(context, caller, query.personId),
+        id: params.id,
+      }),
     ),
-    rejectPlannerProposal: bound(E.rejectPlannerProposal, ({ params, query, caller }) => {
-      context.store.write(() => {
-        rejectProposal(context.store, plannerProfileOf(context, caller, query.personId), params.id);
+    rejectPlannerProposal: bound(E.rejectPlannerProposal, async ({ params, query, caller }) => {
+      await context.store.host.write('plannerProposalReject', {
+        profileId: plannerProfileOf(context, caller, query.personId),
+        id: params.id,
       });
       return DONE_REPLY;
     }),

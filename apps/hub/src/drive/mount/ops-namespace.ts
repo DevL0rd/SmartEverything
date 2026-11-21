@@ -28,15 +28,18 @@ interface Target<Name extends Mutation> {
     meta: RequestMeta<Name>,
     payload: Uint8Array,
   ) => Promise<ReplyMetaInput<Name>>;
-  readonly replay: (scope: PosixScope, meta: RequestMeta<Name>) => Promise<ReplyMetaInput<Name> | null>;
+  readonly replay: (
+    scope: PosixScope,
+    meta: RequestMeta<Name>,
+  ) => Promise<ReplyMetaInput<Name> | null>;
 }
 
 const NO_PAYLOAD = new Uint8Array();
 
 function mutation<Name extends Mutation>(services: MountServices, target: Target<Name>): Executors {
   return {
-    [target.name]: encodedOperation(target.name, (call) => {
-      const scope = call.session.scopeOf(services.store, target.anchor(call.meta));
+    [target.name]: encodedOperation(target.name, async (call) => {
+      const scope = await call.session.scopeOf(services.store, target.anchor(call.meta));
       return services.dedupe.onceEncoded(
         scope.placementId,
         { name: target.name, key: call.meta.opKey },
@@ -50,21 +53,21 @@ function mutation<Name extends Mutation>(services: MountServices, target: Target
 function reads(services: MountServices): Executors {
   const { posix, store, listings } = services;
   return {
-    LOOKUP: operation('LOOKUP', (call) =>
-      posix.lookup(call.session.scopeOf(store, call.meta.parent), call.meta),
+    LOOKUP: operation('LOOKUP', async (call) =>
+      posix.lookup(await call.session.scopeOf(store, call.meta.parent), call.meta),
     ),
     GETATTR: operation('GETATTR', async (call) => ({
-      attr: await posix.getattr(call.session.scopeOf(store, call.meta.ino), call.meta.ino),
+      attr: await posix.getattr(await call.session.scopeOf(store, call.meta.ino), call.meta.ino),
     })),
-    READDIR: operation('READDIR', (call) => {
-      const scope = call.session.scopeOf(store, call.meta.ino);
+    READDIR: operation('READDIR', async (call) => {
+      const scope = await call.session.scopeOf(store, call.meta.ino);
       return listings.page(scope, call.meta, () => posix.readdir(scope, call.meta));
     }),
-    STATFS: operation('STATFS', (call) =>
-      posix.statfs(call.session.scopeOf(store, call.meta.ino), call.meta.ino),
+    STATFS: operation('STATFS', async (call) =>
+      posix.statfs(await call.session.scopeOf(store, call.meta.ino), call.meta.ino),
     ),
     READLINK: operation('READLINK', async (call) => ({
-      target: await posix.readlink(call.session.scopeOf(store, call.meta.ino), call.meta.ino),
+      target: await posix.readlink(await call.session.scopeOf(store, call.meta.ino), call.meta.ino),
     })),
   };
 }
@@ -93,7 +96,7 @@ async function inodeEntry(
   scope: PosixScope,
   ino: number,
 ): Promise<Entry | null> {
-  if (services.store.driveInodes.find(ino) === undefined) return null;
+  if ((await services.store.host.call('driveInodes', 'find', ino)) === undefined) return null;
   return { ino, attr: await services.posix.getattr(scope, ino) };
 }
 
@@ -106,8 +109,8 @@ async function gone(
   return entry?.ino === meta.ino ? null : {};
 }
 
-function leased(services: MountServices, scope: PosixScope, ino: number): void {
-  if (!services.store.driveInodeLeases.holds(scope.caller.nodeId, ino)) {
+async function leased(services: MountServices, scope: PosixScope, ino: number): Promise<void> {
+  if (!(await services.store.host.call('driveInodeLeases', 'holds', scope.caller.nodeId, ino))) {
     throw posixError('EINVAL', `The inode ${String(ino)} is not leased to this computer.`);
   }
 }
@@ -118,8 +121,8 @@ function creations(services: MountServices): Executors {
     ...mutation(services, {
       name: 'MKDIR',
       anchor: (meta) => meta.parent,
-      run: (scope, meta) => {
-        leased(services, scope, meta.ino);
+      run: async (scope, meta) => {
+        await leased(services, scope, meta.ino);
         return posix.mkdir(scope, meta);
       },
       replay: (scope, meta) => inodeEntry(services, scope, meta.ino),
@@ -127,8 +130,8 @@ function creations(services: MountServices): Executors {
     ...mutation(services, {
       name: 'CREATE',
       anchor: (meta) => meta.parent,
-      run: (scope, meta, payload) => {
-        leased(services, scope, meta.ino);
+      run: async (scope, meta, payload) => {
+        await leased(services, scope, meta.ino);
         return posix.create(scope, meta, payload);
       },
       replay: (scope, meta) => inodeEntry(services, scope, meta.ino),
@@ -148,8 +151,8 @@ function specials(services: MountServices): Executors {
     ...mutation(services, {
       name: 'MKNOD',
       anchor: (meta) => meta.parent,
-      run: (scope, meta) => {
-        leased(services, scope, meta.ino);
+      run: async (scope, meta) => {
+        await leased(services, scope, meta.ino);
         return posix.mknod(scope, meta);
       },
       replay: (scope, meta) => inodeEntry(services, scope, meta.ino),
@@ -157,8 +160,8 @@ function specials(services: MountServices): Executors {
     ...mutation(services, {
       name: 'SYMLINK',
       anchor: (meta) => meta.parent,
-      run: (scope, meta) => {
-        leased(services, scope, meta.ino);
+      run: async (scope, meta) => {
+        await leased(services, scope, meta.ino);
         return posix.symlink(scope, meta);
       },
       replay: (scope, meta) => inodeEntry(services, scope, meta.ino),
@@ -176,13 +179,13 @@ function specials(services: MountServices): Executors {
 }
 
 function removals(services: MountServices): Executors {
-  const { posix, push } = services;
+  const { posix } = services;
   return {
     ...mutation(services, {
       name: 'UNLINK',
       anchor: (meta) => meta.parent,
       run: async (scope, meta) => {
-        push.ledger.note(scope.drive.id, pathOf(services, scope, meta.parent, meta.name));
+        await noted(services, scope, meta.parent, meta.name);
         await posix.unlink(scope, meta);
         return {};
       },
@@ -192,7 +195,7 @@ function removals(services: MountServices): Executors {
       name: 'RMDIR',
       anchor: (meta) => meta.parent,
       run: async (scope, meta) => {
-        push.ledger.note(scope.drive.id, pathOf(services, scope, meta.parent, meta.name));
+        await noted(services, scope, meta.parent, meta.name);
         await posix.rmdir(scope, meta);
         return {};
       },
@@ -202,7 +205,7 @@ function removals(services: MountServices): Executors {
       name: 'RMTREE',
       anchor: (meta) => meta.parent,
       run: async (scope, meta) => {
-        push.ledger.note(scope.drive.id, pathOf(services, scope, meta.parent, meta.name));
+        await noted(services, scope, meta.parent, meta.name);
         await posix.rmtree(scope, meta);
         return {};
       },
@@ -212,8 +215,8 @@ function removals(services: MountServices): Executors {
       name: 'RENAME',
       anchor: (meta) => meta.parent,
       run: async (scope, meta) => {
-        push.ledger.note(scope.drive.id, pathOf(services, scope, meta.parent, meta.name));
-        push.ledger.note(scope.drive.id, pathOf(services, scope, meta.newParent, meta.newName));
+        await noted(services, scope, meta.parent, meta.name);
+        await noted(services, scope, meta.newParent, meta.newName);
         await posix.rename(scope, meta);
         return {};
       },
@@ -225,13 +228,27 @@ function removals(services: MountServices): Executors {
   };
 }
 
-function pathOf(services: MountServices, scope: PosixScope, parent: number, name: string): string {
-  const { store } = services;
-  const inode = store.driveInodes.find(parent);
-  if (inode?.rootId !== scope.drive.id || inode.isRoot) return name;
-  const id = store.driveInodes.names(parent)[0];
-  const item = id === undefined ? undefined : store.driveItems.find(id, null);
-  return item === undefined ? name : `${item.relPath}/${name}`;
+async function noted(
+  services: MountServices,
+  scope: PosixScope,
+  parent: number,
+  name: string,
+): Promise<void> {
+  await services.push.ledger.note(scope.drive.id, await pathOf(services, scope, parent, name));
+}
+
+async function pathOf(
+  services: MountServices,
+  scope: PosixScope,
+  parent: number,
+  name: string,
+): Promise<string> {
+  const path = await services.store.host.read('driveMountPath', {
+    driveId: scope.drive.id,
+    ino: parent,
+    name,
+  });
+  return path ?? name;
 }
 
 function attributes(services: MountServices): Executors {
@@ -252,8 +269,8 @@ function attributes(services: MountServices): Executors {
       },
       replay: RERUN,
     }),
-    SETXATTR: operation('SETXATTR', (call) => {
-      const scope = call.session.scopeOf(store, call.meta.ino);
+    SETXATTR: operation('SETXATTR', async (call) => {
+      const scope = await call.session.scopeOf(store, call.meta.ino);
       return dedupe.once(
         scope.placementId,
         { name: 'SETXATTR', key: call.meta.opKey },

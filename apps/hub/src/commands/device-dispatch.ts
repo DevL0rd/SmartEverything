@@ -7,7 +7,7 @@ import {
   type JsonValue,
 } from '@smarteverything/domain';
 import type { CommandRow, DeviceRecord } from '../database/port';
-import { CommandTargetError, ProviderNotRunningError } from './command-errors';
+import { CommandTargetError } from './command-errors';
 import type { CommandExecutorOptions } from './executor';
 
 type DispatchOptions = Pick<
@@ -55,18 +55,17 @@ export async function executeOnDevice(
   const { device, command } = deviceCommandOf(options, row);
   const driver = device.provider === 'local' ? options.drivers.forDevice(device.externalId) : null;
   if (driver !== null) return driver.execute(command);
-  if (options.television?.handles(device, command) === true) {
+  if (options.television !== undefined && (await options.television.handles(device, command))) {
     return options.television.execute(device, command);
   }
-  const adapter = options.adapters.adapterFor(device.provider);
-  options.log.debug('command.dispatched', {
+  options.log.debug('command.dispatched', () => ({
     correlationId: row.id,
     provider: device.provider,
     deviceId: device.id,
     externalId: device.externalId,
     capability: command.capability,
-    running: adapter !== undefined,
-  });
-  if (adapter === undefined) throw new ProviderNotRunningError(device.provider);
+    running: options.adapters.adapterFor(device.provider) !== undefined,
+  }));
+  const adapter = await options.adapters.started(device.provider);
   return adapter.execute(command);
 }

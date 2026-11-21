@@ -14,11 +14,11 @@ useRig((made) => {
   rig = made;
 });
 
-it('uses the exact durable claimed turn without latest grant or stale driver provenance', () => {
+it('uses the exact durable claimed turn without latest grant or stale driver provenance', async () => {
   const { store } = rig.opened;
   const chat = rig.newChat(rig.hub.target);
-  const sessionId = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId).claim
-    .session_id;
+  const sessionId = (await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId))
+    .claim.session_id;
   const repairId = randomUUID();
   const input = {
     kind: 'chat' as const,

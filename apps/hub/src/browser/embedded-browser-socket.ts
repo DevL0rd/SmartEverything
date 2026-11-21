@@ -231,8 +231,8 @@ export class EmbeddedBrowserSockets {
     private readonly store: Store,
     private readonly controllers: EmbeddedBrowserControllers,
   ) {}
-  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
-    const client = socketClient(
+  async upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+    const client = await socketClient(
       this.store,
       request,
       EMBEDDED_BROWSER_PROTOCOL,

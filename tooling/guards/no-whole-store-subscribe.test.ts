@@ -20,6 +20,7 @@ class Other {
 declare const store: EntityStore;
 declare const maybe: EntityStore | null;
 declare const other: Other;
+declare function useDevices(): readonly unknown[];
 `;
 
 let eslint: ESLint;
@@ -37,12 +38,12 @@ beforeAll(async () => {
         languageOptions: {
           parser: tseslint.parser,
           parserOptions: {
-            projectService: { allowDefaultProject: ['sample.ts', 'allowed.ts'] },
+            projectService: { allowDefaultProject: ['sample.ts', 'allowed.ts', 'banned.ts'] },
             tsconfigRootDir: root,
           },
         },
         plugins: { local: loaded.default },
-        rules: { [RULE]: ['error', { allow: ['allowed.ts'] }] },
+        rules: { [RULE]: ['error', { allow: ['allowed.ts'], deviceListIn: ['banned.ts'] }] },
       },
     ],
   });
@@ -63,5 +64,10 @@ describe('no-whole-store-subscribe', () => {
     expect(await flagged("store.subscribeSlices(['tables.layouts'], () => undefined);")).toBe(0);
     expect(await flagged('other.subscribe(() => undefined);')).toBe(0);
     expect(await flagged('store.subscribe(() => undefined);', 'allowed.ts')).toBe(0);
+  });
+
+  it('flags useDevices() only inside the folders that ban the whole device list', async () => {
+    expect(await flagged('useDevices();', 'banned.ts')).toBe(1);
+    expect(await flagged('useDevices();')).toBe(0);
   });
 });

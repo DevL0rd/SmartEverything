@@ -46,8 +46,8 @@ afterEach(async () => {
 });
 
 describe('a file sent to a phone', () => {
-  it('carries its name, type and a signed link for the person who owns it', () => {
-    expect(phoneFileOf({ store: test.store, links: LINKS }, caller(dana), file)).toEqual({
+  it('carries its name, type and a signed link for the person who owns it', async () => {
+    expect(await phoneFileOf({ store: test.store, links: LINKS }, caller(dana), file)).toEqual({
       type: 'receive_file',
       fileId: file,
       name: 'ticket.pdf',
@@ -56,16 +56,16 @@ describe('a file sent to a phone', () => {
     });
   });
 
-  it('is open to an owner and refused to another member', () => {
+  it('is open to an owner and refused to another member', async () => {
     const source = { store: test.store, links: LINKS };
-    expect(phoneFileOf(source, caller(owner), file).name).toBe('ticket.pdf');
+    expect((await phoneFileOf(source, caller(owner), file)).name).toBe('ticket.pdf');
     const sam = addPerson(test, 'Sam', 'member');
-    expect(() => phoneFileOf(source, caller(sam), file)).toThrow(/someone else/);
+    await expect(phoneFileOf(source, caller(sam), file)).rejects.toThrow(/someone else/);
   });
 
-  it('names the file that does not exist', () => {
-    expect(() =>
+  it('names the file that does not exist', async () => {
+    await expect(
       phoneFileOf({ store: test.store, links: LINKS }, caller(owner), randomUUID()),
-    ).toThrow(/assistant attachment/);
+    ).rejects.toThrow(/assistant attachment/);
   });
 });

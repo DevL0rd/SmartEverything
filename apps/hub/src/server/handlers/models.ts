@@ -2,18 +2,12 @@ import type { IncomingMessage } from 'node:http';
 import {
   API_ENDPOINTS as E,
   ApiError,
-  createOverrideIndex,
-  deviceFamily,
   modelDeviceIdentity,
   modelIdentityKey,
-  resolveModel,
   type DeviceModels,
-  type DeviceModelView,
   type DeviceRow,
   type EndpointShape,
-  type JsonValue,
   type ModelCatalogRow,
-  type ModelDefaults,
   type ModelDevice,
   type ModelMetadataIndex,
   type ModelOverrideRow,
@@ -23,17 +17,17 @@ import {
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { ModelCatalogService } from '../../models/catalog-service';
+import {
+  modelDeviceOf,
+  modelViewOf,
+  resolveDeviceModel,
+  type ModelResolveSources,
+} from '../../models/device-model';
 import type { ModelAssetsRepository } from '../../store/repositories/model-assets';
 import type { ModelOverridesRepository } from '../../store/repositories/model-overrides';
 import type { Store } from '../../store/store';
 import type { Caller } from '../auth';
 import { bound } from '../router';
-
-export interface ModelResolveSources {
-  readonly catalog: Pick<ModelCatalogService, 'catalog' | 'reportTie'>;
-  readonly overrides: Pick<ModelOverridesRepository, 'all'>;
-  readonly defaults: () => ModelDefaults;
-}
 
 export interface ModelRouteServices extends ModelResolveSources {
   readonly devices: Pick<Store['devices'], 'byId'>;
@@ -42,13 +36,7 @@ export interface ModelRouteServices extends ModelResolveSources {
   readonly assets: Pick<ModelAssetsRepository, 'find' | 'bytes' | 'save' | 'saveGlb'>;
   readonly metadata: Pick<ModelMetadataIndex, 'find'>;
   readonly profileOf: (caller: Caller) => string;
-  readonly authorize: (request: IncomingMessage, endpoint: EndpointShape) => Caller;
-}
-
-export interface DeviceModelResolution {
-  readonly subject: ModelDevice;
-  readonly resolution: ModelResolution;
-  readonly overrides: readonly ModelOverrideRow[];
+  readonly authorize: (request: IncomingMessage, endpoint: EndpointShape) => Promise<Caller>;
 }
 
 type Listing = z.output<typeof E.listModels.query>;
@@ -68,51 +56,6 @@ interface Finishes {
 }
 
 const NO_FINISHES: Finishes = { finishes: [], defaultFinish: null };
-
-function textOf(value: JsonValue | undefined): string | undefined {
-  return typeof value === 'string' && value !== '' ? value : undefined;
-}
-
-export function modelDeviceOf(device: DeviceRow): ModelDevice {
-  return {
-    id: device.id,
-    brand: device.manufacturer,
-    manufacturer: device.manufacturer,
-    model: device.model,
-    family: deviceFamily(device),
-    hardwareModel: textOf(device.details['hardwareModel']),
-    product: textOf(device.details['product']),
-  };
-}
-
-export function resolveDeviceModel(
-  services: ModelResolveSources,
-  device: DeviceRow,
-): DeviceModelResolution {
-  const subject = modelDeviceOf(device);
-  const overrides = services.overrides.all();
-  const resolution = resolveModel(
-    subject,
-    {
-      catalog: services.catalog.catalog(),
-      overrides: createOverrideIndex(overrides),
-      defaults: services.defaults(),
-    },
-    { onTie: services.catalog.reportTie },
-  );
-  return { subject, resolution, overrides };
-}
-
-export function modelViewOf(resolution: ModelResolution): DeviceModelView {
-  const { main } = resolution;
-  return {
-    id: main?.kind === 'catalogue' ? main.modelId : null,
-    asset_hash: main?.kind === 'asset' ? main.hash : null,
-    source: resolution.source,
-    finish: resolution.finish ?? null,
-    extras: [...resolution.extras],
-  };
-}
 
 function overrideTarget(scope: ModelOverrideScope, subject: ModelDevice): string {
   switch (scope) {

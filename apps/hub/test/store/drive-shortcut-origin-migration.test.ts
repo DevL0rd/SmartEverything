@@ -42,7 +42,10 @@ beforeEach(() => {
   );
   const context = new StoreContext(sql, new ChangeFeed(testLogger()), () => new Date(NOW));
   profile = new ProfilesRepository(context).create({ name: 'Alice' }).id;
-  new DriveRootsRepository(context, () => '/drives').insert(sharedDriveRoot(ROOT));
+  new DriveRootsRepository(context, {
+    home: '/drives',
+    people: { parent: '/drives/people', leaf: '' },
+  }).insert(sharedDriveRoot(ROOT));
   shortcut('before', 'Old link', null);
 });
 

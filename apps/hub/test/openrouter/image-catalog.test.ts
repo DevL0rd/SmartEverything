@@ -83,11 +83,11 @@ describe('image endpoint catalogue', () => {
     };
     const client = new OpenRouterClient({ fetch: transport, key: (): null => null });
     const now = (): Date => new Date('2026-10-08T10:00:00.000Z');
-    const catalog = new OpenRouterImageCatalog({ client, store: test.store.aiModels, now });
+    const catalog = new OpenRouterImageCatalog({ client, store: test.store.live.aiModels, now });
     expect(await catalog.list(true)).toHaveLength(49);
     expect(peak).toBeGreaterThan(1);
     expect(peak).toBeLessThanOrEqual(6);
-    const restarted = new OpenRouterImageCatalog({ client, store: test.store.aiModels, now });
+    const restarted = new OpenRouterImageCatalog({ client, store: test.store.live.aiModels, now });
     expect(await restarted.list(false)).toHaveLength(49);
   });
 });

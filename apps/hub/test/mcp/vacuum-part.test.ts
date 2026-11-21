@@ -186,10 +186,10 @@ function addRobot(readings: Readonly<Record<string, JsonValue>> = READINGS): str
   return id;
 }
 
-function partOf(id: string): Record<string, unknown> {
-  const device = deviceDetails(opened.store, null, OWNER, placedDevice(opened.store, null, id))[
-    'device'
-  ];
+async function partOf(id: string): Promise<Record<string, unknown>> {
+  const device = (
+    await deviceDetails(opened.store, null, OWNER, await placedDevice(opened.store, null, id))
+  )['device'];
   if (typeof device !== 'object' || device === null) throw new Error('No device part.');
   const part: unknown = Object.fromEntries(Object.entries(device))['vacuum'];
   if (typeof part !== 'object' || part === null) throw new Error('No vacuum part.');
@@ -233,8 +233,8 @@ afterEach(async () => {
 });
 
 describe('what the AI reads about a robot vacuum without loading the map', () => {
-  it('shows the phase, status words, battery, job, rooms, station, consumables and camera', () => {
-    const part = partOf(addRobot());
+  it('shows the phase, status words, battery, job, rooms, station, consumables and camera', async () => {
+    const part = await partOf(addRobot());
     expect(part).toMatchObject({
       phase: 'cleaning',
       awake: true,
@@ -253,8 +253,8 @@ describe('what the AI reads about a robot vacuum without loading the map', () =>
     expect(part['problems']).toBeUndefined();
   });
 
-  it('says why a value cannot be read instead of leaving it out', () => {
-    const part = partOf(addRobot({ ...READINGS, 'raw:2.40': '{"rooms":"x"}' }));
+  it('says why a value cannot be read instead of leaving it out', async () => {
+    const part = await partOf(addRobot({ ...READINGS, 'raw:2.40': '{"rooms":"x"}' }));
     expect(part['job']).toBeNull();
     expect(part['schedules']).toBeUndefined();
     expect(part['problems']).toEqual([expect.any(String)]);

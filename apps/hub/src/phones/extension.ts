@@ -29,8 +29,28 @@ function watchDetail(context: ExtensionContext, live: PhoneLive): () => void {
   };
 }
 
+function endpointsOf(
+  context: ExtensionContext,
+  actions: PhoneActionBroker,
+  now: () => Date,
+): RunningExtension['endpoints'] {
+  return {
+    ...phoneRoutes({
+      store: context.store,
+      hub: context.hub,
+      actions,
+      approvals: context.machineApprovals,
+      notifications: context.live.notifications,
+      now,
+      files: (caller, fileId) => phoneFileOf(context, caller, fileId),
+    }),
+    ...clientPerfRoutes(new PerfSamples(context.layout.system.logs.perfSamples, context.log)),
+  };
+}
+
 export function phonesExtension(now: () => Date): ServerExtension {
-  return (context): Promise<RunningExtension> => {
+  return async (context): Promise<RunningExtension> => {
+    await context.hub.phones.details.load();
     const actions = new PhoneActionBroker(
       context.pushCommands,
       context.log.child({ actorId: 'phone' }),
@@ -54,19 +74,8 @@ export function phonesExtension(now: () => Date): ServerExtension {
     context.hub.phones.start();
     live.start();
     const unwatch = watchDetail(context, live);
-    return Promise.resolve({
-      endpoints: {
-        ...phoneRoutes({
-          store: context.store,
-          hub: context.hub,
-          actions,
-          approvals: context.machineApprovals,
-          notifications: context.live.notifications,
-          now,
-          files: (caller, fileId) => phoneFileOf(context, caller, fileId),
-        }),
-        ...clientPerfRoutes(new PerfSamples(context.layout.system.logs.perfSamples, context.log)),
-      },
+    return {
+      endpoints: endpointsOf(context, actions, now),
       routes: [],
       stop: (): Promise<void> => {
         unwatch();
@@ -76,6 +85,6 @@ export function phonesExtension(now: () => Date): ServerExtension {
         actions.stop();
         return Promise.resolve();
       },
-    });
+    };
   };
 }

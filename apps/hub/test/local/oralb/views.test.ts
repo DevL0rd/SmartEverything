@@ -36,12 +36,18 @@ function viewer(brushed: OralbRig, who: 'owner' | 'member'): Viewer {
   return { clientId: person.client.id, role: who, profileId: person.profile.id };
 }
 
-function read(brushed: OralbRig, who: 'owner' | 'member', query: BrushReadQuery): BrushView {
-  return BRUSH_VIEW.parse(readBrush(depsOf(brushed), brushed.row(), viewer(brushed, who), query));
+async function read(
+  brushed: OralbRig,
+  who: 'owner' | 'member',
+  query: BrushReadQuery,
+): Promise<BrushView> {
+  return BRUSH_VIEW.parse(
+    await readBrush(depsOf(brushed), brushed.row(), viewer(brushed, who), query),
+  );
 }
 
-function wake(brushed: OralbRig): void {
-  brushed.batch(0, {
+async function wake(brushed: OralbRig): Promise<void> {
+  await brushed.batch(0, {
     phase: 'linked',
     frames: [
       brushed.frame('ff02', bytes(0x36, 8, 82), 0),
@@ -59,8 +65,8 @@ function wake(brushed: OralbRig): void {
 describe('the pages of an Oral-B brush', () => {
   it('shows the head countdown, the handle block and the model for the owner', async () => {
     const brushed = (rig = await oralbRig());
-    wake(brushed);
-    const state = read(brushed, 'owner', { view: 'state' });
+    await wake(brushed);
+    const state = await read(brushed, 'owner', { view: 'state' });
     expect(state).toMatchObject({
       model: 'iO9',
       family: null,
@@ -100,7 +106,7 @@ describe('the pages of an Oral-B brush', () => {
 
   it('builds the head timeline from the resets in the days-left series', async () => {
     const brushed = (rig = await oralbRig());
-    const timeline = read(brushed, 'owner', { view: 'head' });
+    const timeline = await read(brushed, 'owner', { view: 'head' });
     expect(
       timeline.view === 'head' &&
         timeline.timeline.map((row) => [row.usageS / 86_400, row.current]),
@@ -114,12 +120,12 @@ describe('the pages of an Oral-B brush', () => {
     const brushed = (rig = await oralbRig({
       oralb: { forceBands: { lightBelow: 0.6, highAbove: 3, samples: 2 } },
     }));
-    wake(brushed);
-    brushed.batch(1, {
+    await wake(brushed);
+    await brushed.batch(1, {
       phase: 'linked',
       frames: [brushed.frame('ff29', '00'.repeat(21), 1)],
     });
-    const view = read(brushed, 'owner', { view: 'diagnostics' });
+    const view = await read(brushed, 'owner', { view: 'diagnostics' });
     expect(view).toMatchObject({
       brand: {
         brand: 'oralb',
@@ -135,23 +141,23 @@ describe('the pages of an Oral-B brush', () => {
 
   it('keeps the diagnostics and the settings block from a member', async () => {
     const brushed = (rig = await oralbRig());
-    expect(() => read(brushed, 'member', { view: 'diagnostics' })).toThrow(ApiError);
-    const settings = read(brushed, 'member', { view: 'settings' });
+    await expect(read(brushed, 'member', { view: 'diagnostics' })).rejects.toThrow(ApiError);
+    const settings = await read(brushed, 'member', { view: 'settings' });
     expect(settings).toMatchObject({ settings: null, mayConfigure: false });
   });
 
   it('shows the live force and the face only to the person who brushes', async () => {
     const brushed = (rig = await oralbRig({ owns: 'owner' }));
-    brushed.batch(0, {
+    await brushed.batch(0, {
       phase: 'linked',
       frames: [brushed.frame('ff04', bytes(3, 0), 0), brushed.frame('ff08', bytes(0, 4), 0)],
     });
-    brushed.batch(1, {
+    await brushed.batch(1, {
       phase: 'linked',
       frames: [brushed.frame('ff0b', pressureHex(2, 3200), 1), brushed.frame('ff0a', bytes(7), 1)],
     });
-    const owner = read(brushed, 'owner', { view: 'state' });
-    const kid = read(brushed, 'member', { view: 'state' });
+    const owner = await read(brushed, 'owner', { view: 'state' });
+    const kid = await read(brushed, 'member', { view: 'state' });
     expect(owner.view === 'state' && owner.frame).toMatchObject({
       force: 3.2,
       face: 7,
@@ -169,14 +175,14 @@ describe('the pages of an Oral-B brush', () => {
 
   it('reads every other page with the shared shapes', async () => {
     const brushed = (rig = await oralbRig());
-    wake(brushed);
+    await wake(brushed);
     for (const query of [
       { view: 'sessions' },
       { view: 'stats' },
       { view: 'battery' },
       { view: 'handle' },
     ] as const) {
-      expect(read(brushed, 'owner', query).view).toBe(query.view);
+      expect((await read(brushed, 'owner', query)).view).toBe(query.view);
     }
   });
 });

@@ -12,15 +12,12 @@ import type { StoredDrive } from '../../store/repositories/drive-roots';
 import { inList } from '../../store/sql';
 import type { Store } from '../../store/store';
 import { PHOTOS_FOLDER } from '../membership';
-import { announceItems, visibleItems, type ItemsChanged } from './items';
-
-export type MoveStore = Pick<
-  Store,
-  'context' | 'write' | 'feed' | 'driveFeed' | 'driveRoots' | 'driveItems' | 'driveShares'
->;
+import { storeUnit } from '../../store/host/unit';
+import type { StoreHost } from '../../store/host/host';
+import type { ItemsChanged, VisibleItem } from './items';
 
 export interface MoveEnv {
-  readonly store: MoveStore;
+  readonly store: Pick<Store, 'host'>;
   readonly write: Pick<DriveWriteService, 'change'>;
   readonly now: () => Date;
 }
@@ -33,9 +30,13 @@ function opened(caller: DriveCaller): DriveCaller {
   return { ...caller, lockedFolder: 'open' };
 }
 
-function announceHeld(store: MoveStore, root: StoredDrive, held: readonly LockedRow[]): void {
-  announceItems(
-    store,
+function announceHeld(
+  host: StoreHost,
+  root: StoredDrive,
+  held: readonly LockedRow[],
+): Promise<void> {
+  return announceVia(
+    host,
     held.map((row) => ({
       id: row.id,
       rootId: root.id,
@@ -44,6 +45,10 @@ function announceHeld(store: MoveStore, root: StoredDrive, held: readonly Locked
       own: true,
     })),
   );
+}
+
+function announceVia(host: StoreHost, items: readonly VisibleItem[]): Promise<void> {
+  return host.write('photoItemsAnnounce', { items });
 }
 
 function refusal(result: DriveChangeResult): ApiError {
@@ -60,9 +65,12 @@ export class LockedMover {
   constructor(private readonly env: MoveEnv) {}
 
   async moveIn(caller: DriveCaller, request: PhotoItemIds): Promise<ItemsChanged> {
-    const { store } = this.env;
-    const root = this.personalRoot(caller);
-    const items = visibleItems(store.context, caller, request.itemIds);
+    const { host } = this.env.store;
+    const root = await this.personalRoot(caller);
+    const items = await host.read('photoVisibleItems', {
+      actor: caller,
+      itemIds: request.itemIds,
+    });
     if (items.some((item) => item.rootId !== root.id)) {
       throw new ApiError(
         'invalid_request',
@@ -76,18 +84,21 @@ export class LockedMover {
       toFolderId: folder,
     });
     const moved = new Set(result.done.map((done) => done.itemId));
-    this.revokeShares([...moved]);
+    await host.write('photoLockedRevokeShares', {
+      itemIds: [...moved],
+      at: this.env.now().toISOString(),
+    });
     if (moved.size === 0) throw refusal(result);
-    announceItems(
-      store,
+    await announceVia(
+      host,
       items.filter((item) => moved.has(item.id)),
     );
     return { count: moved.size };
   }
 
   async moveOut(caller: DriveCaller, request: PhotoItemIds): Promise<ItemsChanged> {
-    const root = this.personalRoot(caller);
-    const held = this.held(root, request);
+    const root = await this.personalRoot(caller);
+    const held = await this.held(root, request);
     const folder = await this.folder(caller, root, PHOTOS_FOLDER);
     const result = await this.env.write.change(opened(caller), {
       action: 'move',
@@ -95,13 +106,13 @@ export class LockedMover {
       toFolderId: folder,
     });
     if (result.done.length === 0) throw refusal(result);
-    announceHeld(this.env.store, root, held);
+    await announceHeld(this.env.store.host, root, held);
     return { count: result.done.length };
   }
 
   async remove(caller: DriveCaller, request: PhotoItemIds): Promise<ItemsChanged> {
-    const root = this.personalRoot(caller);
-    const held = this.held(root, request);
+    const root = await this.personalRoot(caller);
+    const held = await this.held(root, request);
     const unlocked = opened(caller);
     const trashed = await this.env.write.change(unlocked, {
       action: 'trash',
@@ -111,34 +122,30 @@ export class LockedMover {
     if (ids.length === 0) throw refusal(trashed);
     const removed = await this.env.write.change(unlocked, { action: 'delete_now', itemIds: ids });
     if (removed.done.length === 0) throw refusal(removed);
-    announceHeld(this.env.store, root, held);
+    await announceHeld(this.env.store.host, root, held);
     return { count: removed.done.length };
   }
 
-  private held(root: StoredDrive, request: PhotoItemIds): readonly LockedRow[] {
-    const unique = [...new Set(request.itemIds)];
-    const filter = inList('i.id', 'ids', unique);
-    const held = this.env.store.context.sql.all(
-      LOCKED_ID,
-      `select i.id, i.taken_at from drive_items i
-        where i.root_id = $rootId and i.kind in ('image', 'video')
-          and ${lockedFolderSql()} and ${filter.text}`,
-      { rootId: root.id, ...filter.parameters },
-    );
-    if (held.length !== unique.length) {
-      throw new ApiError('not_found', 'Some of those photos are not in your Locked folder.');
-    }
-    return held;
+  private held(root: StoredDrive, request: PhotoItemIds): Promise<LockedRow[]> {
+    return this.env.store.host.read('photoLockedHeld', {
+      rootId: root.id,
+      itemIds: request.itemIds,
+    });
   }
 
-  private personalRoot(caller: DriveCaller): StoredDrive {
-    const root = this.env.store.driveRoots.byIdentity('person', caller.profileId);
+  private async personalRoot(caller: DriveCaller): Promise<StoredDrive> {
+    const root = await this.env.store.host.call(
+      'driveRoots',
+      'byIdentity',
+      'person',
+      caller.profileId,
+    );
     if (root === undefined) throw new ApiError('not_found', 'You have no personal drive.');
     return root;
   }
 
   private async folder(caller: DriveCaller, root: StoredDrive, name: string): Promise<string> {
-    const existing = this.env.store.driveItems.byPath(root.id, name, null);
+    const existing = await this.env.store.host.call('driveItems', 'byPath', root.id, name, null);
     if (existing !== undefined) return existing.id;
     const change: DriveChange = {
       action: 'new_folder',
@@ -150,16 +157,33 @@ export class LockedMover {
     if (made === null || made === undefined) throw refusal(result);
     return made;
   }
-
-  private revokeShares(itemIds: readonly string[]): void {
-    const { driveShares } = this.env.store;
-    const at = this.env.now().toISOString();
-    this.env.store.write(() => {
-      for (const itemId of itemIds) {
-        for (const share of driveShares.forItem(itemId)) {
-          if (share.revokedAt === null) driveShares.revoke(share.id, at);
-        }
-      }
-    });
-  }
 }
+
+export const PHOTO_LOCKED_HELD_UNIT = storeUnit(
+  (store, input: { readonly rootId: string; readonly itemIds: readonly string[] }): LockedRow[] => {
+    const unique = [...new Set(input.itemIds)];
+    const filter = inList('i.id', 'ids', unique);
+    const held = store.context.sql.all(
+      LOCKED_ID,
+      `select i.id, i.taken_at from drive_items i
+        where i.root_id = $rootId and i.kind in ('image', 'video')
+          and ${lockedFolderSql()} and ${filter.text}`,
+      { rootId: input.rootId, ...filter.parameters },
+    );
+    if (held.length !== unique.length) {
+      throw new ApiError('not_found', 'Some of those photos are not in your Locked folder.');
+    }
+    return held;
+  },
+);
+
+export const PHOTO_LOCKED_REVOKE_SHARES_UNIT = storeUnit(
+  (store, input: { readonly itemIds: readonly string[]; readonly at: string }): void => {
+    const { driveShares } = store;
+    for (const itemId of input.itemIds) {
+      for (const share of driveShares.forItem(itemId)) {
+        if (share.revokedAt === null) driveShares.revoke(share.id, input.at);
+      }
+    }
+  },
+);

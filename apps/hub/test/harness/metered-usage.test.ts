@@ -18,8 +18,9 @@ describe('MeteredUsageStream', () => {
         usage: { prompt_tokens: 3, completion_tokens: 2, cost: 0.25 },
       });
     await drain(
-      new MeteredUsageStream((snapshot): void => {
+      new MeteredUsageStream((snapshot): Promise<void> => {
         seen.push(snapshot);
+        return Promise.resolve();
       }).response(new Response(body)),
     );
 
@@ -34,8 +35,9 @@ describe('MeteredUsageStream', () => {
       frame({ id: 'gen-1', model: 'm', choices: [{ delta: { content: filler } }] }) +
       frame({ id: 'gen-1', model: 'm', usage: { prompt_tokens: 1, completion_tokens: 1 } });
 
-    const text = await new MeteredUsageStream((snapshot): void => {
+    const text = await new MeteredUsageStream((snapshot): Promise<void> => {
       seen.push(snapshot);
+      return Promise.resolve();
     })
       .response(new Response(body))
       .text();
@@ -51,8 +53,9 @@ describe('MeteredUsageStream', () => {
       frame({ id: 'gen-2', model: 'm', usage: { prompt_tokens: 2, completion_tokens: 3 } }) +
       'data: [DONE]\n\n';
 
-    const text = await new MeteredUsageStream((snapshot): void => {
+    const text = await new MeteredUsageStream((snapshot): Promise<void> => {
       seen.push(snapshot);
+      return Promise.resolve();
     })
       .response(new Response(body))
       .text();
@@ -68,8 +71,9 @@ describe('MeteredUsageStream', () => {
       frame({ id: 7 }) +
       frame({ id: 'gen-3', model: 'm', usage: { prompt_tokens: 4, completion_tokens: 1 } });
 
-    const text = await new MeteredUsageStream((snapshot): void => {
+    const text = await new MeteredUsageStream((snapshot): Promise<void> => {
       seen.push(snapshot);
+      return Promise.resolve();
     })
       .response(new Response(body))
       .text();
@@ -102,8 +106,9 @@ describe('MeteredUsageStream', () => {
       }) +
       frame({ id: 'gen-4', model: 'm', choices: [] });
 
-    await new MeteredUsageStream((snapshot): void => {
+    await new MeteredUsageStream((snapshot): Promise<void> => {
       seen.push(snapshot);
+      return Promise.resolve();
     })
       .response(new Response(body))
       .text();

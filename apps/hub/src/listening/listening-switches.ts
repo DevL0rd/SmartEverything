@@ -12,8 +12,6 @@ import {
 import { z } from 'zod';
 import type { Store } from '../store/store';
 
-const KEY = 'listening.devices';
-
 const SWITCHES = z.strictObject({
   wake: z.boolean().optional(),
   transcribe: z.boolean().optional(),
@@ -33,7 +31,7 @@ export interface DeviceListening {
 }
 
 export class DeviceListeningSwitches {
-  constructor(private readonly store: Pick<Store, 'settingsKv' | 'devices'>) {}
+  constructor(private readonly store: Pick<Store, 'live'>) {}
 
   read(deviceId: string): DeviceListening {
     const saved = this.stored().devices[deviceId];
@@ -49,11 +47,11 @@ export class DeviceListeningSwitches {
   private standardOf(
     deviceId: string,
   ): typeof LISTENING_STANDARD | typeof LISTENING_PHONE_STANDARD {
-    const device = this.store.devices.find(deviceId);
+    const device = this.store.live.home.devices.find(deviceId);
     return device?.kind === 'phone' ? LISTENING_PHONE_STANDARD : LISTENING_STANDARD;
   }
 
-  save(deviceId: string, change: ListeningSourceChange): void {
+  async save(deviceId: string, change: ListeningSourceChange): Promise<void> {
     const current = this.read(deviceId);
     const next = {
       wake: change.wake ?? current.wake,
@@ -61,18 +59,18 @@ export class DeviceListeningSwitches {
       sensitivity: change.sensitivity ?? current.sensitivity,
       power_mode: change.power_mode ?? current.powerMode,
     };
-    this.store.settingsKv.save(KEY, {
+    await this.store.live.home.listening.save({
       devices: { ...this.stored().devices, [deviceId]: next },
     });
   }
 
-  forget(deviceId: string): void {
+  async forget(deviceId: string): Promise<void> {
     const { [deviceId]: removed, ...rest } = this.stored().devices;
-    if (removed !== undefined) this.store.settingsKv.save(KEY, { devices: rest });
+    if (removed !== undefined) await this.store.live.home.listening.save({ devices: rest });
   }
 
   private stored(): Stored {
-    const saved = this.store.settingsKv.read(KEY);
+    const saved = this.store.live.home.listening.read();
     return saved === null ? { devices: {} } : STORED.parse(saved);
   }
 }

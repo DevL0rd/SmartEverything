@@ -8,6 +8,7 @@ import type { HubLayout } from '../../../data-layout';
 import type { RunningHub } from '../../../hub';
 import type { Operations } from '../../../server/operations';
 import type { Store } from '../../../store/store';
+import type { CalendarReader } from '../../../planner/ical/calendar-reader';
 import type { MediaNotes } from '../../../transcripts/media-notes';
 import type { AcceptedCaller } from '../bearer';
 import { ID_SOURCES } from './field-texts';
@@ -44,8 +45,9 @@ export interface ToolContext {
   readonly caller: AcceptedCaller | null;
   readonly layout: HubLayout;
   readonly mediaNotes: MediaNotes;
+  readonly calendars: CalendarReader;
   readonly actor: ToolActor | null;
-  readonly visibleTools?: () => readonly Tool[];
+  readonly visibleTools?: () => Promise<readonly Tool[]>;
   readonly servedTool?: string;
 }
 
@@ -87,7 +89,10 @@ export interface Tool {
     context: ToolContext,
     raw: Readonly<Record<string, unknown>>,
   ) => Promise<ToolOutput>;
-  readonly check: (context: ToolContext, raw: Readonly<Record<string, unknown>>) => string | null;
+  readonly check: (
+    context: ToolContext,
+    raw: Readonly<Record<string, unknown>>,
+  ) => Promise<string | null>;
 }
 
 export class ToolError extends Error {
@@ -223,18 +228,41 @@ export function issuesOf(error: z.ZodError, input?: z.ZodType): string {
   return (hidden > 0 ? [...shown, `and ${String(hidden)} more`] : shown).join('; ');
 }
 
+export type ToolSchema = Readonly<Record<string, unknown>>;
+
+export function once<T>(build: () => T): () => T {
+  let built: { readonly value: T } | null = null;
+  return (): T => {
+    built ??= { value: build() };
+    return built.value;
+  };
+}
+
+export function lazyListing(
+  fixed: Omit<ToolListing, 'inputSchema'>,
+  inputSchema: () => ToolSchema,
+): ToolListing {
+  const schema = once(inputSchema);
+  return {
+    name: fixed.name,
+    title: fixed.title,
+    description: fixed.description,
+    get inputSchema(): ToolSchema {
+      return schema();
+    },
+    annotations: fixed.annotations,
+  };
+}
+
 export function listingOf(
   name: McpPartName,
-  inputSchema: Readonly<Record<string, unknown>>,
+  inputSchema: () => ToolSchema,
   annotations: ToolAnnotations,
 ): ToolListing {
-  return {
-    name,
-    title: name,
-    description: '',
+  return lazyListing(
+    { name, title: name, description: '', annotations: { title: name, ...annotations } },
     inputSchema,
-    annotations: { title: name, ...annotations },
-  };
+  );
 }
 
 import { jsonSchemaOf } from './json-schema';
@@ -259,10 +287,11 @@ export function defineTool<I>(definition: ToolDefinition<I>): Tool {
     input: definition.input,
     listing: listingOf(
       definition.name,
-      jsonSchemaOf(definition.input, 'input'),
+      () => jsonSchemaOf(definition.input, 'input'),
       definition.annotations,
     ),
-    check: (_context, raw): string | null => argumentIssues(definition.input, raw),
+    check: (_context, raw): Promise<string | null> =>
+      Promise.resolve(argumentIssues(definition.input, raw)),
     call: async (context, raw): Promise<ToolOutput> => {
       const input = validArguments(definition.input, raw);
       const output = await scopedToolCall(context, definition.name, (scoped) =>

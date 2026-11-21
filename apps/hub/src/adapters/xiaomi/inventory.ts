@@ -125,11 +125,7 @@ export async function fetchInventory(sources: InventorySources): Promise<Invento
     log.warn('xiaomi_inventory.devices_unreadable', { count: page.malformed });
   }
   const rooms = parseRoomNames(await cloud.call(HOME_LIST_PATH, homeListData()));
-  const entries: InventoryEntry[] = [];
-  for (const device of page.devices) {
-    entries.push(await entryFor(device, rooms, sources));
-  }
-  return entries;
+  return Promise.all(page.devices.map((device) => entryFor(device, rooms, sources)));
 }
 
 function cameraDetails(

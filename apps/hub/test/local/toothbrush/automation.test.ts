@@ -35,8 +35,8 @@ async function open(): Promise<SonicareRig> {
   return rig;
 }
 
-function wake(brushed: SonicareRig, seconds: number): void {
-  brushed.batch(seconds, [
+async function wake(brushed: SonicareRig, seconds: number): Promise<void> {
+  await brushed.batch(seconds, [
     brushed.frame('2a19', '50', seconds),
     brushed.frame('4022', '00010204', seconds),
     brushed.frame('4080', '01', seconds),
@@ -49,69 +49,71 @@ function wake(brushed: SonicareRig, seconds: number): void {
   ]);
 }
 
-function start(brushed: SonicareRig, seconds: number): void {
-  brushed.batch(seconds, [
+async function start(brushed: SonicareRig, seconds: number): Promise<void> {
+  await brushed.batch(seconds, [
     brushed.frame('4010', '02', seconds),
     brushed.frame('4082', '01', seconds),
     brushed.frame('4090', word(0), seconds),
   ]);
 }
 
-function brush(
+async function brush(
   brushed: SonicareRig,
   from: number,
   seconds: number,
   pressure?: (second: number) => string,
-): void {
+): Promise<void> {
   for (let second = from; second < from + seconds; second += 1) {
     const frames = [brushed.frame('4090', word(second - from), second)];
     if (pressure !== undefined) {
       frames.push(brushed.frame('4130', pressure(second - from), second));
     }
-    brushed.batch(second, frames);
+    await brushed.batch(second, frames);
   }
 }
 
-function brushedWhole(brushed: SonicareRig): void {
-  wake(brushed, 0);
-  start(brushed, 10);
-  brush(brushed, 10, 121, (second) => (second >= 60 && second < 70 ? '0100010002' : '0100010001'));
-  brushed.batch(131, [
+async function brushedWhole(brushed: SonicareRig): Promise<void> {
+  await wake(brushed, 0);
+  await start(brushed, 10);
+  await brush(brushed, 10, 121, (second) =>
+    second >= 60 && second < 70 ? '0100010002' : '0100010001',
+  );
+  await brushed.batch(131, [
     brushed.frame('4082', '03', 131),
     brushed.frame('4090', word(120), 131),
     brushed.frame('4010', '01', 131),
   ]);
 }
 
-function brushedStopped(brushed: SonicareRig): void {
-  wake(brushed, 0);
-  start(brushed, 10);
-  brush(brushed, 10, 46, () => '0100010001');
-  brushed.batch(56, [brushed.frame('4082', '04', 56), brushed.frame('4010', '01', 56)]);
+async function brushedStopped(brushed: SonicareRig): Promise<void> {
+  await wake(brushed, 0);
+  await start(brushed, 10);
+  await brush(brushed, 10, 46, () => '0100010001');
+  await brushed.batch(56, [brushed.frame('4082', '04', 56), brushed.frame('4010', '01', 56)]);
 }
 
-function brushedWithoutPressure(brushed: SonicareRig): void {
-  wake(brushed, 0);
-  brushed.batch(70, [
+async function brushedWithoutPressure(brushed: SonicareRig): Promise<void> {
+  await wake(brushed, 0);
+  await brushed.batch(70, [
     brushed.frame('4010', '02', 70),
     brushed.frame('4082', '01', 70),
     brushed.frame('4090', word(60), 70),
     brushed.frame('4130', '0100010001', 70),
   ]);
-  brush(brushed, 130, 1);
-  brushed.batch(131, [brushed.frame('4090', word(120), 131)]);
-  brushed.batch(132, [brushed.frame('4082', '03', 132), brushed.frame('4010', '01', 132)]);
+  await brush(brushed, 130, 1);
+  await brushed.batch(131, [brushed.frame('4090', word(120), 131)]);
+  await brushed.batch(132, [brushed.frame('4082', '03', 132), brushed.frame('4010', '01', 132)]);
 }
 
-function wornHead(brushed: SonicareRig): void {
-  wake(brushed, 0);
-  brushed.batch(1, [
+async function wornHead(brushed: SonicareRig): Promise<void> {
+  await wake(brushed, 0);
+  await brushed.batch(1, [
     brushed.frame('4230', HEAD_SERIAL, 1),
     brushed.frame('4220', '05', 1),
     brushed.frame('4280', word(21600), 1),
     brushed.frame('4290', word(19440), 1),
   ]);
-  brushed.batch(3, [brushed.frame('4290', word(21600), 3)]);
+  await brushed.batch(3, [brushed.frame('4290', word(21600), 3)]);
 }
 
 function signalsOf(brushed: SonicareRig, kind: 'activity' | 'maintenance'): SignalInput[] {
@@ -232,7 +234,7 @@ describe('the toothbrush automation declaration', () => {
 describe('the brushing finished trigger on the real brush events', () => {
   it('fires for the chosen brush and person and hands the whole session on', async () => {
     const brushed = await open();
-    brushedWhole(brushed);
+    await brushedWhole(brushed);
     const hit = onlySignal(signalsOf(brushed, 'activity'));
     const { entry, compiled } = armed(FINISHED, {
       brush: brushed.device.id,
@@ -252,7 +254,7 @@ describe('the brushing finished trigger on the real brush events', () => {
 
   it('reports the share of the mouth a short session reached and that the goal was missed', async () => {
     const brushed = await open();
-    brushedStopped(brushed);
+    await brushedStopped(brushed);
     const hit = onlySignal(signalsOf(brushed, 'activity'));
     const { entry, compiled } = armed(FINISHED, {});
     expect(signalMatchesMatcher(entry.matcher, hit)).toBe(true);
@@ -267,7 +269,7 @@ describe('the brushing finished trigger on the real brush events', () => {
 
   it('leaves out the pressure it never measured instead of inventing it', async () => {
     const brushed = await open();
-    brushedWithoutPressure(brushed);
+    await brushedWithoutPressure(brushed);
     const hit = onlySignal(signalsOf(brushed, 'activity'));
     const { entry, compiled } = armed(FINISHED, {});
     expect(signalMatchesMatcher(entry.matcher, hit)).toBe(true);
@@ -278,7 +280,7 @@ describe('the brushing finished trigger on the real brush events', () => {
 
   it('ignores another brush and another person, and still fires when the goal was missed', async () => {
     const brushed = await open();
-    brushedStopped(brushed);
+    await brushedStopped(brushed);
     const hit = onlySignal(signalsOf(brushed, 'activity'));
     expect(signalMatchesMatcher(armed(FINISHED, { brush: OTHER_BRUSH }).entry.matcher, hit)).toBe(
       false,
@@ -317,7 +319,7 @@ describe('the brushing finished trigger on the real brush events', () => {
 describe('the brush head triggers on the real brush events', () => {
   it('fires the wearing out trigger at the warning and the replace trigger when due', async () => {
     const brushed = await open();
-    wornHead(brushed);
+    await wornHead(brushed);
     const [warning, due] = signalsOf(brushed, 'maintenance');
     if (warning === undefined || due === undefined) throw new Error('the head events are missing');
     const wearing = armed(HEAD_WEARING, { brush: brushed.device.id });
@@ -340,7 +342,7 @@ describe('the brush head triggers on the real brush events', () => {
 
   it('ignores another brush', async () => {
     const brushed = await open();
-    wornHead(brushed);
+    await wornHead(brushed);
     const due = signalsOf(brushed, 'maintenance').at(-1);
     if (due === undefined) throw new Error('the head events are missing');
     expect(signalMatchesMatcher(armed(HEAD_DUE, { brush: OTHER_BRUSH }).entry.matcher, due)).toBe(

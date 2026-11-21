@@ -17,6 +17,7 @@ import type { NativeFrameBody } from './native-frames';
 type Work = AiHarnessSession['work'];
 
 const STATUS_TYPES: ReadonlySet<string> = new Set([
+  'agent/inbox/spliced',
   'command/done',
   'compaction/end',
   'job/registered',

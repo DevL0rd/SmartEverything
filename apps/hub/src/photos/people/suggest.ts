@@ -1,11 +1,11 @@
-import { PHOTO_SUGGESTIONS, type PhotoSuggestions } from '@smarteverything/domain';
+import { PHOTO_SUGGESTIONS, type PhotoGroup, type PhotoSuggestions } from '@smarteverything/domain';
 import { z } from 'zod';
 import { driveMatchOf } from '../../drive/search';
 import type { DriveActor } from '../../drive/access';
 import type { StoreContext } from '../../store/context';
 import type { PhotoGroupsRepository } from '../../store/repositories/photo-groups';
-import type { PeopleService } from './service';
 import { itemsOf, VISIBLE_ITEM } from './rows';
+import { GroupViews } from './views';
 
 export const SUGGESTION_ROWS = 8;
 
@@ -29,11 +29,14 @@ function startsLike(name: string, words: readonly string[]): boolean {
 }
 
 export class PhotoSuggest {
+  private readonly views: GroupViews;
+
   constructor(
     private readonly context: StoreContext,
-    private readonly people: PeopleService,
     private readonly groups: PhotoGroupsRepository,
-  ) {}
+  ) {
+    this.views = new GroupViews(context, groups);
+  }
 
   read(actor: DriveActor, query: string): PhotoSuggestions {
     const words = wordsOf(query);
@@ -46,16 +49,13 @@ export class PhotoSuggest {
     });
   }
 
-  private groupsFor(
-    actor: DriveActor,
-    words: readonly string[],
-  ): ReturnType<PeopleService['groupsMatching']> {
+  private groupsFor(actor: DriveActor, words: readonly string[]): PhotoGroup[] {
     if (words.length === 0) return [];
     const ids = this.groups
       .forProfile(actor.profileId)
       .filter((group) => !group.hidden && group.name !== null && startsLike(group.name, words))
       .map((group) => group.id);
-    return ids.length === 0 ? [] : this.people.groupsMatching(actor, ids);
+    return ids.length === 0 ? [] : this.views.list(actor.profileId, undefined, ids);
   }
 
   private things(actor: DriveActor, query: string): z.output<typeof THING_ROW>[] {
@@ -94,7 +94,7 @@ export class PhotoSuggest {
   }
 }
 
-function suggestedGroup(group: ReturnType<PeopleService['groupsMatching']>[number]): {
+function suggestedGroup(group: PhotoGroup): {
   groupId: string;
   name: string;
   coverFaceId: string;

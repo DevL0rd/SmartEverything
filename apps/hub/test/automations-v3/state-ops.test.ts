@@ -39,7 +39,7 @@ describe('stateful nodes in the V3 engine', () => {
   it('lets a press through at most once per period', async () => {
     const rig = await rigV3();
     rig.add(throttled(rig.home.lampId));
-    rig.engine.sync();
+    await rig.engine.sync();
     await press(rig, 1);
     await press(rig, 2);
     expect(rig.home.adapter.executed).toHaveLength(1);
@@ -51,12 +51,12 @@ describe('stateful nodes in the V3 engine', () => {
   it('keeps what a node remembers in the state table across a hub restart', async () => {
     const rig = await rigV3();
     const row = rig.add(throttled(rig.home.lampId));
-    rig.engine.sync();
+    await rig.engine.sync();
     await press(rig, 1);
     expect(rows(rig)).toHaveLength(1);
     expect(rows(rig)[0]).toMatchObject({ partition: 'state', wake_at: null });
     rig.restart();
-    rig.engine.sync();
+    await rig.engine.sync();
     await press(rig, 2);
     expect(rig.home.adapter.executed).toHaveLength(1);
     expect(rig.runs(row.id).map((run) => run.status)).toStrictEqual(['succeeded', 'succeeded']);
@@ -65,7 +65,7 @@ describe('stateful nodes in the V3 engine', () => {
   it('forgets what a node remembered when its automation is removed', async () => {
     const rig = await rigV3();
     const row = rig.add(throttled(rig.home.lampId));
-    rig.engine.sync();
+    await rig.engine.sync();
     await press(rig, 1);
     expect(rows(rig)).toHaveLength(1);
     rig.database.prepare('delete from automations where id = ?').run(row.id);

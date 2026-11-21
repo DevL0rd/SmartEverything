@@ -138,6 +138,7 @@ function turnRequest(over: Partial<TurnRequest> = {}): TurnRequest {
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   systems = [];
   notes = [];
   results = [];
@@ -213,7 +214,7 @@ describe('every path that runs tools carries the one shared tool manner', () => 
 
   it('app call, hosted call (camera, ring), and turn sessions (Discord voice, robot)', async () => {
     const { store } = opened;
-    store.assistantChat.saveSettings({
+    await store.live.home.assistant.save({
       ...store.assistantChat.settings(),
       instructions: 'Call me captain.',
       response_style: {
@@ -263,7 +264,7 @@ describe('every path that runs tools carries the one shared tool manner', () => 
       expect(system).toContain('Owner instructions:\nCall me captain.');
       expect(system.indexOf(PLAY)).toBeLessThan(system.indexOf(TOOL_MANNER));
     });
-    store.assistantChat.saveSettings({
+    await store.live.home.assistant.save({
       ...store.assistantChat.settings(),
       response_style: { ...DEFAULT_RESPONSE_STYLE, personality: 'wry' },
     });
@@ -398,8 +399,8 @@ describe('progress during a call tool', () => {
         speech: 'gated-client',
         settings: (): AssistantVoiceSettings => ASSISTANT_VOICE_SETTINGS.parse({}),
         system: (): string => 'system',
-        note: (): string => '',
-        history: (): string[] => [],
+        note: (): Promise<string> => Promise.resolve(''),
+        history: (): Promise<readonly string[]> => Promise.resolve([]),
         tools: (): [] => [],
         webSearch: (): boolean => false,
         window: (): null => null,

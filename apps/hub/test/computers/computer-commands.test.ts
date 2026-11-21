@@ -49,9 +49,9 @@ function context(
       },
       deviceIdOf: () => 'device-1',
       scopesOf: () => scopes,
-      originOf: () => origin,
-      visibleTo: () => machine.visible ?? true,
-      macsOf: () => ['aa:bb:cc:dd:ee:01', 'aa:bb:cc:dd:ee:02'],
+      originOf: () => Promise.resolve(origin),
+      visibleTo: () => Promise.resolve(machine.visible ?? true),
+      macsOf: () => Promise.resolve(['aa:bb:cc:dd:ee:01', 'aa:bb:cc:dd:ee:02']),
       approve: (): Promise<void> => Promise.resolve(),
       wake: (mac): Promise<void> => {
         recorded.woken.push(mac);

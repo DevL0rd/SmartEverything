@@ -8,7 +8,7 @@ let url: string;
 
 beforeEach(async () => {
   server = createServer((request, response) => {
-    sendTagged(request, response, { index: 31 }, '31');
+    sendTagged(request, response, JSON.stringify({ index: 31 }), '31');
   });
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve);

@@ -28,7 +28,7 @@ export async function callTool(
   action: ToolRequest,
   origin: ToolOrigin,
 ): Promise<JsonObject> {
-  const check = tools.check(action.tool, action.args);
+  const check = await tools.check(action.tool, action.args);
   if (!check.ok) {
     throw new ToolActionError(check.reason);
   }

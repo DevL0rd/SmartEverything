@@ -44,6 +44,7 @@ const FIRST_NODES = 100;
 export type RunOutputs = Readonly<Record<string, JsonValue>> | null;
 
 export interface RunsEngine {
+  readonly recorded: () => Promise<void>;
   readonly start: (
     automationId: string,
     inputs: Readonly<Record<string, JsonValue>>,
@@ -86,7 +87,7 @@ export interface AutomationRunsDeps {
 function canSee(deps: AutomationRunsDeps, caller: Caller, automationId: string): boolean {
   if (roleOfCaller(caller) === 'owner') return true;
   const author = deps.programs.find(automationId)?.author ?? null;
-  return author !== null && author.profile_id === profileIdOf(deps.store, caller);
+  return author !== null && author.profile_id === profileIdOf(caller);
 }
 
 function requireVisible(deps: AutomationRunsDeps, caller: Caller, automationId: string): void {
@@ -169,6 +170,7 @@ async function startLive(
   if (submission.kind === 'refused') throw submission.error;
   const started = submission.kind === 'started';
   if (!body.wait) {
+    await deps.engine.recorded();
     return {
       ok: true,
       summary: started ? 'The run started.' : 'The run is queued behind the one in progress.',
@@ -198,7 +200,7 @@ function start(
   body: AutomationRunStartRequest,
 ): Promise<AutomationRunStartReply> {
   requireProgram(deps, caller, body.automationId);
-  const startedBy = profileIdOf(deps.store, caller);
+  const startedBy = profileIdOf(caller);
   if (body.mode === 'live') return startLive(deps, body, startedBy);
   return rehearse(deps, body, startedBy, body.mode === 'dry' ? 'dry' : 'simulate');
 }
@@ -289,7 +291,7 @@ async function runTests(
   automationId: string,
 ): Promise<AutomationTestsRunReply> {
   requireProgram(deps, caller, automationId);
-  const startedBy = profileIdOf(deps.store, caller);
+  const startedBy = profileIdOf(caller);
   const results = await Promise.all(
     deps.tests.list(automationId).map(async (test) =>
       resultOf(

@@ -55,24 +55,8 @@ import { nutritionRoutes } from './handlers/nutrition';
 import { peopleRoutes } from './handlers/people';
 import { placeRoutes } from './handlers/places';
 import { googleRoutes } from './handlers/google';
-import { plannerCollectionRoutes, plannerItemRoutes } from './handlers/planner-items';
-import { plannerPreferenceRoutes } from './handlers/planner-preferences';
-import { feedOriginOf, plannerFeedRoutes } from './handlers/planner-feeds';
-import { plannerCoreRoutes } from './handlers/planner';
-import { plannerSharingRoutes } from './handlers/planner-sharing';
-import { plannerBookingRoutes } from './handlers/planner-booking';
-import { plannerInviteRoutes } from './handlers/planner-invites';
-import { mailRoutes } from './handlers/mail';
-import { collabOf } from './planner-collab';
-import { plannerSearchRoutes } from './handlers/planner-search';
-import { plannerHolidayRoutes } from './handlers/planner-holidays';
-import { plannerBedtimeRoutes } from './handlers/planner-bedtime';
-import { RadioDirectory } from '../planner/radio';
-import { plannerClockRoutes } from './handlers/planner-clock';
-import { deviceScopeOf } from './person-scope';
+import { plannerRoutes } from './build-planner-routes';
 import { startPlanner } from './planner-wiring';
-import { plannerPreferencesOf } from '../planner/preferences';
-import { triggerCatalogueOf } from '../signals/trigger-catalogue-of';
 import { automationEntityOptionsRoutes } from './handlers/automation-entity-options';
 import { pluginRoutes } from './handlers/plugins';
 import { scheduleRoutes } from './handlers/schedules';
@@ -139,7 +123,7 @@ const aiConversationRoutes = (context: ServerContext, layout: HubLayout) =>
   }) as const;
 
 function hubMemoryRoutes(context: ServerContext): ReturnType<typeof memoryRoutes> {
-  return memoryRoutes(context.store, hubMemoryOf(context).service);
+  return memoryRoutes(hubMemoryOf(context).service);
 }
 
 function assistantConversationRoutes(
@@ -171,12 +155,11 @@ export function routeTable(
   >,
   services: RouteServices,
 ): RouteTable {
-  const now = options.clock.now;
   return {
-    ...assistantConversationRoutes(context, now, options.layout),
+    ...assistantConversationRoutes(context, options.clock.now, options.layout),
     ...options.hubUpdateSourceRoutes,
     ...assistantVoiceRoutes(context, services.voice, services.budget.gate),
-    ...callRoutes(context, services.voice),
+    ...callRoutes(services.voice),
     ...liveLinkRoutes(context, services.reach),
     ...claudeSessionRoutes(services.claude),
     ...computerAiRoutes(context.computerAi),
@@ -189,9 +172,9 @@ export function routeTable(
     ),
     ...pluginRoutes(context.store, services.plugins.admin),
     ...automationEntityOptionsRoutes(context, services.plugins.admin),
-    ...snapshotRoutes(context, now),
+    ...snapshotRoutes(context, options.clock.now),
     ...accessRoutes(context),
-    ...settingsRoutes(context, now),
+    ...settingsRoutes(context, options.clock.now),
     ...allDeviceRoutes(context),
     ...mediaRoutes(context),
     ...firewallRoutes(context),
@@ -202,8 +185,8 @@ export function routeTable(
     ...nutritionRoutes(context),
     ...watchRoutes(context),
     ...developerRoutes(context),
-    ...weatherRoutes(context, now),
-    ...exchangeRatesRoutes(context, now),
+    ...weatherRoutes(context, options.clock.now),
+    ...exchangeRatesRoutes(context, options.clock.now),
     ...placeRoutes(context),
     ...featureRoutes(context, options, services.drive),
     ...talkRoutes(context),
@@ -224,63 +207,6 @@ function featureRoutes(
     ...plannerRoutes(context, options),
     ...googleRoutes(context, options.core.google),
     ...drive,
-  };
-}
-
-function plannerRoutes(
-  context: ServerContext,
-  options: Pick<BuildOptions, 'clock' | 'core' | 'fetch' | 'version'>,
-): Pick<
-  RouteTable,
-  | keyof ReturnType<typeof plannerItemRoutes>
-  | keyof ReturnType<typeof plannerCollectionRoutes>
-  | keyof ReturnType<typeof plannerPreferenceRoutes>
-  | keyof ReturnType<typeof plannerCoreRoutes>
-  | keyof ReturnType<typeof plannerClockRoutes>
-  | keyof ReturnType<typeof plannerBedtimeRoutes>
-  | keyof ReturnType<typeof plannerFeedRoutes>
-  | keyof ReturnType<typeof plannerSharingRoutes>
-  | keyof ReturnType<typeof plannerBookingRoutes>
-  | keyof ReturnType<typeof plannerInviteRoutes>
-  | keyof ReturnType<typeof mailRoutes>
-  | keyof ReturnType<typeof plannerSearchRoutes>
-  | keyof ReturnType<typeof plannerHolidayRoutes>
-> {
-  const { now } = options.clock;
-  const { planner } = options.core;
-  const collab = collabOf(context, now);
-  const preferencesOf = (profileId: string): ReturnType<typeof plannerPreferencesOf> =>
-    plannerPreferencesOf(context.store, profileId);
-  return {
-    ...plannerCoreRoutes(context, {
-      now,
-      preferencesOf,
-      feeds: planner.feeds,
-      catalogueOf: (caller) =>
-        triggerCatalogueOf(context.store, deviceScopeOf(context.store, caller)),
-    }),
-    ...plannerClockRoutes(context, {
-      preferencesOf,
-      alarms: planner.alarms,
-      timers: planner.timers,
-      stopwatch: planner.stopwatch,
-      phoneRings: planner.phoneRings,
-      sounds: planner.sounds,
-      radio: new RadioDirectory({ fetch: options.fetch, version: options.version }),
-    }),
-    ...plannerBedtimeRoutes(context, { sleepSound: planner.sleepSound }),
-    ...plannerFeedRoutes(context, { feeds: planner.feeds, origin: feedOriginOf(context) }),
-    ...plannerItemRoutes(context, now),
-    ...plannerSharingRoutes(context, now),
-    ...plannerBookingRoutes(context),
-    ...plannerInviteRoutes(context, collab),
-    ...mailRoutes({ settings: collab.settings, service: collab.mail }),
-    ...plannerSearchRoutes(context, { now, feeds: planner.feeds }),
-    ...plannerHolidayRoutes(),
-    ...plannerCollectionRoutes(context),
-    ...plannerPreferenceRoutes(context, (profileId) => {
-      planner.preferencesChanged(profileId);
-    }),
   };
 }
 
@@ -397,6 +323,7 @@ export async function startExtensions(
         machineApprovals: context.machineApprovals,
         openCalls: context.openCalls,
         mediaNotes: context.mediaNotes,
+        calendars: options.core.planner.calendars,
         links: context.links,
         operations,
         publications: context.publications,

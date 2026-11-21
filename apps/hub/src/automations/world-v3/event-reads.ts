@@ -27,7 +27,7 @@ function eventCount(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
   const deviceIds =
     request.target === undefined
       ? undefined
-      : devicesOf(deps.store, request.target).map((device) => device.id);
+      : devicesOf(deps.world, request.target).map((device) => device.id);
   const rows =
     deviceIds?.length === 0
       ? []

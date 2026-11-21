@@ -1,7 +1,5 @@
 import {
   NUTRITION_METRICS,
-  traceSubjectOf,
-  type AutomationAuthor,
   WATCH_METRICS,
   OWNER_TABLES,
   type BodyReadingRow,
@@ -17,7 +15,7 @@ import {
   type StateRow,
 } from '@smarteverything/domain';
 import type { WebSocket } from 'ws';
-import { hiddenComputer, viewerOfClient } from '../computers/computer-access';
+import { hiddenComputer, viewerOfClient } from '../computers/computer-visibility';
 import { phoneViewerOfClient } from '../phones/phone-detail';
 import {
   eventVisibleTo,
@@ -353,11 +351,28 @@ function photoSharingSeenBy(
   return message;
 }
 
+const PROFILE_NOTICES: ReadonlySet<LiveMessage['type']> = new Set([
+  'photos_folders_changed',
+  'photos_people_changed',
+  'photos_edit_job',
+  'photos_partner',
+]);
+
+export function viewedByStore(message: LiveMessage): boolean {
+  return (
+    message.type === 'talk_floors' ||
+    driveNotice(message) ||
+    PROFILE_NOTICES.has(message.type) ||
+    (message.type === 'photos_activity' && message.profileId !== undefined)
+  );
+}
+
 export function seenBy(
   connection: Hearing,
   message: LiveMessage,
   store: LiveStore,
 ): LiveMessage | null {
+  if (!viewedByStore(message)) return message;
   if (message.type === 'talk_floors') return floorsSeenBy(connection, message, store);
   if (driveNotice(message)) return driveNoticeSeenBy(connection, message, store);
   if (
@@ -368,39 +383,6 @@ export function seenBy(
     return store.profiles.activeOf(connection.client.id).id === message.profileId ? message : null;
   }
   return photoSharingSeenBy(connection, message, store);
-}
-
-export interface TraceOwners {
-  readonly authorOf: (automationId: string) => AutomationAuthor | null;
-  readonly automationOfRun: (runId: string) => string | null;
-}
-
-export interface TraceProfiles {
-  readonly profiles: { readonly activeOf: (clientId: string) => { readonly id: string } };
-}
-
-export function traceVisible(
-  client: ClientRow,
-  author: AutomationAuthor | null,
-  store: TraceProfiles,
-): boolean {
-  return (
-    client.role === 'owner' ||
-    (author !== null && author.profile_id === store.profiles.activeOf(client.id).id)
-  );
-}
-
-export function traceAllowed(
-  client: ClientRow,
-  subject: string,
-  owners: TraceOwners,
-  store: TraceProfiles,
-): boolean {
-  const parsed = traceSubjectOf(subject);
-  if (parsed === null) return false;
-  if (client.role === 'owner') return true;
-  const automationId = parsed.kind === 'run' ? owners.automationOfRun(parsed.id) : parsed.id;
-  return automationId !== null && traceVisible(client, owners.authorOf(automationId), store);
 }
 
 export type LiveView = (

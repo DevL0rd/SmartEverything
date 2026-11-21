@@ -35,9 +35,10 @@ function chat(parent: AiChatRow | null): AiChatRow {
   });
 }
 
-function configure(loops: z.input<typeof AI_AGENT_LOOP_SETTINGS>): void {
-  opened.store.assistantChat.saveSettings({
-    ...opened.store.assistantChat.settings(),
+async function configure(loops: z.input<typeof AI_AGENT_LOOP_SETTINGS>): Promise<void> {
+  await opened.store.live.home.load();
+  await opened.store.live.home.assistant.save({
+    ...opened.store.live.home.assistant.read(),
     agent_loops: AI_AGENT_LOOP_SETTINGS.parse(loops),
   });
 }
@@ -68,8 +69,8 @@ describe('queued subagent work', () => {
     expect(opened.store.assistantEvents.pendingSubagentRoots()).toStrictEqual([rootA.id, rootB.id]);
   });
 
-  it('shares the active slots between root conversations in turn', () => {
-    configure({ subagents: { max_active: 1 } });
+  it('shares the active slots between root conversations in turn', async () => {
+    await configure({ subagents: { max_active: 1 } });
     const admission = new SubagentAdmission(opened.store);
     const rootA = chat(null);
     const rootB = chat(null);
@@ -106,8 +107,8 @@ describe('queued subagent work', () => {
     expect(events.map((event) => admission.enter(event))).not.toContain(false);
   });
 
-  it('refuses nesting beyond the depth from the settings', () => {
-    configure({ subagents: { max_depth: 2 } });
+  it('refuses nesting beyond the depth from the settings', async () => {
+    await configure({ subagents: { max_depth: 2 } });
     const admission = new SubagentAdmission(opened.store);
     const root = chat(null);
     const first = chat(root);
@@ -131,8 +132,8 @@ describe('queued subagent work', () => {
     }).not.toThrow();
   });
 
-  it('asks a waiting helper to queue instead once the capacity from the settings is used', () => {
-    configure({ subagents: { max_active: 1 } });
+  it('asks a waiting helper to queue instead once the capacity from the settings is used', async () => {
+    await configure({ subagents: { max_active: 1 } });
     const admission = new SubagentAdmission(opened.store);
     const root = chat(null);
     const child = chat(root);

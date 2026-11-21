@@ -109,8 +109,8 @@ function controlOf(ask: Ask): Control | string {
     : { control: valued.control, value };
 }
 
-function ensureTelevision(store: Store, deviceId: string, control: string): void {
-  const device = store.devices.byId(deviceId);
+async function ensureTelevision(store: Store, deviceId: string, control: string): Promise<void> {
+  const device = await store.host.call('devices', 'byId', deviceId);
   if (device.kind !== 'television')
     throw new ApiError('invalid_request', `${device.name} is not a TV.`);
   if (targetCapability(device, control)?.writable !== true)
@@ -125,7 +125,7 @@ function tvControl(ports: TvEffectPorts): EffectHandlers[string] {
     const planned = controlOf(ask);
     if (typeof planned === 'string') return invalid(planned);
     try {
-      ensureTelevision(ports.store, ask.tv, planned.control);
+      await ensureTelevision(ports.store, ask.tv, planned.control);
       await ports.setter.set(
         {
           target: { kind: 'devices', deviceIds: [ask.tv] },

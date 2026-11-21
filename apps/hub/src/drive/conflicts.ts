@@ -1,36 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, extname } from 'node:path';
 import {
-  DRIVE_CONFLICT,
   type DriveConflict,
-  type DriveConflictResolution,
   type DriveConflictResolve,
   type DriveItem,
 } from '@smarteverything/domain';
 import { commitContent, type ChangeActor, type ChangeEnv } from './changes';
+import { ConflictError } from './conflict-error';
 import { locate } from './intents';
-import { commitTrash } from './trash-purge';
+import { commitTrashWith } from './trash-purge';
 import { stageBytes, type StagedBytes } from './versions';
+import type { ContentAlongside } from './units/content';
+import { resultOf, writeDriveOps, type DriveOp, type DriveOpResult } from './units/ops';
 
 export interface DriveConflictStore {
-  readonly insert: (conflict: DriveConflict) => void;
   readonly find: (id: string) => DriveConflict | undefined;
-  readonly resolve: (id: string, resolution: DriveConflictResolution, at: string) => DriveConflict;
 }
 
 export interface ConflictEnv extends ChangeEnv {
   readonly conflicts: DriveConflictStore;
-}
-
-export class ConflictError extends Error {
-  override readonly name = 'ConflictError';
-
-  constructor(
-    readonly failure: 'unknown' | 'resolved' | 'copy-missing',
-    message: string,
-  ) {
-    super(message);
-  }
 }
 
 const DEVICE_LABEL_LENGTH = 8;
@@ -54,7 +42,7 @@ async function freeConflictPath(
   hub: DriveItem,
   deviceId: string,
 ): Promise<string> {
-  const root = env.store.driveRoots.byId(rootId);
+  const root = await env.store.host.call('driveRoots', 'byId', rootId);
   const folder = dirname(hub.relPath);
   for (let attempt = 0; ; attempt += 1) {
     const name = conflictName(hub.name, env.now(), deviceId, attempt);
@@ -71,6 +59,7 @@ export interface ConflictCopy {
   readonly baseRev: number;
   readonly deviceId: string;
   readonly actor: ChangeActor;
+  readonly alongside?: readonly ContentAlongside[];
 }
 
 export async function commitConflictCopy(
@@ -78,66 +67,68 @@ export async function commitConflictCopy(
   copy: ConflictCopy,
 ): Promise<DriveConflict> {
   const { hub, actor } = copy;
-  const root = env.store.driveRoots.byId(hub.rootId);
+  const root = await env.store.host.call('driveRoots', 'byId', hub.rootId);
   const relPath = await freeConflictPath(env, hub.rootId, hub, copy.deviceId);
   const recorded: DriveConflict[] = [];
+  const conflict = {
+    id: randomUUID(),
+    rootId: hub.rootId,
+    itemId: hub.id,
+    relPath: hub.relPath,
+    conflictRelPath: relPath,
+    hubRev: hub.rev,
+    baseRev: copy.baseRev,
+    deviceId: copy.deviceId,
+    profileId: actor.actorProfileId,
+    at: env.now().toISOString(),
+    resolvedAt: null,
+    resolution: null,
+  };
   await commitContent(env, {
     root,
     staged: copy.staged,
     relPath,
     actor,
-    alongside: (item) => {
-      const conflict = DRIVE_CONFLICT.parse({
-        id: randomUUID(),
-        rootId: hub.rootId,
-        itemId: hub.id,
-        conflictItemId: item.id,
-        relPath: hub.relPath,
-        conflictRelPath: relPath,
-        hubRev: hub.rev,
-        baseRev: copy.baseRev,
-        deviceId: copy.deviceId,
-        profileId: actor.actorProfileId,
-        at: env.now().toISOString(),
-        resolvedAt: null,
-        resolution: null,
-      });
-      env.conflicts.insert(conflict);
-      recorded.push(conflict);
+    alongside: [{ kind: 'conflict', conflict }, ...(copy.alongside ?? [])],
+    settled: (settled) => {
+      recorded.push(...settled.conflicts);
     },
   });
-  const [conflict] = recorded;
-  if (conflict === undefined) {
+  const [kept] = recorded;
+  if (kept === undefined) {
     throw new ConflictError('copy-missing', 'The conflict copy was not recorded.');
   }
-  return conflict;
+  return kept;
 }
 
 async function keepClient(
   env: ConflictEnv,
   conflict: DriveConflict,
   actor: ChangeActor,
-): Promise<void> {
-  const root = env.store.driveRoots.byId(conflict.rootId);
-  const copy = env.store.driveItems.find(conflict.conflictItemId, null);
+  resolve: DriveOp,
+): Promise<DriveOpResult[]> {
+  const root = await env.store.host.call('driveRoots', 'byId', conflict.rootId);
+  const copy = await env.store.host.call('driveItems', 'find', conflict.conflictItemId, null);
   if (copy === undefined) {
     throw new ConflictError('copy-missing', 'The conflict copy is no longer in the library.');
   }
   const staged = await stageBytes(env, root, env.files.read(await locate(root, copy.relPath)));
   await commitContent(env, { root, staged, relPath: conflict.relPath, actor });
-  await commitTrash(env, root, copy.id, actor);
+  return commitTrashWith(env, { root, itemId: copy.id, actor, before: [resolve] });
 }
 
 async function keepHub(
   env: ConflictEnv,
   conflict: DriveConflict,
   actor: ChangeActor,
-): Promise<void> {
-  if (env.store.driveItems.find(conflict.conflictItemId, null) === undefined) {
-    return;
+  resolve: DriveOp,
+): Promise<DriveOpResult[]> {
+  const copy = await env.store.host.call('driveItems', 'find', conflict.conflictItemId, null);
+  if (copy === undefined) {
+    return writeDriveOps(env.store, [resolve]);
   }
-  const root = env.store.driveRoots.byId(conflict.rootId);
-  await commitTrash(env, root, conflict.conflictItemId, actor);
+  const root = await env.store.host.call('driveRoots', 'byId', conflict.rootId);
+  return commitTrashWith(env, { root, itemId: conflict.conflictItemId, actor, before: [resolve] });
 }
 
 export async function resolveConflict(
@@ -145,17 +136,24 @@ export async function resolveConflict(
   request: DriveConflictResolve,
   actor: ChangeActor,
 ): Promise<DriveConflict> {
-  const conflict = env.conflicts.find(request.conflictId);
+  const conflict = await env.store.host.call('driveConflicts', 'find', request.conflictId);
   if (conflict === undefined) {
     throw new ConflictError('unknown', 'There is no such conflict.');
   }
   if (conflict.resolvedAt !== null) {
     throw new ConflictError('resolved', 'The conflict is already resolved.');
   }
-  if (request.resolution === 'keep_client') {
-    await keepClient(env, conflict, actor);
-  } else if (request.resolution === 'keep_hub') {
-    await keepHub(env, conflict, actor);
-  }
-  return env.conflicts.resolve(conflict.id, request.resolution, env.now().toISOString());
+  const resolve: DriveOp = {
+    kind: 'resolve',
+    conflictId: conflict.id,
+    resolution: request.resolution,
+    at: env.now().toISOString(),
+  };
+  const results =
+    request.resolution === 'keep_client'
+      ? await keepClient(env, conflict, actor, resolve)
+      : request.resolution === 'keep_hub'
+        ? await keepHub(env, conflict, actor, resolve)
+        : await writeDriveOps(env.store, [resolve]);
+  return resultOf(results, 0, 'conflict').conflict;
 }

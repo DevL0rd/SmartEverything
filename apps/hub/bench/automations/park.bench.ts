@@ -211,7 +211,7 @@ async function bootOf(runs: number): Promise<void> {
   for (let rep = 0; rep < 7; rep += 1) {
     const hub = new Hub(db, home);
     const started = performance.now();
-    const report = hub.boot();
+    const report = await hub.boot();
     samples.push(performance.now() - started);
     if (report.resumed !== runs) throw new Error(`resumed ${String(report.resumed)}`);
   }

@@ -170,7 +170,7 @@ export function startTranscribing(
   transcripts.start();
   const transcriber = new Transcriber({
     provider: new OpenRouterTranscription(context.openRouter.client, options.layout.tmp),
-    ledger: store.ledger,
+    ledger: store.host,
     log,
   });
   const claims = new WakeClaims({ clock, log: options.log.forArea('hub.wake-name') });

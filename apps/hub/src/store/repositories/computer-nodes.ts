@@ -7,6 +7,14 @@ import {
 import { z } from 'zod';
 import type { StoreContext } from '../context';
 
+const NODE_FACTS = z.strictObject({
+  device_id: z.string(),
+  profile_id: z.string().nullable(),
+  window_client_id: z.string().nullable(),
+});
+
+export type ComputerNodeFacts = z.output<typeof NODE_FACTS>;
+
 const PAIRING = z.strictObject({
   hub_url: z.string(),
   expires_at: z.string(),
@@ -22,6 +30,21 @@ export class ComputerNodesRepository {
         'select device_id from computer_nodes where revoked_at is null order by device_id',
       )
       .map((row) => row.device_id);
+  }
+
+  facts(): ComputerNodeFacts[] {
+    return this.context.sql.all(
+      NODE_FACTS,
+      'select device_id, profile_id, window_client_id from computer_nodes where revoked_at is null order by device_id',
+    );
+  }
+
+  factsOf(deviceId: string): ComputerNodeFacts | undefined {
+    return this.context.sql.get(
+      NODE_FACTS,
+      'select device_id, profile_id, window_client_id from computer_nodes where device_id = $deviceId and revoked_at is null',
+      { deviceId },
+    );
   }
 
   byToken(tokenHash: string): ComputerNodeRow | undefined {

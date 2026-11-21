@@ -11,7 +11,7 @@ import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-14T00:00:00.000Z';
 const OPENED = '2026-11-10T00:00:00.000Z';
@@ -83,7 +83,7 @@ beforeEach(() => {
   const profiles = new ProfilesRepository(context);
   robin = profiles.create({ name: 'Robin' }).id;
   sam = profiles.create({ name: 'Sam' }).id;
-  const roots = new DriveRootsRepository(context, drivePathOf);
+  const roots = new DriveRootsRepository(context, driveFolders);
   roots.insert(sharedDriveRoot(SHARED));
   roots.insert(personalDriveRoot(ROBIN_ROOT, robin));
   roots.insert(personalDriveRoot(SAM_ROOT, sam));

@@ -122,8 +122,8 @@ export class MountSession {
     return this.handleCounter;
   }
 
-  scopeOf(store: Pick<Store, 'driveInodes'>, ino: number): PosixScope {
-    const inode = store.driveInodes.find(ino);
+  async scopeOf(store: Pick<Store, 'host'>, ino: number): Promise<PosixScope> {
+    const inode = await store.host.call('driveInodes', 'find', ino);
     if (inode === undefined) throw posix('ESTALE', `The inode ${String(ino)} does not exist.`);
     const candidates = [...this.attachments.values()]
       .map((attachment) => attachment.scope)

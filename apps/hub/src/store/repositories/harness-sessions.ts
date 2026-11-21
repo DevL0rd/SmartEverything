@@ -73,6 +73,25 @@ export class HarnessSessionsRepository {
       )
       .map((row) => row.session_id);
   }
+  serverSessionsAtWork(): { readonly session_id: string; readonly state: string }[] {
+    return this.context.sql.all(
+      z.object({ session_id: z.string(), state: z.string() }),
+      "select session_id, json_extract(projection,'$.state') as state from harness_projections where json_extract(projection,'$.target.kind')='server' and json_extract(projection,'$.state') in ('working','waiting')",
+    );
+  }
+  settleStoppedWork(sessionId: string): void {
+    durableSessionWrite(this.context, () => {
+      const current = this.state(sessionId);
+      if (current === undefined)
+        throw new Error('Interrupted native work has no durable shared projection.');
+      const projection = AI_HARNESS_SESSION.parse({ ...current, state: 'idle', work: [] });
+      this.context.sql.run(
+        'settle native work that stopped with the hub',
+        'update harness_projections set projection=$state where session_id=$id',
+        { state: jsonText(projection), id: sessionId },
+      );
+    });
+  }
   project(input: AiHarnessSession, eventSeq: number): boolean {
     return durableSessionWrite(this.context, () => this.projectStored(input, eventSeq));
   }

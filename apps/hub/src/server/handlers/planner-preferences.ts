@@ -1,34 +1,29 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
-import { plannerPreferencesOf } from '../../planner/preferences';
-import { bound, type RouteOf } from '../router';
-import { requireTargets } from './planner-alarm-checks';
-import { plannerProfileOf, type PlannerContext } from './planner-items';
+import { loadPlannerPreferences } from '../../planner/preferences';
+import { bound } from '../router';
+import { plannerProfileFor, type PlannerContext } from './planner-profile';
 
 export type PreferencesChanged = (profileId: string) => void;
 
-function writeRoute(
-  context: PlannerContext,
-  changed: PreferencesChanged,
-): RouteOf<'writePlannerPreferences'> {
-  const { store } = context;
-  return bound(E.writePlannerPreferences, ({ query, body, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
-    requireTargets(store, body.clock.targets);
-    const saved = store.write(() => {
-      if (body.tasks.default_collection_id !== null) {
-        store.plannerCollections.byId(body.tasks.default_collection_id, profileId);
-      }
-      return store.plannerPreferences.put(profileId, body).preferences;
-    });
-    changed(profileId);
-    return saved;
-  });
-}
-
 export const plannerPreferenceRoutes = (context: PlannerContext, changed: PreferencesChanged) =>
   ({
-    readPlannerPreferences: bound(E.readPlannerPreferences, ({ query, caller }) =>
-      plannerPreferencesOf(context.store, plannerProfileOf(context, caller, query.personId)),
+    readPlannerPreferences: bound(E.readPlannerPreferences, async ({ query, caller }) =>
+      loadPlannerPreferences(
+        context.store,
+        await plannerProfileFor(context, caller, query.personId),
+      ),
     ),
-    writePlannerPreferences: writeRoute(context, changed),
+    writePlannerPreferences: bound(
+      E.writePlannerPreferences,
+      async ({ caller, query, body, params }) => {
+        const saved = await context.store.host.write('plannerPreferencesWrite', {
+          caller,
+          query,
+          body,
+          params,
+        });
+        changed(saved.profileId);
+        return saved.preferences;
+      },
+    ),
   }) as const;

@@ -1,10 +1,8 @@
 import { PHOTOS_ENDPOINTS } from '@smarteverything/domain';
 import { DONE_REPLY, bound, type Bound } from '../../server/router';
-import type { Store } from '../../store/store';
 import { photoActor } from '../actor';
 import type { PhotoSearch } from './search';
 import type { PeopleService } from './service';
-import type { PhotoSuggest } from './suggest';
 
 const E = PHOTOS_ENDPOINTS;
 
@@ -21,43 +19,38 @@ export interface PhotoPeopleRoutes {
   readonly readLibraryPage: Bound<typeof E.readLibraryPage>;
 }
 
-export function photoPeopleRoutes(
-  store: Store,
-  people: PeopleService,
-  search: PhotoSearch,
-  suggest: PhotoSuggest,
-): PhotoPeopleRoutes {
+export function photoPeopleRoutes(people: PeopleService, search: PhotoSearch): PhotoPeopleRoutes {
   return {
     listPhotoGroups: bound(E.listPhotoGroups, ({ query, caller }) =>
-      people.people(photoActor(store, caller), query.kind),
+      people.people(photoActor(caller), query.kind),
     ),
     readPhotoGroup: bound(E.readPhotoGroup, ({ params, caller }) =>
-      people.group(photoActor(store, caller), params.groupId),
+      people.group(photoActor(caller), params.groupId),
     ),
     updatePhotoGroup: bound(E.updatePhotoGroup, ({ params, body, caller }) =>
-      people.update(photoActor(store, caller), params.groupId, body),
+      people.update(photoActor(caller), params.groupId, body),
     ),
     mergePhotoGroups: bound(E.mergePhotoGroups, ({ body, caller }) =>
-      people.merge(photoActor(store, caller), body),
+      people.merge(photoActor(caller), body),
     ),
-    dismissPhotoMergeSuggestion: bound(E.dismissPhotoMergeSuggestion, ({ body, caller }) => {
-      people.dismissMerge(photoActor(store, caller), body);
+    dismissPhotoMergeSuggestion: bound(E.dismissPhotoMergeSuggestion, async ({ body, caller }) => {
+      await people.dismissMerge(photoActor(caller), body);
       return DONE_REPLY;
     }),
     removePhotoGroupFaces: bound(E.removePhotoGroupFaces, ({ params, body, caller }) =>
-      people.removeFaces(photoActor(store, caller), params.groupId, body),
+      people.removeFaces(photoActor(caller), params.groupId, body),
     ),
     readPhotoFaces: bound(E.readPhotoFaces, ({ params, caller }) =>
-      people.itemFaces(photoActor(store, caller), params.itemId),
+      people.itemFaces(photoActor(caller), params.itemId),
     ),
     suggestPhotoSearch: bound(E.suggestPhotoSearch, ({ query, caller }) =>
-      suggest.read(photoActor(store, caller), query.q),
+      people.suggest(photoActor(caller), query.q),
     ),
     readLibraryBuckets: bound(E.readLibraryBuckets, ({ query, caller }) =>
-      search.buckets(photoActor(store, caller), query),
+      search.buckets(photoActor(caller), query),
     ),
     readLibraryPage: bound(E.readLibraryPage, ({ params, query, caller }) =>
-      search.page(photoActor(store, caller), params.month, query),
+      search.page(photoActor(caller), params.month, query),
     ),
   };
 }

@@ -1,7 +1,7 @@
 import { JSON_VALUE, type JsonValue } from '@smarteverything/domain';
 import type { StateMemoryPort } from '@smarteverything/flow/interpret/state-ops';
 import { TIMER_SLOT_PREFIX } from '@smarteverything/flow/nodes/state/timer';
-import type { AutomationNodeStateRepository } from '../../store/repositories/automation-node-state';
+import type { NodeStateRows } from '../automation-memory';
 
 const MEMORY_PARTITION = 'read';
 export const STATE_PARTITION = 'state';
@@ -11,9 +11,7 @@ export interface NodeMemory {
   readonly keep: (automationId: string, nodeId: string, memory: JsonValue) => void;
 }
 
-export function nodeMemoryFromState(
-  state: Pick<AutomationNodeStateRepository, 'get' | 'save'>,
-): NodeMemory {
+export function nodeMemoryFromState(state: NodeStateRows): NodeMemory {
   return {
     recall: (automationId, nodeId): JsonValue | undefined => {
       const row = state.get(automationId, nodeId, MEMORY_PARTITION);
@@ -37,7 +35,7 @@ export function transientNodeMemory(): NodeMemory {
 }
 
 export function stateMemoryFromRows(
-  rows: Pick<AutomationNodeStateRepository, 'get' | 'save'>,
+  rows: NodeStateRows,
   wakes?: { readonly changed: () => void },
 ): StateMemoryPort {
   return {

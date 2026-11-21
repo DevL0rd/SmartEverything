@@ -1,38 +1,29 @@
+import { driveFolderOf } from '../../src/data-layout/drive-folders';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync } from 'node:sqlite';
 import { CLIENT_ROW } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fileDraft } from '../../src/drive/changes';
 import { nodeFiles } from '../../src/drive/versions';
 import { AiImageSource } from '../../src/photos/sources/ai-images';
-import { CameraSource, savedName } from '../../src/photos/sources/cameras';
+import { CameraSource } from '../../src/photos/sources/cameras';
+import { savedName } from '../../src/photos/sources/reads';
 import { photoSourceRoutes } from '../../src/photos/sources/routes';
-import type { SourceViewer, SourcesEnv, SourcesStore } from '../../src/photos/sources/shapes';
-import { StoreContext } from '../../src/store/context';
-import { ChangeFeed } from '../../src/store/feed';
-import { migrate } from '../../src/store/migrate';
-import { MIGRATIONS } from '../../src/store/migrations';
-import { driveRepositories } from '../../src/store/repositories/areas/drive';
-import { CamerasRepository } from '../../src/store/repositories/cameras';
-import { DevicesRepository } from '../../src/store/repositories/devices';
-import { ProfilesRepository } from '../../src/store/repositories/profiles';
-import { Sql } from '../../src/store/sql';
+import type { SourceViewer, SourcesEnv } from '../../src/photos/sources/shapes';
 import { captureLogs, testLogger } from '../support/logs';
-import type { TestStore } from '../support/store';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
-import { driveTestStore } from '../drive/spaces-fixture';
+import type { Store } from '../../src/store/store';
+import { testStore, type TestStore } from '../support/store';
 
 const NOW = '2026-11-07T08:00:00.000Z';
 const PAGE = 200;
 
+let opened: TestStore;
 let database: DatabaseSync;
-let context: StoreContext;
-let store: SourcesStore;
-let cameras: CamerasRepository;
-let devices: DevicesRepository;
+let store: Store;
 let base = '';
 let env: SourcesEnv;
 let alice = '';
@@ -49,30 +40,15 @@ let nextIno = 1;
 
 const sha = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
 
-const drivePaths = new Map<string, string>();
-
-function drivePathOf(scope: 'person' | 'home', owner: string | null): string {
-  const path = drivePaths.get(`${scope}:${String(owner)}`);
-  if (path === undefined)
-    throw new Error(`The test drive ${scope}:${String(owner)} has no folder.`);
-  return path;
-}
-
-async function addRoot(
-  name: string,
-  scope: 'person' | 'home',
-  owner: string | null,
-): Promise<string> {
+async function addRoot(scope: 'person' | 'home', owner: string | null): Promise<string> {
   const id = randomUUID();
-  const path = join(base, name);
-  await mkdir(path, { recursive: true });
-  drivePaths.set(`${scope}:${String(owner)}`, path);
+  await mkdir(driveFolderOf(opened.layout.drives, scope, owner), { recursive: true });
   store.driveRoots.insert(owner === null ? sharedDriveRoot(id) : personalDriveRoot(id, owner));
   return id;
 }
 
 function camera(externalId: string, name: string): string {
-  const [row] = devices.upsert([
+  const [row] = store.devices.upsert([
     {
       provider: 'local',
       externalId,
@@ -89,7 +65,7 @@ function camera(externalId: string, name: string): string {
     },
   ]);
   if (row === undefined) throw new Error('the camera was not stored');
-  cameras.upsert([
+  store.cameras.upsert([
     {
       deviceId: row.id,
       streamName: externalId,
@@ -121,7 +97,7 @@ async function recording({
     await mkdir(dirname(join(base, 'recordings', storagePath)), { recursive: true });
     await writeFile(join(base, 'recordings', storagePath), content);
   }
-  return cameras.addRecording({
+  return store.cameras.addRecording({
     deviceId,
     eventId: null,
     kind,
@@ -195,27 +171,14 @@ function owner(profileId: string): SourceViewer {
 beforeEach(async () => {
   captureLogs();
   base = await realpath(await mkdtemp(join(tmpdir(), 'photos-sources-')));
-  database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
+  opened = await testStore(() => new Date(NOW));
+  ({ store } = opened);
+  database = store.database;
   const log = testLogger();
-  const sql = new Sql(database);
-  const feed = new ChangeFeed(log);
-  context = new StoreContext(sql, feed, () => new Date(NOW));
-  migrate(sql, MIGRATIONS, NOW, log);
-  const profiles = new ProfilesRepository(context);
-  devices = new DevicesRepository(context);
-  cameras = new CamerasRepository(context);
-  store = {
-    ...driveRepositories(context, drivePathOf),
-    feed,
-    write: <T>(work: () => T): T => context.write(work),
-    devices,
-    cameras,
-    profiles,
-  };
-  alice = profiles.create({ name: 'Alice' }).id;
-  bob = profiles.create({ name: 'Bob' }).id;
-  homeRoot = await addRoot('home', 'home', null);
-  aliceRoot = await addRoot('alice', 'person', alice);
+  alice = store.profiles.create({ name: 'Alice' }).id;
+  bob = store.profiles.create({ name: 'Bob' }).id;
+  homeRoot = await addRoot('home', null);
+  aliceRoot = await addRoot('person', alice);
   living = camera('living', 'Living room');
   garage = camera('garage', 'Garage');
   blocked = camera('hidden', 'Hidden room');
@@ -223,7 +186,6 @@ beforeEach(async () => {
   env = {
     files: nodeFiles,
     store,
-    sql,
     log,
     now: (): Date => new Date(NOW),
     purge: { rearm: (): void => undefined },
@@ -240,7 +202,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  database.close();
+  await opened.close();
   await rm(base, { recursive: true, force: true });
 });
 
@@ -261,7 +223,7 @@ describe('cameras source', () => {
       kind: 'clip',
       startedAt: '2026-11-03T10:00:00.000Z',
     });
-    const page = cameraSource.page(owner(alice), {});
+    const page = await cameraSource.page(owner(alice), {});
     expect(page.items.map((item) => item.itemId)).toEqual([third, second, first]);
     expect(page.items.map((item) => item.chipId)).toEqual([living, garage, living]);
     expect(page.items.every((item) => !item.kept)).toBe(true);
@@ -273,7 +235,7 @@ describe('cameras source', () => {
       { id: living, name: 'Living room', count: 2 },
     ]);
     expect(page.next).toBeNull();
-    const only = cameraSource.page(owner(alice), { chipId: garage });
+    const only = await cameraSource.page(owner(alice), { chipId: garage });
     expect(only.items.map((item) => item.itemId)).toEqual([second]);
   });
 
@@ -288,17 +250,17 @@ describe('cameras source', () => {
       kind: 'clip',
       startedAt: '2026-11-02T10:00:00.000Z',
     });
-    const byName = cameraSource.page(owner(alice), { text: 'GARAGE' });
+    const byName = await cameraSource.page(owner(alice), { text: 'GARAGE' });
     expect(byName.items.map((item) => item.itemId)).toEqual([second]);
     expect(byName.chips).toEqual([
       { id: garage, name: 'Garage', count: 1 },
       { id: living, name: 'Living room', count: 0 },
     ]);
-    const byFile = cameraSource.page(owner(alice), { text: first });
+    const byFile = await cameraSource.page(owner(alice), { text: first });
     expect(byFile.items.map((item) => item.itemId)).toEqual([first]);
-    const byDays = cameraSource.page(owner(alice), { from: '2026-11-02', to: '2026-11-02' });
+    const byDays = await cameraSource.page(owner(alice), { from: '2026-11-02', to: '2026-11-02' });
     expect(byDays.items.map((item) => item.itemId)).toEqual([second]);
-    expect(cameraSource.page(owner(alice), { from: '2026-11-03' }).items).toEqual([]);
+    expect((await cameraSource.page(owner(alice), { from: '2026-11-03' })).items).toEqual([]);
   });
 
   it('never shows a camera that is blocked, its recordings or its chip', async () => {
@@ -308,10 +270,10 @@ describe('cameras source', () => {
       kind: 'snapshot',
       startedAt: '2026-11-01T11:00:00.000Z',
     });
-    const page = cameraSource.page(owner(alice), {});
+    const page = await cameraSource.page(owner(alice), {});
     expect(page.items.map((item) => item.itemId)).toEqual([shown]);
     expect(page.chips.map((chip) => chip.id)).not.toContain(blocked);
-    expect(() => cameraSource.page(owner(alice), { chipId: blocked })).toThrow(
+    await expect(cameraSource.page(owner(alice), { chipId: blocked })).rejects.toThrow(
       /not one you can see/,
     );
   });
@@ -327,10 +289,12 @@ describe('cameras source', () => {
       profileId: bob,
       devices: { mode: 'only', rooms: [], devices: [living] },
     };
-    const page = cameraSource.page(member, {});
+    const page = await cameraSource.page(member, {});
     expect(page.items.map((item) => item.itemId)).toEqual([mine]);
     expect(page.chips.map((chip) => chip.id)).toEqual([living]);
-    expect(() => cameraSource.page(member, { chipId: garage })).toThrow(/not one you can see/);
+    await expect(cameraSource.page(member, { chipId: garage })).rejects.toThrow(
+      /not one you can see/,
+    );
     await expect(cameraSource.keep(member, [mine])).resolves.toBe(1);
   });
 
@@ -345,18 +309,18 @@ describe('cameras source', () => {
         }),
       );
     }
-    const first = cameraSource.page(owner(alice), {});
+    const first = await cameraSource.page(owner(alice), {});
     expect(first.items).toHaveLength(PAGE);
     expect(first.next).not.toBeNull();
-    const second = cameraSource.page(owner(alice), { cursor: first.next ?? '' });
+    const second = await cameraSource.page(owner(alice), { cursor: first.next ?? '' });
     expect(second.items).toHaveLength(2);
     expect(second.next).toBeNull();
     const seen = [...first.items, ...second.items].map((item) => item.itemId);
     expect(new Set(seen)).toEqual(new Set(ids));
   });
 
-  it('rejects a cursor this list never gave out', () => {
-    expect(() => cameraSource.page(owner(alice), { cursor: 'nonsense' })).toThrow(/cursor/);
+  it('rejects a cursor this list never gave out', async () => {
+    await expect(cameraSource.page(owner(alice), { cursor: 'nonsense' })).rejects.toThrow(/cursor/);
   });
 
   it('shows only what each camera still keeps and leaves kept copies alone', async () => {
@@ -367,8 +331,8 @@ describe('cameras source', () => {
       content: 'old',
     });
     await cameraSource.keep(owner(alice), [old]);
-    cameras.removeExpiredRecordings(new Date('2027-06-01T00:00:00.000Z'));
-    const page = cameraSource.page(owner(alice), {});
+    store.cameras.removeExpiredRecordings(new Date('2027-06-01T00:00:00.000Z'));
+    const page = await cameraSource.page(owner(alice), {});
     expect(page.items).toEqual([]);
     expect(page.chips.find((chip) => chip.id === living)?.count).toBe(0);
     const kept = store.driveItems.children({
@@ -379,7 +343,9 @@ describe('cameras source', () => {
       viewer: null,
     });
     expect(JSON.stringify(kept)).toContain('Saved');
-    const files = await readdir(join(base, 'home', 'Saved', 'Cameras', 'Living room'));
+    const files = await readdir(
+      join(store.driveRoots.byId(homeRoot).path, 'Saved', 'Cameras', 'Living room'),
+    );
     expect(files).toHaveLength(1);
   });
 });
@@ -402,14 +368,17 @@ describe('keep from cameras', () => {
       sha256: sha(Buffer.from('clip bytes')),
     });
     expect(
-      await readFile(join(base, 'home', 'Saved', 'Cameras', 'Living room', name), 'utf8'),
+      await readFile(
+        join(store.driveRoots.byId(homeRoot).path, 'Saved', 'Cameras', 'Living room', name),
+        'utf8',
+      ),
     ).toBe('clip bytes');
     expect(
       ['Saved', 'Saved/Cameras', 'Saved/Cameras/Living room'].map(
         (path) => store.driveItems.byPath(homeRoot, path, null)?.kind,
       ),
     ).toEqual(['folder', 'folder', 'folder']);
-    expect(cameraSource.page(owner(alice), {}).items[0]?.kept).toBe(true);
+    expect((await cameraSource.page(owner(alice), {})).items[0]?.kept).toBe(true);
     expect(savedName({ id, kind: 'clip', started_at: '2026-11-03T10:15:30.000Z' })).toBe(name);
   });
 
@@ -420,10 +389,12 @@ describe('keep from cameras', () => {
       startedAt: '2026-11-03T10:00:00.000Z',
     });
     await expect(cameraSource.keep(owner(alice), [id])).resolves.toBe(1);
-    devices.update(living, { display_name: 'Lounge' });
+    store.devices.update(living, { display_name: 'Lounge' });
     await expect(cameraSource.keep(owner(alice), [id, id])).resolves.toBe(0);
-    expect(await readdir(join(base, 'home', 'Saved', 'Cameras'))).toEqual(['Living room']);
-    expect(cameraSource.page(owner(alice), {}).items[0]?.kept).toBe(true);
+    expect(await readdir(join(store.driveRoots.byId(homeRoot).path, 'Saved', 'Cameras'))).toEqual([
+      'Living room',
+    ]);
+    expect((await cameraSource.page(owner(alice), {})).items[0]?.kept).toBe(true);
   });
 
   it('makes each folder once when several recordings are kept at the same time', async () => {
@@ -446,10 +417,9 @@ describe('keep from cameras', () => {
     ];
     const results = await Promise.all(ids.map((id) => cameraSource.keep(owner(alice), [id])));
     expect(results).toEqual([1, 1, 1]);
-    expect((await readdir(join(base, 'home', 'Saved', 'Cameras'))).sort()).toEqual([
-      'Garage',
-      'Living room',
-    ]);
+    expect(
+      (await readdir(join(store.driveRoots.byId(homeRoot).path, 'Saved', 'Cameras'))).sort(),
+    ).toEqual(['Garage', 'Living room']);
   });
 
   it('refuses a blocked camera, an unknown recording and a lost file without copying anything', async () => {
@@ -534,7 +504,7 @@ describe('made with ai source', () => {
       content: 'x',
       createdAt: '2026-11-05T10:00:00.000Z',
     });
-    const page = aiSource.page(owner(alice), {});
+    const page = await aiSource.page(owner(alice), {});
     expect(page.items.map((item) => item.itemId)).toEqual([second, first]);
     expect(page.items.map((item) => item.chipId)).toEqual([other, mine]);
     expect(page.items.map((item) => item.name)).toEqual(['b.png', 'a.png']);
@@ -545,10 +515,10 @@ describe('made with ai source', () => {
       { id: other, name: 'Logo', count: 1 },
       { id: mine, name: 'Sunset', count: 1 },
     ]);
-    expect(aiSource.page(owner(alice), { chipId: mine }).items.map((item) => item.itemId)).toEqual([
-      first,
-    ]);
-    expect(aiSource.page(owner(bob), {}).items).toHaveLength(1);
+    expect(
+      (await aiSource.page(owner(alice), { chipId: mine })).items.map((item) => item.itemId),
+    ).toEqual([first]);
+    expect((await aiSource.page(owner(bob), {})).items).toHaveLength(1);
   });
 
   it('narrows images and chip counts by the chat title, the file name and a range of days', async () => {
@@ -568,13 +538,13 @@ describe('made with ai source', () => {
       content: 'b',
       createdAt: '2026-11-02T10:00:00.000Z',
     });
-    const ids = (query: Parameters<AiImageSource['page']>[1]): string[] =>
-      aiSource.page(owner(alice), query).items.map((item) => item.itemId);
-    expect(ids({ text: 'sunSET' })).toEqual([first]);
-    expect(ids({ text: 'wordmark' })).toEqual([second]);
-    expect(ids({ from: '2026-11-02' })).toEqual([second]);
-    expect(ids({ to: '2026-11-01' })).toEqual([first]);
-    expect(aiSource.page(owner(alice), { text: 'sunset' }).chips).toEqual([
+    const ids = async (query: Parameters<AiImageSource['page']>[1]): Promise<string[]> =>
+      (await aiSource.page(owner(alice), query)).items.map((item) => item.itemId);
+    expect(await ids({ text: 'sunSET' })).toEqual([first]);
+    expect(await ids({ text: 'wordmark' })).toEqual([second]);
+    expect(await ids({ from: '2026-11-02' })).toEqual([second]);
+    expect(await ids({ to: '2026-11-01' })).toEqual([first]);
+    expect((await aiSource.page(owner(alice), { text: 'sunset' })).chips).toEqual([
       { id: sunset, name: 'Sunset', count: 1 },
     ]);
   });
@@ -588,7 +558,7 @@ describe('made with ai source', () => {
       content: 'x',
       createdAt: '2026-11-05T10:00:00.000Z',
     });
-    expect(aiSource.page(owner(alice), {}).items).toEqual([]);
+    expect((await aiSource.page(owner(alice), {})).items).toEqual([]);
   });
 
   it('copies a kept image into the Made with AI folder of the person and marks it kept', async () => {
@@ -606,10 +576,14 @@ describe('made with ai source', () => {
       kind: 'image',
       sha256: sha(Buffer.from('pixels')),
     });
-    expect(await readFile(join(base, 'alice', 'Made with AI', name), 'utf8')).toBe('pixels');
-    expect(aiSource.page(owner(alice), {}).items[0]?.kept).toBe(true);
+    expect(
+      await readFile(join(store.driveRoots.byId(aliceRoot).path, 'Made with AI', name), 'utf8'),
+    ).toBe('pixels');
+    expect((await aiSource.page(owner(alice), {})).items[0]?.kept).toBe(true);
     await expect(aiSource.keep(owner(alice), [id])).resolves.toBe(0);
-    expect(await readdir(join(base, 'alice', 'Made with AI'))).toEqual([name]);
+    expect(await readdir(join(store.driveRoots.byId(aliceRoot).path, 'Made with AI'))).toEqual([
+      name,
+    ]);
   });
 
   it('counts an image already in the library as kept without copying it again', async () => {
@@ -636,7 +610,7 @@ describe('made with ai source', () => {
       ),
       identity: { dev: '1', ino: String(nextIno++) },
     });
-    expect(aiSource.page(owner(alice), {}).items[0]?.kept).toBe(true);
+    expect((await aiSource.page(owner(alice), {})).items[0]?.kept).toBe(true);
     await expect(aiSource.keep(owner(alice), [id])).resolves.toBe(0);
     expect(store.driveItems.byPath(aliceRoot, 'Made with AI', null)).toBeUndefined();
   });
@@ -664,23 +638,13 @@ describe('made with ai source', () => {
 });
 
 describe('routes', () => {
-  let opened: TestStore;
-
-  beforeEach(async () => {
-    opened = await driveTestStore();
-  });
-
-  afterEach(async () => {
-    await opened.close();
-  });
-
   it('lists and keeps through one pair of endpoints for either source', async () => {
     const id = await recording({
       deviceId: living,
       kind: 'snapshot',
       startedAt: '2026-11-03T10:00:00.000Z',
     });
-    const bound = photoSourceRoutes(opened.store, { cameras: cameraSource, ai: aiSource });
+    const bound = photoSourceRoutes(store, { cameras: cameraSource, ai: aiSource });
     const client = CLIENT_ROW.parse({
       id: randomUUID(),
       name: 'Desktop',

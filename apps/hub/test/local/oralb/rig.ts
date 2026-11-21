@@ -24,7 +24,6 @@ import {
   type StateUpdate,
 } from '@smarteverything/domain';
 import { oralbFullOf } from '@smarteverything/ble';
-import { homeClock } from '../../../src/local/toothbrush/clock';
 import { Fleet } from '../../../src/local/toothbrush/fleet';
 import { BrushIngest } from '../../../src/local/toothbrush/ingest';
 import { Publisher } from '../../../src/local/toothbrush/publisher';
@@ -248,7 +247,6 @@ function ingestFor(
     }),
     sink: (): AdapterSink => capture.sink,
     local: observer(capture),
-    clock: homeClock(test.store),
     live: {
       watched: (): boolean => capture.watched.value,
       publish: (deviceId, noticeFor): void => {
@@ -327,6 +325,7 @@ export async function oralbRig(options: RigOptions = {}): Promise<OralbRig> {
   const { clock, test, owner, device } = base;
   const capture = new Capture();
   const { fleet, ingest } = ingestFor({ test, clock, capture }, base);
+  const unfollow = await fleet.start();
   const sent: BrushStep[][] = [];
   const answers: BrushActionResult[] = [];
   return {
@@ -359,7 +358,7 @@ export async function oralbRig(options: RigOptions = {}): Promise<OralbRig> {
     entry: () => entryConfigOf(test.store.localDevices.byExternalId(device.external_id)),
     acts: (): ActDeps =>
       actsFor({ test, clock, fleet }, { capture, sent, answers, holder: owner.client.id }),
-    close: test.close,
+    close: () => ingest.idle().then(unfollow).then(test.close),
   };
 }
 

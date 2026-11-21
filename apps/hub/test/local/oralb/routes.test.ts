@@ -29,7 +29,6 @@ beforeEach(async () => {
   const deps: RouteDeps = {
     store: rig.test.store,
     fleet: rig.fleet,
-    local: { deviceOf: () => rig.row() },
     bridges,
     ingest: rig.ingest,
     broker: {
@@ -124,6 +123,7 @@ describe('the phone’s endpoints for an Oral-B brush', () => {
       ...rig.test.store.localDevices.byExternalId(rig.device.external_id).config,
       settings: { policy: 'armed' },
     });
+    rig.fleet.roster.use(rig.test.store.localDevices.byExternalId(rig.device.external_id));
     rig.fleet.refresh(rig.row());
     const plans = PHONE_BRUSHES.parse(
       await routes.readPhoneBrushes.run(caller(rig.owner), raw({}), testLogger('x')),

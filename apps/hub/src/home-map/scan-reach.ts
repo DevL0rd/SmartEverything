@@ -8,7 +8,7 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 
-export type RevisionSource = (mapId: HomeMapId, after: number) => HomeMapRevisionEntry[];
+export type RevisionSource = (mapId: HomeMapId, after: number) => Promise<HomeMapRevisionEntry[]>;
 
 interface Stacks {
   readonly done: number[];
@@ -74,9 +74,9 @@ export class ScanReach {
     private readonly log: Logger,
   ) {}
 
-  reachable(mapId: HomeMapId): ReadonlySet<string> | null {
+  async reachable(mapId: HomeMapId): Promise<ReadonlySet<string> | null> {
     const reach = this.reachOf(mapId);
-    for (const entry of this.source(mapId, reach.seen)) {
+    for (const entry of await this.source(mapId, reach.seen)) {
       const wasReadable = !reach.unreadable;
       reach.take(entry, this.namesOf(entry.inverse));
       if (wasReadable && reach.unreadable) {

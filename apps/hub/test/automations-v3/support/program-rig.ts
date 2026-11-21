@@ -1,6 +1,9 @@
 import { STATIC_KIND_LOOKUP } from '@smarteverything/domain';
 import { randomUUID } from 'node:crypto';
-import { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import {
   createClientToken,
   hashClientToken,
@@ -16,35 +19,17 @@ import {
 import type { AutomationPrograms } from '../../../src/automations/service-programs';
 import { automationPrograms } from '../../../src/automations/service-programs';
 import { createKindCatalog } from '../../../src/automations/plugin-kinds/catalog';
-import type { ProgramEnv } from '../../../src/automations/service-programs-analysis';
+import type { ProgramEnv } from '../../../src/automations/service-programs';
 import { PluginTurnRefusedError } from '../../../src/ai-tools/plugin-turn';
 import type { Caller } from '../../../src/server/auth';
-import { Ledger } from '../../../src/ledger/ledger';
-import { unusedDrivePath } from '../../support/store';
-import { StoreContext } from '../../../src/store/context';
-import { ChangeFeed } from '../../../src/store/feed';
-import { migrate } from '../../../src/store/migrate';
-import { MIGRATIONS } from '../../../src/store/migrations';
-import { assistantRepositories } from '../../../src/store/repositories/areas/assistant';
-import { automationRepositories } from '../../../src/store/repositories/areas/automation';
-import { computerRepositories } from '../../../src/store/repositories/areas/computers';
-import { driveRepositories } from '../../../src/store/repositories/areas/drive';
-import { healthRepositories } from '../../../src/store/repositories/areas/health';
-import { homeRepositories } from '../../../src/store/repositories/areas/home';
-import { peopleRepositories } from '../../../src/store/repositories/areas/people';
-import { plannerRepositories } from '../../../src/store/repositories/areas/planner';
-import { photoRepositories } from '../../../src/store/repositories/areas/photos';
-import { platformRepositories } from '../../../src/store/repositories/areas/platform';
 import { AutomationFunctionsRepository } from '../../../src/store/repositories/automation-functions';
 import { AutomationPlansRepository } from '../../../src/store/repositories/automation-plans';
 import { AutomationProgramsRepository } from '../../../src/store/repositories/automation-programs';
 import { AutomationRevisionsRepository } from '../../../src/store/repositories/automation-revisions';
-import { durableSessionWrite } from '../../../src/store/repositories/dsh-session-durability';
-import { SettingsRepository } from '../../../src/store/repositories/settings';
-import { StoreReader } from '../../../src/store/reader';
-import { Sql } from '../../../src/store/sql';
-import type { Store } from '../../../src/store/store';
+import { openStore, type Store } from '../../../src/store/store';
+import type { StoreContext } from '../../../src/store/context';
 import { testLogger } from '../../support/logs';
+import { testStoreHost } from '../../support/store-host';
 import { graphAutomation } from './graph-of';
 import { addPhoneDevice } from '../../support/phone-fixtures';
 import { hubLayout } from '../../../src/data-layout';
@@ -62,6 +47,7 @@ export interface ProgramRig {
   readonly programs: AutomationProgramsRepository;
   readonly revisions: AutomationRevisionsRepository;
   readonly functions: AutomationFunctionsRepository;
+  readonly plans: AutomationPlansRepository;
   readonly database: DatabaseSync;
   readonly owner: Person;
   readonly member: Person;
@@ -73,36 +59,7 @@ export interface ProgramRig {
   readonly close: () => void;
 }
 
-const NOW = new Date('2026-10-18T09:00:00.000Z');
-
-function composeStore(context: StoreContext, feed: ChangeFeed, database: DatabaseSync): Store {
-  const log = testLogger('store');
-  const settings = new SettingsRepository(context);
-  settings.ensure();
-  return {
-    context,
-    database,
-    feed,
-    reader: new StoreReader({ path: ':memory:', busyTimeoutMs: 0, log }),
-    settings,
-    ledger: new Ledger(context, () => settings.read().time_zone),
-    now: () => NOW,
-    ...homeRepositories(context, log),
-    ...computerRepositories(context),
-    ...driveRepositories(context, unusedDrivePath),
-    ...automationRepositories(context),
-    ...healthRepositories(context),
-    ...plannerRepositories(context),
-    ...assistantRepositories(context),
-    ...peopleRepositories(context),
-    ...photoRepositories(context),
-    ...platformRepositories(context),
-    write: (work) => context.write(work),
-    durableWrite: (work) => durableSessionWrite(context, work),
-    startRetention: (): void => undefined,
-    close: (): void => undefined,
-  };
-}
+export const RIG_NOW = new Date('2026-10-18T09:00:00.000Z');
 
 function personOf(store: Store, name: string, role: 'owner' | 'member'): Person {
   const profile = role === 'owner' ? store.profiles.first() : store.profiles.create({ name });
@@ -138,34 +95,38 @@ function deviceOf(store: Store, kind: 'light' | 'computer', name: string): Devic
 }
 
 interface Opened {
+  readonly directory: string;
   readonly database: DatabaseSync;
   readonly context: StoreContext;
   readonly store: Store;
 }
 
 function opened(): Opened {
-  const database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
-  const sql = new Sql(database);
-  migrate(sql, MIGRATIONS, NOW.toISOString(), testLogger());
-  const feed = new ChangeFeed(testLogger('store'));
-  const context = new StoreContext(sql, feed, () => NOW);
-  return { database, context, store: composeStore(context, feed, database) };
+  const directory = mkdtempSync(join(tmpdir(), 'hub-program-rig-'));
+  const store = openStore({
+    host: testStoreHost(),
+    path: join(directory, 'test.db'),
+    log: testLogger('store'),
+    now: () => RIG_NOW,
+    systemTimeZone: 'UTC',
+    driveFolders: null,
+  });
+  return { directory, database: store.database, context: store.context, store };
 }
 
 function envOf(
-  { context, store }: Opened,
-  functions: AutomationFunctionsRepository,
+  { store }: Opened,
   secretIds: readonly string[],
   refusedTools: readonly string[],
 ): ProgramEnv {
   return {
     store,
-    programs: new AutomationProgramsRepository(context),
-    revisions: new AutomationRevisionsRepository(context),
-    functions,
-    plans: new AutomationPlansRepository(context),
     kinds: createKindCatalog(),
-    engine: { retire: () => Promise.resolve() },
+    engine: {
+      retire: () => Promise.resolve(),
+      functionsChanged: () => Promise.resolve(),
+      settled: () => Promise.resolve(),
+    },
     secrets: {
       list: () => secretIds.map((id) => ({ id, name: id, createdAt: '', updatedAt: '' })),
     },
@@ -180,18 +141,18 @@ function envOf(
 
 export function programRig(): ProgramRig {
   const home = opened();
-  const { store, database } = home;
+  const { store, database, directory } = home;
   const secretIds: string[] = [];
   const refusedTools: string[] = [];
-  const functions = new AutomationFunctionsRepository(home.context);
-  const env = envOf(home, functions, secretIds, refusedTools);
+  const env = envOf(home, secretIds, refusedTools);
   return {
     store,
     env,
     service: automationPrograms(env),
-    programs: env.programs,
-    revisions: env.revisions,
-    functions,
+    programs: new AutomationProgramsRepository(home.context),
+    revisions: new AutomationRevisionsRepository(home.context),
+    functions: new AutomationFunctionsRepository(home.context),
+    plans: new AutomationPlansRepository(home.context),
     database,
     owner: personOf(store, 'Owner', 'owner'),
     member: personOf(store, 'Member', 'member'),
@@ -210,7 +171,8 @@ export function programRig(): ProgramRig {
         { clientId: person.client.id, profileId: person.profileId, name },
       ).device,
     close: (): void => {
-      database.close();
+      store.close();
+      rmSync(directory, { recursive: true, force: true });
     },
   };
 }

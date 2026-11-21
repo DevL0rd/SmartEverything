@@ -7,8 +7,8 @@ import type { Store } from '../../store/store';
 import { clientOf, profileIdOf, type Caller } from '../auth';
 import { DONE_REPLY, bound } from '../router';
 
-function ownerOf(store: Store, caller: Caller): LayoutOwner {
-  return { clientId: clientOf(caller).id, profileId: profileIdOf(store, caller) };
+function ownerOf(caller: Caller): LayoutOwner {
+  return { clientId: clientOf(caller).id, profileId: profileIdOf(caller) };
 }
 
 const DEVELOPER_LAYOUTS: ReadonlySet<string> = new Set([
@@ -31,35 +31,37 @@ function requireDeveloperOwner(caller: Caller, page: string): void {
 
 export const clientRoutes = (store: Store, phones: Pick<PhoneNodes, 'registerHardware'>) =>
   ({
-    readLayout: bound(E.readLayout, ({ params, caller }) => ({
-      layout: store.personal.layout(ownerOf(store, caller), params.page)?.layout ?? null,
+    readLayout: bound(E.readLayout, async ({ params, caller }) => ({
+      layout:
+        (await store.host.call('personal', 'layout', ownerOf(caller), params.page))?.layout ?? null,
     })),
     saveLayout: bound(E.saveLayout, ({ params, body, caller }) => {
       requireDeveloperOwner(caller, params.page);
-      return store.personal.saveLayout(
-        ownerOf(store, caller),
-        params.page,
-        body.layout,
-        requestSequence,
-      );
+      return store.personal.saveLayout(ownerOf(caller), params.page, body.layout, requestSequence);
     }),
-    listPushTargets: bound(E.listPushTargets, () => store.personal.pushTargets()),
+    listPushTargets: bound(E.listPushTargets, () => store.host.call('personal', 'pushTargets')),
     savePushTarget: bound(E.savePushTarget, async ({ body, caller }) => {
       const registration =
         body.hardware === undefined
           ? null
           : {
-              phone: phoneIdentityOf(store, caller, 'registers its hardware'),
+              phone: phoneIdentityOf(caller, 'registers its hardware'),
               hardware: body.hardware,
             };
-      const target = store.personal.savePushTarget(body.token, clientOf(caller).id, body.platform);
+      const target = await store.host.call(
+        'personal',
+        'savePushTarget',
+        body.token,
+        clientOf(caller).id,
+        body.platform,
+      );
       if (registration !== null) {
         await phones.registerHardware(registration.phone, registration.hardware);
       }
       return target;
     }),
-    removePushTarget: bound(E.removePushTarget, ({ body, caller }) => {
-      store.personal.removePushTarget(body.token, clientOf(caller).id);
+    removePushTarget: bound(E.removePushTarget, async ({ body, caller }) => {
+      await store.host.call('personal', 'removePushTarget', body.token, clientOf(caller).id);
       return DONE_REPLY;
     }),
   }) as const;

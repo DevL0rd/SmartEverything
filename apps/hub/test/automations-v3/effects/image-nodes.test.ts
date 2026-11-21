@@ -1,3 +1,4 @@
+import { settleWithHost } from '../../support/host-settle';
 import { randomUUID } from 'node:crypto';
 import {
   IMAGE_ARTIFACT,
@@ -69,6 +70,7 @@ async function rig(): Promise<Rig> {
   const files = new AssistantFiles({
     layout: hubLayout(db.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: clock.now,
   });
   const behaviour: Behaviour = { outcome: 'completed', usage: { cost: 0.04 }, reason: null };
@@ -156,11 +158,11 @@ async function rig(): Promise<Rig> {
         return Promise.resolve(receipt);
       },
       settled: (_actor, id) => settle(id),
-      cancel: (_actor, id): ImageOperationReceipt => {
+      cancel: (_actor, id): Promise<ImageOperationReceipt> => {
         cancelled.push(id);
         const receipt = receipts.get(id);
-        if (receipt === undefined) throw new Error('unknown operation');
-        return receipt;
+        if (receipt === undefined) return Promise.reject(new Error('unknown operation'));
+        return Promise.resolve(receipt);
       },
     },
   };
@@ -235,9 +237,7 @@ function valueOf(result: NodeResult): Record<string, unknown> {
 }
 
 async function settledTurn(): Promise<void> {
-  await new Promise<void>((resolve) => {
-    setImmediate(resolve);
-  });
+  await settleWithHost();
 }
 
 describe('ai.image in the node library', () => {

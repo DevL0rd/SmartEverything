@@ -1,11 +1,13 @@
 import { ApiError, type DeviceRow } from '@smarteverything/domain';
 import { computerEngine } from '../assistant/engine-kind';
-import { hiddenComputer, viewerOf } from '../computers/computer-access';
+import { viewerOf } from '../computers/computer-access';
+import { hiddenComputer } from '../computers/computer-visibility';
+import { storeUnit } from '../store/host/unit';
 import type { Caller } from '../server/auth';
 import type { Store } from '../store/store';
 
 function computersOf(store: Store, caller: Caller): readonly DeviceRow[] {
-  const viewer = viewerOf(store, caller);
+  const viewer = viewerOf(caller);
   return store.devices
     .list()
     .filter((device) => device.kind === 'computer' && !hiddenComputer(store, viewer, device));
@@ -31,10 +33,10 @@ export function chatServerComputer(
   store: Store,
   caller: Caller,
   chatId: string,
-  wanted: string | undefined,
+  wanted: string | null,
 ): string {
   const computers = computersOf(store, caller);
-  if (wanted !== undefined) {
+  if (wanted !== null) {
     const lowered = wanted.toLowerCase();
     const match = computers.filter(
       (device) => device.id === wanted || nameOf(device).toLowerCase() === lowered,
@@ -53,3 +55,10 @@ export function chatServerComputer(
     throw new ApiError('invalid_request', `Say which computer: ${listed(computers)}.`);
   return only.id;
 }
+
+export const CHAT_SERVER_COMPUTER_UNIT = storeUnit(
+  (
+    store,
+    input: { readonly caller: Caller; readonly chatId: string; readonly wanted: string | null },
+  ): string => chatServerComputer(store, input.caller, input.chatId, input.wanted),
+);

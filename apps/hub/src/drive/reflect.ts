@@ -1,29 +1,27 @@
 import { messageOf } from '@smarteverything/logging';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import {
-  commitDependencies,
+  hashForReuse,
   scanHandler,
   ScanRun,
   type DriveJobHandlers,
   type ScanEnvironment,
 } from './jobs';
-import { ScanCommitter } from './scanner-commit';
-import { scopesOf } from './scanner-scope';
+import { withScan, type ScanSession } from './scan-session';
 
 async function commitScopes(
   env: ScanEnvironment,
   root: StoredDrive,
-  scopes: readonly string[],
+  session: ScanSession,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const committer = new ScanCommitter(commitDependencies(env, root), root, scopes);
   const unreadable: string[] = [];
-  for (const base of scopes) {
-    const outcome = await new ScanRun(env, root, committer, { base, full: false }).walk(signal);
+  for (const base of session.scoped) {
+    const outcome = await new ScanRun(env, root, session, { base, full: false }).walk(signal);
     if (outcome.cancelled) return false;
     unreadable.push(...outcome.unreadable);
   }
-  await committer.finish(unreadable);
+  await session.finish(unreadable, (entry) => hashForReuse(env, root, entry));
   return true;
 }
 
@@ -34,16 +32,17 @@ async function reflectPaths(
   signal: AbortSignal,
 ): Promise<void> {
   const startedAt = performance.now();
-  await env.lanes.run([root.id], async () => {
-    const scopes = scopesOf(env.store.driveItems, root.id, paths);
-    const finished = await commitScopes(env, root, scopes, signal);
-    env.log.info(finished ? 'drive.reflect_done' : 'drive.reflect_cancelled', {
-      rootId: root.id,
-      paths: paths.length,
-      scopes: scopes.length,
-      durationMs: Math.round(performance.now() - startedAt),
-    });
-  });
+  await env.lanes.run([root.id], () =>
+    withScan(env.scans, root.id, paths, async (session) => {
+      const finished = await commitScopes(env, root, session, signal);
+      env.log.info(finished ? 'drive.reflect_done' : 'drive.reflect_cancelled', {
+        rootId: root.id,
+        paths: paths.length,
+        scopes: session.scoped.length,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    }),
+  );
 }
 
 export function reflectHandler(env: ScanEnvironment): DriveJobHandlers['reflect'] {
@@ -53,7 +52,7 @@ export function reflectHandler(env: ScanEnvironment): DriveJobHandlers['reflect'
       await scan({ kind: 'scan', rootId: job.rootId }, signal);
       return;
     }
-    const root = env.store.driveRoots.find(job.rootId);
+    const root = await env.scans.root(job.rootId);
     if (root === undefined) {
       env.log.warn('drive.reflect_skipped', { rootId: job.rootId, reason: 'no such drive' });
       return;
@@ -66,7 +65,7 @@ export function reflectHandler(env: ScanEnvironment): DriveJobHandlers['reflect'
       await reflectPaths(env, root, job.paths, signal);
     } catch (cause) {
       env.log.error('drive.reflect_failed', cause, { rootId: job.rootId });
-      env.store.driveRoots.update(job.rootId, { state: 'error', stateReason: messageOf(cause) });
+      await env.scans.update(job.rootId, { state: 'error', stateReason: messageOf(cause) });
     }
   };
 }

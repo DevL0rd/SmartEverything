@@ -1,8 +1,9 @@
 import type { DriveFeedOp, DriveItem } from '@smarteverything/domain';
 import type { DriveItemIdentity } from '../store/repositories/drive-items';
-import { announce, appendFeed, type ChangeActor, type ChangeEnv } from './changes';
-import { DriveWriteError } from './intents';
-import { DRIVE_PAGE_SIZE } from './service-read';
+import type { ChangeActor, ChangeStore } from './changes';
+import { announce, appendFeed } from './change-rows';
+import { DriveWriteError } from './write-error';
+import { DRIVE_PAGE_SIZE } from './page-size';
 
 export interface RepathTarget {
   readonly parentId: string | null;
@@ -17,8 +18,12 @@ export interface RepathChange {
   readonly actor: ChangeActor;
 }
 
+export interface RepathEnv {
+  readonly store: ChangeStore;
+}
+
 interface Repath extends RepathChange {
-  readonly env: ChangeEnv;
+  readonly env: RepathEnv;
 }
 
 function identityOrRefuse(identity: DriveItemIdentity | null): DriveItemIdentity {
@@ -67,7 +72,7 @@ function repathChildren(context: Repath, folder: DriveItem, folderRelPath: strin
 }
 
 export function repathItem(
-  env: ChangeEnv,
+  env: RepathEnv,
   item: DriveItem,
   target: RepathTarget,
   change: RepathChange,

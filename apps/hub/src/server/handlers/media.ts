@@ -3,7 +3,7 @@ import { API_ENDPOINTS as E, type RecordingRow } from '@smarteverything/domain';
 import { thumbnailPathOf } from '../../cameras/thumbnails';
 import { libraryBrands, libraryCategories, libraryModels } from '../../infrared/library/browse';
 import { clientOf } from '../auth';
-import { deviceScopeOf, reachableRows } from '../person-scope';
+import { reachableFor } from '../person-scope';
 import type { ServerContext } from '../context';
 import { requireOwner } from './transcripts';
 import { DONE_REPLY, bound } from '../router';
@@ -19,12 +19,6 @@ async function removeFiles(context: ServerContext, recording: RecordingRow): Pro
       });
     },
   );
-}
-
-function requireIrRemote(store: ServerContext['store'], remoteId: string): void {
-  if (store.devices.find(remoteId)?.kind === 'ir_remote') return;
-  if (store.irAppliances.find(remoteId) !== undefined) return;
-  store.infrared.remote(remoteId);
 }
 
 const applianceRoutes = ({ irAppliances }: ServerContext) =>
@@ -67,47 +61,33 @@ const applianceRoutes = ({ irAppliances }: ServerContext) =>
 
 const infraredRoutes = ({ store }: ServerContext) =>
   ({
-    listIrRemotes: bound(E.listIrRemotes, () => store.infrared.remotes()),
-    createIrRemote: bound(E.createIrRemote, ({ body }) => {
-      store.devices.byId(body.blaster_id);
-      return store.infrared.addRemote(body);
-    }),
-    removeIrRemote: bound(E.removeIrRemote, ({ params }) => {
-      store.infrared.removeRemote(params.remoteId);
-      store.settings.forgetIrRemote(params.remoteId);
+    listIrRemotes: bound(E.listIrRemotes, () => store.host.call('infrared', 'remotes')),
+    createIrRemote: bound(E.createIrRemote, ({ body }) => store.host.write('createIrRemote', body)),
+    removeIrRemote: bound(E.removeIrRemote, async ({ params }) => {
+      await store.host.write('removeIrRemote', params.remoteId);
       return DONE_REPLY;
     }),
-    updateIrRemote: bound(E.updateIrRemote, ({ params, body }) => {
-      requireIrRemote(store, params.remoteId);
-      if (body.checkDeviceId !== undefined && body.checkDeviceId !== null) {
-        store.devices.byId(body.checkDeviceId);
-      }
-      store.settings.setIrRemote(params.remoteId, body);
-      return store.settings.irRemote(params.remoteId);
-    }),
-    listIrCodes: bound(E.listIrCodes, () => store.infrared.codes()),
-    saveIrCode: bound(E.saveIrCode, ({ body }) => store.infrared.saveCode(body)),
-    removeIrCode: bound(E.removeIrCode, ({ params }) => {
-      store.infrared.removeCode(params.codeId);
+    updateIrRemote: bound(E.updateIrRemote, ({ params, body }) =>
+      store.host.write('updateIrRemote', { remoteId: params.remoteId, body }),
+    ),
+    listIrCodes: bound(E.listIrCodes, () => store.host.call('infrared', 'codes')),
+    saveIrCode: bound(E.saveIrCode, ({ body }) => store.host.call('infrared', 'saveCode', body)),
+    removeIrCode: bound(E.removeIrCode, async ({ params }) => {
+      await store.host.call('infrared', 'removeCode', params.codeId);
       return DONE_REPLY;
     }),
   }) as const;
 
 const cameraRoutes = ({ store, hub, links }: ServerContext) =>
   ({
-    listCameras: bound(E.listCameras, ({ caller }) =>
-      reachableRows(
-        store,
-        deviceScopeOf(store, caller),
-        store.cameras.list(),
-        (row) => row.device_id,
-      ),
+    listCameras: bound(E.listCameras, async ({ caller }) =>
+      reachableFor(store, caller, await store.host.call('cameras', 'list'), (row) => row.device_id),
     ),
     updateCamera: bound(E.updateCamera, ({ params, body, caller }) => {
       if (body.transcribe === true) {
         requireOwner(caller);
       }
-      return store.cameras.change(params.deviceId, body);
+      return store.host.call('cameras', 'change', params.deviceId, body);
     }),
     offerCamera: bound(E.offerCamera, async ({ params, query, body, caller }) => ({
       sdp: await hub.answerOffer(params.deviceId, body.sdp, clientOf(caller).id, query.quality),
@@ -127,33 +107,31 @@ const cameraRoutes = ({ store, hub, links }: ServerContext) =>
 
 const recordingRoutes = (context: ServerContext) =>
   ({
-    listRecordings: bound(E.listRecordings, ({ query, caller }) =>
-      reachableRows(
+    listRecordings: bound(E.listRecordings, async ({ query, caller }) =>
+      reachableFor(
         context.store,
-        deviceScopeOf(context.store, caller),
-        context.store.cameras.recordings(query),
+        caller,
+        await context.store.host.call('cameras', 'recordings', query),
         (row) => row.device_id,
       ),
     ),
-    recordingLinks: bound(E.recordingLinks, ({ body }) =>
-      body.ids.map((id) => ({
-        id: context.store.cameras.recording(id).id,
+    recordingLinks: bound(E.recordingLinks, async ({ body }) =>
+      (await context.store.host.read('recordingIds', body.ids)).map((id) => ({
+        id,
         ...context.links.recording(id, body.size),
       })),
     ),
     removeRecording: bound(E.removeRecording, async ({ params }) => {
-      await removeFiles(context, context.store.cameras.removeRecording(params.recordingId));
+      await removeFiles(
+        context,
+        await context.store.host.call('cameras', 'removeRecording', params.recordingId),
+      );
       return DONE_REPLY;
     }),
     removeEvent: bound(E.removeEvent, async ({ params }) => {
-      const event = context.store.events.byId(params.eventId);
-      const recordings = context.store.cameras.recordingsOfEvent(event.id);
-      const removed = recordings.map((recording) =>
-        context.store.cameras.removeRecording(recording.id),
-      );
-      context.store.events.remove(event.id);
+      const removed = await context.store.host.write('removeEvent', params.eventId);
       await Promise.all(removed.map((recording) => removeFiles(context, recording)));
-      context.log.info('event.removed', { eventId: event.id, recordings: removed.length });
+      context.log.info('event.removed', { eventId: params.eventId, recordings: removed.length });
       return DONE_REPLY;
     }),
   }) as const;

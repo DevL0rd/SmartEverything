@@ -1,5 +1,5 @@
 import type { AiOutreachRow } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { answeredBy, wakeComputer } from '../../src/computers/computer-wake';
 import type { ReachService } from '../../src/reach/reach-service';
 import { WakeClaims } from '../../src/wake-name/wake-claims';
@@ -63,9 +63,11 @@ describe('computer wake', () => {
     claims.request({ source: 'voice_call', key: 'discord:ann', snippetDbfs: -60 });
     await settle();
     expect(hungUp).toEqual([row.id]);
-    expect(test.store.aiOutreach.byId(row.id)).toMatchObject({
-      state: 'ended',
-      detail: 'Answered by Discord',
+    await vi.waitFor(() => {
+      expect(test.store.aiOutreach.byId(row.id)).toMatchObject({
+        state: 'ended',
+        detail: 'Answered by Discord',
+      });
     });
   });
 

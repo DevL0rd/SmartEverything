@@ -34,7 +34,7 @@ function toolHub(names: readonly string[]): ToolHub {
       tools: (): HubTool[] => names.map(hubTool),
       call: (called): Promise<HubToolResult> =>
         Promise.resolve({ response: { ran: called.name }, line: '', pictures: [] }),
-      validate: (): null => null,
+      validate: (): Promise<null> => Promise.resolve(null),
       changes: (): (() => void) => (): void => undefined,
     },
   ]);
@@ -51,6 +51,7 @@ beforeEach(async () => {
   captureLogs();
   clock = Date.parse('2026-10-09T10:00:00.000Z');
   opened = await testStore(() => new Date(clock));
+  await Promise.all([opened.store.live.home.load(), opened.store.live.aiModels.load()]);
   const { store } = opened;
   const client = store.clients.create(
     { name: 'This computer', platform: 'desktop', role: 'owner', tokenHash: 'a' },
@@ -61,7 +62,12 @@ beforeEach(async () => {
   const now = (): Date => new Date(clock);
   chats = new ChatDirectory(
     store,
-    new AssistantFiles({ layout: hubLayout(opened.directory, {}), chat: store.assistantChat, now }),
+    new AssistantFiles({
+      layout: hubLayout(opened.directory, {}),
+      chat: store.assistantChat,
+      attachments: store.live.attachments,
+      now,
+    }),
   );
   delegation = new Delegation({
     store,
@@ -208,6 +214,7 @@ describe('hand-offs', () => {
 
 describe('subagents', () => {
   it('queues an explicitly selected Claude helper without moving the SmartEverything parent', async () => {
+    await opened.store.live.computers.load();
     const parent = chat('Coordinator');
     const request = {
       task: 'Review the change',
@@ -226,7 +233,7 @@ describe('subagents', () => {
     expect(store.aiChats.chat(parent.id).engine).toEqual(parent.engine);
     expect(only(pendingIn(result.chatId))).toMatchObject({ report_to: parent.id });
 
-    store.computerAi.bindLocal(request.engine.device_id);
+    store.live.computers.bindLocal(request.engine.device_id);
     await expect(
       withExecutionAuthority(
         {

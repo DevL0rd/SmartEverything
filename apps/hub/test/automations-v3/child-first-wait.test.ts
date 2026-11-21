@@ -91,7 +91,7 @@ describe('a child started without waiting', () => {
     const child = rig.add(program([childCall, childPause]), 'Callee');
     const stop = stopOf(child.id);
     const caller = rig.add(program([runOf(child.id), stop]), 'Caller');
-    rig.engine.sync();
+    await rig.engine.sync();
     const callerRun = started(rig, caller.id);
     await rig.until(() => server.held.length === 1);
     await rig.settle();
@@ -111,7 +111,7 @@ describe('a child started without waiting', () => {
     const server = await endpoint(true);
     const child = rig.add(program([call(server.url)]), 'Callee');
     const caller = rig.add(program([runOf(child.id), call(server.url, 'after')]), 'Caller');
-    rig.engine.sync();
+    await rig.engine.sync();
     started(rig, caller.id);
     await rig.until(() => server.held.length === 1);
     await rig.settle();
@@ -139,7 +139,7 @@ describe('a child started without waiting', () => {
       ]),
       'Caller',
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     started(rig, caller.id);
     await rig.until(() => rig.finished.length === 3);
     for (const child of [first, second]) {
@@ -159,7 +159,7 @@ describe('a child started without waiting', () => {
       program([runOf(middle.id), stopOf(middle.id, 'stopMiddle'), stopOf(leaf.id, 'stopLeaf')]),
       'Caller',
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     started(rig, caller.id);
     await rig.until(() => rig.finished.length === 3);
     expect(trace(rig, onlyRun(rig, middle.id)).map(([, status]) => status)).toStrictEqual([
@@ -177,7 +177,7 @@ describe('a child started without waiting', () => {
     const rig = await rigV3();
     const target = rig.add(program([pause()], { policy: { mode: 'queue', max: 10 } }), 'Target');
     const caller = rig.add(program([runOf(target.id)]), 'Caller');
-    rig.engine.sync();
+    await rig.engine.sync();
     started(rig, target.id);
     await rig.settle();
     started(rig, caller.id);

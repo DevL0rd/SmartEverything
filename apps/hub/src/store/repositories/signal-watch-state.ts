@@ -10,6 +10,17 @@ const STORED_STATE = z.object({
 
 const STORED_TRIGGER = z.object({ automation_id: z.string(), trigger_id: z.string() });
 
+const STORED_KEYED = STORED_STATE.extend({
+  automation_id: z.string(),
+  trigger_id: z.string(),
+  partition: z.string(),
+});
+
+export interface KeyedWatchState {
+  readonly key: WatchKey;
+  readonly state: WatchState;
+}
+
 export interface WatchKey {
   readonly automationId: string;
   readonly triggerId: string;
@@ -29,6 +40,22 @@ export interface WatchTrigger {
 
 export class SignalWatchStateRepository {
   constructor(private readonly context: StoreContext) {}
+
+  all(): KeyedWatchState[] {
+    return this.context.sql
+      .all(
+        STORED_KEYED,
+        'select automation_id, trigger_id, partition, last_seen_ms, period, latched from signal_watch_state',
+      )
+      .map((row) => ({
+        key: {
+          automationId: row.automation_id,
+          triggerId: row.trigger_id,
+          partition: row.partition,
+        },
+        state: { lastSeenMs: row.last_seen_ms, period: row.period, latched: row.latched },
+      }));
+  }
 
   load(key: WatchKey): WatchState | null {
     const row = this.context.sql.get(

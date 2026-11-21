@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LiveHub } from '../src/server/live';
 import { testLogger } from './support/logs';
+import { refusingUpgrades } from './support/socket-client';
 import { testStore, type TestStore } from './support/store';
 import { until } from './support/wait';
 
@@ -45,9 +46,10 @@ beforeEach(async () => {
     log: testLogger('live'),
   });
   http = createServer();
-  http.on('upgrade', (request, socket, head) => {
-    hub.upgrade(request, socket, head);
-  });
+  http.on(
+    'upgrade',
+    refusingUpgrades((request, socket, head) => hub.upgrade(request, socket, head)),
+  );
   await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve));
   const address = http.address();
   port = typeof address === 'object' && address !== null ? address.port : 0;

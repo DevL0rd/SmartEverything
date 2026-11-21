@@ -121,3 +121,24 @@ export function carriesFile(base: DriveItem, entry: WalkEntry, mime: string): bo
     base.modifiedAt === isoOf(entry)
   );
 }
+
+export function indexedFrom(
+  item: DriveItem,
+  entry: WalkEntry,
+  inode: DriveInode | undefined,
+): Indexed {
+  return {
+    id: item.id,
+    relPath: item.relPath,
+    kind: kindOf(item),
+    bytes: item.bytes,
+    modifiedAt: item.modifiedAt,
+    childCount: item.kind === 'folder' ? item.childCount : null,
+    target: item.kind === 'link' ? item.linkTarget : null,
+    dev: entry.dev,
+    ino: entry.ino,
+    inodeId: inode?.id ?? 0,
+    mode: inode?.mode ?? entry.mode,
+    sha256: isFileItem(item) ? item.sha256 : null,
+  };
+}

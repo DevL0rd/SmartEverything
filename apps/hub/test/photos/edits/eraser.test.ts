@@ -190,8 +190,11 @@ describe('the OpenRouter eraser', () => {
           }),
         sent,
       ),
-      (entry) => metered.push(entry),
-      () => PHOTO_AI_DEFAULT_MODELS.eraser,
+      (entry) => {
+        metered.push(entry);
+        return Promise.resolve();
+      },
+      () => Promise.resolve(PHOTO_AI_DEFAULT_MODELS.eraser),
     );
     const answer = await eraser.erase(REQUEST, AbortSignal.timeout(10_000));
     expect((await sharp(answer).metadata()).width).toBe(8);
@@ -230,8 +233,11 @@ describe('the OpenRouter eraser', () => {
     const metered: UsageEntry[] = [];
     const ok = new OpenRouterEraser(
       clientOf(async () => Response.json({ data: [{ b64_json: await PNG() }] }), []),
-      (entry) => metered.push(entry),
-      () => PHOTO_AI_DEFAULT_MODELS.eraser,
+      (entry) => {
+        metered.push(entry);
+        return Promise.resolve();
+      },
+      () => Promise.resolve(PHOTO_AI_DEFAULT_MODELS.eraser),
     );
     await ok.erase(REQUEST, AbortSignal.timeout(10_000));
     expect(metered[0]).toMatchObject({
@@ -247,8 +253,8 @@ describe('the OpenRouter eraser', () => {
           ),
         [],
       ),
-      () => undefined,
-      () => PHOTO_AI_DEFAULT_MODELS.eraser,
+      () => Promise.resolve(),
+      () => Promise.resolve(PHOTO_AI_DEFAULT_MODELS.eraser),
     );
     await expect(broken.erase(REQUEST, AbortSignal.timeout(10_000))).rejects.toThrow();
   });
@@ -259,8 +265,8 @@ describe('the OpenRouter eraser', () => {
         () => Promise.resolve(Response.json({ error: { message: 'no' } }, { status: 402 })),
         [],
       ),
-      () => undefined,
-      () => PHOTO_AI_DEFAULT_MODELS.eraser,
+      () => Promise.resolve(),
+      () => Promise.resolve(PHOTO_AI_DEFAULT_MODELS.eraser),
     );
     const failure = await eraser
       .erase(REQUEST, AbortSignal.timeout(10_000))

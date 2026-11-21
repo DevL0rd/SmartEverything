@@ -1,6 +1,8 @@
 import type { GeoPoint, Trip } from '@smarteverything/domain';
 import { z } from 'zod';
+import { homeLocation } from '../automations/world-v3/zone';
 import type { DriveActor } from '../drive/access';
+import { storeUnit } from '../store/host/unit';
 import { starredBy } from '../store/repositories/drive-stars';
 import type { StoreContext } from '../store/context';
 import { DrivePlacesRepository } from '../store/repositories/drive-places';
@@ -276,3 +278,8 @@ export class TripsReader {
       .sort((a, b) => b.from.localeCompare(a.from));
   }
 }
+
+export const PHOTO_TRIPS_UNIT = storeUnit(
+  (store, input: { readonly actor: DriveActor; readonly range: DayRangeQuery }) =>
+    new TripsReader(store.context).list(input.actor, homeLocation(store), input.range),
+);

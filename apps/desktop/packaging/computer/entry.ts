@@ -79,7 +79,9 @@ function pair(node: NodeLayout): Promise<void> {
 
 async function serve(node: NodeLayout): Promise<void> {
   const config = await readComputerConfig(node.config);
-  const logs = await openLogFile(node.logs.service);
+  const logs = await openLogFile(node.logs.service, (cause) => {
+    log.exception('computer.log_rotation_failed', cause, { file: node.logs.service });
+  });
   Logger.configure({ level: config.logLevel, sink: logs.sink });
   const pidFile = await writePidFile(join(node.root, COMPUTER_FILES.servicePid), pid);
   let stopping = false;

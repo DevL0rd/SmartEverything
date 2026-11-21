@@ -12,8 +12,9 @@ import {
 import { background, type Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../../clock';
 import type { OwnerAlert } from '../../extensions/owner-alerts';
-import { personClockText } from '../../clock/person-clock';
+import { Coalesced } from '../../store/reader';
 import type { Store } from '../../store/store';
+import { PendingWork } from '../pending-work';
 import type { AutomationRunner } from '../wake-routine';
 import type { SleepSoundControl } from '../sleep-sound';
 import { phonesOf } from './phones';
@@ -31,7 +32,7 @@ export interface BedtimeChannel {
   readonly push: (alert: OwnerAlert) => void;
 }
 
-export type BedtimeStore = Pick<Store, 'clients' | 'profiles' | 'settings' | 'personal'>;
+export type BedtimeStore = Pick<Store, 'host' | 'settings'>;
 
 export interface BedtimeDeskOptions {
   readonly store: BedtimeStore;
@@ -40,7 +41,7 @@ export interface BedtimeDeskOptions {
   readonly channel: BedtimeChannel;
   readonly runAutomation: AutomationRunner;
   readonly sleepSound: Pick<SleepSoundControl, 'play' | 'stop'>;
-  readonly preferencesOf: (profileId: string) => PlannerPreferences;
+  readonly preferencesOf: (profileId: string) => Promise<PlannerPreferences>;
   readonly log: Logger;
 }
 
@@ -50,28 +51,63 @@ function keyOf(moment: BedtimeMoment): string {
 
 export class BedtimeDesk {
   private readonly armed = new Map<string, Map<string, Cancel>>();
+  private readonly refreshing = new Map<string, Coalesced>();
+  private running = false;
+  private readonly work = new PendingWork('planner.bedtime_moment_failed');
+  private firing: Promise<void> = Promise.resolve();
+  private readonly sounds = new PendingWork('planner.bedtime_sleep_sound_failed');
 
   constructor(private readonly options: BedtimeDeskOptions) {}
 
-  start(): void {
-    this.refreshAll();
+  async start(): Promise<void> {
+    this.running = true;
+    await this.refreshAll();
   }
 
   stop(): void {
+    this.running = false;
+    for (const run of this.refreshing.values()) {
+      background(run.stop(), 'planner.bedtime_stop_failed');
+    }
+    this.refreshing.clear();
     for (const profileId of [...this.armed.keys()]) this.disarm(profileId);
   }
 
-  refreshAll(): void {
-    const profiles = this.options.store.profiles.list().map((profile) => profile.id);
+  async settled(): Promise<void> {
+    await this.work.settled();
+    await this.sounds.settled();
+    await Promise.all([...this.refreshing.values()].map((run) => run.idle()));
+  }
+
+  async refreshAll(): Promise<void> {
+    const profiles = (await this.options.store.host.call('profiles', 'list')).map(
+      (profile) => profile.id,
+    );
     for (const profileId of this.armed.keys()) {
       if (!profiles.includes(profileId)) this.disarm(profileId);
     }
-    for (const profileId of profiles) this.refresh(profileId);
+    await Promise.all(profiles.map((profileId) => this.refresh(profileId)));
   }
 
-  refresh(profileId: string): void {
+  async refresh(profileId: string): Promise<void> {
+    if (!this.running) return;
+    const run =
+      this.refreshing.get(profileId) ??
+      new Coalesced(
+        () => this.arm(profileId),
+        (cause) => {
+          this.options.log.error('planner.bedtime_refresh_failed', cause, { profileId });
+        },
+      );
+    this.refreshing.set(profileId, run);
+    run.trigger();
+    await run.idle();
+  }
+
+  private async arm(profileId: string): Promise<void> {
     const { clock, store } = this.options;
-    const bedtime = this.options.preferencesOf(profileId).bedtime;
+    const { bedtime } = await this.options.preferencesOf(profileId);
+    if (!this.running) return;
     const now = clock.now();
     const moments = momentsOf(
       bedtime,
@@ -92,8 +128,12 @@ export class BedtimeDesk {
           key,
           clock.at(moment.at, () => {
             this.armed.get(profileId)?.delete(key);
-            this.fire(profileId, moment);
-            this.refresh(profileId);
+            this.firing = this.firing
+              .then(() => this.fired(profileId, moment))
+              .catch((cause: unknown) => {
+                this.options.log.error('planner.bedtime_moment_failed', cause, { profileId });
+              });
+            this.work.run(this.firing, { profileId });
           }),
         );
       }
@@ -101,40 +141,54 @@ export class BedtimeDesk {
     this.armed.set(profileId, current);
   }
 
+  private async fired(profileId: string, moment: BedtimeMoment): Promise<void> {
+    await this.fire(profileId, moment);
+    await this.refresh(profileId);
+  }
+
   private disarm(profileId: string): void {
     for (const cancel of this.armed.get(profileId)?.values() ?? []) cancel();
     this.armed.delete(profileId);
   }
 
-  private fire(profileId: string, moment: BedtimeMoment): void {
-    const bedtime = this.options.preferencesOf(profileId).bedtime;
+  private async fire(profileId: string, moment: BedtimeMoment): Promise<void> {
+    const { bedtime } = await this.options.preferencesOf(profileId);
     this.options.log.info('planner.bedtime_moment', {
       profileId,
       kind: moment.kind,
       bedAt: moment.window.bedAt,
     });
-    if (moment.kind === 'reminder') this.remind(profileId, bedtime, moment);
-    else if (moment.kind === 'wind_down') this.windDown(profileId, bedtime, moment);
+    if (moment.kind === 'reminder') await this.remind(profileId, bedtime, moment);
+    else if (moment.kind === 'wind_down') await this.windDown(profileId, bedtime, moment);
     else if (moment.kind === 'bed') this.bed(profileId, bedtime);
     else this.wake(profileId, bedtime, moment);
   }
 
-  private remind(profileId: string, bedtime: PlannerBedtime, moment: BedtimeMoment): void {
+  private async remind(
+    profileId: string,
+    bedtime: PlannerBedtime,
+    moment: BedtimeMoment,
+  ): Promise<void> {
     const { bedAt } = moment.window;
     const minutesBefore = bedtime.reminder_minutes;
     if (minutesBefore === null) return;
     const notice = PLANNER_BEDTIME_NOTICE.parse({ type: 'planner_bedtime', bedAt, minutesBefore });
-    this.tellPhones(profileId, notice);
+    await this.tellPhones(profileId, notice);
+    const local = await this.options.store.host.read('plannerClockText', { profileId, at: bedAt });
     this.options.channel.push({
       title: 'Bedtime is coming up',
-      body: `Time to get ready for bed at ${this.localTime(bedAt, profileId)}.`,
+      body: `Time to get ready for bed at ${local}.`,
       data: { kind: 'planner_bedtime', bedAt },
       person: profileId,
     });
     this.signal(profileId, 'bedtime_reminder', bedAt, { bedAt, minutesBefore });
   }
 
-  private windDown(profileId: string, bedtime: PlannerBedtime, moment: BedtimeMoment): void {
+  private async windDown(
+    profileId: string,
+    bedtime: PlannerBedtime,
+    moment: BedtimeMoment,
+  ): Promise<void> {
     const { bedAt, wakeAt, windDownAt } = moment.window;
     const minutes = Math.round((Date.parse(bedAt) - Date.parse(windDownAt)) / MINUTE_MS);
     const automationId = bedtime.wind_down_automation_id;
@@ -148,7 +202,7 @@ export class BedtimeDesk {
         },
       );
     }
-    this.tellPhones(
+    await this.tellPhones(
       profileId,
       PLANNER_WIND_DOWN_NOTICE.parse({ type: 'planner_wind_down', bedAt, wakeAt, minutes }),
     );
@@ -157,27 +211,23 @@ export class BedtimeDesk {
 
   private bed(profileId: string, bedtime: PlannerBedtime): void {
     if (bedtime.sleep_sound === null) return;
-    background(
-      this.options.sleepSound.play(profileId, { sound: bedtime.sleep_sound }),
-      'planner.bedtime_sleep_sound_failed',
-      { profileId },
-    );
+    this.sounds.run(this.options.sleepSound.play(profileId, { sound: bedtime.sleep_sound }), {
+      profileId,
+    });
   }
 
   private wake(profileId: string, bedtime: PlannerBedtime, moment: BedtimeMoment): void {
     if (bedtime.sleep_sound !== null) {
-      background(this.options.sleepSound.stop(profileId), 'planner.bedtime_sleep_sound_failed', {
-        profileId,
-      });
+      this.sounds.run(this.options.sleepSound.stop(profileId), { profileId });
     }
     this.signal(profileId, 'wake_time', moment.window.wakeAt, { wakeAt: moment.window.wakeAt });
   }
 
-  private tellPhones(
+  private async tellPhones(
     profileId: string,
     notice: PlannerBedtimeNotice | PlannerWindDownNotice,
-  ): void {
-    for (const phone of phonesOf(this.options.store, profileId)) {
+  ): Promise<void> {
+    for (const phone of await phonesOf(this.options.store, profileId)) {
       background(this.options.channel.deliver(phone.id, notice), 'planner.bedtime_notice_failed', {
         profileId,
         clientId: phone.id,
@@ -204,10 +254,5 @@ export class BedtimeDesk {
         data,
       }),
     );
-  }
-
-  private localTime(iso: string, profileId: string): string {
-    const { store } = this.options;
-    return personClockText(store, profileId, iso, store.settings.read().time_zone);
   }
 }

@@ -22,7 +22,7 @@ import { reimportStructure, type StructureScene } from './merge/reimport-structu
 import type { HomeMapService } from './service';
 
 export interface ResetPorts {
-  readonly maps: Pick<HomeMapService, 'get' | 'apply'>;
+  readonly maps: Pick<HomeMapService, 'exclusive'>;
   readonly geometryOf: (source: HomeMapSource) => HomeMapSourceGeometry | null;
   readonly newId: () => string;
   readonly log: Logger;
@@ -272,23 +272,29 @@ export function planReset(input: ResetPlanInput): readonly HomeMapOp[] {
 export class HomeMapReset {
   constructor(private readonly ports: ResetPorts) {}
 
-  reset(mapId: HomeMapId, actor: HomeMapActor, sourceId?: string): HomeMapEditResultAnswer {
-    const map = this.ports.maps.get(mapId);
-    const ops = planReset({
-      map,
-      sourceId,
-      sceneOf: (source) => this.sceneOf(source),
-      newId: this.ports.newId,
+  reset(
+    mapId: HomeMapId,
+    actor: HomeMapActor,
+    sourceId?: string,
+  ): Promise<HomeMapEditResultAnswer> {
+    return this.ports.maps.exclusive(async (maps) => {
+      const map = maps.get(mapId);
+      const ops = planReset({
+        map,
+        sourceId,
+        sceneOf: (source) => this.sceneOf(source),
+        newId: this.ports.newId,
+      });
+      if (ops.length === 0) return { revision: map.revision, conflicts: [] };
+      const applied = await maps.apply(ops, actor, {}, mapId);
+      this.ports.log.info('home_map.reset_to_source', {
+        mapId,
+        sourceId: sourceId ?? null,
+        ops: applied.applied.length,
+        conflicts: applied.conflicts.length,
+      });
+      return { revision: applied.revision, conflicts: [...applied.conflicts] };
     });
-    if (ops.length === 0) return { revision: map.revision, conflicts: [] };
-    const applied = this.ports.maps.apply(ops, actor, {}, mapId);
-    this.ports.log.info('home_map.reset_to_source', {
-      mapId,
-      sourceId: sourceId ?? null,
-      ops: applied.applied.length,
-      conflicts: applied.conflicts.length,
-    });
-    return { revision: applied.revision, conflicts: [...applied.conflicts] };
   }
 
   private sceneOf(source: HomeMapSource): StructureScene {

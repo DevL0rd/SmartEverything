@@ -1,6 +1,6 @@
 import { monitorEventLoopDelay, type IntervalHistogram } from 'node:perf_hooks';
 
-const RESOLUTION_MS = 10;
+export const LOOP_DELAY_RESOLUTION_MS = 10;
 const NANOSECONDS_PER_MS = 1_000_000;
 const TAIL_PERCENTILE = 99;
 const NO_LAG: LoopLag = { loopLagMaxMs: 0, loopLagP99Ms: 0 };
@@ -15,12 +15,14 @@ export interface LoopLagWindow {
   readonly abandon: () => void;
 }
 
-function lagMs(nanoseconds: number): number {
-  return Math.max(0, Math.round(nanoseconds / NANOSECONDS_PER_MS - RESOLUTION_MS));
+export function lagMs(nanoseconds: number): number {
+  return Math.max(0, Math.round(nanoseconds / NANOSECONDS_PER_MS - LOOP_DELAY_RESOLUTION_MS));
 }
 
 export function openLoopLagWindow(): LoopLagWindow {
-  const histogram: IntervalHistogram = monitorEventLoopDelay({ resolution: RESOLUTION_MS });
+  const histogram: IntervalHistogram = monitorEventLoopDelay({
+    resolution: LOOP_DELAY_RESOLUTION_MS,
+  });
   histogram.enable();
   let open = true;
   const close = (): void => {

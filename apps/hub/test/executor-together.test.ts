@@ -12,6 +12,7 @@ import { testDatabase, type TestDatabase } from './support/database';
 import { LAMP } from './support/fake-provider';
 import { testLogger } from './support/logs';
 import { NOW } from './support/executor-setup';
+import { adapterDirectory } from './support/adapter-directory';
 
 const open: TestDatabase[] = [];
 
@@ -60,7 +61,7 @@ async function rig(batching: boolean): Promise<Rig> {
     store: db.database,
     inventory,
     drivers,
-    adapters: { adapterFor: (): undefined => undefined },
+    adapters: adapterDirectory((): undefined => undefined),
     hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
     log: testLogger(),
     now: (): Date => NOW,
@@ -137,7 +138,7 @@ async function adapterRig(batching: boolean): Promise<Rig> {
     store: db.database,
     inventory,
     drivers: new DeviceDriverRegistry(),
-    adapters: { adapterFor: (): ProviderAdapter => adapter },
+    adapters: adapterDirectory((): ProviderAdapter => adapter),
     hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
     log: testLogger(),
     now: (): Date => NOW,

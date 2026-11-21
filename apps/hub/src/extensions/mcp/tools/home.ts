@@ -10,8 +10,9 @@ import { placedDevices } from './targets';
 
 const NOTHING = z.strictObject({});
 
-export function homesOf(store: Store, caller: Caller): Record<string, unknown> {
+export async function homesOf(store: Store, caller: Caller): Promise<Record<string, unknown>> {
   const settings = store.settings.read();
+  const counts = await store.host.read('mcpHomeCounts', null);
   return {
     homes: [
       {
@@ -20,9 +21,9 @@ export function homesOf(store: Store, caller: Caller): Record<string, unknown> {
         latitude: settings.latitude,
         longitude: settings.longitude,
         role: roleOfCaller(caller),
-        rooms: store.rooms.list().length,
-        devices: store.devices.list().length,
-        people: store.profiles.list().length,
+        rooms: counts.rooms,
+        devices: counts.devices,
+        people: counts.people,
       },
     ],
   };
@@ -33,18 +34,20 @@ export const HOME_TOOLS: readonly Tool[] = [
     name: 'list_homes',
     input: NOTHING,
     annotations: READS,
-    run: (context) => ({ structured: homesOf(context.store, callerFor(context)) }),
+    run: async (context) => ({
+      structured: await homesOf(context.store, await callerFor(context)),
+    }),
   }),
   defineTool({
     name: 'list_rooms',
     input: NOTHING,
     annotations: READS,
-    run: (context) => {
+    run: async (context) => {
       const { store } = context;
-      const devices = placedDevices(store, deviceScopeOfActor(context));
+      const devices = await placedDevices(store, deviceScopeOfActor(context));
       return {
         structured: {
-          rooms: store.rooms.list().map((room) => ({
+          rooms: (await store.host.call('rooms', 'list')).map((room) => ({
             id: room.id,
             name: room.name,
             position: room.position,
@@ -72,9 +75,9 @@ export const HOME_TOOLS: readonly Tool[] = [
     name: 'list_providers',
     input: NOTHING,
     annotations: READS,
-    run: ({ store }) => ({
+    run: async ({ store }) => ({
       structured: {
-        providers: store.providers.list().map((link) => ({
+        providers: (await store.host.call('providers', 'list')).map((link) => ({
           provider: link.provider,
           status: link.status,
           account_label: link.account_label,
@@ -105,7 +108,7 @@ export const HOME_TOOLS: readonly Tool[] = [
           value: { provider: input.provider ?? null },
         },
       ]);
-      return { structured: reported(context, outcome) };
+      return { structured: await reported(context, outcome) };
     },
   }),
 ];

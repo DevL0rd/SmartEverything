@@ -1,4 +1,4 @@
-import { JSON_VALUE } from '@smarteverything/domain';
+import { JSON_VALUE, type JsonValue } from '@smarteverything/domain';
 import type { Outputs } from '@smarteverything/flow/interpret/frames';
 import { z } from 'zod';
 import type { Clock } from '../clock';
@@ -21,6 +21,7 @@ export interface DeviceExtraPorts {
   readonly store: Store;
   readonly feed: Pick<ChangeFeed, 'subscribe'>;
   readonly clock: Pick<Clock, 'now' | 'at'>;
+  readonly observed: (deviceId: string, capability: string) => JsonValue | undefined;
 }
 
 const ENSURE_PARAMS = z.object({
@@ -43,18 +44,12 @@ const FADE_PARAMS = z.object({
 
 const RESTORE_PARAMS = z.object({ snapshot: SNAPSHOT_VALUE });
 
-function reportedBy(
-  store: Store,
-): (deviceId: string, capability: string) => ReturnType<Store['state']['value']> {
-  return (deviceId, capability) => store.state.value(deviceId, capability);
-}
-
 function deviceEnsure(ports: DeviceExtraPorts): EffectHandler {
   const ensurer = new DeviceEnsurer({
     setter: ports.setter,
     feed: ports.feed,
     clock: ports.clock,
-    reported: reportedBy(ports.store),
+    reported: ports.observed,
   });
   return async (params, request, run) => {
     const checked = parsed(ENSURE_PARAMS, params);
@@ -83,11 +78,13 @@ function deviceEnsure(ports: DeviceExtraPorts): EffectHandler {
   };
 }
 
-function startLevel(ports: DeviceExtraPorts, ask: z.infer<typeof FADE_PARAMS>): number | undefined {
+async function startLevel(
+  ports: DeviceExtraPorts,
+  ask: z.infer<typeof FADE_PARAMS>,
+): Promise<number | undefined> {
   if (ask.from !== undefined) return ask.from;
-  const [member] = admittedMembers(ports.store, ask.target, ask.control);
-  const level =
-    member === undefined ? undefined : ports.store.state.value(member.deviceId, ask.control);
+  const [member] = await admittedMembers(ports.store, ask.target, ask.control);
+  const level = member === undefined ? undefined : ports.observed(member.deviceId, ask.control);
   return typeof level === 'number' ? level : undefined;
 }
 
@@ -97,7 +94,7 @@ function deviceFade(ports: DeviceExtraPorts): EffectHandler {
     const checked = parsed(FADE_PARAMS, params);
     if (!checked.ok) return checked;
     const ask = checked.value;
-    const from = startLevel(ports, ask);
+    const from = await startLevel(ports, ask);
     if (from === undefined) {
       return invalid(
         'The fade has no level to start from; give one or use a control with a level.',

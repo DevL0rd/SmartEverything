@@ -1,18 +1,20 @@
 import type { DriveItem, DriveScrubState } from '@smarteverything/domain';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import { background, messageOf, type Logger } from '@smarteverything/logging';
-import type { DriveItemIdentity } from '../store/repositories/drive-items';
-import type { DriveRootsRepository } from '../store/repositories/drive-roots';
-import type {
-  DriveScrubCandidate,
-  DriveScrubRepository,
-  DriveScrubResult,
-} from '../store/repositories/drive-scrub';
+import type { DriveScrubCandidate, DriveScrubResult } from '../store/repositories/drive-scrub';
 import type { Store } from '../store/store';
 import type { HashRequest, HashResponse } from './blocks';
 import { isFileItem } from './file-item';
-import { modifiedIso } from './hasher';
+import { modifiedIso } from './units/hash';
 import type { RootAvailability } from './root-marker';
+import type {
+  ScrubCandidate,
+  ScrubHealthInput,
+  ScrubOverview,
+  ScrubRecordInput,
+  ScrubWindow,
+  ScrubWindowInput,
+} from './units/scrub';
 
 const WINDOW_ROWS = 1000;
 
@@ -21,12 +23,6 @@ const FILESYSTEM_DAMAGE_CODES: ReadonlySet<string> = new Set(['EIO', 'EUCLEAN', 
 export interface FileHasher {
   request(fields: Omit<HashRequest, 'id'>): Promise<HashResponse>;
   close(): Promise<void>;
-}
-
-export interface ScrubItems {
-  find(id: string): DriveItem | undefined;
-  identityOf(id: string): DriveItemIdentity | null;
-  setIntegrity(id: string, integrity: DriveScrubResult): void;
 }
 
 export interface ScrubCorruption {
@@ -38,12 +34,16 @@ export interface ScrubCorruption {
   readonly cause: 'hash' | 'filesystem';
 }
 
+export interface ScrubUnits {
+  readonly window: (input: ScrubWindowInput) => Promise<ScrubWindow>;
+  readonly record: (input: ScrubRecordInput) => Promise<void>;
+  readonly overview: () => Promise<ScrubOverview>;
+  readonly health: (input: ScrubHealthInput) => Promise<void>;
+}
+
 export interface ScrubEnvironment {
-  readonly store: Pick<Store, 'feed' | 'write' | 'now'> & {
-    readonly driveRoots: Pick<DriveRootsRepository, 'list' | 'find' | 'update'>;
-    readonly driveItems: ScrubItems;
-    readonly driveScrub: DriveScrubRepository;
-  };
+  readonly store: Pick<Store, 'feed' | 'now'>;
+  readonly units: ScrubUnits;
   readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
   readonly openHasher: () => FileHasher;
   readonly notifyOwner: (corruption: ScrubCorruption) => void;
@@ -63,15 +63,6 @@ interface ActiveRun {
   readonly finished: Promise<void>;
 }
 
-function shareOf(count: number, total: number): number {
-  return total === 0 ? 1 : count / total;
-}
-
-function strictlyAfter(moment: string, floor: string | null): string {
-  if (floor === null || moment > floor) return moment;
-  return new Date(new Date(floor).getTime() + 1).toISOString();
-}
-
 function cutoffOf(root: StoredDrive): string {
   return root.health.lastScrubAt ?? '';
 }
@@ -88,21 +79,23 @@ class RootScrub {
     const cutoff = cutoffOf(this.root);
     let after: string | null = null;
     for (;;) {
-      const window = this.env.store.driveScrub.next(this.root.id, cutoff, after, WINDOW_ROWS);
-      const last = window.at(-1);
-      if (last === undefined) return true;
-      for (const candidate of window) {
+      const window = await this.env.units.window({
+        rootId: this.root.id,
+        cutoff,
+        after,
+        limit: WINDOW_ROWS,
+      });
+      if (window.last === null) return true;
+      for (const candidate of window.candidates) {
         if (signal.aborted) return false;
         await this.verify(candidate);
       }
-      after = last.itemId;
+      after = window.last;
     }
   }
 
-  private async verify(candidate: DriveScrubCandidate): Promise<void> {
-    const item = this.env.store.driveItems.find(candidate.itemId);
-    const identity = item === undefined ? null : this.env.store.driveItems.identityOf(item.id);
-    if (item === undefined || !isFileItem(item) || identity === null) return;
+  private async verify(found: ScrubCandidate): Promise<void> {
+    const { candidate, item, identity } = found;
     const response = await this.hasher.request({
       rootPath: this.root.path,
       relPath: item.relPath,
@@ -112,7 +105,7 @@ class RootScrub {
     });
     if (response.kind === 'skipped') {
       if (response.reason === 'unreadable' && FILESYSTEM_DAMAGE_CODES.has(response.code)) {
-        this.settle(item, candidate.sha256, `unreadable:${response.code}`, 'filesystem');
+        await this.settle(item, candidate.sha256, `unreadable:${response.code}`, 'filesystem');
         return;
       }
       this.env.log.warn('drive.scrub_skipped', {
@@ -127,7 +120,7 @@ class RootScrub {
       this.env.log.info('drive.scrub_changed', { rootId: this.root.id, relPath: item.relPath });
       return;
     }
-    this.settle(item, candidate.sha256, response.sha256, 'hash');
+    await this.settle(item, candidate.sha256, response.sha256, 'hash');
   }
 
   private unchanged(
@@ -143,19 +136,14 @@ class RootScrub {
     );
   }
 
-  private settle(
+  private async settle(
     item: DriveItem,
     expected: string,
     actual: string,
     cause: ScrubCorruption['cause'],
-  ): void {
+  ): Promise<void> {
     const result: DriveScrubResult = expected === actual ? 'ok' : 'corrupt';
-    this.env.store.write(() => {
-      this.env.store.driveScrub.record(this.root.id, item.id, result);
-      if (isFileItem(item) && item.integrity !== result) {
-        this.env.store.driveItems.setIntegrity(item.id, result);
-      }
-    });
+    await this.env.units.record({ rootId: this.root.id, item, result });
     this.pass.checked += 1;
     this.env.store.feed.notice({
       type: 'drive_progress',
@@ -188,17 +176,21 @@ class RootScrub {
 export class DriveScrubber {
   private active: ActiveRun | null = null;
   private stoppedAt: Pass | null = null;
-  private finishedAt: string | null;
+  private finishedAt: string | null | undefined;
 
-  constructor(private readonly env: ScrubEnvironment) {
-    this.finishedAt = this.latestFinish();
-  }
+  constructor(private readonly env: ScrubEnvironment) {}
 
-  state(): DriveScrubState {
+  async state(): Promise<DriveScrubState> {
     const pass = this.active?.pass ?? this.stoppedAt;
     if (pass === null) {
-      return { state: 'idle', lastFinishedAt: this.finishedAt, corrupt: this.corruptCount() };
+      const overview = await this.env.units.overview();
+      this.finishedAt ??= overview.lastFinishedAt;
+      return { state: 'idle', lastFinishedAt: this.finishedAt, corrupt: overview.corrupt };
     }
+    return this.passState(pass);
+  }
+
+  private passState(pass: Pass): DriveScrubState {
     return {
       state: this.active === null ? 'stopped' : 'running',
       startedAt: pass.startedAt,
@@ -208,54 +200,39 @@ export class DriveScrubber {
     };
   }
 
-  start(): DriveScrubState {
-    if (this.active !== null) return this.state();
-    const pass = this.stoppedAt ?? this.newPass();
+  async start(): Promise<DriveScrubState> {
+    if (this.active !== null) return this.passState(this.active.pass);
+    const pass = this.stoppedAt ?? (await this.newPass());
+    const joined = this.running();
+    if (joined !== null) return this.passState(joined.pass);
     this.stoppedAt = null;
     const controller = new AbortController();
     const finished = this.execute(pass, controller.signal);
     this.active = { controller, pass, finished };
     background(finished, 'drive.scrub_failed');
-    return this.state();
+    return this.passState(pass);
   }
 
-  stop(): DriveScrubState {
+  stop(): void {
     this.active?.controller.abort();
-    return this.state();
+  }
+
+  private running(): ActiveRun | null {
+    return this.active;
   }
 
   async settled(): Promise<void> {
     await this.active?.finished;
   }
 
-  private newPass(): Pass {
-    const roots = this.scrubbable();
-    const progress = roots.map((root) =>
-      this.env.store.driveScrub.progress(root.id, cutoffOf(root)),
-    );
+  private async newPass(): Promise<Pass> {
+    const { progress } = await this.env.units.overview();
     return {
       startedAt: this.env.store.now().toISOString(),
       checked: progress.reduce((sum, one) => sum + one.checked, 0),
       total: progress.reduce((sum, one) => sum + one.total, 0),
       corrupt: progress.reduce((sum, one) => sum + one.corrupt, 0),
     };
-  }
-
-  private scrubbable(): StoredDrive[] {
-    return this.env.store.driveRoots.list();
-  }
-
-  private latestFinish(): string | null {
-    const moments = this.env.store.driveRoots
-      .list()
-      .flatMap((root) => (root.health.lastScrubAt === null ? [] : [root.health.lastScrubAt]));
-    return moments.length === 0 ? null : moments.reduce((a, b) => (a > b ? a : b));
-  }
-
-  private corruptCount(): number {
-    return this.env.store.driveRoots
-      .list()
-      .reduce((sum, root) => sum + this.env.store.driveScrub.corrupt(root.id), 0);
   }
 
   private async execute(pass: Pass, signal: AbortSignal): Promise<void> {
@@ -294,41 +271,22 @@ export class DriveScrubber {
   }
 
   private async walkRoots(pass: Pass, signal: AbortSignal, hasher: FileHasher): Promise<boolean> {
-    for (const listed of this.scrubbable()) {
+    const { roots } = await this.env.units.overview();
+    for (const found of roots) {
       if (signal.aborted) return false;
-      const found = this.env.store.driveRoots.find(listed.id);
-      if (found === undefined) continue;
       const availability = await this.env.availability(found);
       if (availability !== 'online') {
         this.env.log.info('drive.scrub_unavailable', { rootId: found.id, availability });
         continue;
       }
       const finished = await new RootScrub(this.env, found, pass, hasher).run(signal);
-      this.health(found.id, finished);
+      await this.env.units.health({
+        rootId: found.id,
+        finished,
+        at: this.env.store.now().toISOString(),
+      });
       if (!finished) return false;
     }
     return true;
-  }
-
-  private completedAt(rootId: string): string {
-    return strictlyAfter(
-      this.env.store.now().toISOString(),
-      this.env.store.driveScrub.lastVerifiedAt(rootId),
-    );
-  }
-
-  private health(rootId: string, finished: boolean): void {
-    const root = this.env.store.driveRoots.find(rootId);
-    if (root === undefined) return;
-    const progress = this.env.store.driveScrub.progress(rootId, cutoffOf(root));
-    const verified = this.env.store.driveScrub.verified(rootId);
-    this.env.store.driveRoots.update(rootId, {
-      health: {
-        ...root.health,
-        verifiedShare: Math.min(1, shareOf(verified, progress.total)),
-        corrupt: progress.corrupt,
-        lastScrubAt: finished ? this.completedAt(rootId) : root.health.lastScrubAt,
-      },
-    });
   }
 }

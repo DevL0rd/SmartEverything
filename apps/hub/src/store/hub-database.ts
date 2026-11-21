@@ -10,14 +10,6 @@ import {
 } from '../database/port';
 import type { Store } from './store';
 
-function settle<T>(work: () => T): Promise<T> {
-  try {
-    return Promise.resolve(work());
-  } catch (cause) {
-    return Promise.reject(cause instanceof Error ? cause : new Error(String(cause)));
-  }
-}
-
 function recordsOf(rows: readonly unknown[]): DeviceRecord[] {
   return rows.map((row) => DEVICE_RECORD.parse(row));
 }
@@ -50,48 +42,41 @@ type InventoryPart = Pick<
   | 'upsertCameras'
 >;
 
-function inventoryPart(store: Store): InventoryPart {
+function inventoryPart({ host }: Store): InventoryPart {
   return {
-    loadDevices: () => settle(() => recordsOf(store.devices.list())),
-    loadDeviceIdentities: () => settle(() => store.devices.list().map(identityOf)),
-    upsertDevices: (rows) => settle(() => recordsOf(store.devices.upsert(rows))),
-    setDevicesOnline: (ids, online) =>
-      settle(() => recordsOf(store.devices.setOnline(ids, online))),
-    removeDevices: (ids) =>
-      settle(() => {
-        store.devices.remove(ids);
-      }),
-    matchRooms: (names) => settle(() => store.rooms.matchNames(names)),
-    loadState: () =>
-      settle(() =>
-        store.state.list().map((row) => ({
-          deviceId: row.device_id,
-          capability: CAPABILITY_KEY.parse(row.capability),
-          value: row.value,
-          observedAt: row.observed_at,
-        })),
-      ),
-    upsertState: (rows) =>
-      settle(() => {
-        store.state.write(rows);
-      }),
-    insertEvents: (rows) => settle(() => store.events.insert(rows).map((row) => row.id)),
+    loadDevices: async () => recordsOf(await host.call('devices', 'list')),
+    loadDeviceIdentities: async () => (await host.call('devices', 'list')).map(identityOf),
+    upsertDevices: async (rows) => recordsOf(await host.call('devices', 'upsert', rows)),
+    setDevicesOnline: async (ids, online) =>
+      recordsOf(await host.call('devices', 'setOnline', ids, online)),
+    removeDevices: async (ids): Promise<void> => {
+      await host.call('devices', 'remove', ids);
+    },
+    matchRooms: (names) => host.call('rooms', 'matchNames', names),
+    loadState: async () =>
+      (await host.call('state', 'list')).map((row) => ({
+        deviceId: row.device_id,
+        capability: CAPABILITY_KEY.parse(row.capability),
+        value: row.value,
+        observedAt: row.observed_at,
+      })),
+    upsertState: async (rows): Promise<void> => {
+      await host.call('state', 'write', rows);
+    },
+    insertEvents: async (rows) => (await host.call('events', 'insert', rows)).map((row) => row.id),
     recordEventOccurrence: (event, occurrence) =>
-      settle(() => store.events.recordOccurrence(event, occurrence)),
-    enrichEvent: (id, details) =>
-      settle(() => {
-        store.events.enrich(id, details);
-      }),
-    loadCameras: () =>
-      settle(() =>
-        store.cameras
-          .list()
-          .map((camera) => ({ deviceId: camera.device_id, recordEvents: camera.record_events })),
-      ),
-    upsertCameras: (rows) =>
-      settle(() => {
-        store.cameras.upsert(rows);
-      }),
+      host.call('events', 'recordOccurrence', event, occurrence),
+    enrichEvent: async (id, details): Promise<void> => {
+      await host.call('events', 'enrich', id, details);
+    },
+    loadCameras: async () =>
+      (await host.call('cameras', 'list')).map((camera) => ({
+        deviceId: camera.device_id,
+        recordEvents: camera.record_events,
+      })),
+    upsertCameras: async (rows): Promise<void> => {
+      await host.call('cameras', 'upsert', rows);
+    },
   };
 }
 
@@ -100,41 +85,26 @@ type CommandPart = Pick<
   'pendingCommands' | 'claimCommand' | 'finishCommand' | 'insertCommands' | 'updateProviderLink'
 >;
 
-function commandPart(store: Store): CommandPart {
+function commandPart({ host }: Store): CommandPart {
   return {
-    pendingCommands: () => settle(() => store.commands.open()),
-    claimCommand: (id, from) =>
-      settle(() => {
-        if (!store.commands.claim(id, from)) return false;
-        if (store.automationRuns.canDispatch(id)) return true;
-        store.commands.finish(id, {
-          status: 'failed',
-          error: 'The owning automation run was cancelled before command dispatch.',
-        });
-        return false;
+    pendingCommands: () => host.call('commands', 'open'),
+    claimCommand: (id, from) => host.write('claimCommand', { id, from }),
+    finishCommand: async (id, outcome): Promise<void> => {
+      await host.call('commands', 'finish', id, outcome);
+    },
+    insertCommands: (rows, ownerRunId) =>
+      host.write('insertCommands', {
+        commands: rows.map((row) => ({
+          ...row,
+          source: currentExecutionAuthority() === undefined ? row.source : 'assistant',
+          requestedBy: null,
+        })),
+        ownerRunId,
+        authority: currentExecutionAuthority() ?? null,
       }),
-    finishCommand: (id, outcome) =>
-      settle(() => {
-        store.commands.finish(id, outcome);
-      }),
-    insertCommands: (rows, record) =>
-      settle(() =>
-        store.write(() => {
-          const commands = store.commands.insert(
-            rows.map((row) => ({
-              ...row,
-              source: currentExecutionAuthority() === undefined ? row.source : 'assistant',
-              requestedBy: null,
-            })),
-          );
-          record?.(commands);
-          return commands;
-        }),
-      ),
-    updateProviderLink: (provider, change) =>
-      settle(() => {
-        store.providers.change(provider, change);
-      }),
+    updateProviderLink: async (provider, change): Promise<void> => {
+      await host.call('providers', 'change', provider, change);
+    },
   };
 }
 
@@ -147,7 +117,7 @@ function controlPart(
       const path = recordingPath(file.path);
       await mkdir(dirname(path), { recursive: true, mode: 0o700 });
       await writeFile(path, file.bytes, { mode: 0o600, flag: 'wx' });
-      store.cameras.addRecording(row);
+      await store.host.call('cameras', 'addRecording', row);
     },
   };
 }

@@ -26,7 +26,7 @@ function supportReferences(): void {
 async function opened(references = true): Promise<AiChatRow> {
   if (references) supportReferences();
   const chat = rig.newChat(rig.desk.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.desk.target, randomUUID(), open);
   return rig.opened.store.aiChats.chat(chat.id);
 }

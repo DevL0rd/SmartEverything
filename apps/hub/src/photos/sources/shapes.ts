@@ -7,11 +7,8 @@ import {
 } from '@smarteverything/domain';
 import { messageOf } from '@smarteverything/logging';
 import { z } from 'zod';
-import type { ChangeEnv, ChangeStore } from '../../drive/changes';
-import type { DevicesRepository } from '../../store/repositories/devices';
-import type { CamerasRepository } from '../../store/repositories/cameras';
-import type { ProfilesRepository } from '../../store/repositories/profiles';
-import type { Sql, SqlFilter } from '../../store/sql';
+import type { ChangeEnv } from '../../drive/changes';
+import type { SqlFilter } from '../../store/sql';
 
 export type SourcePage = z.output<typeof SOURCE_PAGE>;
 
@@ -20,16 +17,7 @@ export interface SourceViewer {
   readonly devices: (DeviceScope & Partial<PrivateDevices>) | null;
 }
 
-export interface SourcesStore extends ChangeStore {
-  readonly devices: Pick<DevicesRepository, 'find'>;
-  readonly cameras: Pick<CamerasRepository, 'list'>;
-  readonly profiles: Pick<ProfilesRepository, 'byId'>;
-}
-
-export interface SourcesEnv extends ChangeEnv {
-  readonly store: SourcesStore;
-  readonly sql: Sql;
-}
+export type SourcesEnv = ChangeEnv;
 
 export interface SourceQuery {
   readonly chipId?: string | undefined;
@@ -68,7 +56,7 @@ export function sourceNarrowing(query: SourceQuery, columns: SourceColumns): Sql
 
 export interface SourceService {
   readonly source: PhotoSource;
-  readonly page: (viewer: SourceViewer, query: SourceQuery) => SourcePage;
+  readonly page: (viewer: SourceViewer, query: SourceQuery) => Promise<SourcePage>;
   readonly keep: (viewer: SourceViewer, itemIds: readonly string[]) => Promise<number>;
 }
 

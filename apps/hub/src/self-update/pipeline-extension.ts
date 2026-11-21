@@ -4,18 +4,19 @@ import {
   API_ENDPOINTS as E,
   ApiError,
   PIPELINE_COMPONENTS,
+  releaseArtifactOf,
   UPDATE_PUSH_PATH,
   UPDATE_PUSH_SECRET_FILE,
   type HubUpdateRelease,
   type UpdatePushSetup,
   type PipelineComponent,
+  type ReleaseSource,
   type UpdateRevision,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { ExtensionContext, RunningExtension, ServerExtension } from '../extensions';
 import { readPushSecret, updatePushRoute } from '../server/handlers/self-update-push';
 import { bound } from '../server/router';
-import { buildSourceOf } from './build-source';
 import { PLAN_RESULT } from './plan-contract';
 import { planRelease } from './release-planner';
 import {
@@ -39,8 +40,8 @@ import { runConfiguredUpdateCommand } from './command';
 import { httpsPublicServer, verifiedHttpsServer } from './public-server';
 import { findUpdateSource } from './update-source';
 
-function pushTarget(context: Pick<ExtensionContext, 'layout'>): PushTarget {
-  const source = findUpdateSource(context.layout);
+async function pushTarget(context: Pick<ExtensionContext, 'layout'>): Promise<PushTarget> {
+  const source = await findUpdateSource(context.layout);
   if (source === undefined)
     throw new ApiError('conflict', 'This hub has no update source configured.');
   return { repository: source.repository, branch: source.branch };
@@ -76,13 +77,14 @@ function reportFinished(log: Logger, revision: UpdateRevision): void {
 }
 
 async function prepare(
-  context: Pick<ExtensionContext, 'layout'>,
+  context: Pick<ExtensionContext, 'layout' | 'store'>,
   record: RevisionRecord,
   revision: UpdateRevision,
 ): Promise<Prepared> {
   const { layout } = context;
   const base = baseOf(await record.list(), revision.tip);
-  if (PIPELINE_COMPONENTS.every((component) => buildSourceOf(layout, component) !== 'hub'))
+  const sources = await context.store.host.read('buildSources', null);
+  if (PIPELINE_COMPONENTS.every((component) => sources[releaseArtifactOf(component)] !== 'hub'))
     return {
       base,
       components:
@@ -105,14 +107,16 @@ function ports(context: ExtensionContext, record: RevisionRecord, watch: Release
   const { layout, live, log, store } = context;
   const deps: StepDependencies = {
     layout,
-    publicServer: (): string => httpsPublicServer(store.settings.read()),
+    publicServer: async (): Promise<string> =>
+      httpsPublicServer(await store.host.read('settingsRow', null)),
     finished: (runId: string): Promise<HubUpdateRelease> => watch.finished(runId),
   };
   return {
     record,
     now: (): Date => new Date(),
     newId: randomUUID,
-    sourceOf: (component: PipelineComponent) => buildSourceOf(layout, component),
+    sourceOf: async (component: PipelineComponent): Promise<ReleaseSource> =>
+      (await store.host.read('buildSources', null))[releaseArtifactOf(component)],
     prepare: (revision): Promise<Prepared> => prepare(context, record, revision),
     execute: (revision, step): Promise<StepOutcome> =>
       step.component === 'hub'
@@ -132,7 +136,7 @@ async function pushSetup(
   context: Pick<ExtensionContext, 'store'>,
   secretFile: string,
 ): Promise<UpdatePushSetup> {
-  const server = verifiedHttpsServer(context.store.settings.read());
+  const server = verifiedHttpsServer(await context.store.host.read('settingsRow', null));
   return {
     secretConfigured: (await readPushSecret(secretFile)) !== null,
     webhookUrl: server === null ? null : new URL(UPDATE_PUSH_PATH, server).toString(),
@@ -161,7 +165,7 @@ export function updatePipelineExtension(): ServerExtension {
       routes: [
         updatePushRoute({
           secret: () => readPushSecret(secretFile),
-          target: () => Promise.resolve().then(() => pushTarget(context)),
+          target: () => pushTarget(context),
           submit: async (push) => (await queue.submit(push)).id,
         }),
       ],

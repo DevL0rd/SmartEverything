@@ -14,11 +14,12 @@ import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { HomeMapApplied } from '../store/repositories/home-maps';
 import type { StoredRoomLink } from '../store/repositories/vacuum-room-links';
-import type { HomeMapService } from './service';
+import type { HomeMapRoomLinkStore } from './map-store';
+import type { HeldMaps, HomeMapService } from './service';
 
 export interface RoomLinksPorts {
-  readonly maps: Pick<HomeMapService, 'get' | 'apply'>;
-  readonly links: { readonly list: (deviceId: string) => readonly StoredRoomLink[] };
+  readonly maps: Pick<HomeMapService, 'exclusive'>;
+  readonly links: HomeMapRoomLinkStore;
   readonly setRoomFloor: (deviceId: string, mapRoomId: number, floor: number) => Promise<void>;
   readonly newId: () => string;
   readonly now: () => string;
@@ -177,11 +178,15 @@ const actorOf = (source: HomeMapSource): HomeMapActor => `source:${source.id}`;
 export class HomeMapRoomLinks {
   constructor(private readonly ports: RoomLinksPorts) {}
 
-  sync(deviceId: string): number {
-    const links = this.ports.links.list(deviceId);
+  sync(deviceId: string): Promise<number> {
+    return this.ports.maps.exclusive((held) => this.syncHeld(held, deviceId));
+  }
+
+  async syncHeld(held: HeldMaps, deviceId: string): Promise<number> {
+    const links = await this.ports.links.list(deviceId);
     let revisions = 0;
-    for (const { id } of this.ports.maps.get().sources.filter((s) => s.deviceId === deviceId)) {
-      revisions += this.syncSource(id, links);
+    for (const { id } of held.get().sources.filter((s) => s.deviceId === deviceId)) {
+      revisions += await this.syncSource(held, id, links);
     }
     return revisions;
   }
@@ -195,8 +200,12 @@ export class HomeMapRoomLinks {
     return outcomes;
   }
 
-  private syncSource(sourceId: string, links: readonly StoredRoomLink[]): number {
-    const map = this.ports.maps.get();
+  private async syncSource(
+    held: HeldMaps,
+    sourceId: string,
+    links: readonly StoredRoomLink[],
+  ): Promise<number> {
+    const map = held.get();
     const source = map.sources.find((candidate) => candidate.id === sourceId);
     const floor =
       source === undefined ? undefined : map.floors.find((f) => f.id === source.floorId);
@@ -213,7 +222,7 @@ export class HomeMapRoomLinks {
       this.ports.log.warn('home_map.room_link_taken', { sourceId, roomId });
     }
     if (derived.ops.length === 0) return 0;
-    const applied = this.ports.maps.apply(derived.ops, actorOf(source));
+    const applied = await held.apply(derived.ops, actorOf(source));
     if (applied.conflicts.length > 0) {
       this.ports.log.warn('home_map.room_link_conflicts', {
         sourceId,

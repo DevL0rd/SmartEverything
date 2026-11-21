@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import type { Store } from '../../src/store/store';
 import { TALK_NEW_CHANNEL } from '@smarteverything/domain';
 import { TalkService } from '../../src/talk/talk-service';
 import { addClient, type TestClient } from '../support/socket-client';
@@ -10,7 +11,15 @@ let service: TalkService;
 let alice: TestClient;
 let bob: TestClient;
 let channelId: string;
-let relabel: ReturnType<typeof vi.spyOn>;
+let writes: MockInstance<Store['host']['write']>;
+
+function relabels(): number {
+  return writes.mock.calls.filter(([unit]) => unit === 'talkRelabel').length;
+}
+
+async function relabelled(): Promise<void> {
+  await test.store.host.call('hubMarks', 'read', 'relabelled');
+}
 
 function labelOf(clientId: string): string | undefined {
   return test.store.talk.member({ channelId, kind: 'client', memberId: clientId })?.label;
@@ -19,6 +28,7 @@ function labelOf(clientId: string): string | undefined {
 beforeEach(async () => {
   captureLogs();
   test = await testStore();
+  await test.store.live.home.load();
   alice = addClient(test, 'Alice phone', 'owner');
   bob = addClient(test, 'Bob phone', 'member');
   const { members, ...input } = TALK_NEW_CHANNEL.parse({ name: 'Garage', ai_listens: false });
@@ -44,7 +54,7 @@ beforeEach(async () => {
     log: testLogger('talk'),
   });
   await service.start();
-  relabel = vi.spyOn(test.store.talk, 'relabel');
+  writes = vi.spyOn(test.store.host, 'write');
 });
 
 afterEach(async () => {
@@ -53,34 +63,39 @@ afterEach(async () => {
 });
 
 describe('talk member labels', () => {
-  it('leave the members alone when a client is only seen', () => {
+  it('leave the members alone when a client is only seen', async () => {
     test.store.clients.seen(test.store.clients.byId(alice.id));
-    expect(relabel).not.toHaveBeenCalled();
+    await relabelled();
+    expect(relabels()).toBe(0);
     expect(labelOf(alice.id)).toBe('Old label');
   });
 
-  it('follow a renamed client', () => {
+  it('follow a renamed client', async () => {
     test.store.clients.update(alice.id, { name: 'Kitchen tablet' });
-    expect(relabel).toHaveBeenCalledTimes(1);
+    await relabelled();
+    expect(relabels()).toBe(1);
     expect(test.store.talk.member({ channelId, kind: 'client', memberId: alice.id })?.detail).toBe(
       'Kitchen tablet',
     );
     expect(labelOf(bob.id)).toBe('Old label');
   });
 
-  it('follow the profile a client switches to', () => {
+  it('follow the profile a client switches to', async () => {
     const other = test.store.profiles.create({ name: 'Sam' });
     test.store.clients.useProfile(bob.id, other.id);
-    expect(relabel).toHaveBeenCalledTimes(1);
+    await relabelled();
+    expect(relabels()).toBe(1);
     expect(labelOf(bob.id)).toBe('Sam');
   });
 
-  it('follow a renamed profile but not a recoloured one', () => {
+  it('follow a renamed profile but not a recoloured one', async () => {
     const profile = test.store.profiles.activeOf(alice.id);
     test.store.profiles.update(profile.id, { colour: 'rose' });
-    expect(relabel).not.toHaveBeenCalled();
+    await relabelled();
+    expect(relabels()).toBe(0);
     test.store.profiles.update(profile.id, { name: 'Renamed' });
-    expect(relabel).toHaveBeenCalled();
+    await relabelled();
+    expect(relabels()).toBeGreaterThan(0);
     expect(labelOf(alice.id)).toBe('Renamed');
   });
 });

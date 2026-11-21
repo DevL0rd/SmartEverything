@@ -14,7 +14,7 @@ export const aiHarnessRoutes = (service: HarnessService) =>
   ({
     controlAiHarnessSubscription: bound(
       API_ENDPOINTS.controlAiHarnessSubscription,
-      ({ body, caller }) => service.subscriptions.control(profileIdOf(service.store, caller), body),
+      ({ body, caller }) => service.subscriptions.control(profileIdOf(caller), body),
     ),
     ...harnessCommandRoutes(service),
     ...configurationRoutes(service),
@@ -82,7 +82,7 @@ const chatRoutes = (service: HarnessService) =>
     changeAiChatHarnessPermission: bound(
       API_ENDPOINTS.changeAiChatHarnessPermission,
       ({ params, body, caller }) => {
-        return service.permission(ownerOf(service, caller), params.chatId, body);
+        return service.permission(ownerOf(caller), params.chatId, body);
       },
     ),
     readAiHarnessCatalogue: bound(API_ENDPOINTS.readAiHarnessCatalogue, ({ caller }) =>
@@ -93,7 +93,7 @@ const chatRoutes = (service: HarnessService) =>
           delete visible.configuration_sync;
           return visible;
         }),
-        routes: service.routes.list(profileIdOf(service.store, caller)),
+        routes: service.routes.list(profileIdOf(caller)),
       }),
     ),
     openAiChatHarness: bound(API_ENDPOINTS.openAiChatHarness, ({ params, caller }) =>
@@ -103,12 +103,12 @@ const chatRoutes = (service: HarnessService) =>
       readChat(service, caller, params.chatId),
     ),
     switchAiChatHarness: bound(API_ENDPOINTS.switchAiChatHarness, ({ params, body, caller }) =>
-      service.switch(ownerOf(service, caller), params.chatId, body),
+      service.switch(ownerOf(caller), params.chatId, body),
     ),
     answerAiChatHarness: bound(
       API_ENDPOINTS.answerAiChatHarness,
       async ({ params, body, caller }) => {
-        await service.answer(ownerOf(service, caller), params.chatId, body);
+        await service.answer(ownerOf(caller), params.chatId, body);
         return DONE_REPLY;
       },
     ),
@@ -118,7 +118,7 @@ function readChat(
   caller: Caller,
   chatId: string,
 ): ReturnType<HarnessService['state']> | Promise<ReturnType<HarnessService['state']>> {
-  const owner = ownerOf(service, caller);
+  const owner = ownerOf(caller);
   if (
     caller.kind !== 'client' ||
     caller.via !== undefined ||
@@ -134,7 +134,7 @@ function openChat(
   caller: Caller,
   chatId: string,
 ): ReturnType<typeof openConversation> {
-  const owner = chatOwnerOf(service.store, caller);
+  const owner = chatOwnerOf(caller);
   service.own(owner, chatId);
   new OwnEngineSelections(service).migrate(chatId);
   const authority = { kind: 'manual', profileId: owner.profileId } as const;
@@ -144,27 +144,24 @@ function openChat(
 const machineRoutes = (service: HarnessService) =>
   ({
     listAiChatMachines: bound(API_ENDPOINTS.listAiChatMachines, ({ params, caller }) =>
-      listMachines(service, ownerOf(service, caller), params.chatId),
+      listMachines(service, ownerOf(caller), params.chatId),
     ),
     switchAiChatMachine: bound(API_ENDPOINTS.switchAiChatMachine, ({ params, body, caller }) =>
-      switchMachine(service, ownerOf(service, caller), params.chatId, body.machine),
+      switchMachine(service, ownerOf(caller), params.chatId, body.machine),
     ),
   }) as const;
 
 const readRoutes = (service: HarnessService) =>
   ({
     readDshSession: bound(API_ENDPOINTS.readDshSession, ({ params, caller }) => {
-      const metadata = service.store.dshSessions.stat(
-        params.sessionId,
-        profileIdOf(service.store, caller),
-      );
+      const metadata = service.store.dshSessions.stat(params.sessionId, profileIdOf(caller));
       if (metadata === undefined)
         throw new ApiError('not_found', 'This native session does not exist.');
       return metadata;
     }),
     listDshSessions: bound(API_ENDPOINTS.listDshSessions, ({ query, caller }) => {
       const rows = service.store.dshSessions
-        .list(profileIdOf(service.store, caller))
+        .list(profileIdOf(caller))
         .filter((row) => query.before === undefined || row.header.id < query.before)
         .sort((left, right) => right.header.id.localeCompare(left.header.id));
       const sessions = rows.slice(0, query.limit);
@@ -174,12 +171,12 @@ const readRoutes = (service: HarnessService) =>
       };
     }),
     readDshSessionEvents: bound(API_ENDPOINTS.readDshSessionEvents, ({ body, caller }) =>
-      service.store.dshSessions.read(body, profileIdOf(service.store, caller)),
+      service.store.dshSessions.read(body, profileIdOf(caller)),
     ),
     readAiRouteInfo: bound(API_ENDPOINTS.readAiRouteInfo, ({ query, caller }) =>
-      service.routes.info(profileIdOf(service.store, caller), query),
+      service.routes.info(profileIdOf(caller), query),
     ),
   }) as const;
-function ownerOf(service: HarnessService, caller: Caller): ChatOwner {
-  return chatOwnerOf(service.store, caller);
+function ownerOf(caller: Caller): ChatOwner {
+  return chatOwnerOf(caller);
 }

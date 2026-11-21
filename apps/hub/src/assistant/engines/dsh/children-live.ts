@@ -1,3 +1,4 @@
+import { background } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { AiAgentRun, AiChatRow } from '@smarteverything/domain';
 import type { Store } from '../../../store/store';
@@ -93,7 +94,9 @@ function recordTask(
       hops: store.assistantEvents.event(run.source_id).hops,
     },
   });
-  conversation.stateOf(row.id, 'delivered');
+  background(conversation.stateOf(row.id, 'delivered'), 'dsh.child_task_state_failed', {
+    messageId: row.id,
+  });
 }
 
 export function projectNativeChildTask(

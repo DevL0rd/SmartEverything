@@ -66,9 +66,9 @@ function computers(): readonly { readonly external_id: string; readonly model: s
   return opened.store.devices.list().filter((device) => device.kind === 'computer');
 }
 
-function claim(access: ComputerNodeAccess, hello: NodeHello): string {
-  const { code } = access.pair('https://hub.example.com', ownerId);
-  return access.claim(code, hello, 'local').paired.device_id;
+async function claim(access: ComputerNodeAccess, hello: NodeHello): Promise<string> {
+  const { code } = await access.pair('https://hub.example.com', ownerId);
+  return (await access.claim(code, hello, 'local')).paired.device_id;
 }
 
 describe('one computer row per machine', () => {
@@ -87,18 +87,18 @@ describe('one computer row per machine', () => {
     expect(hub.externalId).not.toBe(computerExternalId(HELLO.machineId));
   });
 
-  it('pairs a machine that was never seen into exactly one row, then reuses it', () => {
+  it('pairs a machine that was never seen into exactly one row, then reuses it', async () => {
     const access = new ComputerNodeAccess(opened.store, () => NOW);
 
-    const first = claim(access, OTHER);
-    const second = claim(access, OTHER);
+    const first = await claim(access, OTHER);
+    const second = await claim(access, OTHER);
 
     expect(second).toBe(first);
     expect(computers()).toHaveLength(1);
     expect(computers()[0]?.external_id).toBe(`computer:${OTHER.machineId}`);
   });
 
-  it('pairs the hub machine as an ordinary pc beside the hub own device', () => {
+  it('pairs the hub machine as an ordinary pc beside the hub own device', async () => {
     opened.store.devices.upsert([
       {
         ...describeHub({ hostname: 'nas', osName: 'Linux' }),
@@ -109,7 +109,7 @@ describe('one computer row per machine', () => {
     ]);
     const access = new ComputerNodeAccess(opened.store, () => NOW);
 
-    const node = claim(access, HELLO);
+    const node = await claim(access, HELLO);
 
     expect(computers()).toHaveLength(2);
     expect(opened.store.devices.byId(node).model).toBe(COMPUTER_ROLE_MODELS.pc);

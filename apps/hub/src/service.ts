@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { Logger } from '@smarteverything/logging';
 import { configuredLayout, layoutForLocation, resolveHubRootSync } from './data-layout';
 import { applyFileIoThreads } from './service/file-io-threads';
+import { enableServiceCompileCache, saveServiceCompileCache } from './service/compile-cache';
 
 const STARTUP_FAILED = 1;
 
@@ -21,15 +22,18 @@ function isServiceMain(module: unknown): module is ServiceMain {
 }
 
 async function launch(): Promise<void> {
-  if (argv.length === 2) {
+  const service = argv.length === 2;
+  if (service) {
     const location = resolveHubRootSync(env);
     const layout = configuredLayout(layoutForLocation(location, env));
     applyFileIoThreads(location.state === 'pending-v1' ? null : layout.system.database.file);
+    enableServiceCompileCache(layout.cache.compile);
   }
   const extension = extname(fileURLToPath(import.meta.url));
   const main: unknown = await import(
     fileURLToPath(new URL(`./service-main${extension}`, import.meta.url))
   );
+  if (service) saveServiceCompileCache();
   if (!isServiceMain(main))
     throw new Error('The service main module does not export startService.');
   await main.startService();

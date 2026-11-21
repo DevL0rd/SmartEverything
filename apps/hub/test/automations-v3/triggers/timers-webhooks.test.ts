@@ -7,7 +7,7 @@ import { AutomationComputersSlot } from '../../../src/automations/automation-com
 import { integrationEffects } from '../../../src/automations/integration-effects';
 import type { IntegrationPorts } from '../../../src/automations/integration-effects';
 import { WebhookReplies } from '../../../src/automations/effects/webhook-replies';
-import { TimerWakes } from '../../../src/automations/timers/timer-wakes';
+import { directTimerRows, TimerWakes } from '../../../src/automations/timers/timer-wakes';
 import { WebhookGateway } from '../../../src/automations/webhooks/gateway';
 import type { WebhookCall } from '../../../src/automations/webhooks/gateway';
 import { stateMemoryFromRows } from '../../../src/automations/world-v3/node-memory';
@@ -39,7 +39,7 @@ function dims(rig: RigV3): unknown[] {
 
 function wakesOf(rig: RigV3): TimerWakes {
   return new TimerWakes({
-    rows: rig.home.db.store.automationNodeState,
+    rows: directTimerRows(rig.home.db.store.automationNodeState),
     clock: rig.clock,
     emit: (signal): void => {
       rig.engine.observe(signal);
@@ -85,7 +85,7 @@ describe('trigger.timer and the timer wakes', () => {
       ),
       'Laundry is done',
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const wakes = wakesOf(rig);
     rig.useTimers(wakes);
     wakes.start();
@@ -109,7 +109,7 @@ describe('trigger.timer and the timer wakes', () => {
       }),
       'Laundry is done',
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const wakes = wakesOf(rig);
     rig.useTimers(wakes);
     wakes.start();
@@ -128,7 +128,7 @@ describe('trigger.timer and the timer wakes', () => {
       }),
       'Laundry is done',
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const before = wakesOf(rig);
     before.start();
     startTimer(rig, before, { owner: owner.id, name: 'laundry', durationMs: 600_000 });
@@ -151,7 +151,7 @@ describe('trigger.timer and the timer wakes', () => {
       }),
       'Listens',
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const wakes = wakesOf(rig);
     wakes.start();
     const memory = stateMemoryFromRows(rig.home.db.store.automationNodeState, wakes);
@@ -171,7 +171,7 @@ describe('trigger.timer and the timer wakes', () => {
       }),
       'Laundry is done',
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const wakes = wakesOf(rig);
     rig.useTimers(wakes);
     wakes.start();
@@ -282,7 +282,7 @@ describe('trigger.webhook and http.respond', () => {
         { triggers: [trigger('trigger.webhook', { path: lit(PATH), method: lit('POST') })] },
       ),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const reply = await gateway.call(call());
     expect(reply).toEqual({
       status: 201,
@@ -303,7 +303,7 @@ describe('trigger.webhook and http.respond', () => {
         triggers: [trigger('trigger.webhook', { path: lit(PATH) })],
       }),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     expect(await gateway.call(call({ method: 'GET', body: undefined }))).toEqual({
       status: 202,
       body: { accepted: true },
@@ -319,7 +319,7 @@ describe('trigger.webhook and http.respond', () => {
         triggers: [trigger('trigger.webhook', { path: lit(PATH) })],
       }),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const reply = await gateway.call(call());
     expect(reply).toEqual({ status: 204, body: undefined, headers: {} });
     expect(dims(rig)).toStrictEqual([63]);
@@ -341,7 +341,7 @@ describe('trigger.webhook and http.respond', () => {
         { triggers: [trigger('trigger.webhook', { path: lit(PATH) })] },
       ),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const reply = await gateway.call(call());
     expect(reply?.status).toBe(500);
     expect(JSON.stringify(reply?.body)).toContain('missing');
@@ -355,7 +355,7 @@ describe('trigger.webhook and http.respond', () => {
         triggers: [trigger('trigger.webhook', { path: lit(PATH), method: lit('POST') })],
       }),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     expect(await gateway.call(call({ path: 'someOtherSecretPath1234' }))).toBeNull();
     expect(await gateway.call(call({ method: 'GET' }))).toBeNull();
     expect(dims(rig)).toStrictEqual([]);
@@ -381,7 +381,7 @@ describe('trigger.webhook and http.respond', () => {
         triggers: [trigger('trigger.webhook', { path: lit(PATH) })],
       }),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     expect(await gateway.call(call({ path: 'randomGuessedPath123456' }))).toBeNull();
     expect(emitted).toStrictEqual([]);
   });
@@ -394,7 +394,7 @@ describe('trigger.webhook and http.respond', () => {
         triggers: [trigger('trigger.webhook', { path: lit('abc') })],
       }),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     expect(await gateway.call(call({ path: 'abc' }))).toBeNull();
   });
 
@@ -411,7 +411,7 @@ describe('trigger.webhook and http.respond', () => {
         { triggers: [trigger('trigger.webhook', { path: lit(PATH) })] },
       ),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     expect((await gateway.call(call()))?.status).toBe(202);
     await rig.advance(6000);
     await rig.until(() => rig.finished.length === 1);

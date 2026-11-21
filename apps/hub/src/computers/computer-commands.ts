@@ -62,9 +62,9 @@ export interface CommandOrigin {
 }
 
 export interface ComputerCommandRecords {
-  readonly originOf: (commandId: string) => CommandOrigin;
-  readonly visibleTo: (deviceId: string, clientId: string) => boolean;
-  readonly macsOf: (deviceId: string) => readonly string[];
+  readonly originOf: (commandId: string) => Promise<CommandOrigin>;
+  readonly visibleTo: (deviceId: string, clientId: string) => Promise<boolean>;
+  readonly macsOf: (deviceId: string) => Promise<readonly string[]>;
   readonly wake: WakeOnLan;
   readonly approve: (
     deviceId: string,
@@ -113,7 +113,7 @@ async function runMachineAction(
   command: DeviceCommand,
   context: ComputerCommandContext,
 ): Promise<void> {
-  const origin = context.originOf(command.commandId);
+  const origin = await context.originOf(command.commandId);
   const request = machineRequestOf(action, command.value);
   requireScope(context.scopesOf(deviceId), action, origin);
   const session = context.directory.byExternalId(command.externalId);
@@ -140,21 +140,24 @@ async function perform(
   context: ComputerCommandContext,
 ): Promise<void> {
   if (action === 'wake') {
-    await Promise.all(context.macsOf(deviceId).map((mac) => context.wake(mac)));
+    await Promise.all((await context.macsOf(deviceId)).map((mac) => context.wake(mac)));
     return;
   }
   const session = context.directory.byExternalId(command.externalId);
-  const explicit = context.originOf(command.commandId).source === 'app';
+  const explicit = (await context.originOf(command.commandId)).source === 'app';
   if (computerGuardBlocks(session.role, { kind: 'power', action }, explicit)) {
     throw new ApiError('conflict', HUB_GUARD_MESSAGE);
   }
   await session.call({ verb: 'power', action });
 }
 
-function deviceOf(command: DeviceCommand, context: ComputerCommandContext): string {
+async function deviceOf(command: DeviceCommand, context: ComputerCommandContext): Promise<string> {
   const deviceId = context.deviceIdOf(command.externalId);
-  const { clientId } = context.originOf(command.commandId);
-  if (deviceId === undefined || (clientId !== null && !context.visibleTo(deviceId, clientId))) {
+  const { clientId } = await context.originOf(command.commandId);
+  if (
+    deviceId === undefined ||
+    (clientId !== null && !(await context.visibleTo(deviceId, clientId)))
+  ) {
     throw new NotAComputerError();
   }
   return deviceId;
@@ -164,7 +167,7 @@ export async function runComputerCommand(
   command: DeviceCommand,
   context: ComputerCommandContext,
 ): Promise<JsonValue> {
-  const deviceId = deviceOf(command, context);
+  const deviceId = await deviceOf(command, context);
   const machine = computerMachineActionOf(command.capability);
   if (machine !== null) {
     await runMachineAction(machine, deviceId, command, context);
@@ -179,7 +182,7 @@ export async function runComputerCommand(
   if (!action.success) {
     throw new ComputerCommandUnsupportedError(command.capability);
   }
-  const origin = context.originOf(command.commandId);
+  const origin = await context.originOf(command.commandId);
   permit(context.scopesOf(deviceId), origin);
   context.sink.event({
     externalId: command.externalId,

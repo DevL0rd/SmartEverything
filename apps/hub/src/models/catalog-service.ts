@@ -12,6 +12,7 @@ import {
   admitEntry,
   checkSpecFile,
   rejectionDetail,
+  type Admission,
   type AdmittedModel,
   type ModelEntry,
   type ModelRejection,
@@ -59,6 +60,24 @@ function guardedFromOthers(owner: string): boolean {
   return owner.startsWith('plugin:');
 }
 
+export class ModelAdmissionsError extends Error {
+  override readonly name = 'ModelAdmissionsError';
+
+  constructor(owner: string, entries: number, admissions: number) {
+    super(
+      `The model batch of ${owner} has ${String(entries)} entries but ${String(admissions)} admissions.`,
+    );
+  }
+}
+
+function admissionAt(owner: string, admissions: readonly Admission[], index: number): Admission {
+  const admission = admissions[index];
+  if (admission === undefined) {
+    throw new ModelAdmissionsError(owner, index + 1, admissions.length);
+  }
+  return admission;
+}
+
 export class ModelCatalogService {
   private readonly log = new Logger('hub.models');
 
@@ -79,9 +98,20 @@ export class ModelCatalogService {
 
   replace(batch: ModelBatch): ModelBatchResult {
     const owner = MODEL_OWNER.parse(batch.owner);
+    return this.replaceAdmitted(
+      batch,
+      batch.entries.map((entry) => admitEntry(owner, entry)),
+    );
+  }
+
+  replaceAdmitted(batch: ModelBatch, admissions: readonly Admission[]): ModelBatchResult {
+    const owner = MODEL_OWNER.parse(batch.owner);
+    if (admissions.length !== batch.entries.length) {
+      throw new ModelAdmissionsError(owner, batch.entries.length, admissions.length);
+    }
     const operation = this.log.operation('model_catalog.replace', { owner });
     try {
-      const sorted = this.admit(owner, batch.entries);
+      const sorted = this.admit(owner, batch.entries, admissions);
       const result = this.store(owner, sorted.admitted, sorted.rejections);
       this.report(result);
       operation.succeeded({
@@ -125,13 +155,14 @@ export class ModelCatalogService {
   private admit(
     owner: string,
     entries: readonly ModelEntry[],
+    admissions: readonly Admission[],
   ): { admitted: AdmittedModel[]; rejections: ModelRejection[] } {
     const held = this.heldByOthers(owner);
     const taken = new Map<string, string>();
     const admitted: AdmittedModel[] = [];
     const rejections: ModelRejection[] = [];
-    for (const entry of entries) {
-      const outcome = admitEntry(owner, entry);
+    for (const [index, entry] of entries.entries()) {
+      const outcome = admissionAt(owner, admissions, index);
       if ('rejection' in outcome) {
         rejections.push(outcome.rejection);
         continue;

@@ -31,7 +31,7 @@ function owned(
   chatId: string,
 ): { readonly chat: AiChatRow; readonly runner: ComputerRunner } {
   const chat = context.assistant.chats.own(
-    { profileId: profileIdOf(context.store, caller), role: roleOfCaller(caller) },
+    { profileId: profileIdOf(caller), role: roleOfCaller(caller) },
     chatId,
   );
   admitChatExecution(chat);
@@ -47,27 +47,25 @@ const engineRoutes = (context: ServerContext) =>
   ({
     ...runtimePreferenceRoute(context),
     readAiEngineCatalogue: bound(E.readAiEngineCatalogue, ({ caller }) =>
-      selections(context).catalogue(profileIdOf(context.store, caller), roleOfCaller(caller)),
+      selections(context).catalogue(profileIdOf(caller), roleOfCaller(caller)),
     ),
     readAiEngineDefault: bound(E.readAiEngineDefault, ({ caller }) => {
-      const engine = context.store.aiEngineDefaults.read();
+      const engine = context.store.live.engineDefaults.read();
       return { engine: roleOfCaller(caller) === 'owner' && engine?.kind === 'dsh' ? engine : null };
     }),
-    updateAiEngineDefault: bound(E.updateAiEngineDefault, ({ body, caller }) => {
+    updateAiEngineDefault: bound(E.updateAiEngineDefault, async ({ body, caller }) => {
       const engine =
-        body.engine === null
-          ? null
-          : selections(context).select(profileIdOf(context.store, caller), body.engine);
+        body.engine === null ? null : selections(context).select(profileIdOf(caller), body.engine);
       if (engine !== null) {
         admitNativeEngine(engine, false);
         selections(context).validate(engine, {
           role: roleOfCaller(caller),
-          profileId: profileIdOf(context.store, caller),
+          profileId: profileIdOf(caller),
         });
       }
-      return { engine: context.store.aiEngineDefaults.update(engine) };
+      return { engine: await context.store.live.engineDefaults.update(engine) };
     }),
-    updateAiEnginePreference: bound(E.updateAiEnginePreference, ({ params, body }) => {
+    updateAiEnginePreference: bound(E.updateAiEnginePreference, async ({ params, body }) => {
       const model = params[MODEL_PARAMS];
       const settings = context.store.computerAi
         .models(body.device_id)
@@ -77,7 +75,7 @@ const engineRoutes = (context: ServerContext) =>
           'invalid_request',
           'This model has not been discovered on the chosen computer.',
         );
-      return context.store.aiProvider.prefer(model, body.device_id);
+      return await context.store.host.call('aiProvider', 'prefer', model, body.device_id);
     }),
   }) as const;
 

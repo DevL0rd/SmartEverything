@@ -1,9 +1,7 @@
 import { ApiError, type AiChatRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type {
-  AssistantEventsRepository,
-  StoredEvent,
-} from '../store/repositories/assistant-events';
+import type { StoredEvent } from '../store/repositories/assistant-events';
+import type { Store } from '../store/store';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import { withExecutionAuthority } from './turn-authority';
 import { DeliveryTrace, eventFields } from './delivery-trace';
@@ -22,8 +20,20 @@ export type Routing =
   | { readonly kind: 'waiting' }
   | { readonly kind: 'blocked'; readonly reason: string };
 
+export interface DeliveryEvents {
+  readonly pending: () => Promise<StoredEvent[]>;
+  readonly mark: (id: string, column: 'delivered_at' | 'answered_at') => Promise<void>;
+}
+
+export function hostedDeliveryEvents(store: Pick<Store, 'host'>): DeliveryEvents {
+  return {
+    pending: () => store.host.call('assistantEvents', 'pending'),
+    mark: (id, column) => store.host.call('assistantEvents', 'mark', id, column),
+  };
+}
+
 export interface DeliveryOptions {
-  readonly events: AssistantEventsRepository;
+  readonly events: DeliveryEvents;
   readonly frozen?: (chatId: string) => boolean;
   readonly admit?: (event: StoredEvent) => boolean;
   readonly route: (event: StoredEvent) => Routing;
@@ -46,6 +56,9 @@ export class AssistantDelivery {
   private readonly halted = new Set<string>();
   readonly blocked = new Map<string, string>();
   private readonly admissions = new Set<(event: StoredEvent) => boolean>();
+  private readonly taken = new Set<string>();
+  private again = false;
+  private running: Promise<void> | null = null;
 
   constructor(private readonly options: DeliveryOptions) {}
 
@@ -61,43 +74,72 @@ export class AssistantDelivery {
   }
 
   pump(): void {
-    if (this.stopped) {
+    if (this.stopped) return;
+    this.again = true;
+    if (this.running !== null) return;
+    const run = this.drain().finally(() => {
+      this.running = null;
+    });
+    this.running = run;
+    background(run, 'delivery.pump_failed');
+  }
+
+  async settled(): Promise<void> {
+    while (this.running !== null) await this.running;
+  }
+
+  private async drain(): Promise<void> {
+    while (this.again && !this.stopped) {
+      this.again = false;
+      const pending = await this.options.events.pending();
+      const ids = new Set(pending.map((event) => event.id));
+      for (const id of this.taken) if (!ids.has(id)) this.taken.delete(id);
+      this.options.log.trace('assistant.pump_ran', {
+        pending: pending.length,
+        busy: this.busy.size,
+        suspended: this.suspended.size,
+      });
+      for (const event of pending) {
+        if (this.isStopped()) return;
+        if (!this.taken.has(event.id)) await this.consider(event);
+      }
+    }
+  }
+
+  private isStopped(): boolean {
+    return this.stopped;
+  }
+
+  private async consider(event: StoredEvent): Promise<void> {
+    if (this.steerable(event)) {
+      this.steer(event);
       return;
     }
-    const pending = this.options.events.pending();
-    this.options.log.trace('assistant.pump_ran', {
-      pending: pending.length,
-      busy: this.busy.size,
-      suspended: this.suspended.size,
-    });
-    for (const event of pending) {
-      if (this.steerable(event)) {
-        this.steer(event);
-        continue;
-      }
-      if (this.frozen(event.chat_id)) {
-        this.options.log.trace('assistant.delivery_deferred', () => ({
-          ...eventFields(event),
-          busy: this.busy.has(event.chat_id),
-          suspended: this.suspended.has(event.chat_id),
-        }));
-        continue;
-      }
-      if (!this.admitted(event)) continue;
-      const routing = this.options.route(event);
-      if (routing.kind === 'waiting') {
-        this.options.log.debug('assistant.delivery_waiting', () => eventFields(event));
-      } else if (routing.kind === 'blocked') {
-        this.options.log.info('assistant.delivery_blocked', {
-          ...eventFields(event),
-          reason: routing.reason,
-        });
-        this.give(event, routing.reason);
-      } else {
-        if (this.options.admit?.(event) !== false) this.start(event, routing);
-        else this.options.log.debug('assistant.delivery_held', () => eventFields(event));
-      }
+    if (this.frozen(event.chat_id)) {
+      this.options.log.trace('assistant.delivery_deferred', () => ({
+        ...eventFields(event),
+        busy: this.busy.has(event.chat_id),
+        suspended: this.suspended.has(event.chat_id),
+      }));
+      return;
     }
+    if (!(await this.admitted(event))) return;
+    const routing = this.options.route(event);
+    if (routing.kind === 'waiting') {
+      this.options.log.debug('assistant.delivery_waiting', () => eventFields(event));
+    } else if (routing.kind === 'blocked') {
+      this.options.log.info('assistant.delivery_blocked', {
+        ...eventFields(event),
+        reason: routing.reason,
+      });
+      await this.give(event, routing.reason);
+    } else if (this.options.admit?.(event) !== false) this.start(event, routing);
+    else this.options.log.debug('assistant.delivery_held', () => eventFields(event));
+  }
+
+  private async answer(id: string): Promise<void> {
+    this.taken.add(id);
+    await this.options.events.mark(id, 'answered_at');
   }
 
   private steerable(event: StoredEvent): boolean {
@@ -131,15 +173,16 @@ export class AssistantDelivery {
     this.options.log.debug('assistant.steer_started', () => eventFields(event));
     background(
       steer(event, routing.chat)
-        .then((steered) => {
+        .then(async (steered) => {
           this.options.log.info('assistant.steer_settled', {
             ...eventFields(event),
             steered,
             durationMs: Math.round(performance.now() - startedAt),
           });
           if (steered) {
-            this.options.events.mark(event.id, 'delivered_at');
-            this.options.events.mark(event.id, 'answered_at');
+            this.taken.add(event.id);
+            await this.options.events.mark(event.id, 'delivered_at');
+            await this.options.events.mark(event.id, 'answered_at');
           } else this.unsteerable.add(event.id);
         })
         .catch((cause: unknown) => {
@@ -202,6 +245,7 @@ export class AssistantDelivery {
 
   private start(event: StoredEvent, routing: Extract<Routing, { kind: 'engine' }>): void {
     const authority = routing.authority;
+    this.taken.add(event.id);
     this.busy.add(event.chat_id);
     if (authority?.repair_origin !== undefined) this.unsteerableChats.add(event.chat_id);
     this.options.log.info('assistant.delivery_started', {
@@ -234,12 +278,12 @@ export class AssistantDelivery {
         trace.waiting(attempt);
         await suspended;
       }
-      if (this.retired(event)) {
+      if (await this.retired(event)) {
         trace.retired(attempt);
         return;
       }
       try {
-        this.options.events.mark(event.id, 'delivered_at');
+        await this.options.events.mark(event.id, 'delivered_at');
         await routing.engine.deliver(event, routing.chat);
         if (this.removed.has(event.chat_id)) {
           trace.discarded();
@@ -257,7 +301,7 @@ export class AssistantDelivery {
         this.options.retrying(event, true);
         await this.pause(trace, event.chat_id, attempt);
         if (this.halted.delete(event.chat_id)) {
-          this.settleStopped(trace, event);
+          await this.settleStopped(trace, event);
           return;
         }
       }
@@ -277,30 +321,30 @@ export class AssistantDelivery {
     });
   }
 
-  private settleStopped(trace: DeliveryTrace, event: StoredEvent): void {
+  private async settleStopped(trace: DeliveryTrace, event: StoredEvent): Promise<void> {
     trace.stopped();
-    this.options.events.mark(event.id, 'answered_at');
+    await this.answer(event.id);
     this.options.retrying(event, false);
     this.options.stopped(event);
   }
 
-  private retired(event: StoredEvent): boolean {
+  private async retired(event: StoredEvent): Promise<boolean> {
     if (this.removed.has(event.chat_id)) return true;
     if (this.options.frozen?.(event.chat_id) === true) return true;
-    return !this.admitted(event);
+    return !(await this.admitted(event));
   }
-  private admitted(event: StoredEvent): boolean {
+  private async admitted(event: StoredEvent): Promise<boolean> {
     if ([...this.admissions].every((admit) => admit(event))) return true;
     this.options.log.info('assistant.delivery_refused', {
       ...eventFields(event),
       admissions: this.admissions.size,
     });
-    this.options.events.mark(event.id, 'answered_at');
+    await this.answer(event.id);
     return false;
   }
-  private give(event: StoredEvent, reason: string): void {
+  private async give(event: StoredEvent, reason: string): Promise<void> {
     this.options.log.warn('assistant.delivery_given_up', { ...eventFields(event), reason });
-    this.options.events.mark(event.id, 'answered_at');
+    await this.answer(event.id);
     this.options.failed(event, reason);
   }
 }

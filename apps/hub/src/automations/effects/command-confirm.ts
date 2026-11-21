@@ -3,6 +3,7 @@ import {
   capabilityOf,
   type CommandRow,
   type JsonValue,
+  type StateRow,
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { Clock } from '../../clock';
@@ -29,7 +30,7 @@ interface Expected {
 }
 
 export interface ConfirmWait {
-  readonly store: Pick<Store, 'feed' | 'state' | 'devices'>;
+  readonly store: Pick<Store, 'feed' | 'host'>;
   readonly clock: Pick<Clock, 'at'>;
   readonly rows: readonly CommandRow[];
   readonly sentAt: number;
@@ -42,14 +43,17 @@ function replaced(row: CommandRow): boolean {
   return SUPERSEDED.safeParse(row.result).success;
 }
 
-function expectedOf(store: ConfirmWait['store'], row: CommandRow): Expected | undefined {
+async function expectedOf(
+  { host }: ConfirmWait['store'],
+  row: CommandRow,
+): Promise<Expected | undefined> {
   if (row.device_id === null || replaced(row)) return undefined;
-  const device = store.devices.find(row.device_id);
+  const device = await host.call('devices', 'find', row.device_id);
   const key = CAPABILITY_KEY.safeParse(row.capability);
   if (device === undefined || !key.success) return undefined;
   const descriptor = capabilityOf(device, key.data);
   if (descriptor?.access !== 'read_write' || descriptor.value.kind === 'action') return undefined;
-  const current = store.state.value(row.device_id, row.capability);
+  const current = await host.call('state', 'value', row.device_id, row.capability);
   if (current !== undefined && isConfirmedBy(row.capability, row.value, current)) return undefined;
   return {
     key: laneKey(row.device_id, row.capability),
@@ -64,7 +68,22 @@ function expectedOf(store: ConfirmWait['store'], row: CommandRow): Expected | un
   };
 }
 
-export function awaitConfirmations({
+function observer(waiting: Map<string, Expected>, sentAt: number): (reported: StateRow) => boolean {
+  return (reported) => {
+    const key = laneKey(reported.device_id, reported.capability);
+    const expected = waiting.get(key);
+    if (
+      expected === undefined ||
+      Date.parse(reported.observed_at) < sentAt ||
+      !isConfirmedBy(expected.capability, expected.value, reported.value)
+    )
+      return false;
+    waiting.delete(key);
+    return waiting.size === 0;
+  };
+}
+
+export async function awaitConfirmations({
   store,
   clock,
   rows,
@@ -72,13 +91,28 @@ export function awaitConfirmations({
   run,
 }: ConfirmWait): Promise<void> {
   const waiting = new Map<string, Expected>();
-  for (const row of rows) {
-    const expected = expectedOf(store, row);
-    if (expected !== undefined) waiting.set(expected.key, expected);
+  let settled: ((reported: StateRow) => void) | undefined;
+  const early: StateRow[] = [];
+  const unsubscribe = store.feed.subscribe((change) => {
+    if (change.table !== 'device_state' || change.record === null) return;
+    if (settled === undefined) early.push(change.record);
+    else settled(change.record);
+  });
+  try {
+    for (const expected of await Promise.all(rows.map((row) => expectedOf(store, row))))
+      if (expected !== undefined) waiting.set(expected.key, expected);
+  } catch (cause) {
+    unsubscribe();
+    throw cause;
   }
-  if (waiting.size === 0) return Promise.resolve();
+  const observe = observer(waiting, sentAt);
+  for (const reported of early.splice(0)) observe(reported);
+  if (waiting.size === 0) {
+    unsubscribe();
+    return;
+  }
   const deadline = Math.max(...[...waiting.values()].map((expected) => expected.budgetMs));
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const finish = (error?: Error): void => {
       unsubscribe();
       cancel();
@@ -89,20 +123,9 @@ export function awaitConfirmations({
     const abort = (): void => {
       finish(new AutomationRunCancelledError(run.runId));
     };
-    const unsubscribe = store.feed.subscribe((change) => {
-      if (change.table !== 'device_state' || change.record === null) return;
-      const reported = change.record;
-      const key = laneKey(reported.device_id, reported.capability);
-      const expected = waiting.get(key);
-      if (
-        expected === undefined ||
-        Date.parse(reported.observed_at) < sentAt ||
-        !isConfirmedBy(expected.capability, expected.value, reported.value)
-      )
-        return;
-      waiting.delete(key);
-      if (waiting.size === 0) finish();
-    });
+    settled = (reported): void => {
+      if (observe(reported)) finish();
+    };
     const cancel = clock.at(new Date(sentAt + deadline), () => {
       finish(new CommandNotConfirmedError([...waiting.values()].map((expected) => expected.line)));
     });

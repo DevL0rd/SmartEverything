@@ -2,7 +2,7 @@ import type { IncomingHttpHeaders } from 'node:http';
 import { API_ENDPOINTS, modelIdentityKey, type DeviceModels } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Caller } from '../../src/server/auth';
-import { modelViewOf } from '../../src/server/handlers/models';
+import { modelViewOf } from '../../src/models/device-model';
 import { captureLogs, testLogger } from '../support/logs';
 import { jsonBytes, specOf } from './model-fixtures';
 import {

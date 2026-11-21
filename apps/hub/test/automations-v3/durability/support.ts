@@ -205,9 +205,15 @@ export class Hub {
     await this.settle();
   }
 
-  boot(): BootReport {
-    this.report = bootRuns({
-      records: this.db.records,
+  async boot(): Promise<BootReport> {
+    const { records } = this.db;
+    this.report = await bootRuns({
+      records: () => {
+        records.interruptUnfinished();
+        return Promise.resolve(records.waiting());
+      },
+      prefetch: () => Promise.resolve(),
+      runs: this.db.records,
       plans: this.db.plans,
       clock: this.db.clock,
       driver: this.driver,

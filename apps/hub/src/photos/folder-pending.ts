@@ -1,11 +1,7 @@
-import { z } from 'zod';
 import { writeManifest } from '../drive/intents';
-import { classify } from '../drive/scanner-commit';
+import { classify } from '../drive/file-type';
 import { writePhotoFolderReceipt } from './folder-receipts';
 import type { BackupService, BackupEnv } from './backup';
-
-const PENDING_UPLOAD = z.strictObject({ id: z.string(), name: z.string(), owner: z.string() });
-const TRASH_ID = z.strictObject({ item_id: z.string() });
 
 function photoOrVideo(name: string): boolean {
   const { kind } = classify(name);
@@ -13,33 +9,17 @@ function photoOrVideo(name: string): boolean {
 }
 
 async function retargetUploads(env: BackupEnv, service: BackupService): Promise<void> {
-  const uploads = env.sql.all(
-    PENDING_UPLOAD,
-    `select u.id, u.name, r.owner_profile_id as owner from drive_uploads u
-      join drive_items f on f.id = u.target_id join drive_roots r on r.id = f.root_id
-      where u.state = 'open' and u.target_kind = 'folder'
-        and r.scope = 'person' and (f.rel_path in ('Camera roll', 'Uploads')
-          or f.rel_path glob 'Camera roll/*' or f.rel_path glob 'Uploads/*')`,
-  );
-  for (const upload of uploads) {
+  const { host } = env.store;
+  for (const upload of await host.read('photoPendingUploads', null)) {
     if (!photoOrVideo(upload.name)) continue;
     const folder = await service.manualTarget(upload.owner);
-    env.sql.run(
-      'retarget the existing photo upload',
-      'update drive_uploads set target_id = $folderId where id = $id',
-      { id: upload.id, folderId: folder.folderId },
-    );
+    await host.write('photoUploadRetarget', { id: upload.id, folderId: folder.folderId });
   }
 }
 
 async function retargetTrash(env: BackupEnv, service: BackupService): Promise<void> {
-  const pending = env.sql.all(
-    TRASH_ID,
-    'select item_id from drive_photo_trash_folders order by item_id',
-  );
-  for (const row of pending) {
-    const entry = env.store.driveTrash.byId(row.item_id);
-    const root = env.store.driveRoots.byId(entry.rootId);
+  const { host } = env.store;
+  for (const { entry, root } of await host.read('photoTrashFolders', null)) {
     if (photoOrVideo(entry.name) && root.ownerProfileId !== null) {
       const folder = await service.manualTarget(root.ownerProfileId);
       const originalRelPath = `${folder.path}/${entry.name}`;
@@ -54,24 +34,9 @@ async function retargetTrash(env: BackupEnv, service: BackupService): Promise<vo
         ...entry,
         originalRelPath,
       });
-      env.store.write(() => {
-        env.sql.run(
-          'retarget the deleted photo restoration',
-          'update drive_trash set original_rel_path = $path where item_id = $id',
-          { id: entry.itemId, path: originalRelPath },
-        );
-        env.sql.run(
-          'finish the deleted photo folder migration',
-          'delete from drive_photo_trash_folders where item_id = $id',
-          { id: entry.itemId },
-        );
-      });
+      await host.write('photoTrashRetarget', { id: entry.itemId, path: originalRelPath });
     } else {
-      env.sql.run(
-        'retain a non-media trash destination',
-        'delete from drive_photo_trash_folders where item_id = $id',
-        { id: entry.itemId },
-      );
+      await host.write('photoTrashRetain', { id: entry.itemId });
     }
   }
 }

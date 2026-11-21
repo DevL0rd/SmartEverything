@@ -70,10 +70,8 @@ beforeEach(async () => {
   server = createServer((request, response) => {
     serveFolderIcon(
       {
-        store: {
-          driveItems: { find: (): DriveItem | undefined => item },
-          driveFolderIcons: { find: (): DriveFolderIcon | undefined => icon },
-        },
+        folder: (): Promise<DriveItem | undefined> => Promise.resolve(item),
+        icon: (): Promise<DriveFolderIcon | undefined> => Promise.resolve(icon),
         links: {
           verifyDrive: () => ({
             rev: revision,

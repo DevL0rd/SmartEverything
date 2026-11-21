@@ -196,6 +196,7 @@ export default defineConfig({
           root: './apps/hub',
           environment: 'node',
           include: ['test/**/*.test.ts'],
+          globalSetup: ['../../tooling/store-host-setup.ts'],
           testTimeout: 30_000,
           hookTimeout: 30_000,
         },
@@ -259,6 +260,7 @@ export default defineConfig({
           root: './apps/desktop',
           environment: 'node',
           include: ['test/**/*.test.ts'],
+          globalSetup: ['../../tooling/store-host-setup.ts'],
         },
       },
       {
@@ -284,6 +286,7 @@ export default defineConfig({
             'test-hub/**/*.test.ts',
             'integration/**/*.test.ts',
           ],
+          globalSetup: ['./store-host-setup.ts'],
         },
       },
       {
@@ -300,6 +303,7 @@ export default defineConfig({
           root: './tooling/guards',
           environment: 'node',
           include: ['**/*.test.ts'],
+          globalSetup: ['../store-host-setup.ts'],
         },
       },
     ],

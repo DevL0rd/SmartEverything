@@ -1,6 +1,5 @@
 import { PLANNER_READ_VIEWS } from '@smarteverything/domain';
 import { z } from 'zod';
-import { resolveItem } from '../../../planner/sharing/visibility';
 import { operate, profileFor, type ActingAs, type ActingContext } from './acting';
 import { bedtime, sleep } from './planner-reads-clock';
 import { bookingPages, feeds, guests, search, sharing } from './planner-reads-calendar';
@@ -66,36 +65,22 @@ function range(): Selection {
 function tasks(): Selection {
   return selection({
     input: z.strictObject({ collections: READ_FIELDS.collections.optional() }),
-    run: (context, input, as) => {
-      const profileId = profileFor(context, as);
-      return {
-        collections: context.store.plannerCollections.list(profileId),
-        tasks: context.store.plannerItems.list(profileId, {
-          kind: 'task',
-          statuses: ['open'],
-          collectionIds: input.collections,
-        }),
-      };
-    },
+    run: async (context, input, as) =>
+      context.store.host.read('mcpPlannerTasks', {
+        profileId: await profileFor(context, as),
+        collections: input.collections,
+      }),
   });
 }
 
 function item(): Selection {
   return selection({
     input: z.strictObject({ itemId: READ_FIELDS.itemId }),
-    run: (context, input, as) => {
-      const { item, role } = resolveItem(
-        context.store,
-        profileFor(context, as),
-        input.itemId,
-        'read',
-      );
-      return {
-        item,
-        role,
-        children: context.store.plannerItems.children(item.id, item.profile_id),
-      };
-    },
+    run: async (context, input, as) =>
+      context.store.host.read('mcpPlannerItem', {
+        profileId: await profileFor(context, as),
+        itemId: input.itemId,
+      }),
   });
 }
 
@@ -136,16 +121,12 @@ export const PLANNER_READ: SelectedToolDefinition = {
     range: range(),
     tasks: tasks(),
     item: item(),
-    alarms: nothing((context, as) =>
-      listed(context.store.plannerAlarms.list(profileFor(context, as))),
+    alarms: nothing(async (context, as) =>
+      listed(await context.store.host.call('plannerAlarms', 'list', await profileFor(context, as))),
     ),
-    timers: nothing((context, as) => {
-      const profileId = profileFor(context, as);
-      return {
-        timers: context.store.plannerTimers.list(profileId),
-        stopwatch: context.store.plannerStopwatch.find(profileId) ?? null,
-      };
-    }),
+    timers: nothing(async (context, as) =>
+      context.store.host.read('mcpPlannerTimers', await profileFor(context, as)),
+    ),
     stats: stats(),
     free_slots: freeSlots(),
     search: search(),
@@ -155,8 +136,12 @@ export const PLANNER_READ: SelectedToolDefinition = {
     booking_pages: bookingPages(),
     bedtime: bedtime(),
     sleep: sleep(),
-    google_status: nothing((context, as) => {
-      const account = context.store.googleAccounts.find(profileFor(context, as));
+    google_status: nothing(async (context, as) => {
+      const account = await context.store.host.call(
+        'googleAccounts',
+        'find',
+        await profileFor(context, as),
+      );
       return { linked: account !== undefined, account: account ?? null };
     }),
   },

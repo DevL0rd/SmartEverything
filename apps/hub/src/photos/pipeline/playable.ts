@@ -4,20 +4,19 @@ import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { DriveItem } from '@smarteverything/domain';
-import { messageOf, type Logger } from '@smarteverything/logging';
+import { background, messageOf, type Logger } from '@smarteverything/logging';
 import { fsCode } from '../../fs-code';
 import { ffmpegPath, vaapiDevice } from '../../media/ffmpeg-path';
 import type { ByteSource } from '../../server/file-serve';
-import type { DriveItemsRepository } from '../../store/repositories/drive-items';
-import type { DriveMediaRepository, DriveMediaRow } from '../../store/repositories/drive-media';
+import type { DriveMediaRow } from '../../store/repositories/drive-media';
 import type {
   DriveMediaJob,
   DriveMediaJobRequest,
-  DriveMediaJobsRepository,
 } from '../../store/repositories/drive-media-jobs';
-import type { Store } from '../../store/store';
 import { derivedDirectory, pruneDerived, type DerivedLayout } from './derived-paths';
+import type { JobStore } from './job-units';
 import type { JobHandler } from './jobs';
+import { targetOf, type DerivedStore } from './preview';
 import { probeVideo, type VideoProbe } from './probe';
 
 export const PLAYABLE_MIME = 'video/mp4';
@@ -274,12 +273,9 @@ export async function convertPlayable(
 }
 
 export interface PlayableEnvironment {
-  readonly store: Pick<Store, 'write'> & {
-    readonly driveItems: Pick<DriveItemsRepository, 'find'>;
-    readonly driveMedia: Pick<DriveMediaRepository, 'find' | 'update'>;
-  };
-  readonly jobs: Pick<DriveMediaJobsRepository, 'report'>;
-  readonly request: (request: DriveMediaJobRequest) => DriveMediaJob;
+  readonly derived: DerivedStore;
+  readonly jobs: Pick<JobStore, 'report'>;
+  readonly request: (request: DriveMediaJobRequest) => Promise<DriveMediaJob>;
   readonly locate: (item: DriveItem) => Promise<string>;
   readonly layout: DerivedLayout;
   readonly log: Logger;
@@ -302,12 +298,12 @@ export class PlayableHandler implements JobHandler {
   ) {}
 
   async run(job: DriveMediaJob, signal: AbortSignal): Promise<void> {
-    const item = this.current(job);
+    const item = await this.current(job);
     if (item === undefined) return;
     const source = await this.env.locate(item);
     const probe = await probeVideo(source);
     if (probe.videoCodec === null) {
-      this.record(job, { state: 'unsupported', reason: 'the file has no video track' });
+      await this.record(job, { state: 'unsupported', reason: 'the file has no video track' });
       return;
     }
     const plan = planPlayable(probe, item.mime);
@@ -315,8 +311,9 @@ export class PlayableHandler implements JobHandler {
     else await this.runPrimary(job, { source, plan, probe }, signal);
   }
 
-  fail(job: DriveMediaJob, cause: unknown): void {
-    if (this.variant === 'primary') this.record(job, { state: 'failed', reason: messageOf(cause) });
+  async fail(job: DriveMediaJob, cause: unknown): Promise<void> {
+    if (this.variant === 'primary')
+      await this.record(job, { state: 'failed', reason: messageOf(cause) });
   }
 
   private async runPrimary(
@@ -328,10 +325,10 @@ export class PlayableHandler implements JobHandler {
       const smaller = input.plan.mode === 'transcode' && exceedsFullHd(input.probe);
       await this.convert(job, input, smaller ? 'fullHd' : 'full', signal);
       if (smaller) {
-        this.env.request({ kind: PLAYABLE_KINDS.source, itemId: job.item_id, rev: job.rev });
+        await this.env.request({ kind: PLAYABLE_KINDS.source, itemId: job.item_id, rev: job.rev });
       }
     }
-    if (this.record(job, { state: 'ready' })) {
+    if (await this.record(job, { state: 'ready' })) {
       await pruneDerived(this.env.layout, job.item_id, job.rev);
     }
   }
@@ -357,37 +354,36 @@ export class PlayableHandler implements JobHandler {
         copy,
         target: playableCopyPath(this.env.layout, job.item_id, job.rev, copy),
         onProgress: (progress) => {
-          this.env.jobs.report(job.id, progress);
+          background(this.env.jobs.report(job.id, progress), 'photos.playable_progress_failed', {
+            jobId: job.id,
+          });
         },
       },
       signal,
     );
   }
 
-  private current(job: DriveMediaJob): PlayableVideo | undefined {
-    const item = this.env.store.driveItems.find(job.item_id, null);
-    if (
-      item?.kind !== 'video' ||
-      item.rev !== job.rev ||
-      this.env.store.driveMedia.find(item.id) === undefined
-    ) {
+  private async current(job: DriveMediaJob): Promise<PlayableVideo | undefined> {
+    const item = await this.env.derived.current(targetOf(job, 'video'));
+    if (item?.kind !== 'video') {
       this.env.log.debug('photos.playable_skipped', { itemId: job.item_id, rev: job.rev });
       return undefined;
     }
     return item;
   }
 
-  private record(job: DriveMediaJob, outcome: PlayableOutcome): boolean {
-    return this.env.store.write(() => {
-      if (this.current(job) === undefined) return false;
-      this.env.store.driveMedia.update(
-        job.item_id,
+  private async record(job: DriveMediaJob, outcome: PlayableOutcome): Promise<boolean> {
+    const recorded = await this.env.derived.record({
+      target: targetOf(job, 'video'),
+      thumb: null,
+      patch:
         outcome.state === 'ready'
           ? { playable_state: 'ready', playable_reason: null }
           : { playable_state: outcome.state, playable_reason: outcome.reason },
-      );
-      return true;
     });
+    if (!recorded)
+      this.env.log.debug('photos.playable_skipped', { itemId: job.item_id, rev: job.rev });
+    return recorded;
   }
 }
 

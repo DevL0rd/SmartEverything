@@ -1,6 +1,5 @@
 import ICAL from 'ical.js';
 import type { PlannerGuestRow, PlannerItemRow } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
 import { entryOfRows } from '../ical/map-item';
 import { writeCalendar } from '../ical/write';
 
@@ -10,8 +9,6 @@ export interface Organiser {
   readonly address: string;
   readonly name: string | null;
 }
-
-export type ItipStore = Pick<Store, 'plannerItems' | 'plannerGuests'>;
 
 function withMethod(text: string, method: ItipMethod, organiser: Organiser): string {
   const calendar = ICAL.Component.fromString(text);
@@ -26,15 +23,15 @@ function withMethod(text: string, method: ItipMethod, organiser: Organiser): str
 }
 
 export function itipText(
-  store: ItipStore,
   item: PlannerItemRow,
+  overrides: readonly PlannerItemRow[],
   guests: readonly PlannerGuestRow[],
   options: { readonly method: ItipMethod; readonly organiser: Organiser; readonly now: Date },
 ): string {
   const entry = entryOfRows({
     master: item,
     parentUid: null,
-    overrides: store.plannerItems.overrides(item.id, item.profile_id),
+    overrides,
     guests,
     completedAt: null,
   });

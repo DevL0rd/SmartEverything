@@ -35,6 +35,7 @@ let logs: CapturedLogs;
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   chatId = opened.store.aiChats.create({
     profileId: opened.store.profiles.first().id,
     kind: 'chat',
@@ -135,8 +136,13 @@ function ask(turn: Turn): void {
   turn.session.finish();
 }
 
+const HOST_ROUNDS = 6;
+
 const settle = async (): Promise<void> => {
-  await vi.advanceTimersByTimeAsync(0);
+  for (let round = 0; round < HOST_ROUNDS; round += 1) {
+    await vi.advanceTimersByTimeAsync(0);
+    await opened.store.host.call('hubMarks', 'read', 'settle');
+  }
 };
 
 describe('plugin turn session renewal', () => {
@@ -252,6 +258,7 @@ describe('plugin turn session renewal', () => {
     await settle();
     expect(turn.sockets).toHaveLength(1);
     await turn.serve(0, done, saved('h2'));
+    await settle();
     expect(turn.sockets).toHaveLength(2);
     expect(socketAt(turn.sockets, 1).config.sessionResumption).toEqual({ handle: 'h2' });
   });

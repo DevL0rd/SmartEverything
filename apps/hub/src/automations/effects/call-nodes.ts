@@ -53,12 +53,9 @@ interface Resolution {
   readonly outcome: Outcome;
 }
 
-function authorOf(ports: CallEffectPorts, run: EffectRun): Author {
-  const row = ports.store.automations.find(run.automationId);
-  return {
-    profileId: row?.author?.profile_id ?? ports.store.profiles.first().id,
-    plugin: row?.origin ?? null,
-  };
+async function authorOf(ports: CallEffectPorts, run: EffectRun): Promise<Author> {
+  const author = await ports.store.host.read('automationAuthor', run.automationId);
+  return { profileId: author.profileId, plugin: author.origin };
 }
 
 async function startCall(
@@ -67,14 +64,14 @@ async function startCall(
   args: Readonly<Record<string, JsonValue>>,
 ): Promise<AiOutreachRow> {
   admitRun(run);
-  const author = authorOf(ports, run);
+  const author = await authorOf(ports, run);
   const response = await callTool(
     ports.ai.current().tools,
     { profileId: author.profileId, tool: 'call_start', args },
     author,
   );
   const started = STARTED.parse(response).result;
-  const row = ports.store.aiOutreach.byId(started.id);
+  const row = await ports.store.host.call('aiOutreach', 'byId', started.id);
   if (row.state === 'failed') {
     throw new IntegrationError(
       'Unreachable',
@@ -108,7 +105,7 @@ function settled(store: Store, first: AiOutreachRow, run: EffectRun): Promise<Ai
       cancel();
       return;
     }
-    consider(store.aiOutreach.byId(first.id));
+    store.host.call('aiOutreach', 'byId', first.id).then(consider, reject);
   });
 }
 
@@ -192,7 +189,7 @@ function endCall(ports: CallEffectPorts): EffectHandlers[string] {
     if (!checked.ok) return checked;
     try {
       admitRun(run);
-      const author = authorOf(ports, run);
+      const author = await authorOf(ports, run);
       await callTool(
         ports.ai.current().tools,
         {

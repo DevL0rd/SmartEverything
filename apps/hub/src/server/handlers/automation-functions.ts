@@ -24,8 +24,8 @@ export const automationFunctionRoutes = (functions: AutomationFunctions) =>
     extractAutomationFunction: bound(E.extractAutomationFunction, ({ body, caller }) =>
       functions.extract(caller, body),
     ),
-    removeAutomationFunction: bound(E.removeAutomationFunction, ({ params, caller }) => {
-      functions.remove(caller, params.functionId);
+    removeAutomationFunction: bound(E.removeAutomationFunction, async ({ params, caller }) => {
+      await functions.remove(caller, params.functionId);
       return DONE_REPLY;
     }),
   }) as const;

@@ -65,58 +65,57 @@ export class ScheduleBook {
     private readonly aiReady: boolean,
   ) {}
 
-  create(author: ScheduleAuthor, input: NewScheduleInput): ScheduleSaved {
-    const checked = this.checkSteps(input.steps, author);
-    const now = this.clock.now();
-    const schedule = this.store.write(() => {
-      const saved = this.store.schedules.create({
+  async create(author: ScheduleAuthor, input: NewScheduleInput): Promise<ScheduleSaved> {
+    const checked = await this.checkSteps(input.steps, author);
+    const schedule = await this.store.host.write('createSchedule', {
+      schedule: {
         profileId: author.profileId,
         clientId: author.clientId,
         via: author.via,
         label: input.label,
         timing: input.timing,
-        occurrences: occurrencesOf(input.timing, now, this.store.settings.read().time_zone),
         steps: input.steps,
         stepLines: checked.lines,
         deviceIds: checked.deviceIds,
         origin: author.plugin,
-      });
-      this.store.harnessRecovery.effects.keep('schedule', saved.id, currentExecutionAuthority());
-      return saved;
+      },
+      now: this.clock.now().toISOString(),
+      authority: currentExecutionAuthority() ?? null,
     });
     return { outcome: 'scheduled', schedule };
   }
 
-  update(author: ScheduleAuthor, id: string, edit: ScheduleEdit): ScheduleSaved {
-    const row = this.managed(author, id);
+  async update(author: ScheduleAuthor, id: string, edit: ScheduleEdit): Promise<ScheduleSaved> {
+    const row = await this.managed(author, id);
     if (!isScheduleActive(row.state) || row.state === 'running') {
       throw new ApiError('conflict', 'Only a scheduled action that is waiting to run can change.');
     }
     let change: ScheduleChange = edit.label === undefined ? {} : { label: edit.label };
     if (edit.steps !== undefined) {
-      const checked = this.checkSteps(edit.steps, author);
+      const checked = await this.checkSteps(edit.steps, author);
       change = { ...change, ...this.stepsChange(row, edit.steps, checked, author) };
     }
     if (edit.timing !== undefined) {
       change = { ...change, ...this.timingChange(edit.timing) };
     }
-    const schedule = this.store.write(() => {
-      this.store.harnessRecovery.effects.keep('schedule', id, currentExecutionAuthority());
-      return this.store.schedules.update(id, change);
+    const schedule = await this.store.host.write('updateSchedule', {
+      id,
+      change,
+      authority: currentExecutionAuthority() ?? null,
     });
     return { outcome: 'scheduled', schedule };
   }
 
-  remove(author: ScheduleAuthor, id: string): void {
-    const row = this.managed(author, id);
+  async remove(author: ScheduleAuthor, id: string): Promise<void> {
+    const row = await this.managed(author, id);
     if (isScheduleActive(row.state)) {
       throw new ApiError('conflict', 'Cancel it first; only finished actions can be removed.');
     }
-    this.store.schedules.remove(id);
+    await this.store.host.call('schedules', 'remove', id);
   }
 
-  managed(author: ScheduleAuthor, id: string): ScheduleRow {
-    const row = this.store.schedules.byId(id);
+  async managed(author: ScheduleAuthor, id: string): Promise<ScheduleRow> {
+    const row = await this.store.host.call('schedules', 'byId', id);
     if (author.role !== 'owner' && row.profile_id !== author.profileId) {
       throw new ApiError(
         'forbidden',
@@ -157,12 +156,21 @@ export class ScheduleBook {
     };
   }
 
-  private checkSteps(steps: readonly ScheduleStep[], author: ScheduleAuthor): CheckedSteps {
+  private async checkSteps(
+    steps: readonly ScheduleStep[],
+    author: ScheduleAuthor,
+  ): Promise<CheckedSteps> {
+    const names = new Map(
+      (await this.store.host.call('devices', 'list')).map((device) => [
+        device.id,
+        device.display_name ?? device.name,
+      ]),
+    );
     const problems: string[] = [];
     const checked: CheckedSteps = { lines: [], deviceIds: [] };
-    steps.forEach((step, index) => {
+    for (const [index, step] of steps.entries()) {
       try {
-        const result = this.checkStep(step, author);
+        const result = await this.checkStep(step, author, names);
         checked.lines.push(result.line);
         checked.deviceIds.push(...result.deviceIds.filter((id) => !checked.deviceIds.includes(id)));
       } catch (cause) {
@@ -171,14 +179,18 @@ export class ScheduleBook {
         }
         problems.push(`Step ${String(index + 1)}: ${messageOf(cause)}`);
       }
-    });
+    }
     if (problems.length > 0) {
       throw new ApiError('invalid_request', problems.join(' '));
     }
     return checked;
   }
 
-  private checkStep(step: ScheduleStep, author: ScheduleAuthor): StepCheck {
+  private async checkStep(
+    step: ScheduleStep,
+    author: ScheduleAuthor,
+    names: ReadonlyMap<string, string>,
+  ): Promise<StepCheck> {
     switch (step.kind) {
       case 'wait':
         return { line: null, deviceIds: [] };
@@ -188,20 +200,21 @@ export class ScheduleBook {
         }
         return { line: step.prompt.slice(0, PROMPT_LINE), deviceIds: [] };
       case 'tool':
-        return this.checkTool(step, author);
+        return await this.checkTool(step, author, names);
     }
   }
 
-  private checkTool(
+  private async checkTool(
     step: Extract<ScheduleStep, { kind: 'tool' }>,
     author: ScheduleAuthor,
-  ): StepCheck {
+    names: ReadonlyMap<string, string>,
+  ): Promise<StepCheck> {
     const refusal =
       author.plugin === null ? null : this.tools.pluginTurnRefusal(step.tool, step.args);
     if (refusal !== null) {
       throw refusal;
     }
-    const check = this.tools.check(step.tool, step.args);
+    const check = await this.tools.check(step.tool, step.args);
     if (!check.ok) {
       throw new Error(check.reason);
     }
@@ -210,9 +223,6 @@ export class ScheduleBook {
     if (check.tool.humanOnly && author.via !== 'app') {
       throw new Error(`Only a person can schedule ${check.tool.title}.`);
     }
-    const names = new Map(
-      this.store.devices.list().map((device) => [device.id, device.display_name ?? device.name]),
-    );
     return {
       line: toolLine({
         tool: check.tool,

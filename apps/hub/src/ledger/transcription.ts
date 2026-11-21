@@ -1,6 +1,6 @@
 import { microsOfUsd, type JsonValue } from '@smarteverything/domain';
 import type { TranscriptionAnswer } from '../openrouter/transcription';
-import type { Ledger } from './ledger';
+import type { LedgerHost } from './units';
 
 export interface TranscriptionCharge {
   readonly profileId: string;
@@ -29,10 +29,13 @@ function audioMillis(charge: TranscriptionCharge): number {
   return seconds === undefined ? (charge.audioMs ?? 0) : Math.round(seconds * 1000);
 }
 
-export function recordAudioTranscription(ledger: Ledger, charge: TranscriptionCharge): void {
+export async function recordAudioTranscription(
+  host: LedgerHost,
+  charge: TranscriptionCharge,
+): Promise<void> {
   const usage = charge.answer.usage;
   const cost = usage?.cost;
-  ledger.record({
+  await host.write('ledgerRecord', {
     source: 'openrouter',
     work: 'transcribe',
     profile_id: charge.profileId,

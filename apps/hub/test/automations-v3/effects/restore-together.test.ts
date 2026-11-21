@@ -12,6 +12,7 @@ import { NOW } from '../../support/executor-setup';
 import { FakeClock } from '../../support/fake-clock';
 import { testLogger } from '../../support/logs';
 import { testRun } from './support';
+import { adapterDirectory } from '../../support/adapter-directory';
 
 const BULBS = 24;
 const STAMP = { nodePath: 'node', iteration: 0, attempt: 1 };
@@ -74,7 +75,7 @@ describe('restoring a house of lights', () => {
       store: db.database,
       inventory,
       drivers,
-      adapters: { adapterFor: (): undefined => undefined },
+      adapters: adapterDirectory((): undefined => undefined),
       hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
       log: testLogger(),
       now: (): Date => NOW,

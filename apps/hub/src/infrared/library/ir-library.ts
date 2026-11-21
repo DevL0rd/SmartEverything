@@ -1,4 +1,4 @@
-import { closeSync, openSync, readFileSync, readSync } from 'node:fs';
+import { open, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -35,61 +35,75 @@ function counted(names: readonly string[]): Counted[] {
 }
 
 export class IrLibrary {
-  private loaded: LibraryIndex | undefined;
-  private readonly decoded = new Map<string, LibraryModel>();
+  private loaded: Promise<LibraryIndex> | undefined;
+  private readonly decoded = new Map<string, Promise<LibraryModel>>();
 
   constructor(private readonly directory: string = IR_LIBRARY_DIRECTORY) {}
 
-  categories(): Counted[] {
-    return counted(this.index().entries.map((entry) => entry.category));
+  async categories(): Promise<Counted[]> {
+    return counted((await this.index()).entries.map((entry) => entry.category));
   }
 
-  brands(category: string): Counted[] {
+  async brands(category: string): Promise<Counted[]> {
     return counted(
-      this.index()
-        .entries.filter((entry) => entry.category === category)
+      (await this.index()).entries
+        .filter((entry) => entry.category === category)
         .map((entry) => entry.brand),
     );
   }
 
-  entries(category: string, brand: string): LibraryEntry[] {
-    return this.index().entries.filter(
+  async entries(category: string, brand: string): Promise<LibraryEntry[]> {
+    return (await this.index()).entries.filter(
       (entry) => entry.category === category && entry.brand === brand,
     );
   }
 
-  entry(libraryId: string): LibraryEntry {
-    const entry = this.index().entries.find((candidate) => candidate.id === libraryId);
+  async entry(libraryId: string): Promise<LibraryEntry> {
+    const entry = (await this.index()).entries.find((candidate) => candidate.id === libraryId);
     if (entry === undefined) {
       throw new IrLibraryEntryUnknownError(libraryId);
     }
     return entry;
   }
 
-  model(libraryId: string): LibraryModel {
+  model(libraryId: string): Promise<LibraryModel> {
     const known = this.decoded.get(libraryId);
     if (known !== undefined) {
       return known;
     }
-    const entry = this.entry(libraryId);
-    const model = readPackModel(entry, this.bytesOf(entry));
-    this.decoded.set(libraryId, model);
-    return model;
+    const decoding = this.decode(libraryId).catch((cause: unknown) => {
+      this.decoded.delete(libraryId);
+      throw cause;
+    });
+    this.decoded.set(libraryId, decoding);
+    return decoding;
   }
 
-  private index(): LibraryIndex {
-    this.loaded ??= readPackIndex(readFileSync(join(this.directory, 'index.bin')));
-    return this.loaded;
+  private async decode(libraryId: string): Promise<LibraryModel> {
+    const entry = await this.entry(libraryId);
+    return readPackModel(entry, await this.bytesOf(entry));
   }
 
-  private bytesOf(entry: LibraryEntry): Buffer {
-    const file = openSync(join(this.directory, 'models.bin'), 'r');
+  private index(): Promise<LibraryIndex> {
+    if (this.loaded !== undefined) return this.loaded;
+    const loading = readFile(join(this.directory, 'index.bin'))
+      .then(readPackIndex)
+      .catch((cause: unknown) => {
+        this.loaded = undefined;
+        throw cause;
+      });
+    this.loaded = loading;
+    return loading;
+  }
+
+  private async bytesOf(entry: LibraryEntry): Promise<Buffer> {
+    const file = await open(join(this.directory, 'models.bin'), 'r');
     try {
       const bytes = Buffer.alloc(entry.length);
-      readSync(file, bytes, 0, entry.length, entry.offset);
+      await file.read(bytes, 0, entry.length, entry.offset);
       return bytes;
     } finally {
-      closeSync(file);
+      await file.close();
     }
   }
 }

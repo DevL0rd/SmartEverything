@@ -7,17 +7,16 @@ import { derivedPath, DERIVED_MIME } from '../pipeline/derived-paths';
 import type { JobHandler } from '../pipeline/jobs';
 import { playableCopyPath } from '../pipeline/playable';
 import { searchWords } from './description';
-import { currentItem, type AiEnvironment, type MediaItem } from './env';
+import { sourceOf, type AiEnvironment, type MediaItem } from './env';
+import type { AiJobSource, VisionResult } from './job-units';
 
 export interface VisionClient {
   readonly analyse: (request: VisionRequest) => Promise<VisionOutcome>;
 }
 
-interface Settled {
-  readonly job: DriveMediaJob;
-  readonly item: MediaItem;
-  readonly subject: string;
-  readonly model: string;
+function resultOf(analysis: VisionAnalysis | null): VisionResult {
+  if (analysis === null) return { state: 'needs_key' };
+  return { state: 'done', ...analysis, words: searchWords(analysis) };
 }
 
 interface Payload {
@@ -43,12 +42,11 @@ export class VisionHandler implements JobHandler {
   ) {}
 
   async run(job: DriveMediaJob, signal: AbortSignal): Promise<void> {
-    const item = currentItem(this.env, job);
-    if (item === undefined) return;
-    const subject = this.env.consent.subjectOfRoot(item.rootId);
-    if (!this.env.consent.smartSearch(subject)) return;
-    const model = this.env.models.read().vision;
-    const payload = await this.payload(item);
+    const source = await sourceOf(this.env, job);
+    if (source?.switches.smartSearch !== true) return;
+    const { item, subject } = source;
+    const model = source.models.vision;
+    const payload = await this.payload(source);
     const outcome = await this.vision.analyse({
       profileId: subject,
       itemId: item.id,
@@ -58,29 +56,35 @@ export class VisionHandler implements JobHandler {
       signal,
     });
     const analysis = outcome.state === 'done' ? outcome.analysis : null;
-    if (this.settle({ job, item, subject, model }, analysis)) this.next(item);
+    const settled = await this.env.host.write('photoVisionSettle', {
+      itemId: item.id,
+      rev: job.rev,
+      subject,
+      model,
+      result: resultOf(analysis),
+    });
+    if (!settled || analysis === null) return;
+    this.env.log.debug('analysis.done', {
+      itemId: item.id,
+      labels: analysis.labels.length,
+      pets: analysis.pets.length,
+    });
+    await this.next(source, analysis);
   }
 
-  fail(job: DriveMediaJob, cause: unknown): void {
-    const item = this.env.store.driveItems.find(job.item_id, null);
-    if (item?.rev !== job.rev) return;
-    this.env.log.warn('analysis.failed', { itemId: job.item_id, reason: messageOf(cause) });
-    this.env.store.photoAnalysis.save({
+  async fail(job: DriveMediaJob, cause: unknown): Promise<void> {
+    const recorded = await this.env.host.write('photoVisionFail', {
       itemId: job.item_id,
       rev: job.rev,
-      model: this.env.models.read().vision,
-      state: 'failed',
-      caption: null,
-      scene: null,
-      labels: [],
-      text: null,
-      pets: [],
       error: messageOf(cause),
     });
+    if (recorded)
+      this.env.log.warn('analysis.failed', { itemId: job.item_id, reason: messageOf(cause) });
   }
 
-  private async payload(item: MediaItem): Promise<Payload> {
-    if (item.kind === 'video' && this.env.media.find(item.id)?.playable_state === 'ready')
+  private async payload(source: AiJobSource): Promise<Payload> {
+    const { item } = source;
+    if (item.kind === 'video' && source.playableReady)
       return { mime: 'video/mp4', data: await readFile(await this.playable(item)) };
     return {
       mime: DERIVED_MIME,
@@ -98,47 +102,14 @@ export class VisionHandler implements JobHandler {
     return this.env.locate(item);
   }
 
-  private settle(target: Settled, analysis: VisionAnalysis | null): boolean {
-    const { job, item, subject, model } = target;
-    return this.env.store.write(() => {
-      const now = this.env.store.driveItems.find(item.id, null);
-      if (now?.rev !== job.rev || !this.env.consent.smartSearch(subject)) return false;
-      const base = { itemId: item.id, rev: item.rev, model, error: null };
-      if (analysis === null) {
-        this.env.store.photoAnalysis.save({
-          ...base,
-          state: 'needs_key',
-          caption: null,
-          scene: null,
-          labels: [],
-          text: null,
-          pets: [],
-        });
-        return false;
-      }
-      this.env.store.photoAnalysis.save({ ...base, state: 'done', ...analysis });
-      this.env.store.driveItemText.put(
-        analysis.text === null
-          ? { itemId: item.id, rev: item.rev, source: 'image', state: 'empty' }
-          : { itemId: item.id, rev: item.rev, source: 'image', state: 'ok', body: analysis.text },
-      );
-      this.env.labels.write(now, searchWords(analysis));
-      if (analysis.pets.length === 0)
-        this.env.store.photoFaces.replaceKindForItem(item.id, 'pet', []);
-      this.env.log.debug('analysis.done', {
-        itemId: item.id,
-        labels: analysis.labels.length,
-        pets: analysis.pets.length,
-      });
-      return true;
-    });
-  }
-
-  private next(item: MediaItem): void {
-    const models = this.env.models.read();
-    this.env.queue.rerun('embed', item.id, item.rev, models.embedding);
-    const analysis = this.env.store.photoAnalysis.find(item.id);
-    if (analysis !== undefined && analysis.pets.length > 0)
-      this.env.queue.rerun('pet_embed', item.id, item.rev, models.petEmbedding);
+  private async next(source: AiJobSource, analysis: VisionAnalysis): Promise<void> {
+    const { item, models } = source;
+    const target = { itemId: item.id, rev: item.rev };
+    await this.env.queue.rerun([
+      { kind: 'embed', ...target, modelVersion: models.embedding },
+      ...(analysis.pets.length > 0
+        ? [{ kind: 'pet_embed' as const, ...target, modelVersion: models.petEmbedding }]
+        : []),
+    ]);
   }
 }

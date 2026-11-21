@@ -60,6 +60,7 @@ function camera(name: string): string {
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   rules = new ReachRules(opened.store, () => new Date());
   announced = 0;
   sent = [];
@@ -79,7 +80,7 @@ beforeEach(async () => {
     },
     log: testLogger('listening'),
   });
-  registry.start();
+  await registry.start();
 });
 
 afterEach(async () => {
@@ -175,7 +176,7 @@ describe('switches', () => {
 
   it('refuses wake on a camera not allowed to reach people', async () => {
     const porch = camera('Porch');
-    rules.save(owner.profileId, { cameras: [] });
+    await rules.save(owner.profileId, { cameras: [] });
     await expect(registry.change(owner, porch, { wake: true })).rejects.toMatchObject({
       code: 'conflict',
     });
@@ -312,7 +313,7 @@ describe('device row changes', () => {
   }
 
   it('rebuilds the listening rows only for a phone, computer or camera that changed what is shown', () => {
-    const rebuilds = vi.spyOn(opened.store.cameras, 'list');
+    const rebuilds = vi.spyOn(opened.store.live.home.cameras, 'list');
     upsertLight(true, 'one');
     upsertLight(false, 'two');
     expect(rebuilds).not.toHaveBeenCalled();

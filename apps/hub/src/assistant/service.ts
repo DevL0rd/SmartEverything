@@ -6,7 +6,8 @@ import { ProjectFilesService } from '../projects/service';
 import { removeChatTree, type RemovalAdmission } from './remove-chat-tree';
 import { updateChat } from './chat-update';
 import type { z } from 'zod';
-import { Logger } from '@smarteverything/logging';
+import type { NewChat } from '../store/repositories/ai-chat-input';
+import { Logger, background } from '@smarteverything/logging';
 import { harnessEngine } from './engines/dsh/wiring';
 import type { HarnessService } from '../harness/service';
 import type { HarnessDispatcher } from '@smarteverything/harness/process';
@@ -59,7 +60,6 @@ import { TurnListeners } from './turn-listeners';
 import { ConversationLog } from './conversation-log';
 import { HUB_RESTARTED } from './interruption';
 import type { Delegation } from './delegation/delegation';
-import { costRolledUp } from './cost-rollup';
 import type { AssistantDelivery } from './delivery';
 import { removeConversationMessages } from './remove-messages';
 import { setMessageReaction } from './message-reactions';
@@ -77,7 +77,6 @@ import type { MemoryLearner } from '../memory/learner';
 import type { VoiceResponder, VoiceResultHandler } from './voice-link';
 import type {
   AssistantServiceOptions,
-  LedgerRollup,
   TurnActivityListener,
   TurnEnded,
   TurnRequest,
@@ -194,8 +193,8 @@ export class AssistantService {
   }
   start(): void {
     log.info('service.starting', { engines: this.computerProviders.size });
-    this.delegation.restart();
-    this.conversation.interrupted(HUB_RESTARTED);
+    background(this.delegation.restart(), 'service.delegation_restart_failed');
+    background(this.conversation.interrupted(HUB_RESTARTED), 'service.interrupt_failed');
     this.delivery.pump();
     void this.files.backfillLevels().catch((cause: unknown) => {
       log.warn('levels.backfill_failed', { cause });
@@ -238,10 +237,6 @@ export class AssistantService {
   attachMediaNotes(notes: Pick<MediaNotes, 'ensure' | 'later' | 'wants'>): void {
     this.files.attachMediaNotes(notes);
   }
-  attachLedger(ledger: LedgerRollup): () => void {
-    const { store } = this.options;
-    return ledger.rollup(costRolledUp(store));
-  }
   onFinished(listener: TurnEnded): () => void {
     return this.listeners.onFinished(listener);
   }
@@ -280,13 +275,15 @@ export class AssistantService {
   status(): AssistantStatus {
     return { settings: legacyAssistantSettings(this.settings()), ...RETIRED_STATUS_FIELDS };
   }
-  update(change: AssistantSettingsChange): Promise<AssistantStatus> {
-    this.options.store.assistantChat.saveSettings(patchAssistantSettings(this.settings(), change));
+  async update(change: AssistantSettingsChange): Promise<AssistantStatus> {
+    await this.options.store.live.home.assistant.save(
+      patchAssistantSettings(this.settings(), change),
+    );
     if (change.name !== undefined) this.chats.retitleConversations();
     log.info('settings.updated', { fields: Object.keys(change).join(',') });
     this.delivery.pump();
     this.publisher.publish();
-    return Promise.resolve(this.status());
+    return this.status();
   }
   messages(chatId: string, before: string | undefined, limit: number): AssistantMessageRow[] {
     return this.options.store.assistantChat.messages({ chatId, before, limit });
@@ -312,6 +309,9 @@ export class AssistantService {
   }
   createChat(owner: ChatOwner, input: AiChatNew, allowStandalone = false): AiChatRow {
     return this.chats.create(owner, input, allowStandalone);
+  }
+  preparedChat(owner: ChatOwner, input: AiChatNew): NewChat {
+    return this.chats.prepare(owner, input);
   }
   removeChat(
     owner: ChatOwner,
@@ -350,8 +350,8 @@ export class AssistantService {
       {
         store: this.options.store,
         interrupt: (chat) => this.interrupt({ profileId: chat.profile_id, role: 'owner' }, chat.id),
-        send: (chat, text): void => {
-          this.send(sender, { text, attachments: [] }, chat.id);
+        send: async (chat, text): Promise<void> => {
+          await this.send(sender, { text, attachments: [] }, chat.id);
         },
       },
       run,
@@ -380,7 +380,7 @@ export class AssistantService {
     );
   }
 
-  send(sender: Sender, body: AssistantNewMessage, chatId?: string): AssistantMessageRow {
+  send(sender: Sender, body: AssistantNewMessage, chatId?: string): Promise<AssistantMessageRow> {
     return this.submissions.plain(sender, body, chatId);
   }
   retry(

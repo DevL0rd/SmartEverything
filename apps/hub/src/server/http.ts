@@ -27,25 +27,36 @@ export function readBody(request: IncomingMessage, limit: number): Promise<Buffe
   });
 }
 
-export function parseJsonBody(request: IncomingMessage, raw: Buffer): unknown {
-  if (raw.byteLength === 0) {
-    return undefined;
-  }
+export function assertJsonBody(request: IncomingMessage): void {
   const type = request.headers['content-type'] ?? '';
   if (!type.toLowerCase().startsWith('application/json')) {
     throw new ApiError('unsupported_media_type', 'Send the request body as application/json.');
   }
+}
+
+export function parseJsonBody(request: IncomingMessage, raw: Buffer): unknown {
+  if (raw.byteLength === 0) {
+    return undefined;
+  }
+  assertJsonBody(request);
   try {
     const parsed: unknown = JSON.parse(raw.toString('utf8'));
     return parsed;
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;
-    throw new ApiError('invalid_request', 'The request body is not valid JSON.');
+    throw notJsonBody();
   }
 }
 
+export function notJsonBody(): ApiError {
+  return new ApiError('invalid_request', 'The request body is not valid JSON.');
+}
+
 export function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  const text = JSON.stringify(body);
+  sendJsonText(response, status, JSON.stringify(body));
+}
+
+export function sendJsonText(response: ServerResponse, status: number, text: string): void {
   response.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(text),

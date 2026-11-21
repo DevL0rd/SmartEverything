@@ -1,4 +1,4 @@
-import { setImmediate as nextTurn } from 'node:timers/promises';
+import { settleWithHost } from '../../support/host-settle';
 import type {
   DeviceCapability,
   DeviceCommand,
@@ -7,7 +7,7 @@ import type {
   RoomRow,
 } from '@smarteverything/domain';
 import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { cameraEffects } from '../../../src/automations/effects/camera-nodes';
 import { DeviceSetter } from '../../../src/automations/effects/device-set';
@@ -21,6 +21,7 @@ import { FakeClock } from '../../support/fake-clock';
 import { CAMERA, FakeAdapter, LAMP } from '../../support/fake-provider';
 import { testLogger } from '../../support/logs';
 import { testRun } from './support';
+import { adapterDirectory } from '../../support/adapter-directory';
 
 const open: TestDatabase[] = [];
 
@@ -159,7 +160,7 @@ async function home(devices: readonly DiscoveredDevice[]): Promise<Rig> {
     store: db.database,
     inventory,
     drivers: new DeviceDriverRegistry(),
-    adapters: { adapterFor: (): TogetherAdapter => adapter },
+    adapters: adapterDirectory((): TogetherAdapter => adapter),
     hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
     log: testLogger(),
     now: clock.now,
@@ -186,7 +187,7 @@ async function home(devices: readonly DiscoveredDevice[]): Promise<Rig> {
 }
 
 async function settle(): Promise<void> {
-  for (let turn = 0; turn < 20; turn += 1) await nextTurn();
+  await settleWithHost();
 }
 
 const OUTCOME = z.object({
@@ -350,8 +351,12 @@ describe('camera.set sends one command per camera, all cameras at once', () => {
       nightVision: 'auto',
       statusLight: 'off',
     });
-    await settle();
-    expect(batches(rig.adapter)).toHaveLength(2);
+    await vi.waitFor(
+      () => {
+        expect(batches(rig.adapter)).toHaveLength(2);
+      },
+      { timeout: 10_000 },
+    );
     expect(rig.adapter.executed).toStrictEqual([]);
     for (const commands of batches(rig.adapter)) {
       expect(valuesOf(commands)).toStrictEqual({

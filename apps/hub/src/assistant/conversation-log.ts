@@ -1,20 +1,14 @@
 import {
   COMPACTION_EMBED,
-  ASSISTANT_STEPS_KEPT,
-  WEB_SOURCES_KIND,
-  type WebSource,
   ApiError,
   assistantLabel,
-  isChatActivity,
   type AiChatRow,
   type AiMessageReference,
-  type ChatStepOutcome,
   type SettledStep,
   type AssistantMessageRow,
   type AssistantReasonCode,
   type ChatTimelineEmbed,
   type ChatTodosEmbed,
-  CHAT_TODOS_KIND,
   type AssistantRequestState,
   type MessageOrigin,
   type HelperDialogue,
@@ -26,6 +20,12 @@ import { summaryOf, type StoredAttachment } from '../store/repositories/assistan
 import type { NewAssistantMessage } from '../store/repositories/assistant-chat';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
+import type { HarnessDelivery } from '../store/repositories/harness-deliveries';
+import { keptSteps, type ReplyDone, type ReplyFailure, type ReplyStart } from './reply-records';
+import { noteMessage } from './note-message';
+import { ReplyQueue } from './reply-queue';
+import type { NativeAdmission, NativeCompletionRecord } from './reply-units';
+import { addConversationMessage } from './store-units';
 
 export interface PersonMessage {
   readonly chat: AiChatRow;
@@ -58,25 +58,10 @@ export interface ResponderMessage {
 
 const log = new Logger('hub.assistant-conversation');
 
-function activityLine(label: string): string {
-  return label.replace(/\s+/g, ' ').trim().slice(0, 200);
-}
-
 const NO_EXTRAS = { origin: null, embeds: [], cost_micros: 0, model: null, quote: null };
 
 function quoteOrNull(quote: MessageQuote | null | undefined): MessageQuote | null {
   return quote ?? null;
-}
-
-function keptSteps(steps: readonly SettledStep[]): {
-  readonly steps: string[];
-  readonly step_states: ChatStepOutcome[];
-} {
-  const kept = steps
-    .map((step) => ({ title: activityLine(step.title), outcome: step.outcome }))
-    .filter((step) => step.title !== '')
-    .slice(-ASSISTANT_STEPS_KEPT);
-  return { steps: kept.map((step) => step.title), step_states: kept.map((step) => step.outcome) };
 }
 
 function personEmbeds(input: PersonMessage): NewAssistantMessage['embeds'] {
@@ -84,8 +69,72 @@ function personEmbeds(input: PersonMessage): NewAssistantMessage['embeds'] {
   return input.helperInput === true ? [{ kind: HELPER_INPUT_KIND }] : [];
 }
 
+export function personMessage(input: PersonMessage): NewAssistantMessage {
+  return {
+    ...NO_EXTRAS,
+    profile_id: input.chat.profile_id,
+    client_id: input.clientId,
+    chat_id: input.chat.id,
+    role: 'person',
+    kind: 'text',
+    author: input.author,
+    text: input.text,
+    attachments: input.files.map(summaryOf),
+    references: [...(input.references ?? [])],
+    state: input.helperDialogue === undefined || input.queued === true ? 'queued' : null,
+    reason: null,
+    steps: [],
+    step_states: [],
+    reply_to: null,
+    quote: quoteOrNull(input.quote),
+    origin: input.origin,
+    embeds: personEmbeds(input),
+    ...(input.clientMessageId === undefined ? {} : { client_message_id: input.clientMessageId }),
+  };
+}
+
+class ReplyRowMissingError extends Error {
+  override readonly name = 'ReplyRowMissingError';
+
+  constructor(readonly replyId: string) {
+    super(`The finished reply ${replyId} came back without its row.`);
+  }
+}
+
+export function responderMessage(
+  input: ResponderMessage,
+  assistant: () => string,
+): NewAssistantMessage {
+  const files = input.files ?? [];
+  if (input.text === '' && files.length === 0) {
+    throw new ApiError('invalid_request', 'Send some text or at least one file.');
+  }
+  return {
+    ...NO_EXTRAS,
+    profile_id: input.chat.profile_id,
+    client_id: null,
+    chat_id: input.chat.id,
+    role: 'responder',
+    kind: input.kind ?? 'text',
+    author: input.helperDialogue?.helper_name ?? assistant(),
+    text: input.text,
+    embeds: input.helperDialogue === undefined ? [] : [input.helperDialogue],
+    attachments: files.map(summaryOf),
+    state: null,
+    reason: null,
+    ...keptSteps(input.steps ?? []),
+    reply_to: input.replyTo,
+    quote: quoteOrNull(input.quote),
+    model: input.model ?? null,
+  };
+}
+
 export class ConversationLog {
-  constructor(private readonly store: Store) {}
+  private readonly replies: ReplyQueue;
+
+  constructor(private readonly store: Store) {
+    this.replies = new ReplyQueue(() => store.host);
+  }
 
   private get messages(): Store['assistantChat'] {
     return this.store.assistantChat;
@@ -108,178 +157,79 @@ export class ConversationLog {
     files: readonly StoredAttachment[],
     messageId?: string,
   ): AssistantMessageRow {
-    return this.store.write(() => {
-      const added = this.messages.addMessage(row, undefined, messageId);
-      this.messages.attachTo(
-        added.id,
-        files.map((file) => file.id),
-      );
-      if (isChatActivity(row)) {
-        this.store.aiChats.touched(row.chat_id, 0);
-      }
-      return added;
-    });
+    const ids = files.map((file) => file.id);
+    const message = {
+      row,
+      files: ids,
+      ...(messageId === undefined ? {} : { messageId }),
+    };
+    if (ids.length === 0) return addConversationMessage(this.store, message);
+    return this.store.live.attachments.attachNow(ids, () =>
+      addConversationMessage(this.store, message),
+    );
   }
 
   person(input: PersonMessage): AssistantMessageRow {
-    return this.add(
-      {
-        ...NO_EXTRAS,
-        profile_id: input.chat.profile_id,
-        client_id: input.clientId,
-        chat_id: input.chat.id,
-        role: 'person',
-        kind: 'text',
-        author: input.author,
-        text: input.text,
-        attachments: input.files.map(summaryOf),
-        references: [...(input.references ?? [])],
-        state: input.helperDialogue === undefined || input.queued === true ? 'queued' : null,
-        reason: null,
-        steps: [],
-        step_states: [],
-        reply_to: null,
-        quote: quoteOrNull(input.quote),
-        origin: input.origin,
-        embeds: personEmbeds(input),
-        ...(input.clientMessageId === undefined
-          ? {}
-          : { client_message_id: input.clientMessageId }),
-      },
-      input.files,
-      input.messageId,
-    );
+    return this.add(personMessage(input), input.files, input.messageId);
   }
 
   responderInChat(input: ResponderMessage): AssistantMessageRow {
-    const files = input.files ?? [];
-    if (input.text === '' && files.length === 0) {
-      throw new ApiError('invalid_request', 'Send some text or at least one file.');
-    }
     return this.add(
-      {
-        ...NO_EXTRAS,
-        profile_id: input.chat.profile_id,
-        client_id: null,
-        chat_id: input.chat.id,
-        role: 'responder',
-        kind: input.kind ?? 'text',
-        author: input.helperDialogue?.helper_name ?? assistantLabel(this.messages.settings()),
-        text: input.text,
-        embeds: input.helperDialogue === undefined ? [] : [input.helperDialogue],
-        attachments: files.map(summaryOf),
-        state: null,
-        reason: null,
-        ...keptSteps(input.steps ?? []),
-        reply_to: input.replyTo,
-        quote: quoteOrNull(input.quote),
-        model: input.model ?? null,
-      },
-      files,
+      responderMessage(input, () => assistantLabel(this.messages.settings())),
+      input.files ?? [],
       input.messageId,
     );
   }
 
-  startReply(chat: AiChatRow, replyTo: string | null, model: string): AssistantMessageRow {
-    log.debug('reply.started', { chatId: chat.id, profileId: chat.profile_id, replyTo, model });
-    return this.add(
-      {
-        ...NO_EXTRAS,
-        profile_id: chat.profile_id,
-        client_id: null,
-        chat_id: chat.id,
-        role: 'responder',
-        kind: 'text',
-        author: assistantLabel(this.messages.settings()),
-        text: '',
-        attachments: [],
-        state: 'working',
-        reason: null,
-        steps: [],
-        step_states: [],
-        reply_to: replyTo,
-        model,
-      },
-      [],
-    );
-  }
-
-  flushReply(id: string, text: string): void {
-    this.messages.updateMessage(id, { text });
-  }
-
-  timeline(id: string, timeline: ChatTimelineEmbed): void {
-    this.messages.updateMessage(id, { embeds: this.withTimeline(id, timeline) });
-  }
-
-  savedText(id: string): string {
-    return this.messages.message(id).text;
-  }
-
-  progress(id: string, text: string, timeline: ChatTimelineEmbed): void {
-    this.messages.updateMessage(id, { text, embeds: this.withTimeline(id, timeline) });
-  }
-
-  todos(id: string, todos: ChatTodosEmbed): void {
-    const kept = this.messages.message(id).embeds.filter((embed) => embed.kind !== CHAT_TODOS_KIND);
-    this.messages.updateMessage(id, { embeds: [...kept, todos] });
-  }
-
-  private withTimeline(id: string, timeline: ChatTimelineEmbed): AssistantMessageRow['embeds'] {
-    const kept = this.messages.message(id).embeds.filter((embed) => embed.kind !== 'chat_timeline');
-    return [...kept, timeline];
-  }
-
-  finishReply(
-    id: string,
-    text: string,
-    done: {
-      readonly model: string;
-      readonly steps: readonly SettledStep[];
-      readonly sources: readonly WebSource[];
-    },
-  ): AssistantMessageRow {
-    const kept = this.messages
-      .message(id)
-      .embeds.filter((embed) => embed.kind !== WEB_SOURCES_KIND);
-    log.debug('reply.finished', {
-      messageId: id,
-      model: done.model,
-      textChars: text.length,
-      steps: done.steps.length,
-      sources: done.sources.length,
+  startReply(start: ReplyStart & { readonly id?: string }): Promise<AssistantMessageRow> {
+    log.debug('reply.started', {
+      chatId: start.chat.id,
+      profileId: start.chat.profile_id,
+      replyTo: start.replyTo,
+      model: start.model,
     });
-    return this.messages.updateMessage(id, {
-      embeds:
-        done.sources.length === 0
-          ? kept
-          : [...kept, { kind: WEB_SOURCES_KIND, sources: done.sources }],
-      text,
-      model: done.model,
-      state: 'answered',
-      ...keptSteps(done.steps),
-    });
+    this.replies.flush();
+    return this.store.host.write('assistantReplyStart', start);
   }
 
-  failReply(
-    id: string,
-    failure: { readonly text: string; readonly reason: string; readonly code: AssistantReasonCode },
-    steps: readonly SettledStep[],
-  ): void {
-    log.warn('reply.failed', {
-      messageId: id,
-      reasonCode: failure.code,
-      reason: failure.reason.slice(0, 200),
-      textChars: failure.text.length,
-      steps: steps.length,
-    });
-    this.messages.updateMessage(id, {
-      text: failure.text,
-      state: 'failed',
-      reason: failure.reason.slice(0, 400),
-      reason_code: failure.code,
-      ...keptSteps(steps),
-    });
+  admitNative(admission: NativeAdmission): Promise<HarnessDelivery> {
+    this.replies.flush();
+    return this.store.host.write('assistantNativeAdmit', admission);
+  }
+
+  async completeNative(record: NativeCompletionRecord): Promise<void> {
+    this.replies.flush();
+    await this.store.host.write('assistantNativeComplete', record);
+  }
+
+  settled(): Promise<void> {
+    return this.replies.settled();
+  }
+
+  async flushReply(id: string, text: string): Promise<void> {
+    await this.replies.write({ kind: 'text', id, text });
+  }
+
+  async timeline(id: string, timeline: ChatTimelineEmbed): Promise<void> {
+    await this.replies.write({ kind: 'timeline', id, timeline });
+  }
+
+  async progress(id: string, text: string, timeline: ChatTimelineEmbed): Promise<void> {
+    await this.replies.write({ kind: 'progress', id, text, timeline });
+  }
+
+  async todos(id: string, todos: ChatTodosEmbed): Promise<void> {
+    await this.replies.write({ kind: 'todos', id, todos });
+  }
+
+  async finishReply(id: string, text: string, done: ReplyDone): Promise<AssistantMessageRow> {
+    const row = await this.replies.write({ kind: 'finish', id, text, done });
+    if (row === null) throw new ReplyRowMissingError(id);
+    return row;
+  }
+
+  async failReply(id: string, failure: ReplyFailure, steps: readonly SettledStep[]): Promise<void> {
+    await this.replies.write({ kind: 'fail', id, failure, steps });
   }
 
   originNote(chat: AiChatRow, origin: MessageOrigin): AssistantMessageRow {
@@ -312,26 +262,7 @@ export class ConversationLog {
     text: string,
     origin: MessageOrigin | null,
   ): AssistantMessageRow {
-    return this.add(
-      {
-        ...NO_EXTRAS,
-        profile_id: chat.profile_id,
-        client_id: null,
-        chat_id: chat.id,
-        role: 'system',
-        kind: 'update',
-        author: author.slice(0, 120),
-        text,
-        attachments: [],
-        state: null,
-        reason: null,
-        steps: [],
-        step_states: [],
-        reply_to: null,
-        origin,
-      },
-      [],
-    );
+    return this.add(noteMessage(chat, author, text, origin), []);
   }
 
   compaction(chat: AiChatRow, summary: string, through: string): AssistantMessageRow {
@@ -357,72 +288,41 @@ export class ConversationLog {
     );
   }
 
-  private message(id: string | null): AssistantMessageRow | null {
-    return id === null ? null : (this.messages.find(id) ?? null);
-  }
-
-  stateOf(
+  async stateOf(
     messageId: string | null,
     state: AssistantRequestState,
     reason: string | null = null,
-  ): void {
-    const message = this.message(messageId);
-    if (message === null || message.state === state || message.state === 'failed') {
-      log.trace('message.state_unchanged', { messageId, state, current: message?.state });
-      return;
-    }
-    log.debug('message.state_changed', {
-      messageId: message.id,
-      chatId: message.chat_id,
-      from: message.state,
-      to: state,
-      hasReason: reason !== null,
+  ): Promise<void> {
+    await this.replies.write({ kind: 'state', messageId, state, reason });
+  }
+
+  async failedMessage(
+    messageId: string | null,
+    reason: string,
+    code: AssistantReasonCode,
+  ): Promise<void> {
+    await this.replies.write({ kind: 'failedMessage', messageId, reason, code });
+  }
+
+  async interrupted(reason: string): Promise<void> {
+    await this.replies.write({ kind: 'interrupted', reason });
+  }
+
+  async delivered(eventId: string): Promise<void> {
+    await this.replies.write({ kind: 'delivered', eventId });
+  }
+
+  async failed(
+    event: StoredEvent,
+    reason: string,
+    code: AssistantReasonCode = 'unknown',
+  ): Promise<void> {
+    await this.replies.write({
+      kind: 'failedEvent',
+      eventId: event.id,
+      messageId: event.message_id,
+      reason,
+      code,
     });
-    this.messages.updateMessage(message.id, { state, reason });
-  }
-
-  failedMessage(messageId: string | null, reason: string, code: AssistantReasonCode): void {
-    const message = this.message(messageId);
-    if (message !== null) {
-      log.warn('message.failed', {
-        messageId: message.id,
-        chatId: message.chat_id,
-        from: message.state,
-        reasonCode: code,
-        reason: reason.slice(0, 200),
-      });
-      this.messages.updateMessage(message.id, {
-        state: 'failed',
-        reason: reason.slice(0, 400),
-        reason_code: code,
-      });
-    }
-  }
-
-  interrupted(reason: string): void {
-    log.info('turns.interrupted', { reason: reason.slice(0, 200) });
-    this.store.write(() => {
-      this.messages.failWorking(reason, 'interrupted');
-      for (const event of this.store.assistantEvents.abandoned()) {
-        this.store.assistantEvents.mark(event.id, 'answered_at');
-        this.store.aiRepairInbox.markFailed(event.id);
-        if (this.message(event.message_id)?.role === 'person') {
-          this.failedMessage(event.message_id, reason, 'interrupted');
-        }
-      }
-    });
-  }
-
-  delivered(eventId: string): void {
-    const message = this.message(this.store.assistantEvents.event(eventId).message_id);
-    if (message?.state === 'queued') {
-      this.messages.updateMessage(message.id, { state: 'delivered' });
-    }
-  }
-
-  failed(event: StoredEvent, reason: string, code: AssistantReasonCode = 'unknown'): void {
-    this.store.aiRepairInbox.markFailed(event.id);
-    const text = code === 'unknown' ? `Assistant unavailable: ${reason}` : reason;
-    this.failedMessage(event.message_id, text, code);
   }
 }

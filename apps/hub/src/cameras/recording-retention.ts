@@ -11,7 +11,7 @@ export const STARTUP_SWEEP_DELAY_MS = 2 * MINUTE_MS;
 const REMOVALS_AT_ONCE = 32;
 
 export interface RecordingRetentionOptions {
-  readonly store: Pick<Store, 'cameras' | 'feed'>;
+  readonly store: Pick<Store, 'host' | 'feed'>;
   readonly recordingPath: (storagePath: string) => string;
   readonly clock: Clock;
   readonly log: Logger;
@@ -96,7 +96,11 @@ export class RecordingRetention {
   }
 
   private async sweepNow(): Promise<SweepSummary> {
-    const removed = this.options.store.cameras.removeExpiredRecordings(this.options.clock.now());
+    const removed = await this.options.store.host.call(
+      'cameras',
+      'removeExpiredRecordings',
+      this.options.clock.now(),
+    );
     let failed = 0;
     for (const chunk of chunksOf(removed, REMOVALS_AT_ONCE)) {
       const results = await Promise.all(chunk.map((recording) => this.removeFiles(recording)));

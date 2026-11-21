@@ -39,6 +39,6 @@ export async function readSessionInfo(
 export const sessionInfoRoutes = (service: HarnessService, fold: SessionInfoFold) =>
   ({
     readAiChatSessionInfo: bound(API_ENDPOINTS.readAiChatSessionInfo, ({ params, caller }) =>
-      readSessionInfo(service, fold, chatOwnerOf(service.store, caller), params.chatId),
+      readSessionInfo(service, fold, chatOwnerOf(caller), params.chatId),
     ),
   }) as const;

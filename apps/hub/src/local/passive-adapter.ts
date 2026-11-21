@@ -3,15 +3,15 @@ import { XiaomiAdapter } from '../adapters/xiaomi';
 import type { HubParts } from '../hub-assembly';
 import { linkedDevice, passiveSource } from './passive-observations';
 
-export function preparePassiveAdapter(
+export async function preparePassiveAdapter(
   adapter: ProviderAdapter,
   parts: Pick<HubParts, 'store' | 'secrets'>,
-): void {
+): Promise<void> {
   if (!(adapter instanceof XiaomiAdapter)) {
     return;
   }
-  for (const entry of parts.store.localDevices.list()) {
-    const device = linkedDevice(parts.store, entry);
+  for (const entry of await parts.store.host.call('localDevices', 'list')) {
+    const device = await linkedDevice(parts.store, entry);
     if (
       device?.provider !== adapter.provider ||
       entry.config['accountScope'] !== adapter.passiveAccountScope()
@@ -20,7 +20,7 @@ export function preparePassiveAdapter(
     }
     adapter.observePassive(
       entry.externalId,
-      passiveSource(parts.store, parts.secrets, entry, device.id),
+      await passiveSource(parts.store, parts.secrets, entry, device.id),
       entry.address,
     );
   }

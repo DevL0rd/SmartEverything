@@ -1,15 +1,14 @@
 import { Logger } from '@smarteverything/logging';
-import type { AutomationRunRecordsRepository } from '../../store/repositories/automation-run-records';
+import type { AutomationRunRecord } from '@smarteverything/domain';
+import type { RunState } from '@smarteverything/flow/state/run-state';
 import type { RunDriver } from './admission';
 import type { RunParkStore } from './park-store';
-import { resumeRun } from './resume';
+import { restoredRun, resumeRun } from './resume';
 import type { ResumePorts, Resumed } from './resume';
 
 export interface BootPorts extends ResumePorts {
-  readonly records: Pick<
-    AutomationRunRecordsRepository,
-    'update' | 'waiting' | 'interruptUnfinished'
-  >;
+  readonly records: () => Promise<readonly AutomationRunRecord[]>;
+  readonly prefetch: (states: readonly RunState[]) => Promise<void>;
   readonly driver: Pick<RunDriver, 'adopt' | 'cancel'>;
   readonly parks: Pick<RunParkStore, 'adopted'>;
   readonly log?: Logger;
@@ -21,11 +20,12 @@ export interface BootReport {
   readonly interrupted: number;
 }
 
-export function bootRuns(ports: BootPorts): BootReport {
+export async function bootRuns(ports: BootPorts): Promise<BootReport> {
   const log = ports.log ?? new Logger('hub.automations');
-  ports.records.interruptUnfinished();
-  const outcomes: Resumed[] = ports.records.waiting().map((record) => {
-    const outcome = resumeRun(record, ports, {
+  const restored = (await ports.records()).map(restoredRun);
+  await ports.prefetch(restored.flatMap((run) => (run.kind === 'state' ? [run.state] : [])));
+  const outcomes: Resumed[] = restored.map((run) => {
+    const outcome = resumeRun(run, ports, {
       adopt: (start) => {
         ports.driver.adopt(start);
       },

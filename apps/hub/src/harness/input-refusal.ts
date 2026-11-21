@@ -43,16 +43,10 @@ function retainedInputRefusal(store: Store, deliveryId: string): ApiError | unde
   const result = API_ERROR.parse(JSON.parse(receipt.result));
   return new ApiError(result.error.code, result.error.message, result.error.reason ?? null);
 }
-export function retainInputRefusal(
-  store: Store,
-  event: AiHarnessEvent,
-  refusal: ApiError,
-  settle: () => void,
-): void {
+export function retainInputRefusal(store: Store, event: AiHarnessEvent, refusal: ApiError): void {
   const id = z.uuid().parse(event.delivery_id);
   store.durableWrite(() => {
     store.harnessSessions.begin(id, event.session_id, claimIdentity(event));
     store.harnessSessions.finish(id, refusal.body());
-    settle();
   });
 }

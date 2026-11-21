@@ -16,8 +16,6 @@ import type { DecodedAdvert } from './driver-types';
 import { LOCAL_DRIVER_REGISTRY } from './drivers';
 
 const BLE_RECEIVER_FRESH_MS = 120_000;
-const FUTURE_TOLERANCE_MS = 5000;
-const COUNTER_RESET_GAP_MS = 60_000;
 const PASSIVE_KEYS: readonly CapabilityKey[] = ['contact'];
 
 export interface PassiveSource {
@@ -26,8 +24,10 @@ export interface PassiveSource {
   readonly freshUntil: number;
 }
 
+type HostStore = Pick<Store, 'host'>;
+
 export interface PassiveObservationsOptions {
-  readonly store: Store;
+  readonly store: HostStore;
   readonly secrets: SecretStore;
   readonly state: Pick<StateWriter, 'commitObservation'>;
   readonly now: () => Date;
@@ -45,80 +45,59 @@ function freshUntilOf(cursor: BleObservationCursor): number {
   );
 }
 
-function advances(previous: BleObservationCursor, next: BleObservationCursor): boolean {
-  if (next.frame_hash === previous.frame_hash) {
-    return false;
-  }
-  return (
-    next.counter > previous.counter ||
-    Date.parse(next.seen_at) - Date.parse(previous.seen_at) >= COUNTER_RESET_GAP_MS
-  );
-}
-
-export function linkedDevice(store: Store, entry: LocalDeviceEntry): DeviceRow | undefined {
-  const deviceId = entry.config['deviceId'];
-  const device = typeof deviceId === 'string' ? store.devices.find(deviceId) : undefined;
-  return device?.provider === LOCAL_DRIVER_REGISTRY[entry.driver].provider &&
-    device.external_id === entry.externalId &&
-    device.model === entry.config['model']
-    ? device
-    : undefined;
-}
-
-function latestCursor(
-  store: Store,
-  secrets: SecretStore,
+export function linkedDevice(
+  store: HostStore,
   entry: LocalDeviceEntry,
-  deviceId: string,
-): BleObservationCursor | undefined {
+): Promise<DeviceRow | undefined> {
+  return store.host.read('passiveLinked', entry);
+}
+
+function keyEpochOf(secrets: SecretStore, entry: LocalDeviceEntry): string | null {
   const key = secrets.deviceKey(entry.externalId);
-  return key === null ? undefined : store.bleObservations.cursor(deviceId, hash(key));
+  return key === null ? null : hash(key);
 }
 
-export function passiveSource(
-  store: Store,
+export async function passiveSource(
+  store: HostStore,
   secrets: SecretStore,
   entry: LocalDeviceEntry,
   deviceId: string,
-): PassiveSource {
-  const cursor = latestCursor(store, secrets, entry, deviceId);
-  const values = new Map<CapabilityKey, JsonValue>();
-  for (const capability of PASSIVE_KEYS) {
-    const value = store.state.value(deviceId, capability);
-    if (value !== undefined) {
-      values.set(capability, value);
-    }
-  }
+): Promise<PassiveSource> {
+  const found = await store.host.read('passiveRead', {
+    deviceId,
+    keyEpoch: keyEpochOf(secrets, entry),
+    keys: PASSIVE_KEYS,
+  });
   return {
     keys: PASSIVE_KEYS,
-    values,
-    freshUntil: cursor === undefined ? 0 : freshUntilOf(cursor),
+    values: new Map(found.values),
+    freshUntil: found.cursor === undefined ? 0 : freshUntilOf(found.cursor),
   };
 }
 
 export class PassiveObservations {
   constructor(private readonly options: PassiveObservationsOptions) {}
 
-  device(entry: LocalDeviceEntry): DeviceRow | undefined {
+  device(entry: LocalDeviceEntry): Promise<DeviceRow | undefined> {
     return linkedDevice(this.options.store, entry);
   }
 
-  restore(): void {
-    for (const entry of this.options.store.localDevices.list()) {
+  async restore(): Promise<void> {
+    for (const entry of await this.options.store.host.call('localDevices', 'list')) {
       if (
         LOCAL_DRIVER_REGISTRY[entry.driver].provider !== 'local' &&
         this.options.eligible(entry)
       ) {
-        this.restoreEntry(entry);
+        await this.restoreEntry(entry);
       }
     }
   }
 
-  restoreEntry(entry: LocalDeviceEntry): void {
+  async restoreEntry(entry: LocalDeviceEntry): Promise<void> {
     const { store, secrets } = this.options;
     this.options.sourceChanged(
       entry.externalId,
-      passiveSource(store, secrets, entry, this.deviceId(entry)),
+      await passiveSource(store, secrets, entry, await this.deviceId(entry)),
     );
   }
 
@@ -126,17 +105,15 @@ export class PassiveObservations {
     this.options.sourceChanged(entry.externalId, null);
   }
 
-  status(deviceId: string): {
+  async status(deviceId: string): Promise<{
     readonly configured: boolean;
     readonly address: string | null;
     readonly lastSeenAt: string | null;
     readonly freshUntil: string | null;
     readonly blockedReason: string | null;
-  } {
+  }> {
     const { store, secrets } = this.options;
-    const entry = store.localDevices
-      .list()
-      .find((candidate) => candidate.config['deviceId'] === deviceId);
+    const entry = await store.host.read('passiveEntryOfDevice', deviceId);
     if (entry === undefined) {
       return {
         configured: false,
@@ -146,7 +123,11 @@ export class PassiveObservations {
         blockedReason: null,
       };
     }
-    const cursor = latestCursor(store, secrets, entry, deviceId);
+    const { cursor } = await store.host.read('passiveRead', {
+      deviceId,
+      keyEpoch: keyEpochOf(secrets, entry),
+      keys: [],
+    });
     const freshUntil = cursor === undefined ? null : new Date(freshUntilOf(cursor)).toISOString();
     const blockedReason = !this.options.eligible(entry)
       ? 'This door is no longer linked to the same Xiaomi account and device, so Bluetooth updates are paused; cloud updates continue.'
@@ -168,7 +149,7 @@ export class PassiveObservations {
     key: string,
     decoded: Extract<DecodedAdvert, { kind: 'state' }>,
   ): Promise<boolean> {
-    const deviceId = this.deviceId(entry);
+    const deviceId = await this.deviceId(entry);
     const cursor = {
       device_id: deviceId,
       key_epoch: hash(key),
@@ -177,9 +158,6 @@ export class PassiveObservations {
       seen_at: new Date(advert.seenAt).toISOString(),
       received_at: this.options.now().toISOString(),
     };
-    if (!this.admissible(entry, key, cursor)) {
-      return false;
-    }
     const row: StateRecord | null =
       decoded.contact === null
         ? null
@@ -189,61 +167,40 @@ export class PassiveObservations {
             value: decoded.contact,
             observedAt: cursor.seen_at,
           };
+    const commit = { entry, cursor, row, now: this.options.now().toISOString() };
+    if (
+      !this.current(entry, key) ||
+      !(await this.options.store.host.read('passiveAdmissible', commit))
+    ) {
+      return false;
+    }
     this.options.sourceChanged(entry.externalId, {
       keys: PASSIVE_KEYS,
       values: new Map(),
       freshUntil: freshUntilOf(cursor),
     });
     try {
-      return await this.options.state.commitObservation(row, () =>
-        this.commit(entry, key, cursor, row),
+      return await this.options.state.commitObservation(row, async () =>
+        this.current(entry, key)
+          ? await this.options.store.host.write('passiveCommit', commit)
+          : false,
       );
     } finally {
-      this.restoreCurrent(entry);
+      await this.restoreCurrent(entry);
     }
   }
 
-  private commit(
-    entry: LocalDeviceEntry,
-    key: string,
-    cursor: BleObservationCursor,
-    row: StateRecord | null,
-  ): boolean {
-    return this.options.store.write(() => {
-      if (!this.admissible(entry, key, cursor)) {
-        return false;
-      }
-      this.options.store.bleObservations.save(cursor);
-      if (row !== null) {
-        this.options.store.state.write([row]);
-      }
-      return true;
-    });
-  }
-
-  private admissible(entry: LocalDeviceEntry, key: string, cursor: BleObservationCursor): boolean {
-    const previous = this.options.store.bleObservations.cursor(cursor.device_id, cursor.key_epoch);
-    return (
-      this.current(entry, key) &&
-      Date.parse(cursor.seen_at) <= this.options.now().getTime() + FUTURE_TOLERANCE_MS &&
-      (previous === undefined || advances(previous, cursor))
-    );
-  }
-
-  private restoreCurrent(entry: LocalDeviceEntry): void {
-    if (
-      this.options.store.localDevices
-        .list()
-        .some((candidate) => candidate.externalId === entry.externalId)
-    ) {
-      this.restoreEntry(entry);
+  private async restoreCurrent(entry: LocalDeviceEntry): Promise<void> {
+    const entries = await this.options.store.host.call('localDevices', 'list');
+    if (entries.some((candidate) => candidate.externalId === entry.externalId)) {
+      await this.restoreEntry(entry);
     } else {
       this.disable(entry);
     }
   }
 
-  private deviceId(entry: LocalDeviceEntry): string {
-    const device = this.device(entry);
+  private async deviceId(entry: LocalDeviceEntry): Promise<string> {
+    const device = await this.device(entry);
     if (device === undefined) {
       throw new ApiError(
         'conflict',
@@ -254,16 +211,7 @@ export class PassiveObservations {
   }
 
   private current(entry: LocalDeviceEntry, key: string): boolean {
-    return (
-      this.options.eligible(entry) &&
-      this.options.secrets.deviceKey(entry.externalId) === key &&
-      this.options.store.localDevices
-        .list()
-        .some(
-          (candidate) =>
-            candidate.externalId === entry.externalId && candidate.address === entry.address,
-        )
-    );
+    return this.options.eligible(entry) && this.options.secrets.deviceKey(entry.externalId) === key;
   }
 
   private freshnessReason(freshUntil: string | null): string | null {

@@ -24,12 +24,12 @@ function unreachable(name: string, outcomes: readonly PushCommandOutcome[]): str
     : `The phone ${name} is paired with could not be reached (${reasons.join('; ')}).`;
 }
 
-export function phonesOf(
+export async function phonesOf(
   store: WatchActionStore,
   profileId: string,
   bridgeClientId: string | null = null,
-): string[] {
-  const phones = clientsOf(store, profileId)
+): Promise<string[]> {
+  const phones = (await clientsOf(store, profileId))
     .filter((client) => client.platform === 'android')
     .map((client) => client.id);
   return bridgeClientId !== null && phones.includes(bridgeClientId) ? [bridgeClientId] : phones;
@@ -63,12 +63,12 @@ export class WatchActionBroker {
     return { ok, detail };
   }
 
-  attempt(
+  async attempt(
     target: WatchActionTarget,
     action: WatchActionRequest,
     by: string,
   ): Promise<WatchOutcome> {
-    const clients = phonesOf(this.store, target.profileId, target.bridgeClientId);
+    const clients = await phonesOf(this.store, target.profileId, target.bridgeClientId);
     return this.asks.ask({
       command: 'watch_action',
       clients,

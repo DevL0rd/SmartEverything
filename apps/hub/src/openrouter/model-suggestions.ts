@@ -9,7 +9,7 @@ import {
 } from '@smarteverything/domain';
 import type { LayoutOwner, PersonalRepository } from '../store/repositories/personal';
 import type { Catalogue } from './catalogue';
-import type { AiModelsRepository } from './models-repository';
+import type { AiModelsState } from '../store/ai-models-state';
 
 const RECENT_COUNT = 6;
 const DATED_ID = /-\d{8}$/;
@@ -22,7 +22,7 @@ export interface SuggestionRequest {
 
 export interface SuggestionDeps {
   readonly catalogue: Catalogue;
-  readonly models: AiModelsRepository;
+  readonly models: Pick<AiModelsState, 'recentModelIds'>;
   readonly personal: PersonalRepository;
 }
 
@@ -56,7 +56,10 @@ function currentOf(catalogue: Catalogue, current: AiModelChoice | undefined): Ai
     : catalogue.model(current);
 }
 
-export function suggestionsOf(deps: SuggestionDeps, request: SuggestionRequest): AiModelSuggested {
+export async function suggestionsOf(
+  deps: SuggestionDeps,
+  request: SuggestionRequest,
+): Promise<AiModelSuggested> {
   const { catalogue } = deps;
   const overview = catalogue.overview();
   const defaultId = overview.default?.model_id;
@@ -69,7 +72,7 @@ export function suggestionsOf(deps: SuggestionDeps, request: SuggestionRequest):
     favourites: rowsFor(catalogue, favouriteIds(deps.personal, request.owner), request.kind),
     recent: rowsFor(
       catalogue,
-      deps.models.recentModelIds(request.owner.profileId),
+      await deps.models.recentModelIds(request.owner.profileId),
       request.kind,
     ).slice(0, RECENT_COUNT),
     top_picks: catalogue.topPicks(request.kind),

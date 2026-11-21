@@ -12,10 +12,11 @@ import {
 import { decodeCursor, encodeCursor } from '../../drive/search';
 import { lockedTrash, mayExport, type DriveActor } from '../../drive/access';
 import { isFileItem } from '../../drive/file-item';
-import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
 import type { Store } from '../../store/store';
 import { driveFileLink, readableItem } from '../drive-files';
 import { shortcutsForQuery } from '../../drive/social/shortcuts';
+import { readDriveStats } from '../../drive/stats';
 import { DONE_REPLY, bound, type Routes } from '../router';
 import { refusing } from './drive-errors';
 import {
@@ -81,35 +82,37 @@ function linksOf(
   });
 }
 
-function trashLinksOf(
+async function trashLinksOf(
   store: Store,
   services: DriveServices,
   actor: DriveActor,
   itemIds: readonly string[],
-): DriveTrashLink[] {
-  return itemIds.map((itemId) => {
-    const entry = store.driveTrash.find(itemId);
+): Promise<DriveTrashLink[]> {
+  const links: DriveTrashLink[] = [];
+  for (const itemId of itemIds) {
+    const entry = await store.host.call('driveTrash', 'find', itemId);
     if (entry === undefined || lockedTrash(entry)) {
       throw new ApiError('not_found', 'There is no such trashed item for this caller.');
     }
-    services.read.rootFor(actor, entry.rootId);
-    const rev = store.driveTrash.thumbRev(itemId);
-    return {
+    await services.read.rootFor(actor, entry.rootId);
+    const rev = await store.host.call('driveTrash', 'thumbRev', itemId);
+    links.push({
       itemId,
       thumb: rev === null ? null : services.files.links.driveThumb(itemId, 'thumb', rev),
-    };
-  });
+    });
+  }
+  return links;
 }
 
-function trashRoots(
+async function trashRoots(
   services: DriveServices,
   actor: DriveActor,
   query: RootPageQuery,
-): readonly DriveRoot[] {
+): Promise<readonly DriveRoot[]> {
   const roots =
     query.rootId === undefined
-      ? services.read.listRoots(actor)
-      : [services.read.rootFor(actor, query.rootId)];
+      ? await services.read.listRoots(actor)
+      : [await services.read.rootFor(actor, query.rootId)];
   return roots.toSorted((left, right) => left.id.localeCompare(right.id));
 }
 
@@ -123,13 +126,13 @@ function trashStart(
   return start;
 }
 
-function trashPage(
+async function trashPage(
   store: Store,
   services: DriveServices,
   actor: DriveActor,
   query: RootPageQuery,
-): DrivePage<DriveTrashEntry> {
-  const roots = trashRoots(services, actor, query);
+): Promise<DrivePage<DriveTrashEntry>> {
+  const roots = await trashRoots(services, actor, query);
   const cursor = query.cursor === undefined ? null : decodeCursor(TRASH_CURSOR, query.cursor);
   const first = trashStart(roots, cursor);
   const items: DriveTrashEntry[] = [];
@@ -137,7 +140,13 @@ function trashPage(
     const root = roots[index];
     if (root === undefined) break;
     const after = index === first && cursor !== null ? cursor.after : null;
-    const window = store.driveTrash.inRoot(root.id, after, DRIVE_PAGE_SIZE - items.length);
+    const window = await store.host.call(
+      'driveTrash',
+      'inRoot',
+      root.id,
+      after,
+      DRIVE_PAGE_SIZE - items.length,
+    );
     items.push(...window.entries);
     if (window.next !== null) {
       return { items, next: encodeCursor({ rootId: root.id, after: window.next }) };
@@ -160,46 +169,46 @@ export function driveLibraryRoutes(
   const { write } = services;
   return {
     updateRoot: bound(E.updateRoot, ({ params, body, caller }) =>
-      refusing(() => write.updateRoot(callerOf(store, caller), params.rootId, body)),
+      refusing(() => write.updateRoot(callerOf(caller), params.rootId, body)),
     ),
     scanRoot: bound(E.scanRoot, ({ params, caller }) =>
-      refusing(() => {
-        write.scanRoot(callerOf(store, caller), params.rootId);
+      refusing(async () => {
+        await write.scanRoot(callerOf(caller), params.rootId);
         return DONE_REPLY;
       }),
     ),
     itemLinks: bound(E.itemLinks, ({ body, caller }) =>
-      refusing(() => linksOf(services, actorOf(store, caller), body.itemIds, store)),
+      refusing(() => linksOf(services, actorOf(caller), body.itemIds, store)),
     ),
     trashLinks: bound(E.trashLinks, ({ body, caller }) =>
-      refusing(() => trashLinksOf(store, services, actorOf(store, caller), body.itemIds)),
+      refusing(() => trashLinksOf(store, services, actorOf(caller), body.itemIds)),
     ),
     recordDriveOpen: bound(E.recordDriveOpen, ({ params, caller }) =>
-      refusing(() => {
-        services.read.recordOpen(actorOf(store, caller), params.itemId, store.context.now());
+      refusing(async () => {
+        await services.read.recordOpen(actorOf(caller), params.itemId, store.context.now());
         return DONE_REPLY;
       }),
     ),
     searchDrive: bound(E.searchDrive, ({ body, caller }) =>
-      refusing(() => {
-        const actor = actorOf(store, caller);
+      refusing(async () => {
+        const actor = actorOf(caller);
         return {
-          ...store.driveSearch.search(actor, body, DRIVE_PAGE_SIZE),
-          shortcuts: shortcutsForQuery({ store, context: store.context }, actor, body),
+          ...(await store.host.call('driveSearch', 'search', actor, body, DRIVE_PAGE_SIZE)),
+          shortcuts: await shortcutsForQuery(store, actor, body),
         };
       }),
     ),
     changeDrive: bound(E.changeDrive, ({ body, caller }) =>
-      refusing(() => write.change(callerOf(store, caller), body)),
+      refusing(() => write.change(callerOf(caller), body)),
     ),
     readDriveStats: bound(E.readDriveStats, ({ caller }) =>
-      store.driveStats.read(actorOf(store, caller), services.dataSpace),
+      readDriveStats(store, actorOf(caller), services.dataSpace),
     ),
     listDuplicates: bound(E.listDuplicates, ({ query, caller }) =>
-      refusing(() => services.listings.duplicates(actorOf(store, caller), query)),
+      refusing(() => services.listings.duplicates(actorOf(caller), query)),
     ),
     listTrash: bound(E.listTrash, ({ query, caller }) =>
-      refusing(() => trashPage(store, services, actorOf(store, caller), query)),
+      refusing(() => trashPage(store, services, actorOf(caller), query)),
     ),
   };
 }

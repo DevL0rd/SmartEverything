@@ -15,9 +15,9 @@ afterEach(async () => {
   await opened.close();
 });
 
-function refusal(url: string): ApiError {
+async function refusal(url: string): Promise<ApiError> {
   try {
-    access.pair(url, 'owner-client');
+    await access.pair(url, 'owner-client');
   } catch (cause) {
     if (cause instanceof ApiError) return cause;
     throw cause;
@@ -28,15 +28,15 @@ function refusal(url: string): ApiError {
 describe('issuing a computer pairing code', () => {
   it.each(['http://127.0.0.1:7880', 'https://localhost:7880', 'http://[::1]:7880'])(
     'refuses the loopback address %s',
-    (url) => {
-      const error = refusal(url);
+    async (url) => {
+      const error = await refusal(url);
       expect(error.code).toBe('invalid_request');
       expect(error.message).toContain('over loopback');
     },
   );
 
-  it('refuses plain http to another machine', () => {
-    const error = refusal('http://192.168.1.4:7880');
+  it('refuses plain http to another machine', async () => {
+    const error = await refusal('http://192.168.1.4:7880');
     expect(error.code).toBe('invalid_request');
     expect(error.message).toContain('requires HTTPS');
   });

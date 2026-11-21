@@ -51,9 +51,9 @@ function rig(
 ): Rig {
   const requests: unknown[] = [];
   const recorded = vi.fn();
-  const stateOf = vi.fn();
+  const stateOf = vi.fn(() => Promise.resolve());
   const finished = vi.fn();
-  const failedMessage = vi.fn();
+  const failedMessage = vi.fn(() => Promise.resolve());
   const event = loose<StoredEvent>({ id: 'event-2', message_id: 'message-2', text: 'stop that' });
   const chat = loose<AiChatRow>({ id: 'chat-1' });
   const deps = loose<ComputerRunnerDeps>({
@@ -162,19 +162,23 @@ describe('steering a running Claude turn', () => {
 });
 
 describe('settling steered messages', () => {
-  it('answers every steered message with the reply text', () => {
+  it('answers every steered message with the reply text', async () => {
     const { deps, turn, event, stateOf, finished } = rig();
     turn.steered.push(event);
     settleSteered(deps, turn, { ok: true, text: 'done' });
     expect(stateOf).toHaveBeenCalledWith('message-2', 'answered');
-    expect(finished).toHaveBeenCalledWith(event, 'done', true);
+    await vi.waitFor(() => {
+      expect(finished).toHaveBeenCalledWith(event, 'done', true);
+    });
   });
 
-  it('fails every steered message with the reason the reply failed', () => {
+  it('fails every steered message with the reason the reply failed', async () => {
     const { deps, turn, event, failedMessage, finished } = rig();
     turn.steered.push(event);
     settleSteered(deps, turn, { ok: false, reason: 'closed', code: 'unknown' });
     expect(failedMessage).toHaveBeenCalledWith('message-2', 'closed', 'unknown');
-    expect(finished).toHaveBeenCalledWith(event, 'closed', false);
+    await vi.waitFor(() => {
+      expect(finished).toHaveBeenCalledWith(event, 'closed', false);
+    });
   });
 });

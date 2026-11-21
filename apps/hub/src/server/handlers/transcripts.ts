@@ -44,9 +44,9 @@ export const transcriptRoutes = (
       const source = admittedSource(store, caller, query.source, query.sourceId);
       return transcripts.list({ ...query, source });
     }),
-    readTranscript: bound(E.readTranscript, ({ params, query, caller }) => {
+    readTranscript: bound(E.readTranscript, async ({ params, query, caller }) => {
       admitTranscriptCaller(caller);
-      const session = store.transcripts.byId(params.sessionId);
+      const session = await store.host.call('transcripts', 'byId', params.sessionId);
       admitTranscriptSource(store, caller, session.source, session.source_id);
       return transcripts.read(params.sessionId, query.after ?? 0, query.limit);
     }),

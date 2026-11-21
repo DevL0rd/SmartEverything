@@ -6,7 +6,8 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
-import { DRIVE_PAGE_SIZE, DriveReadService } from '../../src/drive/service-read';
+import { DriveReadService } from '../../src/drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../../src/drive/page-size';
 import { readDriveSettings, updateDriveSettings } from '../../src/drive/settings';
 import { captureLogs } from '../support/logs';
 import type { TestStore } from '../support/store';
@@ -104,56 +105,53 @@ afterEach(async () => {
 });
 
 describe('roots and items by scope', () => {
-  it('shows the hub owner their own drive and the Shared Drive only, without any path', () => {
-    const roots = service.listRoots(asOwner());
+  it('shows the hub owner their own drive and the Shared Drive only, without any path', async () => {
+    const roots = await service.listRoots(asOwner());
     expect(roots.map((root) => root.id).sort()).toEqual([HOME_ROOT, OWNER_ROOT].sort());
     for (const root of roots) expect(root).not.toHaveProperty('path');
   });
 
-  it('shows a member their own drive and the Shared Drive only', () => {
-    expect(
-      service
-        .listRoots(asMember())
-        .map((root) => root.id)
-        .sort(),
-    ).toEqual([HOME_ROOT, MEMBER_ROOT].sort());
-  });
-
-  it('refuses anyone, the hub owner included, another person’s drive, folder and item', () => {
-    for (const actor of [asMember(), asOwner()]) {
-      expect(() => service.browseFolder(actor, { rootId: OTHER_ROOT })).toThrow(/no such/);
-      expect(() => service.readItem(actor, OTHER_FILE)).toThrow(/no such/);
-      expect(() => service.rootFor(actor, OTHER_ROOT)).toThrow(/no such/);
-    }
-    expect(service.readItem(asMember(), FILE).id).toBe(FILE);
-    expect(service.rootFor(asOwner(), OWNER_ROOT).path).toContain(ownerProfile);
-  });
-
-  it('refuses an unknown item', () => {
-    expect(() => service.readItem(asOwner(), '0d000000-0000-4000-8000-0000000000aa')).toThrow(
-      /no such/,
+  it('shows a member their own drive and the Shared Drive only', async () => {
+    expect((await service.listRoots(asMember())).map((root) => root.id).sort()).toEqual(
+      [HOME_ROOT, MEMBER_ROOT].sort(),
     );
+  });
+
+  it('refuses anyone, the hub owner included, another person’s drive, folder and item', async () => {
+    for (const actor of [asMember(), asOwner()]) {
+      await expect(service.browseFolder(actor, { rootId: OTHER_ROOT })).rejects.toThrow(/no such/);
+      await expect(service.readItem(actor, OTHER_FILE)).rejects.toThrow(/no such/);
+      await expect(service.rootFor(actor, OTHER_ROOT)).rejects.toThrow(/no such/);
+    }
+    expect((await service.readItem(asMember(), FILE)).id).toBe(FILE);
+    expect((await service.rootFor(asOwner(), OWNER_ROOT)).path).toContain(ownerProfile);
+  });
+
+  it('refuses an unknown item', async () => {
+    await expect(
+      service.readItem(asOwner(), '0d000000-0000-4000-8000-0000000000aa'),
+    ).rejects.toThrow(/no such/);
   });
 });
 
 describe('browsing a folder', () => {
-  it('lists the top of a root and then a folder inside it', () => {
-    const top = service.browseFolder(asMember(), { rootId: HOME_ROOT });
+  it('lists the top of a root and then a folder inside it', async () => {
+    const top = await service.browseFolder(asMember(), { rootId: HOME_ROOT });
     expect(top.folder).toBeNull();
     expect(top.items.map((item) => item.name)).toEqual(['Saved', 'readme.txt']);
     expect(top.next).toBeNull();
-    const inside = service.browseFolder(asMember(), { rootId: HOME_ROOT, folderId: FOLDER });
+    const inside = await service.browseFolder(asMember(), { rootId: HOME_ROOT, folderId: FOLDER });
     expect(inside.folder?.id).toBe(FOLDER);
     expect(inside.items.map((item) => item.id)).toEqual([NESTED]);
   });
 
-  it('refuses a folder of another root and a file used as a folder', () => {
-    expect(() => service.browseFolder(asOwner(), { rootId: OWNER_ROOT, folderId: FOLDER })).toThrow(
-      /no such folder/,
-    );
-    expect(() => service.browseFolder(asOwner(), { rootId: HOME_ROOT, folderId: FILE })).toThrow(
-      /no such folder/,
-    );
+  it('refuses a folder of another root and a file used as a folder', async () => {
+    await expect(
+      service.browseFolder(asOwner(), { rootId: OWNER_ROOT, folderId: FOLDER }),
+    ).rejects.toThrow(/no such folder/);
+    await expect(
+      service.browseFolder(asOwner(), { rootId: HOME_ROOT, folderId: FILE }),
+    ).rejects.toThrow(/no such folder/);
   });
 
   const SORTED = DRIVE_PAGE_SIZE + 5;
@@ -219,61 +217,64 @@ describe('browsing a folder', () => {
     (['asc', 'desc'] as const).map((direction) => ({ field, direction })),
   );
 
-  it.each(ORDERS)('pages every item by $field $direction in order', ({ field, direction }) => {
-    sortedFolder();
-    const pages: DriveItem[] = [];
-    let cursor: string | undefined;
-    let rounds = 0;
-    do {
-      const page = service.browseFolder(asMember(), {
-        rootId: MEMBER_ROOT,
-        sortField: field,
-        sortDirection: direction,
-        ...(cursor === undefined ? {} : { cursor }),
-      });
-      pages.push(...page.items);
-      cursor = page.next ?? undefined;
-      rounds += 1;
-    } while (cursor !== undefined);
-    expect(rounds).toBe(2);
-    expect(new Set(pages.map((item) => item.id)).size).toBe(SORTED);
-    const sign = direction === 'asc' ? 1 : -1;
-    const expected = [...pages].sort(
-      (a, b) => sign * (compared(keyOf(a, field), keyOf(b, field)) || compared(a.name, b.name)),
-    );
-    expect(pages.map((item) => item.id)).toEqual(expected.map((item) => item.id));
-  });
+  it.each(ORDERS)(
+    'pages every item by $field $direction in order',
+    async ({ field, direction }) => {
+      sortedFolder();
+      const pages: DriveItem[] = [];
+      let cursor: string | undefined;
+      let rounds = 0;
+      do {
+        const page = await service.browseFolder(asMember(), {
+          rootId: MEMBER_ROOT,
+          sortField: field,
+          sortDirection: direction,
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        pages.push(...page.items);
+        cursor = page.next ?? undefined;
+        rounds += 1;
+      } while (cursor !== undefined);
+      expect(rounds).toBe(2);
+      expect(new Set(pages.map((item) => item.id)).size).toBe(SORTED);
+      const sign = direction === 'asc' ? 1 : -1;
+      const expected = [...pages].sort(
+        (a, b) => sign * (compared(keyOf(a, field), keyOf(b, field)) || compared(a.name, b.name)),
+      );
+      expect(pages.map((item) => item.id)).toEqual(expected.map((item) => item.id));
+    },
+  );
 
-  it('refuses a cursor that another sort or no listing gave out', () => {
+  it('refuses a cursor that another sort or no listing gave out', async () => {
     sortedFolder();
-    const bySize = service.browseFolder(asMember(), {
+    const bySize = await service.browseFolder(asMember(), {
       rootId: MEMBER_ROOT,
       sortField: 'bytes',
       sortDirection: 'desc',
     });
-    expect(() =>
+    await expect(
       service.browseFolder(asMember(), {
         rootId: MEMBER_ROOT,
         sortField: 'modifiedAt',
         sortDirection: 'desc',
         cursor: bySize.next ?? '',
       }),
-    ).toThrow(/cursor/);
-    expect(() =>
+    ).rejects.toThrow(/cursor/);
+    await expect(
       service.browseFolder(asMember(), { rootId: MEMBER_ROOT, cursor: 'not-a-cursor' }),
-    ).toThrow(/cursor/);
+    ).rejects.toThrow(/cursor/);
   });
 
-  it('pages a large folder by cursor without losing or repeating a name', () => {
+  it('pages a large folder by cursor without losing or repeating a name', async () => {
     const count = DRIVE_PAGE_SIZE + 5;
     for (let index = 0; index < count; index += 1) {
       const id = `0d000000-0000-4000-8000-${String(1000 + index).padStart(12, '0')}`;
       document(id, MEMBER_ROOT, `file-${String(index).padStart(4, '0')}.txt`, null);
     }
-    const first = service.browseFolder(asMember(), { rootId: MEMBER_ROOT });
+    const first = await service.browseFolder(asMember(), { rootId: MEMBER_ROOT });
     expect(first.items).toHaveLength(DRIVE_PAGE_SIZE);
     expect(first.next).not.toBeNull();
-    const second = service.browseFolder(asMember(), {
+    const second = await service.browseFolder(asMember(), {
       rootId: MEMBER_ROOT,
       cursor: first.next ?? '',
     });
@@ -285,7 +286,7 @@ describe('browsing a folder', () => {
 });
 
 describe('albums', () => {
-  it('shows a member home albums and their own only', () => {
+  it('shows a member home albums and their own only', async () => {
     const { driveAlbums } = opened.store;
     driveAlbums.insert({
       id: '0d000000-0000-4000-8000-0000000000b1',
@@ -314,11 +315,11 @@ describe('albums', () => {
       ownerProfileId: otherProfile,
       coverItemId: null,
     });
-    expect(service.listAlbums(asMember(), 'photos').map((album) => album.title)).toEqual([
+    expect((await service.listAlbums(asMember(), 'photos')).map((album) => album.title)).toEqual([
       'Holidays',
       'Mine',
     ]);
-    expect(service.listAlbums(asOwner(), 'photos').map((album) => album.title)).toEqual([
+    expect((await service.listAlbums(asOwner(), 'photos')).map((album) => album.title)).toEqual([
       'Holidays',
     ]);
   });
@@ -347,32 +348,34 @@ describe('recent files', () => {
     return entries.map((entry) => (entry.kind === 'shortcut' ? entry.shortcut.id : entry.item.id));
   }
 
-  it('answers added, changed and everything, newest first', () => {
-    const added = service.readRecent(asOwner(), { filter: 'added' });
+  it('answers added, changed and everything, newest first', async () => {
+    const added = await service.readRecent(asOwner(), { filter: 'added' });
     expect(added.entries.map((entry) => entry.kind)).toEqual(['added']);
     expect(itemIds(added.entries)).toEqual([FILE]);
-    const changed = service.readRecent(asOwner(), { filter: 'changed' });
+    const changed = await service.readRecent(asOwner(), { filter: 'changed' });
     expect(changed.entries.map((entry) => entry.kind)).toEqual(['changed']);
-    expect(service.readRecent(asOwner(), { filter: 'everything' }).entries).toHaveLength(2);
+    expect((await service.readRecent(asOwner(), { filter: 'everything' })).entries).toHaveLength(2);
   });
 
-  it('hides other members’ files from a member', () => {
-    const everything = service.readRecent(asMember(), { filter: 'everything' });
+  it('hides other members’ files from a member', async () => {
+    const everything = await service.readRecent(asMember(), { filter: 'everything' });
     expect(itemIds(everything.entries)).toEqual([FILE, FILE]);
   });
 
-  it('refuses a cursor it did not give out', () => {
-    expect(() => service.readRecent(asOwner(), { filter: 'added', cursor: 'abc' })).toThrow(
+  it('refuses a cursor it did not give out', async () => {
+    await expect(service.readRecent(asOwner(), { filter: 'added', cursor: 'abc' })).rejects.toThrow(
       /cursor/,
     );
   });
 
-  it('lists what the person opened, and only theirs', () => {
-    service.recordOpen(asOwner(), FILE, '2026-11-08T00:00:00.000Z');
+  it('lists what the person opened, and only theirs', async () => {
+    await service.recordOpen(asOwner(), FILE, '2026-11-08T00:00:00.000Z');
     expect(
-      service.readRecent(asOwner(), { filter: 'opened' }).entries.map((entry) => entry.kind),
+      (await service.readRecent(asOwner(), { filter: 'opened' })).entries.map(
+        (entry) => entry.kind,
+      ),
     ).toEqual(['opened']);
-    expect(service.readRecent(asMember(), { filter: 'opened' }).entries).toEqual([]);
+    expect((await service.readRecent(asMember(), { filter: 'opened' })).entries).toEqual([]);
   });
 });
 

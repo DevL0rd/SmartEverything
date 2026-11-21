@@ -35,8 +35,8 @@ const hot = (): FlowNode =>
 const HOT: PortValue = { wire: { from: 'hotNow', port: 'result' } };
 
 describe('checking the triggers that came after the first thirteen', () => {
-  it('accepts a condition that reads the first read steps of the program', () => {
-    const result = rig.service.check(rig.owner.caller, {
+  it('accepts a condition that reads the first read steps of the program', async () => {
+    const result = await rig.service.check(rig.owner.caller, {
       definition: automationOf([room(), hot(), logLine('say', 'hot')], {
         triggers: [
           trigger('hot', 'trigger.becomes_true', {
@@ -50,8 +50,8 @@ describe('checking the triggers that came after the first thirteen', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('refuses a condition that reads the result of an action', () => {
-    const result = rig.service.check(rig.owner.caller, {
+  it('refuses a condition that reads the result of an action', async () => {
+    const result = await rig.service.check(rig.owner.caller, {
       definition: automationOf([logLine('say', 'hot')], {
         triggers: [
           trigger('hot', 'trigger.becomes_true', {
@@ -66,8 +66,8 @@ describe('checking the triggers that came after the first thirteen', () => {
     );
   });
 
-  it('refuses a hold that is not fixed and a trigger without its condition', () => {
-    const loose = rig.service.check(rig.owner.caller, {
+  it('refuses a hold that is not fixed and a trigger without its condition', async () => {
+    const loose = await rig.service.check(rig.owner.caller, {
       definition: automationOf([room(), hot()], {
         triggers: [
           trigger('hot', 'trigger.becomes_true', {
@@ -80,18 +80,18 @@ describe('checking the triggers that came after the first thirteen', () => {
     expect(loose.problems).toContainEqual(
       expect.objectContaining({ code: 'static_not_literal', key: 'hot', port: 'hold' }),
     );
-    const missing = rig.service.check(rig.owner.caller, {
+    const missing = await rig.service.check(rig.owner.caller, {
       definition: automationOf([room()], { triggers: [trigger('hot', 'trigger.becomes_true')] }),
     });
     expect(missing.ok).toBe(false);
   });
 
-  it('lets only the owner save a webhook trigger', () => {
+  it('lets only the owner save a webhook trigger', async () => {
     const definition = automationOf([logLine('say', 'hi')], {
       triggers: [trigger('hook', 'trigger.webhook', { path: lit('k3Jq9Zr2Lm8Xv5Bn7TcWd1') })],
     });
-    expect(rig.service.check(rig.owner.caller, { definition }).ok).toBe(true);
-    const member = rig.service.check(rig.member.caller, { definition });
+    expect((await rig.service.check(rig.owner.caller, { definition })).ok).toBe(true);
+    const member = await rig.service.check(rig.member.caller, { definition });
     expect(member.ok).toBe(false);
     expect(member.problems).toContainEqual(expect.objectContaining({ code: 'forbidden' }));
   });
@@ -104,8 +104,8 @@ describe('checking the triggers that came after the first thirteen', () => {
     ['trigger.event', { name: lit('guest_mode_on') }],
     ['trigger.timer', { timer: lit('laundry') }],
     ['trigger.hub_started', {}],
-  ])('saves a %s trigger for a member', (kind, ports) => {
-    const result = rig.service.check(rig.member.caller, {
+  ])('saves a %s trigger for a member', async (kind, ports) => {
+    const result = await rig.service.check(rig.member.caller, {
       definition: automationOf([logLine('say', 'hi')], { triggers: [trigger('t', kind, ports)] }),
     });
     expect(result.problems.filter((problem) => problem.severity === 'error')).toEqual([]);

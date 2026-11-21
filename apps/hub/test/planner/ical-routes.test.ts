@@ -21,6 +21,7 @@ import type { Caller } from '../../src/server/auth';
 import type { Bound } from '../../src/server/router';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
+import { inProcessCalendars } from '../support/ical';
 
 const NOW = new Date('2026-11-14T12:00:00.000Z');
 
@@ -108,7 +109,12 @@ beforeEach(async () => {
     feed: null,
   });
   await serveRoutes(
-    plannerIcalRoutes({ store: test.store, now: () => NOW, log: testLogger('ical') }),
+    plannerIcalRoutes({
+      store: test.store,
+      calendars: inProcessCalendars,
+      now: () => NOW,
+      log: testLogger('ical'),
+    }),
   );
 });
 
@@ -157,8 +163,9 @@ describe('import route', () => {
     expect(
       (await send(asPerson(bob, { 'content-type': 'text/calendar' }), fixture('apple.ics'))).status,
     ).toBe(404);
+    const { id: _id, created_at: _created, updated_at: _updated, ...fields } = calendar;
     const feed = test.store.plannerCollections.insert({
-      ...calendar,
+      ...fields,
       name: 'Subscribed',
       source: 'feed',
       feed: {

@@ -6,7 +6,8 @@ import { afterEach, expect, it } from 'vitest';
 import { z } from 'zod';
 import { hubLayout, writeMarker, type HubLayout } from '../src/data-layout';
 import { lockDataDirectory } from '../src/data-lock';
-import { fileDraft, identityOf, isoOf } from '../src/drive/changes';
+import { fileDraft } from '../src/drive/changes';
+import { identityOf, isoOf } from '../src/drive/change-rows';
 import { readRootMarker, writeRootMarker } from '../src/drive/root-marker';
 import { ensureDrives } from '../src/drive/spaces';
 import { nodeFiles } from '../src/drive/versions';
@@ -15,6 +16,7 @@ import { PHOTO_FOLDER_RECEIPTS } from '../src/photos/folder-receipts';
 import { preparationLayout, prepareHubData } from '../src/service/data-preparation';
 import { openStore, type Store } from '../src/store/store';
 import { testLogger } from './support/logs';
+import { testStoreHost } from './support/store-host';
 
 const NOW = '2026-11-08T12:00:00.000Z';
 const directories: string[] = [];
@@ -22,12 +24,12 @@ const log = testLogger();
 
 function opened(layout: HubLayout): Store {
   return openStore({
+    host: testStoreHost(),
     path: layout.system.database.file,
     log,
     now: () => new Date(NOW),
     systemTimeZone: 'UTC',
-    drivePathOf: (scope, ownerProfileId) =>
-      scope === 'home' ? layout.home.drive : layout.person(String(ownerProfileId)).drive,
+    driveFolders: layout.drives,
   });
 }
 
@@ -74,6 +76,7 @@ async function fixture(): Promise<{
     );
     return { layout, itemId: item.id, rootPath: root.path, original };
   } finally {
+    await store.host.close();
     store.close();
   }
 }
@@ -97,13 +100,11 @@ it('prepares the explicit target root without consulting another Hub bootstrap',
 
 it('finishes lossless offline preparation before the normal Drive readiness check', async () => {
   const target = await fixture();
-  await prepareHubData(target.layout, log);
-  await prepareHubData(target.layout, log);
+  await prepareHubData(target.layout, log, { host: testStoreHost() });
+  await prepareHubData(target.layout, log, { host: testStoreHost() });
   const store = opened(target.layout);
   try {
-    expect(() => {
-      assertPhotosFolderPrepared(store.context.sql);
-    }).not.toThrow();
+    await expect(assertPhotosFolderPrepared(store.host)).resolves.toBeUndefined();
     expect(store.driveItems.byId(target.itemId, null).relPath).toBe('Photos/a.jpg');
     expect(await readFile(join(target.rootPath, 'Photos/a.jpg'), 'utf8')).toBe('image');
     expect(await nodeFiles.stamp(target.original)).toBeNull();
@@ -127,6 +128,7 @@ it('holds exclusive data ownership during blocked offline preparation without re
   });
   let waiting = true;
   const preparing = prepareHubData(target.layout, log, {
+    host: testStoreHost(),
     files: {
       ...nodeFiles,
       syncDirectory: async (path) => {
@@ -156,6 +158,7 @@ it('releases its database and data lock after a failed preparation and resumes t
   const target = await fixture();
   await expect(
     prepareHubData(target.layout, log, {
+      host: testStoreHost(),
       files: {
         ...nodeFiles,
         syncDirectory: () => Promise.reject(new Error('fixture disk sync failure')),
@@ -167,13 +170,13 @@ it('releases its database and data lock after a failed preparation and resumes t
   expect(await readFile(target.original, 'utf8')).toBe('image');
   const before = opened(target.layout);
   try {
-    expect(() => {
-      assertPhotosFolderPrepared(before.context.sql);
-    }).toThrow(/preparation is incomplete/);
+    await expect(assertPhotosFolderPrepared(before.host)).rejects.toThrow(
+      /preparation is incomplete/,
+    );
   } finally {
     before.close();
   }
-  await prepareHubData(target.layout, log);
+  await prepareHubData(target.layout, log, { host: testStoreHost() });
   expect(await readFile(join(target.rootPath, 'Photos/a.jpg'), 'utf8')).toBe('image');
 });
 
@@ -181,11 +184,14 @@ it('honors interruption without deleting migration rollback inputs and can resum
   const target = await fixture();
   const abort = new AbortController();
   abort.abort(new Error('fixture preparation interruption'));
-  await expect(prepareHubData(target.layout, log, { signal: abort.signal })).rejects.toThrow(
-    'fixture preparation interruption',
-  );
+  await expect(
+    prepareHubData(target.layout, log, {
+      host: testStoreHost(),
+      signal: abort.signal,
+    }),
+  ).rejects.toThrow('fixture preparation interruption');
   expect(await readFile(target.original, 'utf8')).toBe('image');
-  await prepareHubData(target.layout, log);
+  await prepareHubData(target.layout, log, { host: testStoreHost() });
   expect(await readFile(join(target.rootPath, 'Photos/a.jpg'), 'utf8')).toBe('image');
 });
 
@@ -199,7 +205,10 @@ it('rejects a mismatched active data-root identity before opening or changing it
   });
   const before = await readFile(target.layout.system.database.file);
   await expect(
-    prepareHubData(target.layout, log, { location: { rootId: randomUUID(), state: 'active' } }),
+    prepareHubData(target.layout, log, {
+      host: testStoreHost(),
+      location: { rootId: randomUUID(), state: 'active' },
+    }),
   ).rejects.toThrow(/different disk/);
   expect(await readFile(target.layout.system.database.file)).toEqual(before);
   expect(await readFile(target.original, 'utf8')).toBe('image');
@@ -237,7 +246,7 @@ it('releases the unlinked folders recorded by the drive migration and leaves the
   } finally {
     store.close();
   }
-  await prepareHubData(target.layout, log);
+  await prepareHubData(target.layout, log, { host: testStoreHost() });
   const after = opened(target.layout);
   try {
     expect(
@@ -270,6 +279,6 @@ it('leaves a folder alone whose marker belongs to another drive', async () => {
   } finally {
     store.close();
   }
-  await prepareHubData(target.layout, log);
+  await prepareHubData(target.layout, log, { host: testStoreHost() });
   expect((await readRootMarker(folder)).id).toBeDefined();
 });

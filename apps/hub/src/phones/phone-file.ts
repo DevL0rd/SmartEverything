@@ -1,5 +1,4 @@
 import type { PhoneFilePush } from '@smarteverything/domain';
-import { ownedAttachment } from '../assistant/chat-directory';
 import { chatOwnerOf, type Caller } from '../server/auth';
 import type { MediaLinks } from '../server/media-links';
 import type { Store } from '../store/store';
@@ -9,16 +8,13 @@ export interface PhoneFileSource {
   readonly links: Pick<MediaLinks, 'assistantAttachment'>;
 }
 
-export function phoneFileOf(
+export async function phoneFileOf(
   source: PhoneFileSource,
   caller: Caller,
   fileId: string,
-): PhoneFilePush {
-  const owner = chatOwnerOf(source.store, caller);
-  const file =
-    owner.role === 'owner'
-      ? source.store.assistantChat.attachment(fileId)
-      : ownedAttachment(source.store, owner, fileId);
+): Promise<PhoneFilePush> {
+  const owner = chatOwnerOf(caller);
+  const file = await source.store.host.read('mcpReadableAttachment', { owner, id: fileId });
   return {
     type: 'receive_file',
     fileId: file.id,

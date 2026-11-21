@@ -24,7 +24,7 @@ export class SecretMissingError extends Error {
   }
 }
 
-export type SecretUsers = (secretId: string) => readonly AutomationSecretUser[];
+export type SecretUsers = (secretId: string) => Promise<readonly AutomationSecretUser[]>;
 
 export interface AutomationSecrets {
   list(): AutomationSecretEntry[];
@@ -67,7 +67,7 @@ export function automationSecrets(
       if (!(id in (store.read().automationSecrets ?? {}))) {
         throw new SecretMissingError();
       }
-      const users = usersOf(id);
+      const users = await usersOf(id);
       if (users.length > 0) {
         throw new SecretInUseError(users);
       }

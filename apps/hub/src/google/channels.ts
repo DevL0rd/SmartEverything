@@ -40,7 +40,7 @@ export function pushPath(channelId: string): string {
 }
 
 export interface GoogleChannelsOptions {
-  readonly store: Pick<Store, 'googleAccounts' | 'googleSyncState' | 'settings'>;
+  readonly store: Pick<Store, 'host' | 'settings'>;
   readonly tokens: Pick<GoogleTokens, 'accessToken' | 'invalidate'>;
   readonly runner: Pick<GoogleSyncRunner, 'sync' | 'onSynced'>;
   readonly fetch: FetchLike;
@@ -67,9 +67,15 @@ export class GoogleChannels {
 
   start(): void {
     this.detach = this.options.runner.onSynced((profileId) => this.ensure(profileId));
-    for (const account of this.options.store.googleAccounts.list()) {
+    this.started().catch((cause: unknown) => {
+      log.error('google.channels_start_failed', cause);
+    });
+  }
+
+  private async started(): Promise<void> {
+    for (const account of await this.options.store.host.call('googleAccounts', 'list')) {
       if (account.status !== 'linked') continue;
-      for (const state of this.calendars(account.profile_id)) this.arm(state);
+      for (const state of await this.calendars(account.profile_id)) this.arm(state);
     }
   }
 
@@ -82,8 +88,9 @@ export class GoogleChannels {
 
   async ensure(profileId: string): Promise<void> {
     if (this.base() === null) return;
-    if (this.options.store.googleAccounts.find(profileId)?.status !== 'linked') return;
-    for (const state of this.calendars(profileId)) {
+    const account = await this.options.store.host.call('googleAccounts', 'find', profileId);
+    if (account?.status !== 'linked') return;
+    for (const state of await this.calendars(profileId)) {
       if (state.channel !== null) {
         this.arm(state);
         continue;
@@ -93,19 +100,22 @@ export class GoogleChannels {
   }
 
   async release(profileId: string): Promise<void> {
-    for (const state of this.calendars(profileId)) {
+    for (const state of await this.calendars(profileId)) {
       this.disarm(state);
       if (state.channel === null) continue;
       await this.close(state, state.channel);
-      const fresh = this.options.store.googleSyncState.find(this.resource(state));
-      if (fresh !== undefined) this.options.store.googleSyncState.put({ ...fresh, channel: null });
+      await this.options.store.host.write('setGoogleChannel', {
+        resource: this.resource(state),
+        channel: null,
+        whileChannel: null,
+      });
     }
   }
 
-  private calendars(profileId: string): GoogleSyncState[] {
-    return this.options.store.googleSyncState
-      .forProfile(profileId)
-      .filter((state) => state.product === 'calendar');
+  private async calendars(profileId: string): Promise<GoogleSyncState[]> {
+    return (await this.options.store.host.call('googleSyncState', 'forProfile', profileId)).filter(
+      (state) => state.product === 'calendar',
+    );
   }
 
   private resource(state: GoogleSyncState): {
@@ -145,10 +155,12 @@ export class GoogleChannels {
   }
 
   private async renew(expired: GoogleSyncState): Promise<void> {
-    const state = this.options.store.googleSyncState.find(this.resource(expired));
+    const state = await this.options.store.host.write('setGoogleChannel', {
+      resource: this.resource(expired),
+      channel: null,
+      whileChannel: { id: expired.channel?.channel_id },
+    });
     if (state === undefined) return;
-    if (state.channel?.channel_id !== expired.channel?.channel_id) return;
-    this.options.store.googleSyncState.put({ ...state, channel: null });
     if (this.base() === null) {
       log.warn('google.channel_lapsed', { profileId: state.profile_id });
       return;
@@ -173,16 +185,16 @@ export class GoogleChannels {
         },
         WATCH_REPLY,
       );
-      const fresh = this.options.store.googleSyncState.find(this.resource(state));
-      if (fresh === undefined) return;
-      const stored = this.options.store.googleSyncState.put({
-        ...fresh,
+      const stored = await this.options.store.host.write('setGoogleChannel', {
+        resource: this.resource(state),
         channel: {
           channel_id: reply.id,
           resource_id: reply.resourceId,
           expires_at: new Date(Number(reply.expiration)).toISOString(),
         },
+        whileChannel: null,
       });
+      if (stored === undefined) return;
       this.arm(stored);
       log.info('google.channel_opened', {
         profileId: state.profile_id,

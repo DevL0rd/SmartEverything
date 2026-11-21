@@ -1,5 +1,4 @@
 import {
-  ApiError,
   type PlannerAlarmRow,
   type PlannerMissedReason,
   type PlannerRingRow,
@@ -7,6 +6,7 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import type { Store } from '../store/store';
+import { PendingWork } from './pending-work';
 import type { RingDesk } from './rings';
 import type { SunriseRamp } from './sunrise';
 import type { WakeRoutine } from './wake-routine';
@@ -70,7 +70,7 @@ export function ringsBetween(
   }
 }
 
-export type AlarmStore = Pick<Store, 'plannerAlarms' | 'plannerRings' | 'settings' | 'feed'>;
+export type AlarmStore = Pick<Store, 'host' | 'settings' | 'feed'>;
 
 export interface AlarmSchedulerOptions {
   readonly store: AlarmStore;
@@ -89,56 +89,56 @@ interface Armed {
 export class AlarmScheduler {
   private readonly armed = new Map<string, Armed>();
   private unsubscribe: (() => void) | null = null;
+  private turn = 0;
+  private readonly work = new PendingWork('planner.alarm_failed');
 
   constructor(private readonly options: AlarmSchedulerOptions) {}
 
-  start(): void {
-    this.reconcile('hub_down');
+  async start(): Promise<void> {
     this.unsubscribe = this.options.store.feed.subscribe((change) => {
       if (change.table === 'planner_alarms') {
         this.follow(change.record, change.oldRecord);
       } else if (change.table === 'settings') {
-        this.armAll();
+        this.work.run(this.armAll());
       }
     });
+    await this.reconcile('hub_down');
   }
 
   stop(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.turn += 1;
     this.disarmAll();
     this.options.rings.stop();
   }
 
-  resumed(): void {
-    this.reconcile('computer_asleep');
+  resumed(): Promise<void> {
+    return this.reconcile('computer_asleep');
+  }
+
+  async settled(): Promise<void> {
+    await this.work.settled();
+    await this.options.rings.settled();
   }
 
   next(alarm: PlannerAlarmRow, after: Date = this.options.clock.now()): Date | null {
     return alarm.enabled ? nextRing(alarm, after, this.zone()) : null;
   }
 
-  skipNext(profileId: string, alarmId: string): PlannerAlarmRow {
-    const alarm = this.options.store.plannerAlarms.byId(alarmId, profileId);
-    if (!repeats(alarm)) {
-      throw new ApiError('invalid_request', 'Only a repeating alarm has a next ring to skip.');
-    }
-    const upcoming = nextRing({ ...alarm, skip_on: null }, this.options.clock.now(), this.zone());
-    if (upcoming === null) {
-      return alarm;
-    }
-    const date = Temporal.Instant.fromEpochMilliseconds(upcoming.getTime())
-      .toZonedDateTimeISO(this.zone())
-      .toPlainDate()
-      .toString();
-    return this.options.store.plannerAlarms.update(alarmId, profileId, { skip_on: date });
+  skipNext(profileId: string, alarmId: string): Promise<PlannerAlarmRow> {
+    return this.options.store.host.write('plannerAlarmSkipNext', {
+      profileId,
+      alarmId,
+      nowMs: this.options.clock.now().getTime(),
+    });
   }
 
-  snooze(profileId: string, ringId: string, minutes?: number): PlannerRingRow {
+  snooze(profileId: string, ringId: string, minutes?: number): Promise<PlannerRingRow> {
     return this.options.rings.snooze(profileId, ringId, minutes);
   }
 
-  dismiss(profileId: string, ringId: string): PlannerRingRow {
+  dismiss(profileId: string, ringId: string): Promise<PlannerRingRow> {
     return this.options.rings.dismiss(profileId, ringId);
   }
 
@@ -158,35 +158,23 @@ export class AlarmScheduler {
     this.arm(record);
   }
 
-  private reconcile(reason: PlannerMissedReason): void {
+  private async reconcile(reason: PlannerMissedReason): Promise<void> {
+    const turn = ++this.turn;
     this.disarmAll();
-    const now = this.options.clock.now();
-    for (const alarm of this.options.store.plannerAlarms.enabled()) {
-      this.settleOverdue(alarm, now, reason);
-    }
-    this.options.rings.reconcile(reason);
-    this.armAll();
+    const missed = await this.options.store.host.write('plannerAlarmsMissed', {
+      nowMs: this.options.clock.now().getTime(),
+      reason,
+    });
+    for (const row of missed) this.options.rings.missed(row, reason);
+    await this.options.rings.reconcile(reason);
+    if (turn === this.turn) await this.armAll();
   }
 
-  private settleOverdue(alarm: PlannerAlarmRow, now: Date, reason: PlannerMissedReason): void {
-    const overdue = ringsBetween(alarm, this.handledUntil(alarm), now, this.zone());
-    for (const dueAt of overdue) {
-      this.options.rings.missed(alarm, dueAt, reason);
-    }
-    if (overdue.length > 0 && !repeats(alarm)) {
-      this.options.store.plannerAlarms.update(alarm.id, alarm.profile_id, { enabled: false });
-    }
-  }
-
-  private handledUntil(alarm: PlannerAlarmRow): Date {
-    const rings = this.options.store.plannerRings.forRef('alarm', alarm.id);
-    const latestRing = rings.at(-1)?.due_at;
-    const edited = Date.parse(alarm.updated_at);
-    return new Date(latestRing === undefined ? edited : Math.max(edited, Date.parse(latestRing)));
-  }
-
-  private armAll(): void {
-    for (const alarm of this.options.store.plannerAlarms.enabled()) {
+  private async armAll(): Promise<void> {
+    const turn = this.turn;
+    const enabled = await this.options.store.host.call('plannerAlarms', 'enabled');
+    if (turn !== this.turn) return;
+    for (const alarm of enabled) {
       this.arm(alarm);
     }
   }
@@ -207,22 +195,23 @@ export class AlarmScheduler {
     this.disarm(alarm.id);
     const cancel = this.options.clock.at(dueAt, () => {
       this.armed.delete(alarm.id);
-      this.fire(alarm.id, alarm.profile_id, dueAt);
+      this.work.run(this.fire(alarm.id, alarm.profile_id, dueAt), { alarmId: alarm.id });
     });
     this.armed.set(alarm.id, { dueAtMs: dueAt.getTime(), cancel });
   }
 
-  private fire(alarmId: string, profileId: string, dueAt: Date): void {
-    const alarm = this.options.store.plannerAlarms.find(alarmId, profileId);
+  private async fire(alarmId: string, profileId: string, dueAt: Date): Promise<void> {
+    const { host } = this.options.store;
+    const alarm = await host.call('plannerAlarms', 'find', alarmId, profileId);
     if (alarm?.enabled !== true) {
       return;
     }
-    this.options.rings.ring(alarm, dueAt);
+    await this.options.rings.ring(alarm, dueAt);
     if (repeats(alarm)) {
       this.arm(alarm, new Date(Math.max(dueAt.getTime(), this.options.clock.now().getTime())));
       return;
     }
-    this.options.store.plannerAlarms.update(alarm.id, profileId, { enabled: false });
+    await host.call('plannerAlarms', 'update', alarm.id, profileId, { enabled: false });
   }
 
   private disarm(alarmId: string): void {

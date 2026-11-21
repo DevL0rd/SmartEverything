@@ -2,7 +2,7 @@ import type { DeviceCapability, DeviceRow } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DeviceUpsert } from '../../src/database/port';
 import { prepareTargetCommands, skippedMembersNote } from '../../src/device-groups/commands';
-import { deviceGroupSummaries } from '../../src/extensions/mcp/tools/device-groups';
+import { deviceGroupSummaries } from '../../src/extensions/mcp/tools/device-group-units';
 import { captureLogs } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 

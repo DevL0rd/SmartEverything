@@ -10,8 +10,7 @@ import type { DriveMediaJob } from '../../store/repositories/drive-media-jobs';
 import type { JobHandler } from '../pipeline/jobs';
 import { EMBEDDING_DIMENSIONS } from './defaults';
 import { describePhoto } from './description';
-import { currentItem, ignoreFailure, type AiEnvironment, type MediaItem } from './env';
-import { placeNameOf } from './place';
+import { ignoreFailure, sourceOf, type AiEnvironment, type MediaItem } from './env';
 import { quantise } from './vectors';
 
 export interface EmbeddingClient {
@@ -43,20 +42,14 @@ export class EmbedHandler implements JobHandler {
   ) {}
 
   async run(job: DriveMediaJob, signal: AbortSignal): Promise<void> {
-    const item = currentItem(this.env, job);
-    if (item === undefined) return;
-    const subject = this.env.consent.subjectOfRoot(item.rootId);
-    if (!this.env.consent.smartSearch(subject)) return;
-    const analysis = this.env.store.photoAnalysis.find(item.id);
+    const source = await sourceOf(this.env, job);
+    if (source?.switches.smartSearch !== true) return;
+    const { item, subject, analysis } = source;
     if (analysis?.state !== 'done' || analysis.rev !== job.rev) return;
-    const model = this.env.models.read().embedding;
-    const text = describePhoto({
-      analysis,
-      takenAt: item.takenAt,
-      place: placeNameOf(this.env.store.context, this.env.media.find(item.id)?.place_id ?? null),
-    });
+    const model = source.models.embedding;
+    const text = describePhoto({ analysis, takenAt: item.takenAt, place: source.place });
     const vector = await this.vectorOf({ job, item, subject, model }, text, signal);
-    if (vector !== undefined) this.save({ job, item, subject, model }, vector);
+    if (vector !== undefined) await this.save({ job, item, subject, model }, vector);
   }
 
   private async vectorOf(
@@ -83,8 +76,8 @@ export class EmbedHandler implements JobHandler {
     }
   }
 
-  private save(target: Target, vector: Float32Array): void {
-    const { job, item, subject, model } = target;
+  private async save(target: Target, vector: Float32Array): Promise<void> {
+    const { item, subject, model } = target;
     const stored = quantise(vector);
     const embedding = {
       itemId: item.id,
@@ -94,12 +87,7 @@ export class EmbedHandler implements JobHandler {
       scale: stored.scale,
       vector: stored.bytes,
     };
-    const written = this.env.store.write(() => {
-      const now = this.env.store.driveItems.find(item.id, null);
-      if (now?.rev !== job.rev || !this.env.consent.smartSearch(subject)) return false;
-      this.env.store.photoEmbeddings.save(embedding);
-      return true;
-    });
+    const written = await this.env.host.write('photoEmbeddingSave', { subject, embedding });
     if (written) this.env.index.upsert(embedding);
   }
 }

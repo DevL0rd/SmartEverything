@@ -21,9 +21,3 @@ export interface SpeechOccurrence {
   readonly revision: string;
   readonly commitId: number;
 }
-export function speechText(speech: CommittedSpeech): string {
-  return speech.kind === 'transcript' ? speech.line.text : speech.text;
-}
-export function speechIsBot(speech: CommittedSpeech): boolean {
-  return speech.kind === 'transcript' ? speech.line.bot : speech.bot;
-}

@@ -68,8 +68,8 @@ export async function releaseKeys(
   context: ReleaseKeysContext,
   input: ReleaseKeysInput,
 ): Promise<ToolOutput> {
-  if (input.operation !== 'list') requireOwnerConnection(context);
-  const path = layoutOf(context).system.keys.releaseKeys;
+  if (input.operation !== 'list') await requireOwnerConnection(context);
+  const path = (await layoutOf(context)).system.keys.releaseKeys;
   const problem = releaseKeysProblem({ ...input, action: 'release_keys' });
   if (problem !== null) throw new ToolError(problem);
   try {

@@ -100,6 +100,7 @@ beforeEach(async () => {
     new AssistantFiles({
       layout: hubLayout(opened.directory, {}),
       chat: store.assistantChat,
+      attachments: store.live.attachments,
       now,
     }),
   );

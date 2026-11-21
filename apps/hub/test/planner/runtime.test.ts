@@ -16,6 +16,7 @@ import { testLogger } from '../support/logs';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
 import { testStore, type TestStore } from '../support/store';
 import type { Submission } from '../../src/automations/driver/admission';
+import { inProcessCalendars } from '../support/ical';
 
 const START = '2026-11-07T08:00:00.000Z';
 const ZONE = 'UTC';
@@ -54,7 +55,7 @@ function channels(watchProfile: string | null): PlannerChannels {
         return Promise.resolve({ ok: true, detail: 'Done' });
       },
     },
-    profileOfWatch: (): string | null => watchProfile,
+    profileOfWatch: (): Promise<string | null> => Promise.resolve(watchProfile),
   };
 }
 
@@ -122,7 +123,8 @@ function addWatch(): void {
 }
 
 async function settle(): Promise<void> {
-  await new Promise((resolve) => setImmediate(resolve));
+  await runtime.settled();
+  await runtime.settled();
 }
 
 beforeEach(async () => {
@@ -170,26 +172,31 @@ beforeEach(async () => {
     submit: (): never[] => [],
     automations: { start: (): Submission => ({ kind: 'started', runId: 'run-1' }) },
     google: { reminderPull, sync },
+    calendars: inProcessCalendars,
     log: testLogger(),
   });
 });
 
 afterEach(async () => {
+  await settle();
   runtime.stop();
   await test.close();
 });
 
 describe('planner runtime', () => {
-  it('publishes the summary of every person when it starts', () => {
+  it('publishes the summary of every person when it starts', async () => {
     runtime.start(channels(null));
+    await runtime.ready();
     expect(summaries.map((summary) => summary.personId)).toContain(owner.profileId);
   });
 
   it('pulls Google before a reminder of a Google event rings', async () => {
     runtime.start(channels(null));
+    await runtime.ready();
     const meeting = event({
       google: { id: 'g1', calendarOrListId: 'c1', etag: null, base: {}, state: 'synced' },
     });
+    await settle();
     clock.advanceTo('2026-11-07T09:50:00.000Z');
     await vi.waitFor(() => {
       expect(test.store.plannerRings.forRef('reminder', meeting.id)).toHaveLength(1);
@@ -208,6 +215,7 @@ describe('planner runtime', () => {
   it('pulls Google and pushes the calendar to the watch when the preferences change', async () => {
     addWatch();
     runtime.start(channels(owner.profileId));
+    await runtime.ready();
     event({});
     await settle();
     order.length = 0;
@@ -221,8 +229,9 @@ describe('planner runtime', () => {
     );
   });
 
-  it('disarms every alarm and reminder on stop', () => {
+  it('disarms every alarm and reminder on stop', async () => {
     runtime.start(channels(null));
+    await runtime.ready();
     event({});
     test.store.plannerAlarms.insert({
       profile_id: owner.profileId,
@@ -246,6 +255,7 @@ describe('planner runtime', () => {
       watch: [],
       source: 'planner',
     });
+    await settle();
     expect(clock.pending().length).toBeGreaterThan(0);
     runtime.stop();
     expect(clock.pending()).toEqual([]);

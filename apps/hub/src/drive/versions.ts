@@ -7,18 +7,17 @@ import {
   stageFileUnsynced,
   writeDurable,
 } from './file-ops';
-import { randomUUID } from 'node:crypto';
 import { link, lstat, mkdir, readdir, rename, rm, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import { fsCode } from '../fs-code';
 import { isMissing } from '../fs-util';
-import { DRIVE_VERSION, type DriveVia, type DriveVersion } from '@smarteverything/domain';
+import type { DriveVersion } from '@smarteverything/domain';
 import type { DriveVersionEntry, DriveVersionFile } from '../store/repositories/drive-versions';
 import type { DriveIntent } from '../store/repositories/drive-intents';
-import type { FileItem } from './file-item';
 import { applyPatch, restoreUndoLog, writeUndoLog } from './patch-files';
 import { openIntent } from './intent-batch';
+import { resultOf, writeDriveOps } from './units/ops';
 import {
   commitPatch,
   hashOf,
@@ -29,11 +28,8 @@ import {
 import {
   abandonIntent,
   diskModeOf,
-  DriveWriteError,
   locate,
   moveWithin,
-  purgeDeadline,
-  shaOfVersionPath,
   TMP_DIRECTORY,
   tmpRelPath,
   VERSIONS_DIRECTORY,
@@ -44,6 +40,7 @@ import {
   type DriveFileStore,
   type FileStamp,
 } from './intents';
+import { DriveWriteError } from './write-error';
 
 export const nodeFiles: DriveFiles = {
   stamp: async (path) => {
@@ -253,42 +250,6 @@ export async function commitBytes(env: FileEnv, request: CommitRequest): Promise
   return { ...patched, sha256: staged.sha256 };
 }
 
-export interface VersionSource {
-  readonly itemId: string;
-  readonly rev: number;
-  readonly sha256: string;
-  readonly bytes: number;
-  readonly actorProfileId: string | null;
-  readonly via: DriveVia;
-  readonly deviceId: string | null;
-  readonly addedByProfileId: string | null;
-}
-
-export function newVersion(env: FileEnv, source: VersionSource): DriveVersion {
-  const at = env.now().toISOString();
-  return DRIVE_VERSION.parse({ ...source, id: randomUUID(), at, purgeAt: purgeDeadline(at) });
-}
-
-export function recordOutsideVersion(
-  env: FileEnv,
-  rootId: string,
-  found: { readonly item: FileItem; readonly versionPath: string },
-): void {
-  env.store.driveVersions.insert(
-    rootId,
-    newVersion(env, {
-      itemId: found.item.id,
-      rev: found.item.rev,
-      sha256: shaOfVersionPath(found.versionPath),
-      bytes: found.item.bytes,
-      actorProfileId: null,
-      via: 'outside',
-      deviceId: null,
-      addedByProfileId: found.item.addedByProfileId,
-    }),
-  );
-}
-
 export async function captureVersion(
   env: FileEnv,
   root: DriveWriteRoot,
@@ -296,7 +257,7 @@ export async function captureVersion(
   sha256: string,
 ): Promise<{ readonly intent: DriveIntent; readonly versionPath: string }> {
   const versionPath = versionRelPath(sha256);
-  const intent = env.store.driveIntents.open({
+  const intent = await openIntent(env.store, {
     rootId: root.id,
     op: 'version',
     fromPath: relPath,
@@ -331,7 +292,7 @@ export async function unlinkVersionFiles(
   files: readonly DriveVersionFile[],
 ): Promise<void> {
   for (const file of files) {
-    const root = env.store.driveRoots.byId(file.rootId);
+    const root = await env.store.host.call('driveRoots', 'byId', file.rootId);
     await env.files.remove(await locate(root, versionRelPath(file.sha256)));
   }
 }
@@ -343,7 +304,11 @@ export async function purgeVersions(
   if (ids.length === 0) {
     return [];
   }
-  const purged = env.store.write(() => env.store.driveVersions.purge(ids));
+  const { purged } = resultOf(
+    await writeDriveOps(env.store, [{ kind: 'purgeVersions', ids }]),
+    0,
+    'purged',
+  );
   await unlinkVersionFiles(env, purged.unlink);
   return purged.removed;
 }
@@ -356,7 +321,10 @@ export async function sweepOrphanVersionsAtStart(
   let removed = 0;
   for (const bucket of await env.files.list(base)) {
     for (const name of await env.files.list(join(base, bucket))) {
-      if (SHA256.test(name) && env.store.driveVersions.references(root.id, name) === 0) {
+      if (
+        SHA256.test(name) &&
+        (await env.store.host.call('driveVersions', 'references', root.id, name)) === 0
+      ) {
         await env.files.remove(join(base, bucket, name));
         removed += 1;
       }

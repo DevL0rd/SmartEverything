@@ -47,8 +47,8 @@ export class DriveStorageWriter {
 
   async restoreVersion(caller: DriveCaller, itemId: string, versionId: string): Promise<DriveItem> {
     const { env, store, read, guard } = this.deps;
-    const item = read.readItem(caller, itemId);
-    const entry = store.driveVersions.find(versionId);
+    const item = await read.readItem(caller, itemId);
+    const entry = await store.host.call('driveVersions', 'find', versionId);
     if (
       item.kind === 'folder' ||
       entry?.version.itemId !== itemId ||
@@ -56,7 +56,7 @@ export class DriveStorageWriter {
     ) {
       throw new ApiError('not_found', 'There is no such earlier version of this file.');
     }
-    const root = writableItemRoot(store, caller, item);
+    const root = await writableItemRoot(store, caller, item);
     await checkDriveWrite(guard, {
       profileId: caller.profileId,
       addBytes: entry.version.bytes,
@@ -82,13 +82,13 @@ export class DriveStorageWriter {
     return this.deps.shares.create(caller, input);
   }
 
-  revokeShare(caller: DriveCaller, shareId: string): DriveShare {
+  revokeShare(caller: DriveCaller, shareId: string): Promise<DriveShare> {
     return this.deps.shares.revoke(caller, shareId);
   }
 
-  setQuota(caller: DriveCaller, set: DriveQuotaSet): void {
+  async setQuota(caller: DriveCaller, set: DriveQuotaSet): Promise<void> {
     requireOwner(caller);
-    this.deps.store.driveQuotas.set(set.profileId, set.bytes);
+    await this.deps.store.host.call('driveQuotas', 'set', set.profileId, set.bytes);
   }
 
   updateSettings(caller: DriveCaller, update: DriveSettingsUpdate): DriveSettings {
@@ -96,12 +96,15 @@ export class DriveStorageWriter {
     return updateDriveSettings(this.deps.store, update);
   }
 
-  startScrub(caller: DriveCaller): DriveScrubState {
+  async startScrub(caller: DriveCaller): Promise<DriveScrubState> {
     requireOwner(caller);
     return this.deps.scrub.start();
   }
 
-  reportBackup(caller: DriveCaller, input: DriveBackupReportInput): DriveBackupReport {
+  async reportBackup(
+    caller: DriveCaller,
+    input: DriveBackupReportInput,
+  ): Promise<DriveBackupReport> {
     requireOwner(caller);
     return this.deps.backups.report(input);
   }
@@ -111,9 +114,9 @@ export class DriveStorageWriter {
     request: DriveConflictResolve,
   ): Promise<DriveConflict> {
     const { env, read } = this.deps;
-    const conflict = env.conflicts.find(request.conflictId);
+    const conflict = await env.store.host.call('driveConflicts', 'find', request.conflictId);
     if (conflict !== undefined) {
-      writableRoot(read, caller, conflict.rootId);
+      await writableRoot(read, caller, conflict.rootId);
     }
     return resolveConflict(env, request, changeActorOf(caller));
   }

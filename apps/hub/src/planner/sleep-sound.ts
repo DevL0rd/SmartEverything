@@ -6,7 +6,6 @@ import {
   type PlannerSleepSoundNotice,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { AlarmSounds } from './alarm-sound';
 import { phonesOf, type PhoneDirectory } from './bedtime/phones';
 
 export type SleepSoundDelivery = (
@@ -16,9 +15,8 @@ export type SleepSoundDelivery = (
 
 export interface SleepSoundOptions {
   readonly store: PhoneDirectory;
-  readonly sounds: Pick<AlarmSounds, 'sleepSource'>;
   readonly deliver: SleepSoundDelivery;
-  readonly preferencesOf: (profileId: string) => PlannerPreferences;
+  readonly preferencesOf: (profileId: string) => Promise<PlannerPreferences>;
   readonly log: Logger;
 }
 
@@ -33,7 +31,7 @@ export class SleepSoundControl {
   constructor(private readonly options: SleepSoundOptions) {}
 
   async play(profileId: string, request: SleepSoundRequest = {}): Promise<number> {
-    const preferences = this.options.preferencesOf(profileId);
+    const preferences = await this.options.preferencesOf(profileId);
     const sound =
       request.sound ?? preferences.sleep_sounds.sound ?? preferences.bedtime.sleep_sound;
     if (sound === null) {
@@ -44,7 +42,7 @@ export class SleepSoundControl {
       PLANNER_SLEEP_SOUND_NOTICE.parse({
         type: 'planner_sleep_sound',
         action: 'play',
-        sound: this.options.sounds.sleepSource(profileId, sound),
+        sound: await this.options.store.host.read('plannerSleepSource', { profileId, sound }),
         timerMinutes:
           request.timerMinutes === undefined
             ? preferences.sleep_sounds.timer_minutes
@@ -74,7 +72,7 @@ export class SleepSoundControl {
     notice: PlannerSleepSoundNotice,
     clientId: string | undefined,
   ): Promise<number> {
-    const phones = phonesOf(this.options.store, profileId).filter(
+    const phones = (await phonesOf(this.options.store, profileId)).filter(
       (phone) => clientId === undefined || phone.id === clientId,
     );
     if (clientId !== undefined && phones.length === 0) {

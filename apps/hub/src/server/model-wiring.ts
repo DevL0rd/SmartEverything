@@ -4,8 +4,8 @@ import { ModelCatalogService } from '../models/catalog-service';
 import { BUILTIN_PLUGINS } from '../plugins/builtin';
 import type { Store } from '../store/store';
 
-export function seedModels(store: Store): void {
-  seedBuiltinModels(
+export async function seedModels(store: Store): Promise<void> {
+  await seedBuiltinModels(
     new ModelCatalogService({ assets: store.modelAssets, catalog: store.modelCatalog }),
     builtinModelBatches(MODEL_REGISTRY, BUILTIN_PLUGINS),
   );

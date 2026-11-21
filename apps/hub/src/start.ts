@@ -49,7 +49,9 @@ import type { LogLines } from './service/log-lines';
 import { startCore, type Core } from './services';
 import { openStore, type Store } from './store/store';
 import { LogStore } from './logs/log-store';
+import { closeCodecs, openCodecs, type Codecs } from './codec/open';
 import { HUB_VERSION } from './version';
+import { storeReaders } from './store/host/script';
 
 export const DEFAULT_ORIGINS: readonly string[] = ['app://smarteverything'];
 
@@ -71,6 +73,8 @@ export interface ServerOptions {
   readonly log: Logger;
   readonly logLines: LogLines;
   readonly logWorkerScript: string;
+  readonly codecWorkerScript: string;
+  readonly storeHostScript: string;
   readonly fatal: (cause: Error) => void;
   readonly modules?: ModuleRegistry;
   readonly allowedOrigins?: readonly string[];
@@ -87,11 +91,11 @@ export interface RunningServer {
   readonly url: string;
   readonly rotateOwnerToken: () => Promise<string>;
   readonly status: () => HubStatus;
-  readonly publicStatus: () => PublicStatus;
+  readonly publicStatus: () => Promise<PublicStatus>;
   readonly stop: () => Promise<void>;
 }
 
-interface Started {
+interface Started extends Codecs {
   readonly lock: DataLock;
   readonly store: Store;
   readonly logs: LogStore;
@@ -166,6 +170,7 @@ async function stopAll(
   started.core.firewall.stop();
   started.core.cameraHealth.stop();
   await stopGo2rtcForShutdown(started.core.supervisor, go2rtcLog);
+  await closeCodecs(started);
   await started.logs.close();
   started.store.close();
   await started.lock.release();
@@ -202,6 +207,7 @@ function coreOptions(
     clock,
     fetch: options.fetch ?? fetch,
     log: options.log,
+    codecWorkerScript: options.codecWorkerScript,
     fatal: options.fatal,
   };
 }
@@ -221,8 +227,8 @@ function openHubStore(options: ServerOptions, clock: Clock): Store {
     log: options.log,
     now: clock.now,
     systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    drivePathOf: (scope, ownerProfileId) =>
-      scope === 'home' ? layout.home.drive : layout.person(String(ownerProfileId)).drive,
+    driveFolders: layout.drives,
+    host: { script: options.storeHostScript, readers: storeReaders() },
   });
 }
 
@@ -250,6 +256,8 @@ async function boot(
   undo.push(store.close);
   const logs = openHubLogs(options, store);
   undo.push(() => logs.close());
+  const codecs = openCodecs(options.codecWorkerScript, options.log);
+  undo.push(() => closeCodecs(codecs));
   const outbound = options.fetch ?? fetch;
   const smartthings = smartThingsWiring({ secrets, fetch: outbound, now: clock.now });
   const core = await startCore(coreOptions(options, clock, smartthings.module), store, secrets);
@@ -267,6 +275,7 @@ async function boot(
     connections,
     store,
     logs,
+    ...codecs,
     secrets,
     core,
     layout: options.layout,
@@ -282,7 +291,7 @@ async function boot(
     alerts,
   });
   rememberBuilt(built, undo);
-  return { lock, store, logs, core, built, extensions: built.extensions };
+  return { lock, store, logs, ...codecs, core, built, extensions: built.extensions };
 }
 
 interface ResumeWatch {
@@ -327,7 +336,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     const address = await listen(started.built.http, options.port, host);
     const url = serviceUrl({ host, port: address.port });
     const withdraw = await startLan(options, started);
-    const stopSourceWatch = source.watch(started.built.context.live);
+    const stopSourceWatch = await source.watch(started.built.context.live);
     undo.push(withdraw, stopSourceWatch);
     options.log.info('server.started', { port: address.port, version: HUB_VERSION });
     started.store.startRetention();

@@ -1,4 +1,4 @@
-import type { PersonBudget } from '@smarteverything/domain';
+import type { AiChatRow, PersonBudget } from '@smarteverything/domain';
 import type { HubLayout } from '../data-layout';
 import type { ToolHub } from '../ai-tools/tool-hub';
 import { HarnessAgentHost } from '../automations/effects/harness-agent-host';
@@ -36,6 +36,10 @@ export function attachAutomationIntegration(
     model: new OneShotModel({
       agents: new HarnessAgentHost({
         assistant,
+        chats: {
+          create: (input): Promise<AiChatRow> => store.host.call('aiChats', 'create', input),
+        },
+        ledger: store.ledger,
         store,
         interactions: (listener): (() => void) =>
           harness.onEvent((event) => {

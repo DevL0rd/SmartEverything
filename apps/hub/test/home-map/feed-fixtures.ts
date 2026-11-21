@@ -8,7 +8,7 @@ import {
   type JsonValue,
   type VacuumScene,
 } from '@smarteverything/domain';
-import { HomeMapService } from '../../src/home-map/service';
+import type { HomeMapService } from '../../src/home-map/service';
 import { XiaomiVacuumSource } from '../../src/home-map/sources/xiaomi-vacuum';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
@@ -20,6 +20,7 @@ import { vacuumPropertyKey } from '../../src/vacuum/capabilities';
 import { testLogger } from '../support/logs';
 import { NOW } from './import-fixtures';
 import { rectRing, syntheticScene } from './scene-fixtures';
+import { directService } from './store-fixtures';
 
 export const CLEANING = 4;
 export const CHARGING = 2;
@@ -32,17 +33,12 @@ export interface MapHarness {
   readonly service: HomeMapService;
 }
 
-export function mapHarness(): MapHarness {
+export async function mapHarness(): Promise<MapHarness> {
   const sql = new Sql(new DatabaseSync(':memory:', { enableForeignKeyConstraints: true }));
   migrate(sql, MIGRATIONS, NOW, testLogger());
   const context = new StoreContext(sql, new ChangeFeed(testLogger('store')), () => new Date(NOW));
   const repo = new HomeMapsRepository(context, () => undefined);
-  const service = new HomeMapService({
-    maps: repo,
-    knownModel: (): boolean => true,
-    log: testLogger('home-map'),
-  });
-  return { repo, context, service };
+  return { repo, context, service: await directService(repo, context) };
 }
 
 export const floorOp = (id: string, name: string): HomeMapOp => ({

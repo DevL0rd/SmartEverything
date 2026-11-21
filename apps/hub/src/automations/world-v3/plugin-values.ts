@@ -1,5 +1,5 @@
 import { jsonEquals, type JsonValue, type PluginValue } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
+import type { WorldSource } from './world-mirror';
 import { ReadFailure, type ReadInputs, type ReadResult, type ReadScope } from './read-port';
 
 export interface PluginValueBinding {
@@ -87,9 +87,12 @@ function outputsFrom(binding: PluginValueBinding, source: JsonValue): ReadResult
   return { outputs };
 }
 
-function latestReading(store: Pick<Store, 'pluginData'>, binding: PluginValueBinding): JsonValue {
-  const row = store.pluginData
-    .streams()
+function latestReading(
+  world: Pick<WorldSource, 'pluginStreams'>,
+  binding: PluginValueBinding,
+): JsonValue {
+  const row = world.pluginStreams
+    .list()
     .find((entry) => entry.plugin_id === binding.pluginId && entry.stream === binding.stream);
   if (row === undefined) {
     throw new ReadFailure(
@@ -101,12 +104,12 @@ function latestReading(store: Pick<Store, 'pluginData'>, binding: PluginValueBin
 }
 
 export function pluginValueHandler(
-  store: Pick<Store, 'pluginData'>,
+  world: Pick<WorldSource, 'pluginStreams'>,
   binding: PluginValueBinding | undefined,
 ): PluginValueHandler | undefined {
   if (binding === undefined) return undefined;
   return (inputs): ReadResult => {
-    const reading = latestReading(store, binding);
+    const reading = latestReading(world, binding);
     const source =
       binding.select === null ? reading : itemOf(binding, binding.select, reading, inputs);
     return outputsFrom(binding, source);

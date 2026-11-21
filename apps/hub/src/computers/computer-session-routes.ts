@@ -30,7 +30,7 @@ const INSTALLED = z.array(INSTALLED_APP);
 const WEEK_DAYS = 7;
 
 export interface ComputerSessionRouteOptions {
-  readonly store: Pick<Store, 'appSessions' | 'settings'>;
+  readonly store: Pick<Store, 'host'>;
   readonly service: ComputerService;
   readonly directory: ComputerDirectory;
   readonly now: () => Date;
@@ -56,12 +56,17 @@ async function appsOf(
     { caller, deviceId, request: { verb: 'apps' } },
     INSTALLED,
   );
-  const { today, week } = periodStarts(options.now(), options.store.settings.read().time_zone);
+  const settings = await options.store.host.read('hubSettings', null);
+  const { today, week } = periodStarts(options.now(), settings.time_zone);
+  const [todayUsage, weekUsage] = await Promise.all([
+    options.store.host.call('appSessions', 'usage', deviceId, today),
+    options.store.host.call('appSessions', 'usage', deviceId, week),
+  ]);
   return {
     installed,
     focused: options.directory.online(deviceId)?.view()?.parts.session?.focused ?? null,
-    today: options.store.appSessions.usage(deviceId, today),
-    week: options.store.appSessions.usage(deviceId, week),
+    today: todayUsage,
+    week: weekUsage,
   };
 }
 

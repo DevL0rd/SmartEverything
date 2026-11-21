@@ -4,9 +4,9 @@ import { DONE_REPLY, bound } from '../router';
 
 export const providerRoutes = ({ hub: { providers }, log, store }: ServerContext) =>
   ({
-    linkProvider: bound(E.linkProvider, ({ body }) => {
+    linkProvider: bound(E.linkProvider, async ({ body }) => {
       if (body.provider === 'samsung_tv' && body.attachTo !== undefined) {
-        const target = store.devices.find(body.attachTo);
+        const target = await store.host.call('devices', 'find', body.attachTo);
         if (target?.provider !== 'smartthings' || target.kind !== 'television') {
           throw new ApiError(
             'invalid_request',

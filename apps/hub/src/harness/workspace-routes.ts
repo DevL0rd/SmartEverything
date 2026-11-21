@@ -265,6 +265,6 @@ export async function readWorkspace(
 export const workspaceRoutes = (service: HarnessService, projector: DeliverableProjector) =>
   ({
     readAiChatWorkspace: bound(API_ENDPOINTS.readAiChatWorkspace, ({ params, caller }) =>
-      readWorkspace(service, projector, chatOwnerOf(service.store, caller), params.chatId),
+      readWorkspace(service, projector, chatOwnerOf(caller), params.chatId),
     ),
   }) as const;

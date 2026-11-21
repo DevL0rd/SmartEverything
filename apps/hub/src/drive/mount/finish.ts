@@ -12,19 +12,18 @@ import { PosixError, posix } from '../posix/errors';
 import { actorOf } from '../posix/records';
 import { checkDriveWrite, type DriveWriteGuard } from '../quotas';
 import { stageBytes } from '../versions';
+import { writeDriveOps } from '../units/ops';
 import type { ByteRange } from '../patch-files';
 import { applyContent, changedElsewhere, clampRanges } from './apply';
 import type { CommitEnv, MountCommits } from './commits';
 import type { MountDedupe } from './dedupe';
 import type { GroupFsync } from './fsync';
-import type { SettleGroup } from './settle-group';
 import type { MountSession } from './session';
 import { coveredBytes, coversRanges } from '../../store/repositories/drive-mount-commits';
 
 export interface FinishEnv extends CommitEnv {
   readonly guard: DriveWriteGuard;
   readonly fsync: GroupFsync;
-  readonly settle: SettleGroup;
   readonly dedupe: MountDedupe;
   readonly log: Logger;
 }
@@ -45,7 +44,7 @@ interface Content {
   readonly writtenNs: bigint;
   readonly atimeNs: bigint | undefined;
   readonly digest: () => Promise<string>;
-  readonly settle: (rev: number) => void;
+  readonly commit: { readonly id: number; readonly size: number } | null;
 }
 
 export class MountFinish {
@@ -55,20 +54,21 @@ export class MountFinish {
     private readonly env: FinishEnv,
     private readonly commits: MountCommits,
   ) {
-    this.change = { ...env.change, settle: env.settle.run };
+    this.change = env.change;
   }
 
   private async landing(scope: PosixScope, ino: number): Promise<Landing> {
     const target = await this.env.posix.openTarget(scope, ino, true);
-    const item = this.change.store.driveItems.byPath(scope.drive.id, target.relPath, null);
-    return { scope, root: this.change.store.driveRoots.byId(scope.drive.id), target, item };
+    const { host } = this.change.store;
+    const item = await host.call('driveItems', 'byPath', scope.drive.id, target.relPath, null);
+    return { scope, root: await host.call('driveRoots', 'byId', scope.drive.id), target, item };
   }
 
   private async checked(session: MountSession, landing: Landing, content: Content): Promise<void> {
     const { item, target, scope, root } = landing;
     if (
       item !== undefined &&
-      changedElsewhere(this.change, item, session.nodeId, content.baseRev)
+      (await changedElsewhere(this.change, item, session.nodeId, content.baseRev))
     ) {
       throw new PosixError('ESTALE', 'The file changed on the Hub.', item.rev);
     }
@@ -92,9 +92,10 @@ export class MountFinish {
       size: content.size,
       digest: content.digest,
       actor: actorOf(scope.caller),
-      settled: (stored) => {
-        content.settle(stored.rev);
-      },
+      alongside:
+        content.commit === null
+          ? []
+          : [{ kind: 'mountCommit', commitId: content.commit.id, size: content.commit.size }],
     });
     return written.rev;
   }
@@ -135,7 +136,11 @@ export class MountFinish {
       });
       await this.change.files.remove(staged);
     }
-    content.settle(0);
+    if (content.commit !== null) {
+      await writeDriveOps(this.change.store, [
+        { kind: 'mountFinish', commitId: content.commit.id, size: content.commit.size, rev: 0 },
+      ]);
+    }
     return 0;
   }
 
@@ -168,7 +173,7 @@ export class MountFinish {
     const staged = await this.env.staging.size(scope.drive.id, row.id);
     if (staged === null || staged >= reach) return staged;
     this.env.log.warn('drive_mount.commit_short', { commit: row.id, staged, reach });
-    this.commits.cutReceived(row, staged);
+    await this.commits.cutReceived(row, staged);
     throw posix('EAGAIN', 'Some received ranges of this commit are missing from its staged file.');
   }
 
@@ -178,7 +183,8 @@ export class MountFinish {
     row: DriveMountCommitHead,
     request: RequestMeta<'END'>,
   ): Promise<ReplyMeta<'END'>> {
-    const current = this.change.store.driveMountCommits.byId(row.id);
+    const current = await this.change.store.host.call('driveMountCommits', 'byId', row.id);
+    if (current.state !== 'open') this.commits.remember(current);
     if (current.state === 'aborted') throw posix('ESTALE', 'That commit was aborted.');
     if (current.state === 'done') return this.reply(scope, row.inodeId, current.resultRev);
     const ranges = this.commits.rangesOf(current);
@@ -192,7 +198,10 @@ export class MountFinish {
     );
     if (staged === null) {
       const attr = await this.env.posix.getattr(scope, row.inodeId);
-      this.change.store.driveMountCommits.finish(row.id, request.size, attr.rev);
+      await writeDriveOps(this.change.store, [
+        { kind: 'mountFinish', commitId: row.id, size: request.size, rev: attr.rev },
+      ]);
+      this.commits.settled(row.id, request.size, attr.rev);
       return { attr, rev: attr.rev };
     }
     const rev = await this.land(
@@ -207,12 +216,10 @@ export class MountFinish {
         writtenNs: request.mtimeNs,
         atimeNs: request.atimeNs,
         digest: () => this.env.staging.digest(scope.drive.id, row.id, request.size),
-        settle: (written) => {
-          this.change.store.driveMountCommits.finish(row.id, request.size, written);
-        },
+        commit: { id: row.id, size: request.size },
       },
     );
-    this.commits.settled(row.id);
+    this.commits.settled(row.id, request.size, rev);
     await this.env.staging.release(row.id);
     return this.reply(scope, row.inodeId, rev);
   }
@@ -222,7 +229,7 @@ export class MountFinish {
     request: RequestMeta<'PUT'>,
     payload: Uint8Array,
   ): Promise<ReplyMeta<'PUT'>> {
-    const scope = session.scopeOf(this.change.store, request.ino);
+    const scope = await session.scopeOf(this.change.store, request.ino);
     return this.env.dedupe.once(
       scope.placementId,
       { name: 'PUT', key: request.opKey },
@@ -240,7 +247,7 @@ export class MountFinish {
     request: RequestMeta<'PUT'>,
     payload: Uint8Array,
   ): Promise<ReplyMeta<'PUT'>> {
-    const root = this.change.store.driveRoots.byId(scope.drive.id);
+    const root = await this.change.store.host.call('driveRoots', 'byId', scope.drive.id);
     const staged = await stageBytes(this.change, root, Readable.from([Buffer.from(payload)]));
     try {
       const rev = await this.land(
@@ -255,7 +262,7 @@ export class MountFinish {
           writtenNs: request.mtimeNs,
           atimeNs: request.atimeNs,
           digest: () => Promise.resolve(staged.sha256),
-          settle: (): void => undefined,
+          commit: null,
         },
       );
       return await this.reply(scope, request.ino, rev);

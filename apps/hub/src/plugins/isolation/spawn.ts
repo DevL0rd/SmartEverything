@@ -1,6 +1,7 @@
 import { fork } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { access } from 'node:fs/promises';
 import { env, execPath, versions } from 'node:process';
+import { fsCode } from '../../fs-code';
 import { followOutput, recordProcessOutput, type OutputOrigin } from '../../service/process-output';
 import { FRAME, ChildUnavailableError, type Frame } from './frames';
 
@@ -13,7 +14,7 @@ export interface ChildHandle {
   readonly onExit: (listener: (code: number | null, signal: string | null) => void) => void;
 }
 
-export type ChildSpawner = () => ChildHandle;
+export type ChildSpawner = () => Promise<ChildHandle>;
 
 export interface ForkOptions {
   readonly kind: string;
@@ -24,10 +25,11 @@ export interface ForkOptions {
 
 export function forkChild(options: ForkOptions): ChildSpawner {
   const { kind, entry, execArgv = [] } = options;
-  return (): ChildHandle => {
-    if (!existsSync(entry)) {
+  return async (): Promise<ChildHandle> => {
+    await access(entry).catch((cause: unknown) => {
+      if (fsCode(cause) !== 'ENOENT') throw cause;
       throw new ChildUnavailableError(kind, `its program is missing (${entry})`);
-    }
+    });
     const child = fork(entry, [], {
       execPath,
       execArgv: [...execArgv],

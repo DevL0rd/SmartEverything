@@ -16,6 +16,7 @@ import { LiveHub } from '../src/server/live';
 import { personalDriveRoot, sharedDriveRoot } from './store/drive-roots-fixture';
 import { driveTestStore } from './drive/spaces-fixture';
 import { testLogger } from './support/logs';
+import { refusingUpgrades } from './support/socket-client';
 import type { TestStore } from './support/store';
 import { pause, until } from './support/wait';
 
@@ -100,9 +101,10 @@ beforeEach(async () => {
     log: testLogger('live'),
   });
   http = createServer();
-  http.on('upgrade', (request, socket, head) => {
-    hub.upgrade(request, socket, head);
-  });
+  http.on(
+    'upgrade',
+    refusingUpgrades((request, socket, head) => hub.upgrade(request, socket, head)),
+  );
   await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve));
   const address = http.address();
   port = typeof address === 'object' && address !== null ? address.port : 0;

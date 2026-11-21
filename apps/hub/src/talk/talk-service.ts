@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { LiveChange, TalkPresence } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { Go2rtcClient } from '../cameras/go2rtc-client';
 import { systemClock } from '../clock';
 import type { Store } from '../store/store';
@@ -9,7 +9,7 @@ import { CameraMicrophones } from './camera-microphone';
 import { CameraVideo } from './camera-video';
 import { CameraSpeakers } from './camera-speaker';
 import { TalkFeeds } from './feeds';
-import { memberLabel, relabelledMembers } from './labels';
+import { mayRelabel } from './labels';
 import { TalkMembership } from './membership';
 import { TalkRecorder } from './recorder';
 import type { LiveConversation } from './live-sessions';
@@ -89,6 +89,7 @@ export class TalkService {
   }
 
   async start(): Promise<void> {
+    await this.membership.reload();
     await this.feeds.start();
     await this.recorder.clearUnfinished();
     this.unsubscribe = this.options.store.feed.subscribe((change) => {
@@ -109,12 +110,11 @@ export class TalkService {
   }
 
   accessChanged(): void {
-    this.membership.reload();
-    this.relay.membershipChanged();
+    this.reloadMembership();
   }
 
-  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
-    this.sockets.upgrade(request, socket, head);
+  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+    return this.sockets.upgrade(request, socket, head);
   }
 
   stop(): void {
@@ -124,24 +124,30 @@ export class TalkService {
     this.feeds.stop();
   }
 
-  private relabel(change: LiveChange): void {
-    const { store } = this.options;
-    relabelledMembers(store, change).forEach(([kind, id]) => {
-      store.talk.relabel(kind, id, memberLabel(store, kind, id));
-    });
+  private reloadMembership(): void {
+    background(
+      this.membership.reload().then(() => {
+        this.relay.membershipChanged();
+      }),
+      'talk.membership_reload_failed',
+    );
   }
 
   private changed(change: LiveChange): void {
+    const { host } = this.options.store;
     if (change.operation === 'DELETE' && change.table === 'clients' && change.oldRecord !== null) {
-      this.options.store.talk.forgetMember('client', change.oldRecord.id);
+      background(
+        host.call('talk', 'forgetMember', 'client', change.oldRecord.id),
+        'talk.forget_failed',
+      );
     }
     if (change.operation === 'DELETE' && change.table === 'devices' && change.oldRecord !== null) {
-      this.options.store.talk.forgetMember('camera', change.oldRecord.id);
+      background(
+        host.call('talk', 'forgetMember', 'camera', change.oldRecord.id),
+        'talk.forget_failed',
+      );
     }
-    this.relabel(change);
-    if (this.membership.affects(change)) {
-      this.membership.reload();
-      this.relay.membershipChanged();
-    }
+    if (mayRelabel(change)) background(host.write('talkRelabel', change), 'talk.relabel_failed');
+    if (this.membership.affects(change)) this.reloadMembership();
   }
 }

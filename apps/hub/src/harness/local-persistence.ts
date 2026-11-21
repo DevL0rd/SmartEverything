@@ -42,15 +42,13 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
       throw new ApiError('conflict', 'This hub conversation has no active writer.');
     return claim;
   }
-  create(header: SessionHeader, inherited: number): Promise<NativeSessionWriter> {
+  async create(header: SessionHeader, inherited: number): Promise<NativeSessionWriter> {
     try {
-      return Promise.resolve(this.createChild(header, inherited));
+      return await this.createChild(header, inherited);
     } catch (cause) {
-      return Promise.reject(
-        cause instanceof Error
-          ? cause
-          : new ApiError('conflict', 'Native child creation failed with an invalid error result.'),
-      );
+      throw cause instanceof Error
+        ? cause
+        : new ApiError('conflict', 'Native child creation failed with an invalid error result.');
     }
   }
   async acquire(id: SessionId): Promise<NativeSessionWriter> {
@@ -70,23 +68,23 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
     const grant = this.service.storage.grant(this.reader(id));
     return Promise.resolve(this.service.store.dshSessions.readAll(id, grant.profile_id, range));
   }
-  append(
+  async append(
     claim: DshWriterClaim,
     operationId: string,
     events: readonly SessionEvent[],
   ): Promise<void> {
-    this.service.store.dshSessions.append(
+    await this.service.store.live.dshSessions.append(
       { claim, operation_id: operationId, events },
       this.principal(claim.session_id),
     );
-    return Promise.resolve();
   }
-  flush(claim: DshWriterClaim, expectedNextSeq: number): Promise<void> {
-    this.service.store.dshSessions.flush(
+  async flush(claim: DshWriterClaim, expectedNextSeq: number): Promise<void> {
+    await this.service.store.host.call(
+      'dshSessions',
+      'flush',
       { claim, expected_next_seq: expectedNextSeq },
       this.principal(claim.session_id),
     );
-    return Promise.resolve();
   }
   metadata(id: string): Promise<DshSessionMetadata> {
     const grant = this.service.storage.grant(id);
@@ -135,13 +133,16 @@ export class LocalHarnessPersistence implements HarnessControlPersistence {
       this.listeners.delete(listener);
     };
   }
-  private createChild(header: SessionHeader, inherited: number): NativeSessionWriter {
+  private async createChild(
+    header: SessionHeader,
+    inherited: number,
+  ): Promise<NativeSessionWriter> {
     const native = DSH_SESSION_HEADER.parse(header);
     const parent = native.origin === 'subagent' ? native.parentSession : undefined;
     if (parent === undefined)
       throw new ApiError('forbidden', 'Hub sessions require their initiating conversation grant.');
     const parentClaim = this.claim(parent);
-    const opened = this.service.storage.adoptChild(
+    const opened = await this.service.storage.adoptChild(
       native,
       inherited,
       this.principal(parent),

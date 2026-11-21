@@ -2,16 +2,19 @@ import type { DeviceRow, JsonValue } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { phoneExternalId } from '../phones/phone-device';
 import type { NewCommand } from '../store/repositories/commands';
-import type { DevicesRepository } from '../store/repositories/devices';
-import type { StateRepository } from '../store/repositories/state';
+import type { HomeMirror } from '../store/home-mirror';
 
 const PLAYING = ['playing', 'play'] as const;
 const PAUSED = ['paused', 'pause'] as const;
 const STOPPED = 'stopped';
 
 interface RoomMediaStore {
-  readonly devices: Pick<DevicesRepository, 'list' | 'find' | 'byExternal'>;
-  readonly state: Pick<StateRepository, 'ofDevice'>;
+  readonly live: {
+    readonly home: {
+      readonly devices: Pick<HomeMirror['devices'], 'list' | 'find' | 'byExternal'>;
+      readonly state: Pick<HomeMirror['state'], 'value'>;
+    };
+  };
 }
 
 export interface RoomMediaOptions {
@@ -96,7 +99,7 @@ export class RoomMedia implements SpeakingMedia {
     if (roomId === null) {
       return;
     }
-    const commands = this.options.store.devices
+    const commands = this.options.store.live.home.devices
       .list()
       .filter((device) => device.room_id === roomId && device.online)
       .flatMap((device) => this.pausing(device, call.id));
@@ -130,7 +133,7 @@ export class RoomMedia implements SpeakingMedia {
         continue;
       }
       this.holders.delete(deviceId);
-      const device = this.options.store.devices.find(deviceId);
+      const device = this.options.store.live.home.devices.find(deviceId);
       const play = device === undefined ? null : optionOf(device, PLAYING);
       if (play !== null && this.stateOf(deviceId) !== STOPPED) {
         commands.push(command(deviceId, play));
@@ -162,7 +165,7 @@ export class RoomMedia implements SpeakingMedia {
   }
 
   private anchorOf(call: SpeakingCall): DeviceRow | undefined {
-    const { devices } = this.options.store;
+    const { devices } = this.options.store.live.home;
     if (call.deviceId !== null) {
       return devices.find(call.deviceId);
     }
@@ -175,7 +178,6 @@ export class RoomMedia implements SpeakingMedia {
   }
 
   private stateOf(deviceId: string): JsonValue | undefined {
-    return this.options.store.state.ofDevice(deviceId).find((row) => row.capability === 'playback')
-      ?.value;
+    return this.options.store.live.home.state.value(deviceId, 'playback');
   }
 }

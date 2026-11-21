@@ -22,6 +22,7 @@ import type { EngineV3 } from './automations/engine-v3';
 import type { PluginKindCatalog } from './automations/plugin-kinds/catalog';
 import type { AutomationSecrets } from './automations/secrets-v3';
 import type { Rehearsals } from './server/handlers/automation-runs';
+import type { WorldMirror } from './automations/world-v3/world-mirror';
 import type { SignalBus } from './signals/bus';
 import { feedSignals } from './signals/sources/feed';
 import { feedContextOf } from './signals/sources/feed-context';
@@ -40,6 +41,7 @@ export type { HubParts };
 
 export interface RunningHub {
   readonly providersStarted: Promise<void>;
+  readonly resumed: Promise<void>;
   readonly submit: (commands: readonly NewCommand[]) => CommandRow[];
   readonly recordEvent: (event: Omit<EventInsert, 'occurredAt'>) => Promise<string>;
   readonly endDeviceEffect: (id: string) => Promise<void>;
@@ -73,6 +75,7 @@ export interface RunningHub {
   readonly automationEngine: EngineV3;
   readonly automationSecrets: AutomationSecrets;
   readonly automationRehearsals: Rehearsals;
+  readonly automationWorld: WorldMirror;
   readonly stop: () => Promise<void>;
 }
 
@@ -108,12 +111,13 @@ function engineConcerned(change: Extract<RowChange, { table: 'automations' }>): 
 function reloadAutomations(core: Core, change: RowChange): void {
   if (change.table === 'automations') {
     const id = (change.record ?? change.oldRecord)?.id;
-    if (id !== undefined && engineConcerned(change)) core.engine.reload(id);
+    if (id !== undefined && engineConcerned(change))
+      background(core.engine.reload(id), 'automation.reload_failed', { automationId: id });
   } else if (
     (change.table === 'settings' && placeChanged(change)) ||
     (change.table === 'plugins' && pluginSignalsChanged(change))
   ) {
-    core.engine.sync();
+    background(core.engine.sync(), 'automation.reload_failed');
   }
 }
 
@@ -188,7 +192,17 @@ function startLocal(parts: HubParts, core: Core): LocalParts {
     now: parts.clock.now,
     log: areaOf(parts, 'watch'),
   });
-  return { local, watches, readings, phones: phoneNodesOf(parts, core) };
+  const phones = phoneNodesOf(parts, core);
+  phones.onReport(({ target }) => {
+    background(
+      core.automationWorld.phoneReported(target.deviceId),
+      'automation.world_phone_failed',
+      {
+        deviceId: target.deviceId,
+      },
+    );
+  });
+  return { local, watches, readings, phones };
 }
 
 async function flushWrites(core: Core, closing: boolean): Promise<void> {
@@ -220,6 +234,7 @@ function sharedParts(
   | 'automationEngine'
   | 'automationSecrets'
   | 'automationRehearsals'
+  | 'automationWorld'
   | 'recordEvent'
   | 'setDeviceOnline'
 > {
@@ -236,20 +251,21 @@ function sharedParts(
     automationEngine: core.engine,
     automationSecrets: core.automationSecrets,
     automationRehearsals: core.automationRehearsals,
+    automationWorld: core.automationWorld,
     recordEvent: (event) =>
       core.events.append({ ...event, occurredAt: parts.clock.now().toISOString() }),
     setDeviceOnline: (deviceId, online) => core.inventory.setOnlineById(deviceId, online),
   };
 }
 
-async function resumeAfterProviders(
+async function resume(
   parts: HubParts,
   core: Core,
   local: LocalDevices,
   readings: ScaleReadings,
 ): Promise<void> {
   await local.start();
-  readings.recomputeOutdated();
+  await readings.recomputeOutdated();
   await core.effects.recover();
   await caughtUp(parts, core);
 }
@@ -257,15 +273,16 @@ async function resumeAfterProviders(
 async function caughtUp(parts: HubParts, core: Core): Promise<void> {
   const count = await core.executor.catchUp();
   areaOf(parts, 'commands').info('commands.caught_up', { count });
-  announceStart(parts, core);
+  await announceStart(parts, core);
   core.automationTimers.start();
 }
 
 const STOPPED_MARK = 'stopped';
 
-function downForOf(parts: HubParts, now: Date): Readonly<Record<string, JsonValue>> {
-  const stopped = parts.store.hubMarks.read(STOPPED_MARK);
-  parts.store.hubMarks.clear(STOPPED_MARK);
+async function downForOf(parts: HubParts, now: Date): Promise<Readonly<Record<string, JsonValue>>> {
+  const { host } = parts.store;
+  const stopped = await host.call('hubMarks', 'read', STOPPED_MARK);
+  await host.call('hubMarks', 'clear', STOPPED_MARK);
   return stopped === null ? {} : { downFor: Math.max(0, now.getTime() - Date.parse(stopped)) };
 }
 
@@ -275,8 +292,9 @@ function quiet(parts: HubParts, core: Core, unsubscribe: () => void): void {
   parts.store.hubMarks.write(STOPPED_MARK, parts.clock.now().toISOString());
 }
 
-function announceStart(parts: HubParts, core: Core): void {
+async function announceStart(parts: HubParts, core: Core): Promise<void> {
   const now = parts.clock.now();
+  const data = await downForOf(parts, now);
   core.signals.emit({
     source: 'hub',
     kind: 'started',
@@ -286,7 +304,7 @@ function announceStart(parts: HubParts, core: Core): void {
     previous: null,
     at: now.toISOString(),
     profileId: null,
-    data: downForOf(parts, now),
+    data,
   });
 }
 
@@ -297,17 +315,21 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
   core.vacuums.start(core.inventory.all());
   background(core.cameras.sync(core.inventory.all()), 'stream.sync_failed');
   parts.devicesChanged(core.inventory.all());
-  core.engine.sync();
-  core.engine.boot();
+  await core.engine.sync();
+  await core.engine.boot();
   const unsubscribe = parts.store.feed.subscribe(reacting(parts, core));
   const { local, watches, readings, phones } = startLocal(parts, core);
   const drivers = startDrivers(parts, core);
-  const providersStarted = core.providers
-    .startLinked()
-    .then(() => resumeAfterProviders(parts, core, local, readings));
-  background(providersStarted, 'hub.resume_failed');
+  core.providers.onStarted((provider) => {
+    if (provider === 'xiaomi') background(local.restorePassive(), 'local.passive_restore_failed');
+  });
+  const providersStarted = core.providers.startLinked();
+  background(providersStarted, 'hub.providers_start_failed');
+  const resumed = resume(parts, core, local, readings);
+  background(resumed, 'hub.resume_failed');
   return {
     providersStarted,
+    resumed,
     endDeviceEffect: (id) => core.effects.end(id, () => undefined),
     submit: (commands): CommandRow[] => {
       const rows = parts.store.commands.insert(commands);
@@ -330,7 +352,7 @@ export async function startHub(parts: HubParts): Promise<RunningHub> {
     vacuums: core.vacuums.routes(),
     phones,
     ...sharedParts(parts, core),
-    stop: () => stopHub(parts, core, unsubscribe, { drivers, providersStarted }),
+    stop: () => stopHub(parts, core, unsubscribe, { drivers, providersStarted, resumed }),
   };
 }
 
@@ -338,9 +360,13 @@ async function stopHub(
   parts: HubParts,
   core: Core,
   unsubscribe: () => void,
-  running: { readonly drivers: RunningDrivers; readonly providersStarted: Promise<void> },
+  running: {
+    readonly drivers: RunningDrivers;
+    readonly providersStarted: Promise<void>;
+    readonly resumed: Promise<void>;
+  },
 ): Promise<void> {
-  await Promise.allSettled([running.providersStarted]);
+  await Promise.allSettled([running.providersStarted, running.resumed]);
   quiet(parts, core, unsubscribe);
   core.engine.shutdown();
   await core.engine.driver.settled();

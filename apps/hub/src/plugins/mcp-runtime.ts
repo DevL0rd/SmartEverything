@@ -93,14 +93,14 @@ export class McpRuntime implements PluginRuntime {
 
   constructor(
     private readonly manifest: PluginManifest,
-    private readonly connect: () => Connection,
+    private readonly connect: () => Promise<Connection>,
     private readonly sinks: RuntimeSinks,
     private readonly authorised: AuthorisedCall,
   ) {}
 
   async start(): Promise<void> {
     this.stopping = false;
-    const connection = this.connect();
+    const connection = await this.connect();
     const client = new Client(CLIENT_INFO, { capabilities: {} });
     this.listen(client);
     followOutput(connection.stderr, this.sinks.log);

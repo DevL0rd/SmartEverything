@@ -5,14 +5,14 @@ import { StoreConflictError } from '../store/sql';
 import type { Store } from '../store/store';
 import { DriveAlbumAccessError, DriveAlbumItemError } from './albums';
 import type { ChangeActor } from './changes';
-import { ConflictError } from './conflicts';
-import { DriveWriteError } from './intents';
+import { ConflictError } from './conflict-error';
+import { DriveWriteError } from './write-error';
 import { DrivePathError } from './paths';
 import { DataSpaceError } from './data-space';
 import { DriveFreeSpaceError, DriveQuotaExceededError } from './quotas';
 import { RootMarkerError } from './root-marker';
 import type { StoredDrive } from '../store/repositories/drive-roots';
-import { canWrite, driveAccess, itemAccess, type DriveActor } from './access';
+import { canWrite, driveAccess, type DriveActor } from './access';
 import type { DriveReadService } from './service-read';
 
 export interface DriveCaller extends DriveActor {
@@ -38,6 +38,7 @@ export type WriteStore = Pick<
   | 'settingsKv'
   | 'write'
   | 'now'
+  | 'host'
 >;
 
 export function changeActorOf(caller: DriveCaller): ChangeActor {
@@ -50,12 +51,12 @@ export function requireOwner(caller: DriveCaller): void {
   }
 }
 
-export function writableRoot(
+export async function writableRoot(
   read: DriveReadService,
   caller: DriveCaller,
   rootId: string,
-): StoredDrive {
-  const drive = read.rootFor(caller, rootId);
+): Promise<StoredDrive> {
+  const drive = await read.rootFor(caller, rootId);
   if (!canWrite(driveAccess(caller, drive))) {
     throw new ApiError('forbidden', 'You cannot change files in this drive.');
   }
@@ -63,19 +64,11 @@ export function writableRoot(
 }
 
 export function writableItemRoot(
-  store: Pick<Store, 'driveRoots' | 'driveItems' | 'driveGrants'>,
-  caller: DriveCaller,
+  store: Pick<Store, 'host'>,
+  caller: DriveActor,
   item: DriveItem,
-): StoredDrive {
-  const drive = store.driveRoots.byId(item.rootId);
-  const access = itemAccess(store, caller, drive, item);
-  if (access === 'none') {
-    throw new ApiError('not_found', 'There is no such file or folder.');
-  }
-  if (!canWrite(access)) {
-    throw new ApiError('forbidden', 'You can only view this; you cannot change it.');
-  }
-  return drive;
+): Promise<StoredDrive> {
+  return store.host.read('driveWritableItemRoot', { actor: caller, item });
 }
 
 const REFUSALS = [

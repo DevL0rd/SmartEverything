@@ -27,10 +27,11 @@ afterEach(async () => {
   await world.close();
 });
 
-function nextTick(): Promise<void> {
-  return new Promise((resolve) => {
+async function nextTick(): Promise<void> {
+  await new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
+  await Promise.all(opened.map((session) => session.settled()));
 }
 
 function stateFrame(
@@ -92,11 +93,12 @@ function put(
 }
 
 describe('sending placements to a computer', () => {
-  it('sends the active placements of the device when its session opens', () => {
+  it('sends the active placements of the device when its session opens', async () => {
     const mine = put(world.robinDesk, 'robin');
     put(world.idaDesk, 'ida', { mountName: 'Games' });
     const { session, sent } = link();
     session.open(world.robinDesk);
+    await session.settled();
     expect(frames(sent)).toEqual([[mine.id]]);
   });
 
@@ -104,7 +106,9 @@ describe('sending placements to a computer', () => {
     const robinLink = link();
     const idaLink = link();
     robinLink.session.open(world.robinDesk);
+    await robinLink.session.settled();
     idaLink.session.open(world.idaDesk);
+    await idaLink.session.settled();
     const placed = put(world.robinDesk, 'robin');
     await nextTick();
     expect(frames(robinLink.sent)).toEqual([[], [placed.id]]);
@@ -117,7 +121,8 @@ describe('sending placements to a computer', () => {
     await nextTick();
     const { session, sent } = link();
     session.open(world.robinDesk);
-    world.placements.setHold(held.id, 'trashed');
+    await session.settled();
+    await world.placements.setHold(held.id, 'trashed');
     await nextTick();
     expect(off.enabled).toBe(false);
     expect(frames(sent)).toEqual([[held.id], []]);
@@ -126,6 +131,7 @@ describe('sending placements to a computer', () => {
   it('stops sending after the session closes', async () => {
     const { session, sent } = link();
     session.open(world.robinDesk);
+    await session.settled();
     session.close();
     put(world.robinDesk, 'robin');
     await nextTick();
@@ -135,7 +141,9 @@ describe('sending placements to a computer', () => {
   it('sends again on a repeated open without subscribing twice', async () => {
     const { session, sent } = link();
     session.open(world.robinDesk);
+    await session.settled();
     session.open(world.robinDesk);
+    await session.settled();
     put(world.robinDesk, 'robin');
     await nextTick();
     expect(sent).toHaveLength(3);
@@ -143,11 +151,13 @@ describe('sending placements to a computer', () => {
 });
 
 describe('placement state from a computer', () => {
-  it('stores the reported status of its own placement', () => {
+  it('stores the reported status of its own placement', async () => {
     const placed = put(world.robinDesk, 'robin');
     const { session } = link();
     session.open(world.robinDesk);
+    await session.settled();
     session.received(stateFrame(placed.id, { state: 'mounted', route: 'remote' }));
+    await session.settled();
     expect(world.store.drivePlacements.byId(placed.id).status).toMatchObject({
       state: 'mounted',
       route: 'remote',
@@ -155,75 +165,91 @@ describe('placement state from a computer', () => {
     });
   });
 
-  it('refuses and logs a placement of another computer', () => {
+  it('refuses and logs a placement of another computer', async () => {
     const foreign = put(world.idaDesk, 'ida', { mountName: 'Games' });
     const { session, logged } = link();
     session.open(world.robinDesk);
+    await session.settled();
     session.received(stateFrame(foreign.id));
+    await session.settled();
     expect(world.store.drivePlacements.byId(foreign.id).status.state).toBe('starting');
     expect(logged).toEqual(['computer.placement_state_refused']);
   });
 
-  it('refuses and logs a placement that does not exist', () => {
+  it('refuses and logs a placement that does not exist', async () => {
     const { session, logged } = link();
     session.open(world.robinDesk);
+    await session.settled();
     session.received(stateFrame('0a0000ff-0000-4000-8000-000000000000'));
+    await session.settled();
     expect(logged).toEqual(['computer.placement_state_refused']);
   });
 
-  it('refuses a report before the session has opened', () => {
+  it('refuses a report before the session has opened', async () => {
     const placed = put(world.robinDesk, 'robin');
     const { session, logged } = link();
     session.received(stateFrame(placed.id));
+    await session.settled();
     expect(world.store.drivePlacements.byId(placed.id).status.state).toBe('starting');
     expect(logged).toEqual(['computer.placement_state_before_hello']);
   });
 
-  it('stores a state transition whether or not counters are demanded', () => {
+  it('stores a state transition whether or not counters are demanded', async () => {
     const placed = put(world.robinDesk, 'robin');
     const rig = link();
     rig.session.open(world.robinDesk);
+    await rig.session.settled();
     rig.session.received(stateFrame(placed.id, { state: 'mounted', cacheBytes: 5 }));
+    await rig.session.settled();
     expect(world.store.drivePlacements.byId(placed.id).status).toMatchObject({
       state: 'mounted',
       cacheBytes: 5,
     });
   });
 
-  it('stores counter-only changes only while the mounts view is demanded', () => {
+  it('stores counter-only changes only while the mounts view is demanded', async () => {
     const placed = put(world.robinDesk, 'robin');
     const rig = link();
     rig.session.open(world.robinDesk);
+    await rig.session.settled();
     rig.session.received(
       stateFrame(placed.id, { state: 'starting', tier: null, route: null, cacheBytes: 0 }),
     );
+    await rig.session.settled();
     rig.session.received(
       stateFrame(placed.id, { state: 'starting', tier: null, route: null, cacheBytes: 99 }),
     );
+    await rig.session.settled();
     expect(world.store.drivePlacements.byId(placed.id).status.cacheBytes).toBe(0);
     rig.demand = true;
     rig.session.received(
       stateFrame(placed.id, { state: 'starting', tier: null, route: null, cacheBytes: 99 }),
     );
+    await rig.session.settled();
     expect(world.store.drivePlacements.byId(placed.id).status.cacheBytes).toBe(99);
   });
 
-  it('stores the status of a held placement it reported before the hold', () => {
+  it('stores the status of a held placement it reported before the hold', async () => {
     const placed = put(world.robinDesk, 'robin');
     const { session } = link();
     session.open(world.robinDesk);
-    world.placements.setHold(placed.id, 'trashed');
+    await session.settled();
+    await world.placements.setHold(placed.id, 'trashed');
     session.received(stateFrame(placed.id, { state: 'stopped', reason: 'Folder is in the trash' }));
+    await session.settled();
     expect(world.store.drivePlacements.byId(placed.id).status.state).toBe('stopped');
   });
 
-  it('stores the sync numbers and stores a new error or sync time as a transition', () => {
+  it('stores the sync numbers and stores a new error or sync time as a transition', async () => {
     const placed = put(world.robinDesk, 'robin', { rootId: ROBIN_DRIVE, mode: 'synced' });
     const rig = link();
     rig.session.open(world.robinDesk);
+    await rig.session.settled();
     const quiet = { state: 'up_to_date', tier: null, route: null, cacheBytes: 0 } as const;
     rig.session.received(stateFrame(placed.id, quiet));
+    await rig.session.settled();
     rig.session.received(stateFrame(placed.id, { ...quiet, needBytes: 777 }));
+    await rig.session.settled();
     expect(world.store.drivePlacements.byId(placed.id).status.needBytes).toBe(0);
     const errors = [{ relPath: 'a.txt', message: 'locked', at: '2026-11-08T00:00:00.000Z' }];
     rig.session.received(
@@ -234,6 +260,7 @@ describe('placement state from a computer', () => {
         lastSyncedAt: '2026-11-08T00:00:00.000Z',
       }),
     );
+    await rig.session.settled();
     expect(world.store.drivePlacements.byId(placed.id).status).toMatchObject({
       needBytes: 777,
       errors,

@@ -12,7 +12,7 @@ import { node, programOf, trigger } from '../../support/automation-fixture';
 import { captureLogs, testLogger } from '../../support/logs';
 import { temporaryDirectory } from '../../support/server';
 import { graphAutomation } from '../../automations-v3/support/graph-of';
-import { unusedDrivePath } from '../../support/store';
+import { testStoreHost } from '../../support/store-host';
 
 const HEAVY_MS = 30_000;
 
@@ -29,11 +29,12 @@ afterEach(async () => {
 
 function whileStopped<T>(work: (store: Store) => T): T {
   const store = openStore({
+    host: testStoreHost(),
     path: join(directory.path, DATABASE_FILE),
     log: testLogger('store'),
     now: () => new Date('2026-10-08T10:00:00.000Z'),
     systemTimeZone: 'UTC',
-    drivePathOf: unusedDrivePath,
+    driveFolders: null,
   });
   try {
     return work(store);

@@ -87,12 +87,12 @@ beforeEach(async () => {
     error_at: null,
   });
   const catalogue = new Catalogue({
-    models: store.aiModels,
+    models: store.live.aiModels,
     client: new OpenRouterClient({ fetch, key: (): null => null }),
     clock: systemClock,
     log: testLogger('catalogue'),
   });
-  catalogue.start();
+  await catalogue.start();
   catalogue.stop();
   routes = new HarnessRoutes(catalogue, () => true);
   profileId = store.profiles.list()[0]?.id ?? '';

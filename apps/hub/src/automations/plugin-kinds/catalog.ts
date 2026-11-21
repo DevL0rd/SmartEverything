@@ -172,8 +172,8 @@ export function createKindCatalog(
     replace: (assembled): readonly PluginKindProblems[] => {
       owners.add(assembled.owner);
       const placed = placeKinds(core, entries, assembled, ledger);
-      ledger.migrated(placed.migrations);
       changed();
+      ledger.migrated(placed.migrations);
       return placed.rejected;
     },
     remove: (owner): void => {

@@ -16,55 +16,82 @@ export interface PhotoBackupRoutes {
   readonly resolvePhotoUploadTarget: Bound<typeof E.resolvePhotoUploadTarget>;
 }
 
-function validateRegistrationPlatform(store: Store, caller: Caller, input: BackupRegister): void {
-  const device = store.devices.find(input.deviceId);
-  const platform = device?.kind === 'computer' ? 'desktop' : clientOf(caller).platform;
+interface OwnedDevice {
+  readonly profileId: string;
+  readonly kind: string | null;
+}
+
+async function ownedDevice(store: Store, caller: Caller, deviceId: string): Promise<OwnedDevice> {
+  const profileId = profileIdOf(caller);
+  const device = await store.host.read('photoBackupDevice', {
+    deviceId,
+    clientId: clientOf(caller).id,
+    profileId,
+  });
+  if (!device.owned) {
+    throw new ApiError(
+      'forbidden',
+      'Backup requests must come from the paired phone or computer for this person.',
+    );
+  }
+  return { profileId, kind: device.kind };
+}
+
+async function backupDeviceOwner(store: Store, caller: Caller, deviceId: string): Promise<string> {
+  return (await ownedDevice(store, caller, deviceId)).profileId;
+}
+
+async function registrationOwner(
+  store: Store,
+  caller: Caller,
+  input: BackupRegister,
+): Promise<string> {
+  const { profileId, kind } = await ownedDevice(store, caller, input.deviceId);
+  const platform = kind === 'computer' ? 'desktop' : clientOf(caller).platform;
   if (input.platform !== platform)
     throw new ApiError('invalid_request', 'The backup platform must match the paired device.');
+  return profileId;
 }
 
 export function photoBackupRoutes(store: Store, service: BackupService): PhotoBackupRoutes {
-  const profileOf = (caller: Caller): string => profileIdOf(store, caller);
-  const deviceOf = (caller: Caller, deviceId: string): string => {
-    const profileId = profileOf(caller);
-    const phone = store.devices.find(deviceId);
-    const clientId = clientOf(caller).id;
-    const phoneOwner =
-      phone?.kind === 'phone' &&
-      phone.details['clientId'] === clientId &&
-      phone.details['profileId'] === profileId;
-    const computerOwner =
-      phone?.kind === 'computer' && store.computerNodes.ownsWindow(deviceId, clientId, profileId);
-    if (!phoneOwner && !computerOwner) {
-      throw new ApiError(
-        'forbidden',
-        'Backup requests must come from the paired phone or computer for this person.',
-      );
-    }
-    return profileId;
-  };
+  const profileOf = (caller: Caller): string => profileIdOf(caller);
+  const deviceOf = (caller: Caller, deviceId: string): Promise<string> =>
+    backupDeviceOwner(store, caller, deviceId);
   return {
-    registerBackupDevice: bound(E.registerBackupDevice, ({ body, caller }) => {
-      const profileId = deviceOf(caller, body.deviceId);
-      validateRegistrationPlatform(store, caller, body);
-      return service.registerDevice(profileId, body);
+    registerBackupDevice: bound(E.registerBackupDevice, async ({ body, caller }) => {
+      const profileId = await registrationOwner(store, caller, body);
+      return await store.host.write('photoBackupRegister', { profileId, request: body });
     }),
-    lookupPhotoBackupHashes: bound(E.lookupPhotoBackupHashes, ({ body, caller }) =>
-      service.lookupHashes(deviceOf(caller, body.deviceId), body),
+    lookupPhotoBackupHashes: bound(E.lookupPhotoBackupHashes, async ({ body, caller }) =>
+      store.host.read('photoBackupLookup', {
+        profileId: await deviceOf(caller, body.deviceId),
+        request: body,
+      }),
     ),
-    checkBackupHashes: bound(E.checkBackupHashes, ({ body, caller }) =>
-      service.checkHashes(deviceOf(caller, body.deviceId), body),
+    checkBackupHashes: bound(E.checkBackupHashes, async ({ body, caller }) =>
+      store.host.write('photoBackupCheck', {
+        profileId: await deviceOf(caller, body.deviceId),
+        request: body,
+      }),
     ),
-    readBackupState: bound(E.readBackupState, ({ caller }) => service.state(profileOf(caller))),
-    readPhotoOrigins: bound(E.readPhotoOrigins, ({ body, caller }) =>
-      service.origins(deviceOf(caller, body.deviceId), body),
+    readBackupState: bound(E.readBackupState, ({ caller }) =>
+      store.host.read('photoBackupState', { profileId: profileOf(caller) }),
     ),
-    readFolderBackupCopies: bound(E.readFolderBackupCopies, ({ body, caller }) =>
-      service.folderCopies(deviceOf(caller, body.deviceId), body),
+    readPhotoOrigins: bound(E.readPhotoOrigins, async ({ body, caller }) =>
+      store.host.read('photoBackupOrigins', {
+        profileId: await deviceOf(caller, body.deviceId),
+        request: body,
+      }),
     ),
-    resolvePhotoUploadTarget: bound(E.resolvePhotoUploadTarget, ({ body, caller }) =>
+    readFolderBackupCopies: bound(E.readFolderBackupCopies, async ({ body, caller }) =>
+      store.host.read('photoBackupCopies', {
+        profileId: await deviceOf(caller, body.deviceId),
+        request: body,
+      }),
+    ),
+    resolvePhotoUploadTarget: bound(E.resolvePhotoUploadTarget, async ({ body, caller }) =>
       body.kind === 'backup'
-        ? service.backupTarget(deviceOf(caller, body.deviceId), body.deviceId)
+        ? service.backupTarget(await deviceOf(caller, body.deviceId), body.deviceId)
         : service.manualTarget(profileOf(caller)),
     ),
   };

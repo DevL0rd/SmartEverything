@@ -7,35 +7,75 @@ import {
   type AutomationFunctionExtractReply,
   type AutomationFunctionExtractRequest,
   type AutomationProgramProblem,
-  type StoredAutomationRow,
   type AutomationV4,
-  type FunctionRow,
   type FunctionV4,
+  type JsonValue,
+  type Layout,
+  type NodeKind,
 } from '@smarteverything/domain';
 import { extractFromGraph } from '@smarteverything/flow/graph/extract-graph';
 import { unstructure } from '@smarteverything/flow/graph/unstructure';
-import { currentExecutionAuthority } from '../assistant/turn-authority';
+import { withExecutionAuthority } from '../assistant/turn-authority';
+import type { ConversationAuthority } from '../harness/authority-contract';
 import { profileIdOf, type Caller } from '../server/auth';
-import { analyse, failure, lintContextOf, planValue } from './service-programs-analysis';
-import { authorSpeech } from './service-programs-speech';
-import { authorOf } from './service-reach';
-import { authorise, hashOf, requireFreeName, type FunctionsEnv } from './service-functions-support';
+import { storeUnit } from '../store/host/unit';
+import type { Store } from '../store/store';
+import type { SpeechPrincipal } from '../transcripts/speech-principal';
+import type { ProgramData } from './program-data';
+import { unitKinds } from './program-kinds';
+import { applySpeech, priorSpeech, type SpeechPlan } from './program-speech';
+import {
+  analyse,
+  analysisEnv,
+  failure,
+  lintContextOf,
+  planValue,
+  type AnalysisEnv,
+  type Built,
+} from './service-programs-analysis';
+import { authorOf, reached, type Reached } from './service-reach';
+import { authorise, hashOf, requireFreeName } from './service-functions-support';
 
-class Rollback extends Error {
-  override readonly name = 'Rollback';
-
-  constructor(readonly problems: readonly AutomationProgramProblem[]) {
-    super('The change was rolled back.');
-  }
+interface StoredCaller {
+  readonly id: string;
+  readonly layout: Layout;
+  readonly revision: number;
 }
 
-interface Extraction {
+export interface Extraction {
   readonly request: AutomationFunctionExtractRequest;
-  readonly row: StoredAutomationRow;
+  readonly row: StoredCaller;
   readonly functionId: string;
   readonly callee: FunctionV4;
   readonly caller: AutomationV4;
   readonly instanceKey: string;
+}
+
+export interface ReadyExtraction {
+  readonly kind: 'ready';
+  readonly found: Extraction;
+  readonly calleePlan: JsonValue;
+  readonly callerPlan: JsonValue;
+  readonly problems: readonly AutomationProgramProblem[];
+  readonly prior: SpeechPrincipal | null;
+}
+
+export type PreparedExtraction =
+  { readonly kind: 'done'; readonly reply: AutomationFunctionExtractReply } | ReadyExtraction;
+
+export interface PrepareExtractInput {
+  readonly data: ProgramData;
+  readonly caller: Caller;
+  readonly authority: ConversationAuthority | undefined;
+  readonly request: AutomationFunctionExtractRequest;
+}
+
+export interface CommitExtractInput {
+  readonly kinds: readonly NodeKind[];
+  readonly caller: Caller;
+  readonly authority: ConversationAuthority | undefined;
+  readonly ready: ReadyExtraction;
+  readonly speech: SpeechPlan;
 }
 
 interface PortEdit {
@@ -83,93 +123,48 @@ function refusedExtract(
   };
 }
 
-function createCallee(
-  env: FunctionsEnv,
-  caller: Caller,
-  found: Extraction,
-  calleePlan: ReturnType<typeof planValue>,
-): FunctionRow {
-  return env.functions.create(
-    {
-      id: found.functionId,
-      name: found.request.name,
-      program: found.callee,
-      layout: EMPTY_LAYOUT,
-      interfaceHash: hashOf(found.callee),
-      compat: 'compatible',
-      planHash: env.plans.put('function', calleePlan),
-      author: authorOf(env.store, caller),
-      createdBy: profileIdOf(env.store, caller),
-    },
-    env.kinds,
-  );
+function done(
+  request: AutomationFunctionExtractRequest,
+  problems: readonly AutomationProgramProblem[],
+  suggestion: readonly string[],
+): PreparedExtraction {
+  return { kind: 'done', reply: refusedExtract(request, problems, suggestion) };
 }
 
-function saveExtraction(
-  env: FunctionsEnv,
-  caller: Caller,
+function checkedCaller(
+  env: AnalysisEnv,
+  who: Caller,
   found: Extraction,
-  calleePlan: ReturnType<typeof planValue>,
-): AutomationFunctionExtractReply {
-  const author = authorOf(env.store, caller);
-  const created = createCallee(env, caller, found, calleePlan);
-  const program = found.caller;
-  const analysis = analyse(env, program);
-  if (analysis.built === undefined) throw new Rollback(analysis.problems);
-  authorise(env, caller, program, analysis.built);
-  const saved = env.programs.replace(
-    found.row.id,
-    {
-      program,
-      layout: found.row.layout,
-      expectedRevision: found.row.revision,
-      planHash: env.plans.put('automation', planValue(analysis.built.plan)),
-      author,
-    },
-    env.kinds,
-  );
-  env.store.harnessRecovery.effects.keep('automation', saved.id, currentExecutionAuthority());
-  authorSpeech(env.store, caller, saved);
+  callee: Built,
+): PreparedExtraction {
+  const pending = { id: found.functionId, definition: found.callee, plan: callee.plan };
+  const withCallee: AnalysisEnv = { ...env, pending };
+  const analysis = analyse(withCallee, found.caller);
+  if (analysis.built === undefined) return done(found.request, analysis.problems, []);
+  authorise(withCallee, who, found.caller, analysis.built);
   return {
-    ok: true,
-    summary: `Made ${created.name} and saved revision ${String(saved.revision)} of ${saved.name}.`,
-    id: created.id,
-    revision: created.latest_revision,
-    compat: 'compatible',
-    changes: [],
-    affected: [],
+    kind: 'ready',
+    found,
+    calleePlan: planValue(callee.plan),
+    callerPlan: planValue(analysis.built.plan),
     problems: analysis.problems.filter((problem) => problem.severity !== 'error'),
-    automationId: saved.id,
-    callerRevision: saved.revision,
-    instanceKey: found.instanceKey,
-    suggestion: [],
+    prior: priorSpeech(env.store, found.row.id),
   };
 }
 
-function commit(
-  env: FunctionsEnv,
-  caller: Caller,
-  found: Extraction,
-): AutomationFunctionExtractReply {
+function checked(env: AnalysisEnv, who: Caller, found: Extraction): PreparedExtraction {
   const analysis = analyse(env, found.callee);
-  if (analysis.built === undefined) return refusedExtract(found.request, analysis.problems, []);
-  authorise(env, caller, found.callee, analysis.built);
-  const plan = planValue(analysis.built.plan);
-  try {
-    return env.store.write(() => saveExtraction(env, caller, found, plan));
-  } catch (cause) {
-    if (cause instanceof Rollback) return refusedExtract(found.request, cause.problems, []);
-    throw cause;
-  }
+  if (analysis.built === undefined) return done(found.request, analysis.problems, []);
+  authorise(env, who, found.callee, analysis.built);
+  return checkedCaller(env, who, found, analysis.built);
 }
 
-export function extract(
-  env: FunctionsEnv,
-  caller: Caller,
+function extracted(
+  env: AnalysisEnv,
   request: AutomationFunctionExtractRequest,
-): AutomationFunctionExtractReply {
+): Extraction | PreparedExtraction {
   requireFreeName(env, request.name);
-  const row = env.programs.byId(request.automationId);
+  const row = env.store.automations.byId(request.automationId);
   if (row.revision !== request.expectedRevision) {
     throw new ApiError(
       'conflict',
@@ -183,21 +178,79 @@ export function extract(
     name: request.name,
     ...(request.expose === undefined ? {} : { expose: request.expose }),
   });
-  if (!result.ok) {
-    return refusedExtract(request, [failure(result.code, result.reason)], result.suggestion);
-  }
-  const extracted = FUNCTION_V4.parse(unstructure(result.callee, env.kinds));
-  const callee = {
-    ...extracted,
-    inputs: edited(extracted.inputs, request.inputs, 'input'),
-    outputs: edited(extracted.outputs, request.outputs, 'output'),
-  };
-  return commit(env, caller, {
+  if (!result.ok) return done(request, [failure(result.code, result.reason)], result.suggestion);
+  const callee = FUNCTION_V4.parse(unstructure(result.callee, env.kinds));
+  return {
     request,
-    row,
+    row: { id: row.id, layout: row.layout, revision: row.revision },
     functionId,
-    callee,
+    callee: {
+      ...callee,
+      inputs: edited(callee.inputs, request.inputs, 'input'),
+      outputs: edited(callee.outputs, request.outputs, 'output'),
+    },
     caller: AUTOMATION_V4.parse(unstructure(result.caller, env.kinds)),
     instanceKey: result.instanceKey,
-  });
+  };
 }
+
+function prepare(store: Store, input: PrepareExtractInput): PreparedExtraction {
+  const env = analysisEnv(store, input.data, null);
+  const found = extracted(env, input.request);
+  if ('kind' in found) return found;
+  return checked(env, input.caller, found);
+}
+
+function commit(store: Store, input: CommitExtractInput): AutomationFunctionExtractReply {
+  const { found, calleePlan, callerPlan, problems } = input.ready;
+  const kinds = unitKinds(store, input.kinds);
+  const author = authorOf(input.caller);
+  const created = store.automationFunctions.create(
+    {
+      id: found.functionId,
+      name: found.request.name,
+      program: found.callee,
+      layout: EMPTY_LAYOUT,
+      interfaceHash: hashOf(found.callee),
+      compat: 'compatible',
+      planHash: store.automationPlans.put('function', calleePlan),
+      author,
+      createdBy: profileIdOf(input.caller),
+    },
+    kinds,
+  );
+  const saved = store.automations.replace(
+    found.row.id,
+    {
+      program: found.caller,
+      layout: found.row.layout,
+      expectedRevision: found.row.revision,
+      planHash: store.automationPlans.put('automation', callerPlan),
+      author,
+    },
+    kinds,
+  );
+  store.harnessRecovery.effects.keep('automation', saved.id, input.authority);
+  applySpeech(store, saved, input.speech);
+  return {
+    ok: true,
+    summary: `Made ${created.name} and saved revision ${String(saved.revision)} of ${saved.name}.`,
+    id: created.id,
+    revision: created.latest_revision,
+    compat: 'compatible',
+    changes: [],
+    affected: [],
+    problems: [...problems],
+    automationId: saved.id,
+    callerRevision: saved.revision,
+    instanceKey: found.instanceKey,
+    suggestion: [],
+  };
+}
+
+export const PREPARE_FUNCTION_EXTRACT_UNIT = storeUnit(
+  (store, input: PrepareExtractInput): Reached<PreparedExtraction> =>
+    withExecutionAuthority(input.authority, () => reached(() => prepare(store, input))),
+);
+
+export const COMMIT_FUNCTION_EXTRACT_UNIT = storeUnit(commit);

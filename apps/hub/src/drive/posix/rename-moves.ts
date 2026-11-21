@@ -3,13 +3,14 @@ import { basename } from 'node:path';
 import { commitContent } from '../changes';
 import { exchangeWithin, settleExchange } from '../exchange';
 import { moveWithin, TMP_DIRECTORY } from '../intents';
-import { repathItem } from '../service-write-repath';
+import { writeDriveOps, type DriveOp } from '../units/ops';
 import { stageInPlace } from '../versions';
 import { posix } from './errors';
 import { actorOf, touchChange, touchDirectory } from './records';
 import { after, nowNs } from './times';
 import type { PosixEnv, PosixScope } from './env';
-import type { PosixChild, PosixNode, PosixNodes } from './nodes';
+import type { PosixChild, PosixNode } from '../units/posix';
+import type { PosixNodes } from './nodes';
 
 export interface Destination {
   readonly parent: PosixNode;
@@ -26,10 +27,10 @@ export class RenameMoves {
     scope: PosixScope,
     source: PosixChild,
     destination: Destination,
-    alongside?: () => void,
+    alongside: readonly DriveOp[] = [],
   ): Promise<void> {
     const { change } = this.env;
-    const root = this.nodes.root(scope);
+    const root = await this.nodes.root(scope);
     const { item } = source;
     const onDisk = item.kind !== 'special';
     if (onDisk) {
@@ -41,15 +42,19 @@ export class RenameMoves {
     }
     const parentId = destination.parent.item?.id ?? null;
     try {
-      change.store.write(() => {
-        alongside?.();
-        repathItem(
-          change,
-          item,
-          { parentId, relPath: destination.relPath, name: basename(destination.relPath) },
-          { op: parentId === item.parentId ? 'rename' : 'move', actor: actorOf(scope.caller) },
-        );
-      });
+      await writeDriveOps(change.store, [
+        ...alongside,
+        {
+          kind: 'repath',
+          itemId: item.id,
+          target: { parentId, relPath: destination.relPath, name: basename(destination.relPath) },
+          change: {
+            op: parentId === item.parentId ? 'rename' : 'move',
+            actor: actorOf(scope.caller),
+          },
+        },
+        touchChange(change, source),
+      ]);
     } catch (cause) {
       if (onDisk) {
         await moveWithin(change.files, root, {
@@ -60,12 +65,11 @@ export class RenameMoves {
       }
       throw cause;
     }
-    touchChange(change, source);
   }
 
   async replace(scope: PosixScope, source: PosixChild, target: PosixChild): Promise<void> {
     const { change } = this.env;
-    const root = this.nodes.root(scope);
+    const root = await this.nodes.root(scope);
     const staged = await stageInPlace(change, root, source.item.relPath);
     await commitContent(change, {
       root,
@@ -73,28 +77,20 @@ export class RenameMoves {
       relPath: target.item.relPath,
       actor: actorOf(scope.caller),
       mode: source.inode.mode & 0o777,
-      alongside: (): void => {
-        this.adopt(source, target);
-      },
+      alongside: [
+        {
+          kind: 'adoptInode',
+          sourceInodeId: source.inode.id,
+          sourceItemId: source.item.id,
+          targetInodeId: target.inode.id,
+          attributes: { mode: source.inode.mode, uid: source.inode.uid, gid: source.inode.gid },
+          times: {
+            atimeNs: source.inode.atimeNs,
+            ctimeNs: after(target.inode.ctimeNs, nowNs(change)),
+          },
+        },
+      ],
     });
-  }
-
-  private adopt(source: PosixChild, target: PosixChild): void {
-    const { store } = this.env.change;
-    store.driveInodes.setAttributes(target.inode.id, {
-      mode: source.inode.mode,
-      uid: source.inode.uid,
-      gid: source.inode.gid,
-    });
-    for (const name of store.driveXattrs.names(target.inode.id)) {
-      store.driveXattrs.remove(target.inode.id, name);
-    }
-    store.driveXattrs.copy(source.inode.id, target.inode.id);
-    store.driveInodes.setTimes(target.inode.id, {
-      atimeNs: source.inode.atimeNs,
-      ctimeNs: after(target.inode.ctimeNs, nowNs(this.env.change)),
-    });
-    store.driveItems.remove(source.item.id);
   }
 
   async exchange(
@@ -103,57 +99,59 @@ export class RenameMoves {
     parents: { readonly from: PosixNode; readonly to: PosixNode },
   ): Promise<void> {
     const { change } = this.env;
-    const root = this.nodes.root(scope);
+    const root = await this.nodes.root(scope);
     const { source, target } = pair;
     const intent = await exchangeWithin(change, root, {
       a: source.item.relPath,
       b: target.item.relPath,
     });
-    change.store.write(() => {
-      this.swapRows(scope, pair, parents);
-    });
+    await writeDriveOps(change.store, this.swapRows(scope, pair, parents));
     await settleExchange(change, root, intent);
-    change.store.driveIntents.clear(intent.id);
-    touchChange(change, source);
-    touchChange(change, target);
-    touchDirectory(change, parents.from);
-    if (parents.to.inode.id !== parents.from.inode.id) touchDirectory(change, parents.to);
+    const touches = [
+      touchChange(change, source),
+      touchChange(change, target),
+      touchDirectory(change, parents.from),
+    ];
+    if (parents.to.inode.id !== parents.from.inode.id)
+      touches.push(touchDirectory(change, parents.to));
+    await writeDriveOps(change.store, [{ kind: 'clearIntent', intentId: intent.id }, ...touches]);
   }
 
   private swapRows(
     scope: PosixScope,
     pair: { readonly source: PosixChild; readonly target: PosixChild },
     parents: { readonly from: PosixNode; readonly to: PosixNode },
-  ): void {
-    const { change } = this.env;
+  ): DriveOp[] {
     const { source, target } = pair;
-    const actor = { op: 'rename', actor: actorOf(scope.caller) } as const;
+    const change = { op: 'rename', actor: actorOf(scope.caller) } as const;
     const holding = {
       parentId: null,
       relPath: `${TMP_DIRECTORY}/exchange-${randomUUID()}`,
       name: 'exchange',
     };
-    repathItem(change, source.item, holding, actor);
-    repathItem(
-      change,
-      change.store.driveItems.byId(target.item.id, null),
+    return [
+      { kind: 'repath', itemId: source.item.id, target: holding, change },
       {
-        parentId: parents.from.item?.id ?? null,
-        relPath: source.item.relPath,
-        name: source.item.name,
+        kind: 'repath',
+        itemId: target.item.id,
+        target: {
+          parentId: parents.from.item?.id ?? null,
+          relPath: source.item.relPath,
+          name: source.item.name,
+        },
+        change,
       },
-      actor,
-    );
-    repathItem(
-      change,
-      change.store.driveItems.byId(source.item.id, null),
       {
-        parentId: parents.to.item?.id ?? null,
-        relPath: target.item.relPath,
-        name: target.item.name,
+        kind: 'repath',
+        itemId: source.item.id,
+        target: {
+          parentId: parents.to.item?.id ?? null,
+          relPath: target.item.relPath,
+          name: target.item.name,
+        },
+        change,
       },
-      actor,
-    );
+    ];
   }
 }
 

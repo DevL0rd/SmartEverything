@@ -144,11 +144,11 @@ describe('the update tools', () => {
       );
   });
 
-  it('refuses automatic repair service authority for an otherwise eligible owner chat', () => {
+  it('refuses automatic repair service authority for an otherwise eligible owner chat', async () => {
     const authority = owner.authority;
     if (authority === undefined) throw new Error('Missing fixture authority');
     expect(
-      ownerUpdateChat({
+      await ownerUpdateChat({
         store: fixture.store,
         caller: null,
         actor: {
@@ -164,7 +164,7 @@ describe('the update tools', () => {
     ).toBeNull();
   });
 
-  it('allows only retained owner repair authority in its canonical repair chat', () => {
+  it('allows only retained owner repair authority in its canonical repair chat', async () => {
     const { store } = fixture;
     const chat = store.aiChats.create({
       profileId: owner.profileId,
@@ -186,12 +186,12 @@ describe('the update tools', () => {
     });
     const authority = eventAuthority(store, event, undefined, event.id);
     const actor = { ...owner, chatId: chat.id, clientId: null, authority };
-    expect(ownerUpdateChat({ store, caller: null, actor })).toBe(chat.id);
+    expect(await ownerUpdateChat({ store, caller: null, actor })).toBe(chat.id);
     expect(
-      ownerUpdateChat({ store, caller: null, actor: { ...actor, chatId: owner.chatId } }),
+      await ownerUpdateChat({ store, caller: null, actor: { ...actor, chatId: owner.chatId } }),
     ).toBeNull();
     expect(
-      ownerUpdateChat({
+      await ownerUpdateChat({
         store,
         caller: null,
         actor: {
@@ -201,7 +201,7 @@ describe('the update tools', () => {
       }),
     ).toBeNull();
     expect(
-      ownerUpdateChat({
+      await ownerUpdateChat({
         store,
         caller: null,
         actor: {
@@ -211,7 +211,7 @@ describe('the update tools', () => {
       }),
     ).toBeNull();
     expect(
-      ownerUpdateChat({
+      await ownerUpdateChat({
         store,
         caller: null,
         actor: {
@@ -222,8 +222,8 @@ describe('the update tools', () => {
     ).toBeNull();
   });
 
-  it('allows the owner’s own authenticated chat', () => {
-    expect(ownerUpdateChat({ store: fixture.store, caller: null, actor: owner })).toBe(
+  it('allows the owner’s own authenticated chat', async () => {
+    expect(await ownerUpdateChat({ store: fixture.store, caller: null, actor: owner })).toBe(
       owner.chatId,
     );
   });
@@ -234,19 +234,19 @@ describe('the update tools', () => {
     { clientId: null },
     { chatId: null },
     { pluginId: 'discord' },
-  ])('refuses an invalid initiating chat: %j', (change) => {
-    expect(() =>
+  ])('refuses an invalid initiating chat: %j', async (change) => {
+    await expect(
       requireUpdateRequester({
         store: fixture.store,
         caller: null,
         actor: { ...owner, ...change },
       }),
-    ).toThrow(/Only the owner/);
+    ).rejects.toThrow(/Only the owner/);
   });
 
   it.each(['personal', 'oauth', 'computer'] as const)(
     'lets an owner %s MCP connection act as the home owner with no chat',
-    (via) => {
+    async (via) => {
       const { store } = fixture;
       const caller = {
         kind: 'accepted',
@@ -255,18 +255,18 @@ describe('the update tools', () => {
         localOnly: true,
         readOnly: false,
       } as const;
-      expect(ownerUpdateRequester({ store, actor: null, caller })).toEqual({
+      expect(await ownerUpdateRequester({ store, actor: null, caller })).toEqual({
         profileId: store.personAccess.homeOwner(),
         chatId: null,
       });
-      expect(ownerUpdateRequester({ store, actor: owner, caller })).toEqual({
+      expect(await ownerUpdateRequester({ store, actor: owner, caller })).toEqual({
         profileId: owner.profileId,
         chatId: null,
       });
     },
   );
 
-  it('refuses plugin connections and anyone who is not the owner over MCP', () => {
+  it('refuses plugin connections and anyone who is not the owner over MCP', async () => {
     const { store } = fixture;
     const accepted = {
       kind: 'accepted',
@@ -276,16 +276,20 @@ describe('the update tools', () => {
     } as const;
     const personal = { ...accepted, via: 'personal' } as const;
     expect(
-      ownerUpdateRequester({ store, actor: null, caller: { ...accepted, via: 'plugin' } }),
+      await ownerUpdateRequester({ store, actor: null, caller: { ...accepted, via: 'plugin' } }),
     ).toBeNull();
     expect(
-      ownerUpdateRequester({ store, actor: { ...owner, role: 'member' }, caller: personal }),
+      await ownerUpdateRequester({ store, actor: { ...owner, role: 'member' }, caller: personal }),
     ).toBeNull();
     expect(
-      ownerUpdateRequester({ store, actor: { ...owner, pluginId: 'discord' }, caller: personal }),
+      await ownerUpdateRequester({
+        store,
+        actor: { ...owner, pluginId: 'discord' },
+        caller: personal,
+      }),
     ).toBeNull();
     expect(
-      ownerUpdateRequester({
+      await ownerUpdateRequester({
         store,
         actor: { ...owner, profileId: randomUUID() },
         caller: personal,
@@ -293,15 +297,19 @@ describe('the update tools', () => {
     ).toBeNull();
   });
 
-  it('keeps the in-chat requester tied to its chat', () => {
-    expect(ownerUpdateRequester({ store: fixture.store, caller: null, actor: owner })).toEqual({
+  it('keeps the in-chat requester tied to its chat', async () => {
+    expect(
+      await ownerUpdateRequester({ store: fixture.store, caller: null, actor: owner }),
+    ).toEqual({
       profileId: owner.profileId,
       chatId: owner.chatId,
     });
-    expect(ownerUpdateRequester({ store: fixture.store, caller: null, actor: null })).toBeNull();
+    expect(
+      await ownerUpdateRequester({ store: fixture.store, caller: null, actor: null }),
+    ).toBeNull();
   });
 
-  it('changes trusted release keys only through the owner’s own MCP connection called directly', () => {
+  it('changes trusted release keys only through the owner’s own MCP connection called directly', async () => {
     const { store } = fixture;
     const personal = {
       kind: 'accepted',
@@ -310,18 +318,18 @@ describe('the update tools', () => {
       localOnly: true,
       readOnly: false,
     } as const;
-    expect(requireOwnerConnection({ store, caller: personal, actor: null })).toBe(
+    expect(await requireOwnerConnection({ store, caller: personal, actor: null })).toBe(
       store.personAccess.homeOwner(),
     );
-    expect(() => requireOwnerConnection({ store, caller: null, actor: owner })).toThrow(
+    await expect(requireOwnerConnection({ store, caller: null, actor: owner })).rejects.toThrow(
       /Only the owner’s own MCP connection/,
     );
-    expect(() => requireOwnerConnection({ store, caller: personal, actor: owner })).toThrow(
+    await expect(requireOwnerConnection({ store, caller: personal, actor: owner })).rejects.toThrow(
       /Only the owner’s own MCP connection/,
     );
-    expect(() =>
+    await expect(
       requireOwnerConnection({ store, caller: { ...personal, via: 'plugin' }, actor: null }),
-    ).toThrow(/Only the owner’s own MCP connection/);
+    ).rejects.toThrow(/Only the owner’s own MCP connection/);
   });
 
   it('refuses trust and remove from the owner’s AI chat and still lets it list', async () => {

@@ -94,7 +94,7 @@ beforeEach(async () => {
         device = { ...device, details: { ...device.details, ...values } };
         return Promise.resolve();
       },
-      deviceOf: (): DeviceRow => device,
+      deviceOf: (): Promise<DeviceRow> => Promise.resolve(device),
     },
     wearables: (): Promise<{ wearables: []; skipped: [] }> =>
       Promise.resolve({ wearables: [], skipped: [] }),

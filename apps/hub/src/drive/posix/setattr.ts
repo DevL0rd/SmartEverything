@@ -5,10 +5,12 @@ import { commitPatchContent } from '../patch-content';
 import { checkDriveWrite } from '../quotas';
 import { stageEmpty } from '../stage-empty';
 import { posix } from './errors';
-import { actorOf, recordOp } from './records';
+import { writeDriveOps, type DriveOp } from '../units/ops';
+import { actorOf, announceOp } from './records';
 import { after, nowNs, stampDiskTimes } from './times';
 import type { PosixEnv, PosixScope } from './env';
-import type { PosixNode, PosixNodes } from './nodes';
+import type { PosixNode } from '../units/posix';
+import type { PosixNodes } from './nodes';
 import type { PosixReads } from './reads';
 
 export type SetattrRequest = RequestMeta<'SETATTR'>;
@@ -28,6 +30,12 @@ function momentOf(value: bigint | 'now' | undefined, now: bigint): bigint | unde
   return value === 'now' ? now : value;
 }
 
+function timesOp(node: PosixNode, times: DriveInodeTimes, disk: DriveDiskStat | null): DriveOp {
+  return disk === null
+    ? { kind: 'times', inodeId: node.inode.id, times }
+    : { kind: 'diskTimes', inodeId: node.inode.id, times, disk };
+}
+
 export class PosixSetattr {
   constructor(
     private readonly env: PosixEnv,
@@ -36,41 +44,37 @@ export class PosixSetattr {
   ) {}
 
   async setattr(scope: PosixScope, request: SetattrRequest): Promise<Attr> {
-    const initial = this.nodes.node(scope, request.ino);
+    const initial = await this.nodes.node(scope, request.ino);
     this.nodes.writable(initial);
     if (wants(request, SETATTR_VALID.size) && request.size !== undefined) {
       await this.truncate(scope, initial, request.size);
     }
-    const node = this.nodes.node(scope, request.ino);
-    const touched = await this.apply(scope, node, request);
-    if (touched && node.item !== null) {
-      recordOp(this.env.change, scope.caller, node.item, 'update');
+    const node = await this.nodes.node(scope, request.ino);
+    const ops = await this.apply(scope, node, request);
+    if (ops.length > 0) {
+      const announced = node.item === null ? [] : [announceOp(scope.caller, node.item, 'update')];
+      await writeDriveOps(this.env.change.store, [...ops, ...announced]);
     }
-    return this.reads.attr(scope, this.nodes.node(scope, request.ino));
+    return this.reads.attr(scope, await this.nodes.node(scope, request.ino));
   }
 
   async stampWrite(scope: PosixScope, ino: number, written: WrittenTimes): Promise<void> {
-    const node = this.nodes.node(scope, ino);
+    const node = await this.nodes.node(scope, ino);
     const disk = await this.mirror(scope, node, { mode: undefined, ...written });
-    this.writeTimes(
-      node,
-      { atimeNs: written.atimeNs, mtimeNs: written.mtimeNs, ctimeNs: written.mtimeNs },
-      disk,
-    );
-  }
-
-  private writeTimes(node: PosixNode, times: DriveInodeTimes, disk: DriveDiskStat | null): void {
-    const inodes = this.env.change.store.driveInodes;
-    if (disk === null) inodes.setTimes(node.inode.id, times);
-    else inodes.setTimesOnDisk(node.inode.id, times, disk);
+    await writeDriveOps(this.env.change.store, [
+      timesOp(
+        node,
+        { atimeNs: written.atimeNs, mtimeNs: written.mtimeNs, ctimeNs: written.mtimeNs },
+        disk,
+      ),
+    ]);
   }
 
   private async apply(
     scope: PosixScope,
     node: PosixNode,
     request: SetattrRequest,
-  ): Promise<boolean> {
-    const inodes = this.env.change.store.driveInodes;
+  ): Promise<DriveOp[]> {
     const attributes = {
       mode: wants(request, SETATTR_VALID.mode) ? request.mode : undefined,
       uid: wants(request, SETATTR_VALID.uid) ? request.uid : undefined,
@@ -85,13 +89,12 @@ export class PosixSetattr {
       Object.values(attributes).some((value) => value !== undefined) ||
       times.atimeNs !== undefined ||
       times.mtimeNs !== undefined;
-    if (!metadata) return false;
+    if (!metadata) return [];
     const disk = await this.mirror(scope, node, { mode: attributes.mode, ...times });
-    this.env.change.store.write(() => {
-      inodes.setAttributes(node.inode.id, attributes);
-      this.writeTimes(node, { ...times, ctimeNs: after(node.inode.ctimeNs, now) }, disk);
-    });
-    return true;
+    return [
+      { kind: 'attributes', inodeId: node.inode.id, attributes },
+      timesOp(node, { ...times, ctimeNs: after(node.inode.ctimeNs, now) }, disk),
+    ];
   }
 
   private async mirror(
@@ -101,7 +104,7 @@ export class PosixSetattr {
   ): Promise<DriveDiskStat | null> {
     const { item, inode } = node;
     if (item === null || (inode.type !== 'file' && inode.type !== 'dir')) return null;
-    const path = await locate(this.nodes.root(scope), item.relPath);
+    const path = await locate(await this.nodes.root(scope), item.relPath);
     if (change.mode !== undefined) {
       await this.env.change.files.chmod(
         path,
@@ -130,7 +133,7 @@ export class PosixSetattr {
     if (inode.type === 'dir') throw posix('EISDIR', 'A folder has no size to change.');
     if (inode.type !== 'file') throw posix('EINVAL', 'Only a file can be truncated.');
     if (item === null) throw posix('ESTALE', 'The file has no name to truncate through.');
-    const root = this.nodes.root(scope);
+    const root = await this.nodes.root(scope);
     await checkDriveWrite(this.env.guard, {
       profileId: scope.caller.profileId,
       addBytes: size,

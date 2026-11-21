@@ -152,8 +152,8 @@ export class TemporaryDeviceChanges {
       authorize: (): void => {
         admitRun(run);
       },
-      record: (rows): void => {
-        run.commands(rows);
+      ownerRunId: run.runId,
+      recorded: (rows): void => {
         commandMetadata(this.store).stamp(rows, metadata, this.clock.now().getTime());
       },
     });

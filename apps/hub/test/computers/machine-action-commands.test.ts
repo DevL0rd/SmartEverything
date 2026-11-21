@@ -60,9 +60,9 @@ function rig(options: {
       },
       deviceIdOf: () => 'device-1',
       scopesOf: () => options.scopes ?? { ...DEFAULT_COMPUTER_SCOPES, ai_power: true },
-      originOf: () => options.origin,
-      visibleTo: () => true,
-      macsOf: () => [],
+      originOf: () => Promise.resolve(options.origin),
+      visibleTo: () => Promise.resolve(true),
+      macsOf: () => Promise.resolve([]),
       wake: () => Promise.resolve(),
       approve: (_deviceId, action, source): Promise<void> => {
         approvals.push(`${action} by ${source}`);

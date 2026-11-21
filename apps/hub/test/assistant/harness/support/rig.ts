@@ -120,6 +120,7 @@ function seedModels(store: TestStore['store'], rows: readonly AiModelRow[]): voi
 export async function harnessRig(options: RigOptions = {}): Promise<Rig> {
   const opened = await testStore(() => new Date());
   const { store } = opened;
+  await store.host.call('assistantChat', 'settings');
   if (options.openRouterModels !== undefined) seedModels(store, options.openRouterModels);
   const owner = store.clients.create(
     { name: 'Pixel', platform: 'android', role: 'owner', tokenHash: 'a'.repeat(64) },
@@ -127,13 +128,13 @@ export async function harnessRig(options: RigOptions = {}): Promise<Rig> {
   );
   const profileId = store.profiles.activeOf(owner.id).id;
   const catalogue = new Catalogue({
-    models: store.aiModels,
+    models: store.live.aiModels,
     client: new OpenRouterClient({ fetch, key: (): null => null }),
     clock: systemClock,
     log: testLogger('catalogue'),
   });
   if (options.openRouterModels !== undefined) {
-    catalogue.start();
+    await catalogue.start();
     catalogue.stop();
   }
   const routes = new HarnessRoutes(catalogue, () => options.metered === true);

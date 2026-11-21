@@ -1,76 +1,88 @@
-import {
-  PLANNER_SUMMARY,
-  type LiveChange,
-  type PlannerPreferences,
-  type PlannerSummary,
-} from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import type { LiveChange, PlannerSummary } from '@smarteverything/domain';
+import { background, type Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
+import { Coalesced } from '../store/reader';
 import type { Store } from '../store/store';
-import { composeDayFromStore, summarise, type DayReader } from './day';
-import { profilesSeeing, type PlannerAccessStore } from './sharing/visibility';
+import { PendingWork } from './pending-work';
 
-export type SummaryStore = DayReader &
-  PlannerAccessStore &
-  Pick<Store, 'profiles' | 'settings' | 'plannerTimers' | 'feed'>;
+export type SummaryStore = Pick<Store, 'host' | 'feed'>;
 
 export interface SummaryDeskOptions {
   readonly store: SummaryStore;
   readonly clock: Pick<Clock, 'now'>;
-  readonly preferencesOf: (profileId: string) => PlannerPreferences;
   readonly log: Logger;
 }
 
-export function profilesOfItem(store: SummaryStore, itemId: string): string[] {
-  return profilesSeeing(store, itemId);
+export async function profilesOfItem(store: SummaryStore, itemId: string): Promise<string[]> {
+  return store.host.read('plannerItemViewers', { itemId });
 }
 
 export class SummaryDesk {
   private readonly published = new Map<string, string>();
+  private readonly refreshing = new Map<string, Coalesced>();
   private readonly unsubscribe: (() => void)[] = [];
+  private running = false;
+  private readonly work = new PendingWork('planner.summary_failed');
 
   constructor(private readonly options: SummaryDeskOptions) {}
 
-  start(): void {
-    this.refreshAll();
+  async start(): Promise<void> {
+    this.running = true;
     const { feed } = this.options.store;
     this.unsubscribe.push(
       feed.subscribe((change) => {
-        this.follow(change);
+        this.work.run(this.follow(change));
       }),
       feed.subscribeNotices((notice) => {
-        if (notice.type === 'planner_ring') this.refreshAll();
+        if (notice.type === 'planner_ring') this.work.run(this.refreshAll());
       }),
     );
+    await this.refreshAll();
   }
 
   stop(): void {
+    this.running = false;
     for (const off of this.unsubscribe.splice(0)) off();
+    for (const run of this.refreshing.values()) background(run.stop(), 'planner.summary_failed');
+    this.refreshing.clear();
     this.published.clear();
   }
 
-  summaryOf(profileId: string): PlannerSummary {
-    const { store, clock } = this.options;
-    const timeZone = store.settings.read().time_zone;
-    const now = Temporal.Instant.fromEpochMilliseconds(clock.now().getTime());
-    const day = composeDayFromStore(store, {
+  summaryOf(profileId: string): Promise<PlannerSummary> {
+    return this.options.store.host.read('plannerSummary', {
       profileId,
-      date: now.toZonedDateTimeISO(timeZone).toPlainDate().toString(),
-      timeZone,
-      now,
-      lastOpen: null,
-      preferences: this.options.preferencesOf(profileId),
-      sleep: [],
-      sessions: [],
+      nowMs: this.options.clock.now().getTime(),
     });
-    const runningTimers = store.plannerTimers
-      .list(profileId)
-      .filter((timer) => timer.state === 'running').length;
-    return PLANNER_SUMMARY.parse({ personId: profileId, ...summarise(day), runningTimers });
   }
 
-  refresh(profileId: string): void {
-    const summary = this.summaryOf(profileId);
+  async refresh(profileId: string): Promise<void> {
+    if (!this.running) return;
+    const run =
+      this.refreshing.get(profileId) ??
+      new Coalesced(
+        () => this.publish(profileId),
+        (cause) => {
+          this.options.log.error('planner.summary_failed', cause, { profileId });
+        },
+      );
+    this.refreshing.set(profileId, run);
+    run.trigger();
+    await run.idle();
+  }
+
+  async refreshAll(): Promise<void> {
+    const profiles = await this.options.store.host.call('profiles', 'list');
+    await Promise.all(profiles.map((profile) => this.refresh(profile.id)));
+  }
+
+  async settled(): Promise<void> {
+    await this.work.settled();
+    await Promise.all([...this.refreshing.values()].map((run) => run.idle()));
+  }
+
+  private async publish(profileId: string): Promise<void> {
+    const summary = await this.summaryOf(profileId);
+    if (!this.running) return;
     const text = JSON.stringify(summary);
     if (this.published.get(profileId) === text) return;
     this.published.set(profileId, text);
@@ -78,26 +90,22 @@ export class SummaryDesk {
     this.options.log.debug('planner.summary_published', { profileId });
   }
 
-  refreshAll(): void {
-    for (const profile of this.options.store.profiles.list()) this.refresh(profile.id);
-  }
-
-  private follow(change: LiveChange): void {
-    if (change.table === 'settings') this.refreshAll();
+  private async follow(change: LiveChange): Promise<void> {
+    if (change.table === 'settings') await this.refreshAll();
     else if (change.table === 'planner_occurrences') {
-      this.followOccurrence(change.record ?? change.oldRecord);
+      await this.followOccurrence(change.record ?? change.oldRecord);
     } else if (change.table === 'planner_items') {
-      if (change.record === null) this.refreshAll();
-      else this.refreshSeeing(change.record.id, change.record.profile_id);
+      if (change.record === null) await this.refreshAll();
+      else await this.refreshSeeing(change.record.id, change.record.profile_id);
     } else if (change.table === 'planner_guests') {
       const row = change.record ?? change.oldRecord;
-      if (row !== null) this.refreshSeeing(row.item_id, null);
+      if (row !== null) await this.refreshSeeing(row.item_id, null);
     } else {
-      this.followOwned(change);
+      await this.followOwned(change);
     }
   }
 
-  private followOwned(change: LiveChange): void {
+  private async followOwned(change: LiveChange): Promise<void> {
     if (
       change.table !== 'planner_collection_shares' &&
       change.table !== 'planner_alarms' &&
@@ -106,20 +114,20 @@ export class SummaryDesk {
       return;
     }
     const row = change.record ?? change.oldRecord;
-    if (row !== null) this.refresh(row.profile_id);
+    if (row !== null) await this.refresh(row.profile_id);
   }
 
-  private refreshSeeing(itemId: string, owner: string | null): void {
+  private async refreshSeeing(itemId: string, owner: string | null): Promise<void> {
     const seeing = new Set([
-      ...profilesOfItem(this.options.store, itemId),
+      ...(await profilesOfItem(this.options.store, itemId)),
       ...(owner === null ? [] : [owner]),
     ]);
-    if (seeing.size === 0) this.refreshAll();
-    else for (const profileId of seeing) this.refresh(profileId);
+    if (seeing.size === 0) await this.refreshAll();
+    else await Promise.all([...seeing].map((profileId) => this.refresh(profileId)));
   }
 
-  private followOccurrence(row: { readonly item_id: string } | null): void {
-    if (row === null) this.refreshAll();
-    else this.refreshSeeing(row.item_id, null);
+  private async followOccurrence(row: { readonly item_id: string } | null): Promise<void> {
+    if (row === null) await this.refreshAll();
+    else await this.refreshSeeing(row.item_id, null);
   }
 }

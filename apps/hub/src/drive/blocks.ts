@@ -25,7 +25,10 @@ export type HashRequest = z.infer<typeof HASH_REQUEST>;
 
 const BLOCKS = z.strictObject({
   blockSize: COUNT,
-  hashes: z.instanceof(Uint8Array),
+  hashes: z.custom<Uint8Array>(
+    (value) => value instanceof Uint8Array,
+    'Expected packed block hashes.',
+  ),
 });
 
 export const HASH_RESPONSE = z.discriminatedUnion('kind', [
@@ -46,8 +49,6 @@ export const HASH_RESPONSE = z.discriminatedUnion('kind', [
 ]);
 
 export type HashResponse = z.infer<typeof HASH_RESPONSE>;
-
-type HashedBlocks = NonNullable<Extract<HashResponse, { readonly kind: 'hashed' }>['blocks']>;
 
 export interface BlockHashes {
   readonly blockSize: number;
@@ -81,18 +82,29 @@ export async function hashHandle(
   withBlocks: boolean,
 ): Promise<FileHash> {
   const blockSize = withBlocks ? blockSizeFor(size) : WHOLE_FILE_CHUNK;
-  const buffer = Buffer.allocUnsafe(blockSize);
+  const buffer = Buffer.allocUnsafe(Math.min(blockSize, WHOLE_FILE_CHUNK));
   const whole = createHash('sha256');
   const digests: Uint8Array[] = [];
+  let block = createHash('sha256');
+  let inBlock = 0;
   let bytes = 0;
   let filled = await fill(handle, buffer, bytes);
   while (filled > 0) {
-    const chunk = buffer.subarray(0, filled);
-    whole.update(chunk);
-    if (withBlocks) digests.push(createHash('sha256').update(chunk).digest());
+    const slice = buffer.subarray(0, filled);
+    whole.update(slice);
     bytes += filled;
+    if (withBlocks) {
+      block.update(slice);
+      inBlock += filled;
+      if (inBlock === blockSize) {
+        digests.push(block.digest());
+        block = createHash('sha256');
+        inBlock = 0;
+      }
+    }
     filled = await fill(handle, buffer, bytes);
   }
+  if (inBlock > 0) digests.push(block.digest());
   return {
     sha256: whole.digest('hex'),
     bytes,
@@ -140,10 +152,7 @@ async function hashOpened(request: HashRequest, handle: FileHandle): Promise<Has
     sha256: hashed.sha256,
     bytes: hashed.bytes,
     modifiedMs: Number(before.mtimeMs),
-    // The packed hashes are always built from `new Uint8Array`, but BlockHashes
-    // keeps the generic Uint8Array type while the response schema narrows to
-    // ArrayBuffer-backed storage.
-    blocks: hashed.blocks as HashedBlocks | null,
+    blocks: hashed.blocks,
   };
 }
 

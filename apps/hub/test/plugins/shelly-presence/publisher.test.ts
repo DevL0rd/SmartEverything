@@ -101,9 +101,10 @@ describe('Shelly streams in the store', () => {
 
   it('persists the inventory but only broadcasts track frames', async () => {
     store = await testStore();
-    const changes: { table: string; operation: string }[] = [];
+    const changes: { table: string; operation: string; stream: string | null }[] = [];
     store.store.feed.subscribe((change) => {
-      changes.push({ table: change.table, operation: change.operation });
+      const stream = change.table === 'plugin_streams' ? (change.record?.stream ?? null) : null;
+      changes.push({ table: change.table, operation: change.operation, stream });
     });
     const manifest = PLUGIN_MANIFEST.parse(shellyPresencePlugin.manifest);
     store.store.plugins.create({ manifest, source: 'builtin', location: 'builtin', trusted: true });
@@ -125,12 +126,19 @@ describe('Shelly streams in the store', () => {
     sinks.data(point(SHELLY_SNAPSHOT_STREAM, { devices: [] }));
     for (let index = 0; index < 20; index += 1)
       sinks.data(point(SHELLY_TRACKS_STREAM, { devices: [], index }));
-    expect(store.store.pluginData.streams()).toHaveLength(0);
-    expect(store.store.pluginData.history(manifest.id, SHELLY_SNAPSHOT_STREAM, 10)).toHaveLength(1);
-    expect(store.store.pluginData.history(manifest.id, SHELLY_TRACKS_STREAM, 10)).toHaveLength(0);
+    const { host } = store.store;
+    expect(await host.call('pluginData', 'streams')).toHaveLength(0);
+    expect(
+      await host.call('pluginData', 'history', manifest.id, SHELLY_SNAPSHOT_STREAM, 10),
+    ).toHaveLength(1);
+    expect(
+      await host.call('pluginData', 'history', manifest.id, SHELLY_TRACKS_STREAM, 10),
+    ).toHaveLength(0);
     const streamChanges = changes.filter((change) => change.table === 'plugin_streams');
     expect(streamChanges).toHaveLength(21);
-    expect(streamChanges[1]?.operation).toBe('INSERT');
-    expect(streamChanges[2]?.operation).toBe('UPDATE');
+    const tracks = streamChanges.filter((change) => change.stream === SHELLY_TRACKS_STREAM);
+    expect(tracks).toHaveLength(20);
+    expect(tracks[0]?.operation).toBe('INSERT');
+    expect(tracks[1]?.operation).toBe('UPDATE');
   });
 });

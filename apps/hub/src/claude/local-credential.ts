@@ -9,13 +9,13 @@ export class LocalLinkCredential implements LinkCredential {
   private token: string | null = null;
   constructor(private readonly directory: string) {}
 
-  verify(bearer: string | null): boolean {
-    return (
+  verify(bearer: string | null): Promise<boolean> {
+    return Promise.resolve(
       bearer !== null &&
-      MCP_TOKEN.safeParse(bearer).success &&
-      this.token !== null &&
-      bearer.length === this.token.length &&
-      timingSafeEqual(Buffer.from(bearer), Buffer.from(this.token))
+        MCP_TOKEN.safeParse(bearer).success &&
+        this.token !== null &&
+        bearer.length === this.token.length &&
+        timingSafeEqual(Buffer.from(bearer), Buffer.from(this.token)),
     );
   }
 
@@ -48,8 +48,8 @@ export class LocalLinkCredential implements LinkCredential {
     await rm(this.file, { force: true });
   }
 
-  retireBridge(): number {
-    return 0;
+  retireBridge(): Promise<number> {
+    return Promise.resolve(0);
   }
   private get file(): string {
     return join(this.directory, 'link.token');

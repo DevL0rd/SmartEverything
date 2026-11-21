@@ -1,9 +1,10 @@
 import { mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Logger } from '@smarteverything/logging';
 import type { HubLayout } from '../../apps/hub/src/data-layout/index.ts';
 import { openStore, type Store } from '../../apps/hub/src/store/store.ts';
 import type { ScratchPaths } from './guard.ts';
+import { SERVICE_BUILD } from './hub.ts';
 import { layoutOf } from './layout.ts';
 
 export interface SeedStore {
@@ -21,9 +22,10 @@ export async function openSeedStore(paths: ScratchPaths): Promise<SeedStore> {
     log: new Logger('tool.test-hub'),
     now: () => new Date(),
     systemTimeZone: 'UTC',
-    drivePathOf: (scope, ownerProfileId) =>
-      scope === 'home' ? layout.home.drive : layout.person(String(ownerProfileId)).drive,
+    driveFolders: layout.drives,
+    host: { script: join(SERVICE_BUILD, 'store-host.mjs'), readers: 1 },
   });
+  await store.host.warm();
   return {
     store,
     layout,

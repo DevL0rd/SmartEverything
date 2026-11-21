@@ -1,4 +1,5 @@
 import type { DriveRoot, DriveScrubState } from '@smarteverything/domain';
+import { driveFolderOf } from '../../src/data-layout/drive-folders';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DriveFileTooLargeError,
@@ -11,6 +12,7 @@ import {
 } from '../../src/drive/quotas';
 import { DriveHealthReader, watcherState, type DriveHealthSources } from '../../src/drive/health';
 import { purgeForecast, readDriveUsage } from '../../src/drive/usage';
+import { healthFigures } from '../../src/drive/units/health';
 import { DriveBackupsRepository } from '../../src/store/repositories/drive-backups';
 import type { DriveItemsRepository } from '../../src/store/repositories/drive-items';
 import {
@@ -100,7 +102,12 @@ function trash(itemId: string, rootId: string, addedBy: string | null, bytes: nu
 }
 
 function addRoot(id: string, fields: Partial<DriveRoot> = {}): void {
-  fixture.addDrive(driveRoot(id, { versions: true, ...fields }), `/srv/${id.slice(-4)}`);
+  const root = driveRoot(id, { versions: true, ...fields });
+  const path =
+    root.scope === 'home'
+      ? `/srv/${id.slice(-4)}`
+      : driveFolderOf(fixture.folders, root.scope, root.ownerProfileId);
+  fixture.addDrive(root, path);
 }
 
 beforeEach(() => {
@@ -304,10 +311,11 @@ describe('library health', () => {
   function sources(fields: Partial<DriveHealthSources> = {}): DriveHealthSources {
     const backups = new DriveBackupsRepository(fixture.context);
     return {
-      roots: () => roots.list(),
+      figures: (actor) =>
+        Promise.resolve(healthFigures({ context: fixture.context, driveRoots: roots }, { actor })),
       watcher: () => watching,
-      scrub: () => IDLE,
-      backup: () => backups.status(),
+      scrub: () => Promise.resolve(IDLE),
+      backup: () => Promise.resolve(backups.status()),
       space: () => Promise.resolve({ totalBytes: 1000, freeBytes: 300, fsType: 'ext4' }),
       ...fields,
     };
@@ -322,7 +330,7 @@ describe('library health', () => {
     scrub.record(HOME, hashed, 'ok');
     scrub.record(HOME, second, 'corrupt');
     new DriveBackupsRepository(fixture.context).record({ reporter: 'borg', bytes: 5, ok: true });
-    const health = await new DriveHealthReader(fixture.context, sources()).read({
+    const health = await new DriveHealthReader(sources()).read({
       profileId: robin,
     });
     expect(health).toMatchObject({
@@ -341,7 +349,7 @@ describe('library health', () => {
     roots.update(SAM_ROOT, { state: 'error' });
     roots.update(ROBIN_ROOT, { state: 'unresponsive' });
     roots.update(HOME, { state: 'error' });
-    const health = await new DriveHealthReader(fixture.context, sources()).read({
+    const health = await new DriveHealthReader(sources()).read({
       profileId: robin,
     });
     expect(health.rootsTotal).toBe(2);
@@ -355,7 +363,7 @@ describe('library health', () => {
       file(SAM_ROOT, sam, 10, SHA),
       'corrupt',
     );
-    const health = await new DriveHealthReader(fixture.context, sources()).read({
+    const health = await new DriveHealthReader(sources()).read({
       profileId: robin,
     });
     expect(health).toMatchObject({ rootsTotal: 2, corrupt: 0, hashedShare: 0 });
@@ -370,9 +378,10 @@ describe('library health', () => {
       corrupt: 1,
     };
     const health = await new DriveHealthReader(
-      fixture.context,
-      sources({ scrub: () => running }),
-    ).read({ profileId: robin });
+      sources({ scrub: () => Promise.resolve(running) }),
+    ).read({
+      profileId: robin,
+    });
     expect(health.scrub).toEqual(running);
   });
 

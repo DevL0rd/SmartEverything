@@ -1,7 +1,13 @@
+import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { StoreContext } from '../../store/context';
-import type { PhotoVectorIndex } from './index';
-import { itemsIn, type SubjectScope } from './scope';
+import { storeUnit } from '../../store/host/unit';
+import type { Store } from '../../store/store';
+import { PhotoConsent, type ConsentSwitches } from './consent';
+import { PHOTOS_AI_AREA } from './defaults';
+import { itemsIn, subjectOf, type SubjectScope } from './scope';
+
+const log = new Logger(PHOTOS_AI_AREA);
 
 const ID = z.strictObject({ id: z.string() });
 
@@ -13,13 +19,15 @@ export interface PurgeCounts {
   readonly jobs: number;
 }
 
-export class PhotoAiPurge {
-  constructor(
-    private readonly context: StoreContext,
-    private readonly index: PhotoVectorIndex,
-  ) {}
+export interface SmartSearchPurge {
+  readonly counts: PurgeCounts;
+  readonly unindexed: readonly string[];
+}
 
-  smartSearch(subject: string, scope: SubjectScope): PurgeCounts {
+class PhotoAiPurge {
+  constructor(private readonly context: StoreContext) {}
+
+  smartSearch(subject: string, scope: SubjectScope): SmartSearchPurge {
     const items = itemsIn(scope);
     const embedded = this.context.sql.all(
       ID,
@@ -57,8 +65,7 @@ export class PhotoAiPurge {
       `update drive_items_search set labels = '' where labels <> '' and item_id in (${items})`,
       scope.parameters,
     );
-    for (const row of embedded) this.index.remove(row.id);
-    return counts;
+    return { counts, unindexed: embedded.map((row) => row.id) };
   }
 
   faceGrouping(subject: string, scope: SubjectScope): PurgeCounts {
@@ -84,3 +91,32 @@ export class PhotoAiPurge {
     }));
   }
 }
+
+export interface ConsentPurge {
+  readonly switches: ConsentSwitches;
+  readonly smartSearch: SmartSearchPurge | null;
+  readonly faceGrouping: PurgeCounts | null;
+}
+
+function purgeConsent(
+  store: Store,
+  input: { readonly profileId: string; readonly before: ConsentSwitches | undefined },
+): ConsentPurge {
+  const { profileId, before } = input;
+  const switches = new PhotoConsent(store, log).switches(profileId);
+  const scope = subjectOf(profileId, store.personAccess.ownerIds().includes(profileId));
+  const purge = new PhotoAiPurge(store.context);
+  return {
+    switches,
+    smartSearch:
+      !switches.smartSearch && (before?.smartSearch ?? true)
+        ? purge.smartSearch(profileId, scope)
+        : null,
+    faceGrouping:
+      !switches.faceGrouping && (before?.faceGrouping ?? true)
+        ? purge.faceGrouping(profileId, scope)
+        : null,
+  };
+}
+
+export const PHOTO_AI_CONSENT_PURGE_UNIT = storeUnit(purgeConsent);

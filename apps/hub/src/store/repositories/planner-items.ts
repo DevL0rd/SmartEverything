@@ -55,7 +55,7 @@ const GUEST_PROFILE = z.object({ profile_id: z.string() });
 export type PlannerItemInput = Omit<
   PlannerItemRow,
   'id' | 'created_at' | 'updated_at' | 'deleted_at'
->;
+> & { readonly id?: string };
 
 type PlannerItemPatchFields = Omit<
   PlannerItemRow,
@@ -261,7 +261,7 @@ export class PlannerItemsRepository {
       const now = this.context.now();
       const row = PLANNER_ITEM_ROW.parse({
         ...input,
-        id: this.context.newId(),
+        id: input.id ?? this.context.newId(),
         created_at: now,
         updated_at: now,
         deleted_at: null,

@@ -8,30 +8,30 @@ import { authenticate, clientOf, type Caller } from '../auth';
 import { bearerOf } from '../http';
 import { actorOf } from './drive-services';
 
-function callerOf(
+async function callerOf(
   store: Store,
   nodes: Pick<ComputerNodeAccess, 'authenticate'>,
   request: IncomingMessage,
   token: string,
-): { readonly caller: Caller; readonly node: boolean } {
+): Promise<{ readonly caller: Caller; readonly node: boolean }> {
   if (NODE_AI_TOKEN.safeParse(token).success) {
-    return { caller: nodeCaller(store, nodes.authenticate(token)), node: true };
+    return { caller: nodeCaller(store, await nodes.authenticate(token)), node: true };
   }
-  return { caller: authenticate(store, request, 'member', false), node: false };
+  return { caller: await authenticate(store, request, 'member', false), node: false };
 }
 
 export function tusAuthentication(
   store: Store,
   nodes: Pick<ComputerNodeAccess, 'authenticate'>,
-): (request: IncomingMessage) => TusCaller | null {
-  return (request) => {
+): (request: IncomingMessage) => Promise<TusCaller | null> {
+  return async (request) => {
     const token = bearerOf(request);
     if (token === null) return null;
     try {
-      const { caller, node } = callerOf(store, nodes, request, token);
+      const { caller, node } = await callerOf(store, nodes, request, token);
       const id = clientOf(caller).id;
       return {
-        ...actorOf(store, caller),
+        ...actorOf(caller),
         clientId: node ? null : id,
         nodeId: node ? id : null,
       };

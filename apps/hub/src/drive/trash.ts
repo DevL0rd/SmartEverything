@@ -5,7 +5,6 @@ import type { DriveIntent } from '../store/repositories/drive-intents';
 import type { Store } from '../store/store';
 import {
   abandonIntent,
-  DriveWriteError,
   locate,
   manifestPath,
   moveWithin,
@@ -18,7 +17,10 @@ import {
   type DriveWriteRoot,
   type FileEnv,
 } from './intents';
+import { DriveWriteError } from './write-error';
 import { unlinkVersionFiles } from './versions';
+import { openIntent } from './intent-batch';
+import { resultOf, writeDriveOps } from './units/ops';
 
 export interface TrashRequest {
   readonly itemId: string;
@@ -95,7 +97,7 @@ export async function moveToTrash(
     await writeManifest(env.files, root, entry.trashRelPath, entry);
     return { intent: null, entry };
   }
-  const intent = env.store.driveIntents.open({
+  const intent = await openIntent(env.store, {
     rootId: root.id,
     op: 'trash',
     fromPath: request.relPath,
@@ -132,7 +134,7 @@ export async function moveToTrashDeferred(
   }
   const plan: TrashPlan = { request, entry: entryOf(env, root, request), stamp };
   const intent = request.onDisk
-    ? env.store.driveIntents.open({
+    ? await openIntent(env.store, {
         rootId: root.id,
         op: 'trash',
         fromPath: request.relPath,
@@ -243,24 +245,32 @@ async function moveOne(
   barrier.manifests.push(manifest);
 }
 
-function openIntents(
+async function openIntents(
   env: FileEnv,
   root: DriveWriteRoot,
   plans: readonly TrashPlan[],
-): (DriveIntent | null)[] {
-  return env.store.write(() =>
-    plans.map((plan) =>
-      plan.request.onDisk
-        ? env.store.driveIntents.open({
-            rootId: root.id,
-            op: 'trash',
-            fromPath: plan.request.relPath,
-            toPath: plan.entry.trashRelPath,
-            versionPath: null,
-          })
-        : null,
-    ),
+): Promise<(DriveIntent | null)[]> {
+  const onDisk = plans.filter((plan) => plan.request.onDisk);
+  const results = await writeDriveOps(
+    env.store,
+    onDisk.map((plan) => ({
+      kind: 'intent',
+      intent: {
+        rootId: root.id,
+        op: 'trash',
+        fromPath: plan.request.relPath,
+        toPath: plan.entry.trashRelPath,
+        versionPath: null,
+      },
+    })),
   );
+  let next = 0;
+  return plans.map((plan) => {
+    if (!plan.request.onDisk) return null;
+    const { intent } = resultOf(results, next, 'intent');
+    next += 1;
+    return intent;
+  });
 }
 
 export async function moveManyToTrash(
@@ -270,7 +280,7 @@ export async function moveManyToTrash(
 ): Promise<TrashBatchResult[]> {
   const results = new Map<string, TrashBatchResult>();
   const plans = await planTrashes(env, root, requests, results);
-  const intents = openIntents(env, root, plans);
+  const intents = await openIntents(env, root, plans);
   const barrier: Barrier = { paths: new Set(), manifests: [] };
   const moved: { plan: TrashPlan; intent: DriveIntent | null }[] = [];
   for (const [index, plan] of plans.entries()) {
@@ -336,7 +346,7 @@ async function freeTarget(
     const candidate =
       attempt < 0 ? original : join(restoredName(entry.name, entry.isFolder, attempt));
     const free =
-      env.store.driveItems.byPath(root.id, candidate, null) === undefined &&
+      (await env.store.host.call('driveItems', 'byPath', root.id, candidate, null)) === undefined &&
       (await env.files.stamp(await locate(root, candidate))) === null;
     if (free) {
       return candidate;
@@ -358,7 +368,7 @@ export async function restoreFromTrash(
     await env.files.remove(await locate(root, manifestPath(entry.trashRelPath)));
     return { intent: null, relPath };
   }
-  const intent = env.store.driveIntents.open({
+  const intent = await openIntent(env.store, {
     rootId: root.id,
     op: 'restore',
     fromPath: entry.trashRelPath,
@@ -376,14 +386,12 @@ export async function restoreFromTrash(
 }
 
 export async function removeTrashEntry(env: FileEnv, entry: DriveTrashEntry): Promise<void> {
-  const root = env.store.driveRoots.byId(entry.rootId);
-  const purged = env.store.write(() => {
-    env.store.driveTrash.forgetPhoto(entry.itemId);
-    env.store.driveTrash.remove(entry.itemId);
-    env.store.driveGrants.sweepOrphans();
-    env.store.driveShortcuts.sweepOrphans();
-    return env.store.driveVersions.purgeItem(entry.itemId);
-  });
+  const root = await env.store.host.call('driveRoots', 'byId', entry.rootId);
+  const { purged } = resultOf(
+    await writeDriveOps(env.store, [{ kind: 'purgeTrash', itemId: entry.itemId }]),
+    0,
+    'purged',
+  );
   await env.files.remove(await locate(root, entry.trashRelPath));
   await env.files.remove(await locate(root, manifestPath(entry.trashRelPath)));
   await unlinkVersionFiles(env, purged.unlink);

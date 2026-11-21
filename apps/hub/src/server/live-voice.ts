@@ -15,7 +15,7 @@ export interface VoiceConnection {
 
 export interface LiveVoiceOptions<Connection extends VoiceConnection> {
   readonly send: (connection: Connection, message: LiveMessage) => void;
-  readonly profileOf: (clientId: string) => string;
+  readonly profileOf: (clientId: string) => Promise<string>;
   readonly log: Logger;
 }
 
@@ -28,8 +28,8 @@ export class LiveVoice<Connection extends VoiceConnection> {
     this.source = source;
   }
 
-  watch(connection: Connection, callId: string | null): boolean {
-    const allowed = this.source?.watch(this.#watcherOf(connection), callId) ?? false;
+  async watch(connection: Connection, callId: string | null): Promise<boolean> {
+    const allowed = this.source?.watch(await this.#watcherOf(connection), callId) ?? false;
     if (!allowed) {
       this.options.log.warn('voice_watch.refused', {
         callId,
@@ -40,16 +40,16 @@ export class LiveVoice<Connection extends VoiceConnection> {
     return allowed;
   }
 
-  snapshot(connection: Connection): void {
-    const calls = this.source?.active(this.#watcherOf(connection)) ?? [];
+  async snapshot(connection: Connection): Promise<void> {
+    const calls = this.source?.active(await this.#watcherOf(connection)) ?? [];
     this.options.send(connection, { type: 'voice_calls', calls });
   }
 
-  #watcherOf(connection: Connection): VoiceWatcher {
+  async #watcherOf(connection: Connection): Promise<VoiceWatcher> {
     return {
       key: String(connection.id),
       owner: connection.client.role === 'owner',
-      profileId: this.options.profileOf(connection.client.id),
+      profileId: await this.options.profileOf(connection.client.id),
       send: (notice): void => {
         this.options.send(connection, notice);
       },

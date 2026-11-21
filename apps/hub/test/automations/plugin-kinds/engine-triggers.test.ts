@@ -77,7 +77,7 @@ describe('a stored plugin trigger on the engine', () => {
   it('arms through the catalog matcher and starts a run on a plugin event', async () => {
     const rig = await rigV3({ kinds: catalogWithChatHub() });
     const id = watching(rig);
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.observe(pluginSignal(rig, 'random'));
     await rig.settle();
     expect(rig.runs(id)).toHaveLength(0);
@@ -90,7 +90,7 @@ describe('a stored plugin trigger on the engine', () => {
   it('does not arm the trigger without the plugin in the catalog', async () => {
     const rig = await rigV3();
     const id = watching(rig);
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.observe(pluginSignal(rig, 'general'));
     await rig.settle();
     expect(rig.runs(id)).toHaveLength(0);

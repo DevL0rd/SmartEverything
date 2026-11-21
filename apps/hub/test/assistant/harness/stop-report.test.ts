@@ -30,7 +30,7 @@ interface Launched {
   readonly parent: AiChatRow;
   readonly child: AiChatRow;
   readonly event: StoredEvent;
-  readonly settle: (completion: NativeCompletion, spoken: string) => void;
+  readonly settle: (completion: NativeCompletion, spoken: string) => Promise<void>;
   readonly delegation: Delegation;
   readonly sender: AskSender;
 }
@@ -44,6 +44,7 @@ function launch(made: Rig, wait: boolean): Launched & { readonly answer: Promise
     new AssistantFiles({
       layout: hubLayout(made.opened.directory, {}),
       chat: store.assistantChat,
+      attachments: store.live.attachments,
       now,
     }),
   );
@@ -74,14 +75,18 @@ function launch(made: Rig, wait: boolean): Launched & { readonly answer: Promise
   if (event === undefined) throw new Error('The helper task was not queued.');
   const child = store.aiChats.chat(event.chat_id);
   delegation.admit(event);
-  const settle = (completion: NativeCompletion, spoken: string): void => {
-    const reply = conversation.startReply(child, event.message_id, 'model-a');
+  const settle = async (completion: NativeCompletion, spoken: string): Promise<void> => {
+    const reply = await conversation.startReply({
+      chat: child,
+      replyTo: event.message_id,
+      model: 'model-a',
+    });
     const stream = new TurnStream(
       { chatId: child.id, turnId: event.id, messageId: reply.id, profileId: child.profile_id },
       (): void => undefined,
     );
     stream.text(spoken);
-    completeNativeTurn({
+    await completeNativeTurn({
       service: made.service,
       conversation,
       turn: { event, chat: child, replyId: reply.id, stream },
@@ -106,7 +111,7 @@ describe('a helper that the user stopped', () => {
     rig = await harnessRig();
     const { parent, event, settle } = launch(rig, false);
 
-    settle({ kind: 'completed', interrupted: true }, 'Half an answer');
+    await settle({ kind: 'completed', interrupted: true }, 'Half an answer');
 
     expect(reportText(rig, parent)).toBe(`It could not finish: ${STOPPED_BY_USER}`);
     expect(rig.opened.store.aiAgentRuns.read(event.id)).toMatchObject({
@@ -119,7 +124,7 @@ describe('a helper that the user stopped', () => {
     rig = await harnessRig();
     const { settle, answer, parent } = launch(rig, true);
 
-    settle({ kind: 'completed', interrupted: true }, 'Half an answer');
+    await settle({ kind: 'completed', interrupted: true }, 'Half an answer');
 
     await expect(answer).resolves.toMatchObject({ state: 'failed', text: STOPPED_BY_USER });
     expect(reportText(rig, parent)).toBeUndefined();
@@ -129,7 +134,7 @@ describe('a helper that the user stopped', () => {
     rig = await harnessRig();
     const { parent, event, settle } = launch(rig, false);
 
-    settle(
+    await settle(
       {
         kind: 'failed',
         failure: { code: 'operation_failed', message: 'Model refused.', retry_at: null },

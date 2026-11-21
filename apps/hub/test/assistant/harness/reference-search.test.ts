@@ -80,7 +80,7 @@ beforeEach(async () => {
   references = new ReferenceService(rig.opened.store, projects);
   references.attachNative(['dsh'], harnessReferences(rig.service));
   const created = rig.newChat(rig.desk.target);
-  const open = rig.service.prepare(rig.owner, created.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, created.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.desk.target, randomUUID(), open);
   chat = rig.opened.store.aiChats.chat(created.id);
   caller = { kind: 'client', client: rig.opened.store.clients.byId(rig.clientId), chatId: chat.id };

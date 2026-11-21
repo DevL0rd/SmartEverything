@@ -1,4 +1,4 @@
-import { setImmediate as nextTurn } from 'node:timers/promises';
+import { settleWithHost } from '../../support/host-settle';
 import {
   NODE_REGISTRY,
   type DeviceCapability,
@@ -20,6 +20,7 @@ import { FakeClock } from '../../support/fake-clock';
 import { FakeAdapter, LAMP } from '../../support/fake-provider';
 import { testLogger } from '../../support/logs';
 import { testRun } from './support';
+import { adapterDirectory } from '../../support/adapter-directory';
 
 const open: TestDatabase[] = [];
 
@@ -116,7 +117,7 @@ async function home(devices: readonly DiscoveredDevice[]): Promise<Rig> {
     store: db.database,
     inventory,
     drivers: new DeviceDriverRegistry(),
-    adapters: { adapterFor: (): FakeAdapter => adapter },
+    adapters: adapterDirectory((): FakeAdapter => adapter),
     hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
     log: testLogger(),
     now: clock.now,
@@ -135,7 +136,7 @@ async function home(devices: readonly DiscoveredDevice[]): Promise<Rig> {
 }
 
 async function settle(): Promise<void> {
-  for (let turn = 0; turn < 20; turn += 1) await nextTurn();
+  await settleWithHost();
 }
 
 function report(db: TestDatabase, deviceId: string, key: string, value: JsonValue): void {

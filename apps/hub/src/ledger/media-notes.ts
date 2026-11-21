@@ -1,7 +1,7 @@
 import { microsOfUsd, type AiUsageRow, type JsonValue } from '@smarteverything/domain';
 import type { OrUsage } from '../openrouter/wire';
 import type { MediaNoteAnswer } from '../transcripts/media-notes';
-import type { Ledger } from './ledger';
+import type { LedgerHost } from './units';
 
 interface MediaNoteCharge {
   readonly profileId: string;
@@ -24,10 +24,10 @@ export function tokenMeters(
   };
 }
 
-export function recordMediaNote(ledger: Ledger, charge: MediaNoteCharge): void {
+export async function recordMediaNote(host: LedgerHost, charge: MediaNoteCharge): Promise<void> {
   const { usage } = charge.answer;
   const cost = usage?.cost ?? null;
-  ledger.record({
+  await host.write('ledgerRecord', {
     source: 'openrouter',
     work: 'transcribe',
     profile_id: charge.profileId,

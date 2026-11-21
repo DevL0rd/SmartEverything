@@ -139,6 +139,7 @@ function fixtureAdmission(
   const files = new AssistantFiles({
     layout: hubLayout(directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: store.now,
   });
   const engines = new EngineRegistry(store);

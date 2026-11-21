@@ -34,7 +34,7 @@ function doorOpenOf(values: LaundryValues): boolean | undefined {
 }
 
 function laundryRead(deps: WorldReadDeps, machine: string): ReadResult {
-  const device = deviceById(deps.store, machine);
+  const device = deviceById(deps.world, machine);
   const presentation = presentDevice(device);
   if (presentation.family !== 'laundry')
     throw new ReadFailure('Invalid', `${device.name} is not a washing machine or dryer`);

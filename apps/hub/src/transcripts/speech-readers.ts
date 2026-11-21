@@ -39,7 +39,7 @@ export function admitDeviceSpeech(
 
 export function pluginReader(store: Store, pluginId: string): PluginSpeechReader {
   const plugin = store.plugins.byId(pluginId);
-  const reader = store.speech.plugin(pluginId);
+  const reader = store.live.speechReaders.plugin(pluginId);
   if (!plugin.enabled || reader === undefined)
     throw new ApiError('forbidden', 'This speech source plugin is unavailable.');
   return reader;
@@ -51,7 +51,7 @@ export function admitSpeechSources(
   triggers: readonly SpeechTrigger[],
 ): SpeechPrincipal {
   const caller = speechToolCaller(store, principal);
-  const admitted = store.speech.plugins().flatMap(([id, reader]) => {
+  const admitted = store.live.speechReaders.plugins().flatMap(([id, reader]) => {
     try {
       pluginReader(store, id);
       admitSpeechReadTool(store, principal, reader.readTool());

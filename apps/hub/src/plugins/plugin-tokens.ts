@@ -5,12 +5,18 @@ const CALLBACK_URL_VARIABLE = 'SMARTEVERYTHING_MCP_URL';
 
 const CALLBACK_TOKEN_VARIABLE = 'SMARTEVERYTHING_TOKEN';
 
-export function callbackFor(
-  store: Store,
+export async function callbackFor(
+  store: Pick<Store, 'host'>,
   row: PluginRow,
   mcpUrl: string,
-): Readonly<Record<string, string>> {
+): Promise<Readonly<Record<string, string>>> {
   const token = createMcpToken();
-  store.plugins.saveToken(row.id, hashMcpToken(token), row.manifest.permissions.seAreas);
+  await store.host.call(
+    'plugins',
+    'saveToken',
+    row.id,
+    hashMcpToken(token),
+    row.manifest.permissions.seAreas,
+  );
   return { [CALLBACK_URL_VARIABLE]: mcpUrl, [CALLBACK_TOKEN_VARIABLE]: token };
 }

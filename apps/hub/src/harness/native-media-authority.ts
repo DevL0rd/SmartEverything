@@ -19,7 +19,7 @@ export function nativeMediaAuthority(
   const signal = currentRequestSignal();
   const authorize = (): void => {
     signal?.throwIfAborted();
-    service.store.aiChats.assertWorkAllowed(metadata.chat_id);
+    service.store.live.chatWork.assertWorkAllowed(metadata.chat_id);
     service.store.dshSessions.verifyWriter(
       claim,
       service.hostPrincipal(profileId, service.directory.get(claim.target).host),

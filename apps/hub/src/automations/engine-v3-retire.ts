@@ -1,15 +1,14 @@
-import type { AutomationRunRecordsRepository } from '../store/repositories/automation-run-records';
+import type { RunLedger } from './run-ledger';
 import type { RunDriver } from './driver/admission';
 import type { Finishes } from './engine-v3-children';
 
 export async function retireRuns(
-  records: Pick<AutomationRunRecordsRepository, 'active'>,
+  runs: Pick<RunLedger, 'active'>,
   driver: Pick<RunDriver, 'isLive' | 'cancel'>,
   finishes: Pick<Finishes, 'wait'>,
   automationId: string,
 ): Promise<void> {
-  const running = records
-    .active(automationId)
+  const running = (await runs.active(automationId))
     .map((record) => record.id)
     .filter((runId) => driver.isLive(runId));
   const ended = running.map((runId) => finishes.wait(runId));

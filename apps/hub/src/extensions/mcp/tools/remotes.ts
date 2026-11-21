@@ -11,6 +11,7 @@ import { applianceExternalId } from '../../../infrared/appliance-devices';
 import { reported, sendAndWait, type CommandRequest } from './commanding';
 import { deviceScopeOfActor } from './person-reach';
 import { COMMANDS, READS, defineTool, type Tool } from './registry';
+import type { RemoteRows } from './home-units';
 import { inRooms, placedDevices, resolveNamed, type Placed } from './targets';
 
 type Button = Pick<IrCodeRow, 'button' | 'format' | 'code'>;
@@ -25,14 +26,13 @@ interface Remote {
 }
 
 function learnedRemotes(
-  store: Store,
+  rows: RemoteRows,
   scope: DeviceScope | null,
   placed: readonly Placed[],
 ): Remote[] {
   const blasters = new Map(placed.map((entry) => [entry.device.id, entry]));
-  const codes = store.infrared.codes();
-  return store.infrared
-    .remotes()
+  const codes = rows.codes;
+  return rows.remotes
     .filter((row) => scope === null || blasters.has(row.blaster_id))
     .map((row) => ({
       row,
@@ -42,26 +42,27 @@ function learnedRemotes(
     }));
 }
 
-function applianceRemotes(store: Store, placed: readonly Placed[]): Remote[] {
+function applianceRemotes(rows: RemoteRows, placed: readonly Placed[]): Remote[] {
   const byId = new Map(placed.map((entry) => [entry.device.id, entry]));
   const byExternal = new Map(placed.map((entry) => [entry.device.external_id, entry]));
-  return store.irAppliances.list().flatMap((row) => {
+  return rows.appliances.flatMap(({ row, keys }) => {
     const appliance = byExternal.get(applianceExternalId(row.id));
     if (appliance === undefined) return [];
     return [
       {
         row,
         blaster: row.blaster_id === null ? undefined : byId.get(row.blaster_id),
-        buttons: store.irAppliances.keys(row.id),
+        buttons: keys,
         appliance,
       },
     ];
   });
 }
 
-function remotes(store: Store, scope: DeviceScope | null): Remote[] {
-  const placed = placedDevices(store, scope);
-  return [...learnedRemotes(store, scope, placed), ...applianceRemotes(store, placed)];
+async function remotes(store: Store, scope: DeviceScope | null): Promise<Remote[]> {
+  const placed = await placedDevices(store, scope);
+  const rows = await store.host.read('mcpRemoteRows', null);
+  return [...learnedRemotes(rows, scope, placed), ...applianceRemotes(rows, placed)];
 }
 
 function ownDevice(appliance: Placed | null): Record<string, unknown> {
@@ -125,12 +126,12 @@ export const REMOTE_TOOLS: readonly Tool[] = [
       rooms: z.array(z.string().min(1)).min(1).optional().describe('Room ids or names'),
     }),
     annotations: READS,
-    run: (context, input) => {
+    run: async (context, input) => {
       const { store } = context;
       const states = store.settings.read().ir_remotes;
       return {
         structured: {
-          remotes: remotes(store, deviceScopeOfActor(context))
+          remotes: (await remotes(store, deviceScopeOfActor(context)))
             .filter(
               (remote) =>
                 input.rooms === undefined || inRooms(remote.blaster?.room ?? null, input.rooms),
@@ -149,7 +150,7 @@ export const REMOTE_TOOLS: readonly Tool[] = [
     annotations: COMMANDS,
     run: async (context, input) => {
       const remote = resolveNamed(
-        remotes(context.store, deviceScopeOfActor(context)),
+        await remotes(context.store, deviceScopeOfActor(context)),
         input.remote,
         'remote',
         {
@@ -167,7 +168,7 @@ export const REMOTE_TOOLS: readonly Tool[] = [
         structured: {
           remote: remote.row.name,
           button: button.button,
-          ...reported(context, outcome),
+          ...(await reported(context, outcome)),
         },
       };
     },

@@ -21,6 +21,7 @@ import { problemOf } from './problems';
 import { LinkCancelledError, type Attempt } from './link-attempt';
 import { adapterSink } from './adapter-sink';
 import { PromptBroker } from './prompts';
+import { ProviderStarts, StartRetries, type ProviderStartedListener } from './provider-starts';
 import { linkAccount, starterFor, type ModuleRegistry } from './registry-types';
 import { background, failureLine, type Logger } from '@smarteverything/logging';
 
@@ -30,17 +31,13 @@ export interface ProviderManagerOptions {
   readonly store: Pick<HubDatabase, 'updateProviderLink'>;
   readonly inventory: Pick<Inventory, 'apply' | 'markOffline' | 'devicesOf' | 'setOnline'>;
   readonly state: Pick<StateWriter, 'push'>;
-  readonly prepareAdapter?: (adapter: ProviderAdapter) => void;
+  readonly prepareAdapter?: (adapter: ProviderAdapter) => Promise<void>;
   readonly releaseAdapter?: (adapter: ProviderAdapter) => void;
   readonly events: Pick<EventRouter, 'fromProvider'>;
   readonly layout: LinkContext['layout'];
   readonly accountChanged: (provider: Provider, account: StoredAccount | null) => Promise<void>;
   readonly log: Logger;
 }
-
-const RETRY_FIRST_SECONDS = 5;
-
-const RETRY_CAP_SECONDS = 60;
 
 interface Running {
   readonly adapter: ProviderAdapter;
@@ -49,16 +46,28 @@ interface Running {
 
 export class ProviderManager implements AdapterDirectory {
   private readonly running = new Map<Provider, Running>();
-  private readonly retries = new Map<Provider, NodeJS.Timeout>();
   private readonly attempts = new Map<Provider, Attempt>();
+  private readonly starts: ProviderStarts;
+  private readonly retries: StartRetries;
   private readonly prompts: PromptBroker;
 
   constructor(private readonly options: ProviderManagerOptions) {
-    this.prompts = new PromptBroker(options.store);
+    this.prompts = new PromptBroker(options.store, options.log);
+    this.starts = new ProviderStarts(options.log);
+    this.retries = new StartRetries(options.log);
   }
 
   adapterFor(provider: Provider): ProviderAdapter | undefined {
     return this.running.get(provider)?.adapter;
+  }
+
+  started(provider: Provider): Promise<ProviderAdapter> {
+    const running = this.running.get(provider);
+    return running === undefined ? this.starts.wait(provider) : Promise.resolve(running.adapter);
+  }
+
+  onStarted(listener: ProviderStartedListener): () => void {
+    return this.starts.onStarted(listener);
   }
 
   async startLinked(): Promise<void> {
@@ -73,7 +82,7 @@ export class ProviderManager implements AdapterDirectory {
     account: StoredAccount,
     attempt: number,
   ): Promise<void> {
-    this.cancelRetry(provider);
+    this.retries.cancel(provider);
     const startedAt = performance.now();
     try {
       await this.start(provider, account);
@@ -93,25 +102,11 @@ export class ProviderManager implements AdapterDirectory {
         lastError: failureLine(cause),
       });
       if (problem === 'network') {
-        this.scheduleRetry(provider, account, attempt);
+        this.retries.schedule(provider, attempt, () => {
+          background(this.startStored(provider, account, attempt + 1), 'stored.start_failed');
+        });
       }
     }
-  }
-
-  private scheduleRetry(provider: Provider, account: StoredAccount, attempt: number): void {
-    const seconds = Math.min(RETRY_FIRST_SECONDS * 3 ** attempt, RETRY_CAP_SECONDS);
-    this.options.log.info('provider.start_retry_scheduled', { provider, attempt, seconds });
-    const timer = setTimeout(() => {
-      this.retries.delete(provider);
-      background(this.startStored(provider, account, attempt + 1), 'stored.start_failed');
-    }, seconds * 1000);
-    timer.unref();
-    this.retries.set(provider, timer);
-  }
-
-  private cancelRetry(provider: Provider): void {
-    clearTimeout(this.retries.get(provider));
-    this.retries.delete(provider);
   }
 
   async handle(command: ProviderHubCommand): Promise<JsonValue> {
@@ -126,9 +121,7 @@ export class ProviderManager implements AdapterDirectory {
 
   async stopAll(): Promise<void> {
     this.prompts.cancelAll();
-    for (const provider of [...this.retries.keys()]) {
-      this.cancelRetry(provider);
-    }
+    this.retries.cancelAll();
     await Promise.all([...this.running.keys()].map((provider) => this.stop(provider)));
   }
 
@@ -275,7 +268,15 @@ export class ProviderManager implements AdapterDirectory {
     await this.options.store.updateProviderLink(provider, { deviceCount });
   }
 
-  private async start(provider: Provider, account: StoredAccount): Promise<number> {
+  private start(provider: Provider, account: StoredAccount): Promise<number> {
+    return this.starts.track(
+      provider,
+      () => this.launch(provider, account),
+      () => this.adapterFor(provider),
+    );
+  }
+
+  private async launch(provider: Provider, account: StoredAccount): Promise<number> {
     const startedAt = performance.now();
     this.options.log.info('provider.starting', { provider });
     await this.stop(provider);
@@ -284,7 +285,7 @@ export class ProviderManager implements AdapterDirectory {
     await mkdir(this.options.layout.system.providers(provider), { recursive: true, mode: 0o700 });
     const starter = starterFor(this.options.registry, provider);
     const adapter = await starter.start(account, context);
-    this.options.prepareAdapter?.(adapter);
+    await this.options.prepareAdapter?.(adapter);
     try {
       return await this.bring(
         provider,
@@ -351,7 +352,7 @@ export class ProviderManager implements AdapterDirectory {
   }
 
   private async stop(provider: Provider): Promise<void> {
-    this.cancelRetry(provider);
+    this.retries.cancel(provider);
     const running = this.running.get(provider);
     this.prompts.cancel(provider);
     if (running === undefined) {

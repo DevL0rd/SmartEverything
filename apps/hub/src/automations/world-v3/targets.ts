@@ -1,8 +1,14 @@
-import { DeviceTargetError, type DeviceRow, type DeviceTarget } from '@smarteverything/domain';
-import { resolveTarget } from '../../device-groups/commands';
+import {
+  DeviceTargetError,
+  targetDevices,
+  type DeviceRow,
+  type DeviceTarget,
+} from '@smarteverything/domain';
 import { StoreNotFoundError } from '../../store/context';
 import { ReadFailure } from './read-port';
-import type { Store } from '../../store/store';
+import type { WorldSource } from './world-mirror';
+
+export type TargetWorld = Pick<WorldSource, 'devices' | 'rooms' | 'deviceGroups'>;
 
 export function notFound<T>(work: () => T): T {
   try {
@@ -15,10 +21,20 @@ export function notFound<T>(work: () => T): T {
   }
 }
 
-export function devicesOf(store: Store, target: DeviceTarget): readonly DeviceRow[] {
-  return notFound(() => resolveTarget(store, target));
+function resolved(world: TargetWorld, target: DeviceTarget): readonly DeviceRow[] {
+  if (target.kind === 'room') world.rooms.byId(target.roomId);
+  if (target.kind === 'group') world.deviceGroups.byId(target.groupId);
+  if (target.kind === 'devices')
+    target.deviceIds.forEach((id) => {
+      world.devices.byId(id);
+    });
+  return targetDevices(world.devices.list(), world.deviceGroups.list(), target);
 }
 
-export function deviceById(store: Store, id: string): DeviceRow {
-  return notFound(() => store.devices.byId(id));
+export function devicesOf(world: TargetWorld, target: DeviceTarget): readonly DeviceRow[] {
+  return notFound(() => resolved(world, target));
+}
+
+export function deviceById(world: Pick<WorldSource, 'devices'>, id: string): DeviceRow {
+  return notFound(() => world.devices.byId(id));
 }

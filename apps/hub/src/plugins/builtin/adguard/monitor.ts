@@ -8,7 +8,7 @@ import type {
 import type { Logger } from '@smarteverything/logging';
 import { PolledLoop, type Cadence } from '../polled-loop';
 import { JsonApiRefusedError, reasonOf } from '../json-api';
-import { WireGate } from '../wire-gate';
+import { WireGate, type WireAudience } from '../wire-gate';
 import type { AdGuardClient } from './adguard-client';
 import { CLIENTS_REPLY, FILTERING_REPLY, STATS_REPLY, STATUS_REPLY } from './api-schemas';
 import { LookupRates, type LookupRate } from './lookup-rates';
@@ -24,7 +24,7 @@ export interface MonitorOptions {
   readonly url: string;
   readonly log: Logger;
   readonly record: (snapshot: AdGuardSnapshot, rate: LookupRate | null) => void;
-  readonly publish: (snapshot: AdGuardSnapshot) => void;
+  readonly publish: (snapshot: AdGuardSnapshot, audience: WireAudience) => void;
   readonly protectionChanged: (status: AdGuardStatus) => void;
 }
 
@@ -69,7 +69,7 @@ export class AdGuardMonitor {
     if (cadence === 'paused') {
       this.#connection = { state: 'paused' };
       this.options.record(this.latest, null);
-      this.options.publish(this.latest);
+      this.options.publish(this.latest, 'everyone');
     }
   }
 
@@ -100,8 +100,9 @@ export class AdGuardMonitor {
     }
     const snapshot = this.latest;
     this.options.record(snapshot, rate);
-    if (this.#wire.due(this.#loop.viewed, snapshot.connection.state !== before)) {
-      this.options.publish(snapshot);
+    const audience = this.#wire.due(this.#loop.viewed, snapshot.connection.state !== before);
+    if (audience !== null) {
+      this.options.publish(snapshot, audience);
     }
   }
 

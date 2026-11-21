@@ -89,6 +89,7 @@ beforeEach(() => {
     decisions,
     tests,
     engine: {
+      recorded: (): Promise<void> => Promise.resolve(),
       start: (automationId): Submission => {
         if (refusal !== null) return { kind: 'refused', reason: 'single_busy', error: refusal };
         return { kind: 'started', runId: runOf(automationId).id };
@@ -123,8 +124,8 @@ afterEach(() => {
   rig.close();
 });
 
-function programOf(caller: Caller = rig.owner.caller): string {
-  const made = rig.service.create(caller, {
+async function programOf(caller: Caller = rig.owner.caller): Promise<string> {
+  const made = await rig.service.create(caller, {
     name: `Lamp ${randomUUID().slice(0, 4)}`,
     enabled: true,
     definition: automationOf([logLine('say', 'hi')]),
@@ -190,7 +191,7 @@ async function refused(work: Promise<unknown>): Promise<ApiError> {
 
 describe('starting a live run', () => {
   it('starts, replies with the summary only and never the run state', async () => {
-    const id = programOf();
+    const id = await programOf();
     const reply = await call(E.startProgramRun, rig.owner.caller, { body: { automationId: id } });
     expect(reply).toMatchObject({
       ok: true,
@@ -204,7 +205,7 @@ describe('starting a live run', () => {
   });
 
   it('waits for the run and returns the program outputs', async () => {
-    const id = programOf();
+    const id = await programOf();
     outputs = { level: 7 };
     const reply = await call(E.startProgramRun, rig.owner.caller, {
       body: { automationId: id, wait: true },
@@ -218,7 +219,7 @@ describe('starting a live run', () => {
   });
 
   it('passes an admission refusal on as its error', async () => {
-    const id = programOf();
+    const id = await programOf();
     refusal = new ApiError('conflict', 'busy');
     expect(
       (await refused(call(E.startProgramRun, rig.owner.caller, { body: { automationId: id } })))
@@ -227,7 +228,7 @@ describe('starting a live run', () => {
   });
 
   it('refuses a scenario, overrides or breakpoints on a live run', async () => {
-    const id = programOf();
+    const id = await programOf();
     const error = await refused(
       call(E.startProgramRun, rig.owner.caller, {
         body: { automationId: id, scenario: SCENARIO, breakpoints: ['n1'] },
@@ -246,7 +247,7 @@ describe('starting a live run', () => {
 
 describe('dry runs and simulations', () => {
   it('sends a simulation its parsed scenario and the person breakpoints', async () => {
-    const id = programOf();
+    const id = await programOf();
     const reply = await call(E.startProgramRun, rig.owner.caller, {
       body: { automationId: id, mode: 'simulate', scenario: SCENARIO, breakpoints: ['n1'] },
     });
@@ -261,7 +262,7 @@ describe('dry runs and simulations', () => {
   });
 
   it('sends a dry run its overrides and reports a failure as not ok', async () => {
-    const id = programOf();
+    const id = await programOf();
     outcome = rehearsalOf({ outcome: 'failed', error: 'x' });
     const reply = await call(E.startProgramRun, rig.owner.caller, {
       body: {
@@ -275,7 +276,7 @@ describe('dry runs and simulations', () => {
   });
 
   it('refuses a simulation without a scenario and a dry run with one', async () => {
-    const id = programOf();
+    const id = await programOf();
     const missing = await refused(
       call(E.startProgramRun, rig.owner.caller, { body: { automationId: id, mode: 'simulate' } }),
     );
@@ -290,7 +291,7 @@ describe('dry runs and simulations', () => {
   });
 
   it('refuses a scenario that does not parse', async () => {
-    const id = programOf();
+    const id = await programOf();
     const error = await refused(
       call(E.startProgramRun, rig.owner.caller, {
         body: { automationId: id, mode: 'simulate', scenario: { start: 'soon' } },
@@ -302,8 +303,8 @@ describe('dry runs and simulations', () => {
 
 describe('reading runs', () => {
   it('lists summaries newest first for one automation', async () => {
-    const id = programOf();
-    const other = programOf();
+    const id = await programOf();
+    const other = await programOf();
     const first = runOf(id);
     runOf(other);
     const second = runOf(id);
@@ -315,7 +316,7 @@ describe('reading runs', () => {
   });
 
   it('gives the run view its node records and the nodes view pages and filters them', async () => {
-    const id = programOf();
+    const id = await programOf();
     const run = runOf(id);
     const loop = randomUUID();
     const other = randomUUID();
@@ -354,7 +355,7 @@ describe('reading runs', () => {
   });
 
   it('pages a single node by cursor', async () => {
-    const id = programOf();
+    const id = await programOf();
     const run = runOf(id);
     const loop = randomUUID();
     nodes.append(
@@ -370,7 +371,7 @@ describe('reading runs', () => {
   });
 
   it('asks for the node when filtering by iteration', async () => {
-    const run = runOf(programOf());
+    const run = runOf(await programOf());
     const error = await refused(
       call(E.readProgramRunNodes, rig.owner.caller, {
         params: { runId: run.id },
@@ -381,7 +382,7 @@ describe('reading runs', () => {
   });
 
   it('lists why an automation did not run', async () => {
-    const id = programOf();
+    const id = await programOf();
     decisions.record({ automationId: id, reason: 'single_busy', at: NOW.toISOString(), times: 3 });
     const rows = await call(E.listProgramDecisions, rig.owner.caller, {
       params: { automationId: id },
@@ -392,8 +393,8 @@ describe('reading runs', () => {
 
 describe('member scope', () => {
   it('shows a member only the automations they wrote', async () => {
-    const mine = programOf(member);
-    const theirs = programOf();
+    const mine = await programOf(member);
+    const theirs = await programOf();
     const mineRun = runOf(mine);
     const theirRun = runOf(theirs);
     const list = await call(E.listProgramRuns, member);
@@ -410,8 +411,8 @@ describe('member scope', () => {
   });
 
   it('applies the limit after member scope', async () => {
-    const mineRun = runOf(programOf(member));
-    const theirs = programOf();
+    const mineRun = runOf(await programOf(member));
+    const theirs = await programOf();
     runOf(theirs);
     runOf(theirs);
     const list = await call(E.listProgramRuns, member, { query: { limit: '2' } });
@@ -419,8 +420,8 @@ describe('member scope', () => {
   });
 
   it('lets the owner see every run', async () => {
-    runOf(programOf(member));
-    runOf(programOf());
+    runOf(await programOf(member));
+    runOf(await programOf());
     const list = await call(E.listProgramRuns, rig.owner.caller);
     expect(list).toHaveLength(2);
   });
@@ -428,14 +429,14 @@ describe('member scope', () => {
 
 describe('stopping', () => {
   it('stops one run and replies with its summary', async () => {
-    const run = runOf(programOf());
+    const run = runOf(await programOf());
     const reply = await call(E.stopProgramRun, rig.owner.caller, { params: { runId: run.id } });
     expect(reply).toMatchObject({ id: run.id, status: 'cancelled' });
     expect(cancelled).toStrictEqual([run.id]);
   });
 
   it('stops only the runs of one control key', async () => {
-    const id = programOf();
+    const id = await programOf();
     const keyed = runOf(id, 'room-a');
     runOf(id, 'room-b');
     const reply = await call(E.stopProgramRuns, rig.owner.caller, {
@@ -446,7 +447,7 @@ describe('stopping', () => {
   });
 
   it('stops every active run of an automation without a key', async () => {
-    const id = programOf();
+    const id = await programOf();
     runOf(id);
     runOf(id, 'room-b');
     const reply = await call(E.stopProgramRuns, rig.owner.caller, { body: { automationId: id } });
@@ -462,7 +463,7 @@ describe('stored tests', () => {
   };
 
   it('creates, lists, replaces and removes a test', async () => {
-    const id = programOf();
+    const id = await programOf();
     const params = { automationId: id };
     const made = await call(E.createProgramTest, rig.owner.caller, { params, body });
     await call(E.saveProgramTest, rig.owner.caller, {
@@ -476,7 +477,7 @@ describe('stored tests', () => {
   });
 
   it('refuses a test whose scenario does not parse and an unknown test', async () => {
-    const id = programOf();
+    const id = await programOf();
     const params = { automationId: id };
     const bad = await refused(
       call(E.createProgramTest, rig.owner.caller, { params, body: { ...body, scenario: {} } }),
@@ -491,7 +492,7 @@ describe('stored tests', () => {
   });
 
   it('runs all tests as simulations and reports each failed expectation', async () => {
-    const id = programOf();
+    const id = await programOf();
     const params = { automationId: id };
     await call(E.createProgramTest, rig.owner.caller, { params, body });
     await call(E.createProgramTest, rig.owner.caller, {

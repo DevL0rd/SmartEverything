@@ -23,15 +23,16 @@ import {
   type HomeMapSegmentShape,
   type LiveChange,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
-import type { HomeMapService } from './service';
+import { background, type Logger } from '@smarteverything/logging';
+import type { HomeMapDeviceModel } from './map-units';
+import type { HeldMaps, HomeMapService } from './service';
 
 export const DEVICE_SYNC_ACTOR: HomeMapActor = 'source:device-sync';
 
 export interface DeviceSyncPorts {
-  readonly maps: Pick<HomeMapService, 'get' | 'apply'>;
+  readonly maps: Pick<HomeMapService, 'exclusive'>;
   readonly devices: { readonly list: () => readonly DeviceRow[] };
-  readonly modelOf: (device: DeviceRow) => string | null;
+  readonly modelsOf: (devices: readonly DeviceRow[]) => Promise<readonly HomeMapDeviceModel[]>;
   readonly log: Logger;
 }
 
@@ -62,6 +63,21 @@ interface Wanted {
 interface Plan {
   readonly ops: readonly HomeMapOp[];
   readonly placed: number;
+}
+
+interface Modelled {
+  readonly device: DeviceRow;
+  readonly modelId: string | null;
+}
+
+type Models = ReadonlyMap<string, Modelled>;
+
+interface OccupantScope {
+  readonly floor: HomeMapFloor;
+  readonly room: HomeMapRoom;
+  readonly skip: ReadonlySet<string>;
+  readonly book: FactBook;
+  readonly models: Models;
 }
 
 const FLOOR_CORNER_FAMILIES: ReadonlySet<DeviceFamily> = new Set([
@@ -158,17 +174,20 @@ export class HomeMapDeviceSync {
 
   start(feed: DeviceSyncFeed): () => void {
     return feed.subscribe((change) => {
-      this.handle(change);
+      if (change.table !== 'devices' && change.table !== 'rooms') return;
+      background(this.handle(change), 'home_map.device_sync_failed', { table: change.table });
     });
   }
 
-  handle(change: LiveChange): void {
+  async handle(change: LiveChange): Promise<void> {
     try {
-      if (change.table === 'devices')
-        this.onDevice(change.operation, change.record, change.oldRecord);
-      else if (change.table === 'rooms' && change.operation === 'DELETE' && change.oldRecord) {
-        this.apply(this.roomRemovedOps(change.oldRecord.id));
-      }
+      await this.ports.maps.exclusive(async (maps) => {
+        if (change.table === 'devices') {
+          await this.onDevice(maps, change.operation, change.record, change.oldRecord);
+        } else if (change.table === 'rooms' && change.operation === 'DELETE' && change.oldRecord) {
+          await this.apply(maps, this.roomRemovedOps(maps, change.oldRecord.id));
+        }
+      });
     } catch (error) {
       this.ports.log.error('home_map.device_sync_failed', {
         table: change.table,
@@ -178,40 +197,44 @@ export class HomeMapDeviceSync {
     }
   }
 
-  place(request: PlaceRequest, actor: HomeMapActor, mapId?: HomeMapId): PlaceOutcome {
-    const map = this.ports.maps.get(mapId);
-    const wanted = this.requested(map, request).filter(
-      ({ device }) => placementOf(map, device.id) === null,
-    );
-    const plan = this.planFor(wanted, new Map());
-    const revision = plan.ops.length === 0 ? map.revision : this.apply(plan.ops, actor, mapId);
-    return { revision, placed: plan.placed };
+  place(request: PlaceRequest, actor: HomeMapActor, mapId?: HomeMapId): Promise<PlaceOutcome> {
+    return this.ports.maps.exclusive(async (maps) => {
+      const map = maps.get(mapId);
+      const wanted = this.requested(map, request).filter(
+        ({ device }) => placementOf(map, device.id) === null,
+      );
+      const plan = await this.planFor(wanted, new Map());
+      const revision =
+        plan.ops.length === 0 ? map.revision : await this.apply(maps, plan.ops, actor, mapId);
+      return { revision, placed: plan.placed };
+    });
   }
 
-  private onDevice(
+  private async onDevice(
+    maps: HeldMaps,
     operation: LiveChange['operation'],
     record: DeviceRow | null,
     old: DeviceRow | null,
-  ): void {
+  ): Promise<void> {
     if (operation === 'DELETE') {
-      if (old) this.apply(this.deviceRemovedOps(this.ports.maps.get(), old.id));
+      if (old) await this.apply(maps, this.deviceRemovedOps(maps.get(), old.id));
     } else if (record && (operation === 'INSERT' || old?.room_id !== record.room_id)) {
-      this.followRoom(record);
+      await this.followRoom(maps, record);
     }
   }
 
-  private followRoom(device: DeviceRow): void {
-    const map = this.ports.maps.get();
+  private async followRoom(maps: HeldMaps, device: DeviceRow): Promise<void> {
+    const map = maps.get();
     const held = placementOf(map, device.id);
     if (held !== null && !held.placement.auto) return;
     const target = targetOf(map, device.room_id);
     if (target === null) {
-      this.apply(this.deviceRemovedOps(map, device.id));
+      await this.apply(maps, this.deviceRemovedOps(map, device.id));
       return;
     }
     if (held !== null && insideTarget(target, held.placement)) return;
     const moves = new Map(held === null ? [] : [[device.id, held.floor.id]]);
-    this.apply(this.planFor([{ device, target }], moves).ops);
+    await this.apply(maps, (await this.planFor([{ device, target }], moves)).ops);
   }
 
   private requested(map: HomeMap, request: PlaceRequest): Wanted[] {
@@ -224,29 +247,54 @@ export class HomeMapDeviceSync {
     });
   }
 
-  private planFor(wanted: readonly Wanted[], moves: ReadonlyMap<string, string>): Plan {
+  private async modelsFor(wanted: readonly Wanted[]): Promise<Models> {
+    const ids = new Set(wanted.map(({ device }) => device.id));
+    for (const { target } of wanted) {
+      for (const placement of target.floor.placements) ids.add(placement.deviceId);
+    }
+    const devices = new Map(
+      this.ports.devices
+        .list()
+        .filter((device) => ids.has(device.id))
+        .map((device) => [device.id, device]),
+    );
+    if (devices.size === 0) return new Map();
+    const models = await this.ports.modelsOf([...devices.values()]);
+    return new Map(
+      models.flatMap((entry): [string, Modelled][] => {
+        const device = devices.get(entry.deviceId);
+        return device === undefined ? [] : [[entry.deviceId, { device, modelId: entry.modelId }]];
+      }),
+    );
+  }
+
+  private async planFor(
+    wanted: readonly Wanted[],
+    moves: ReadonlyMap<string, string>,
+  ): Promise<Plan> {
+    const models = await this.modelsFor(wanted);
     const groups = new Map<string, Wanted[]>();
     for (const entry of wanted) appendTo(groups, entry.target.room.id, entry);
     const adds: HomeMapOp[] = [];
     for (const group of [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-      adds.push(...this.placeGroup(group[1]).map(addOp));
+      adds.push(...this.placeGroup(group[1], models).map(addOp));
     }
     const removes = [...moves].map(([deviceId, floorId]) => removeOp(floorId, deviceId));
     return { ops: [...removes, ...adds], placed: adds.length };
   }
 
-  private placeGroup(group: readonly Wanted[]): HomeMapPlacement[] {
+  private placeGroup(group: readonly Wanted[], models: Models): HomeMapPlacement[] {
     const first = group[0];
     if (first === undefined) return [];
     const { floor, room } = first.target;
     const book = new FactBook();
     const skip = new Set(group.map(({ device }) => device.id));
-    const devices = group.map(({ device }) => this.described(book, device));
+    const devices = group.map(({ device }) => this.described(book, device, models));
     const result = homeMapAutoPlace({
       floorId: floor.id,
       room: { polygon: room.polygon, ceilingHeight: room.ceilingHeight ?? floor.ceilingHeight },
       openings: openingSegments(floor),
-      occupants: this.occupants(floor, room, skip, book),
+      occupants: this.occupants({ floor, room, skip, book, models }),
       devices,
       facts: book.lookup,
     });
@@ -256,9 +304,13 @@ export class HomeMapDeviceSync {
     return [...result.placements];
   }
 
-  private described(book: FactBook, device: DeviceRow): HomeMapAutoDevice {
+  private described(book: FactBook, device: DeviceRow, models: Models): HomeMapAutoDevice {
     const family = deviceFamily(device);
-    const facts = autoFactsOf(this.ports.modelOf(device), family);
+    const modelled = models.get(device.id);
+    if (modelled === undefined) {
+      throw new ApiError('internal', `Auto placement has no model answer for ${device.id}.`);
+    }
+    const facts = autoFactsOf(modelled.modelId, family);
     return {
       deviceId: device.id,
       modelId: book.add(device.id, facts),
@@ -266,12 +318,8 @@ export class HomeMapDeviceSync {
     };
   }
 
-  private occupants(
-    floor: HomeMapFloor,
-    room: HomeMapRoom,
-    skip: ReadonlySet<string>,
-    book: FactBook,
-  ): HomeMapAutoOccupant[] {
+  private occupants(scope: OccupantScope): HomeMapAutoOccupant[] {
+    const { floor, room, skip, book, models } = scope;
     const furniture = floor.objects.flatMap((object): HomeMapAutoOccupant[] => {
       if (!homeMapPointInPolygon(room.polygon, object.at)) return [];
       const facts = placementFacts(object.modelId);
@@ -282,12 +330,11 @@ export class HomeMapDeviceSync {
       const modelId = book.add(`model:${object.modelId}`, facts);
       return [{ modelId, at: object.at, rotation: object.rotation }];
     });
-    const devices = new Map(this.ports.devices.list().map((device) => [device.id, device]));
     const placed = floor.placements.flatMap((placement): HomeMapAutoOccupant[] => {
-      const device = devices.get(placement.deviceId);
+      const device = models.get(placement.deviceId)?.device;
       if (!device || skip.has(device.id)) return [];
       if (!homeMapPointInPolygon(room.polygon, placement.at)) return [];
-      const modelId = this.described(book, device).modelId;
+      const modelId = this.described(book, device, models).modelId;
       return [{ modelId, at: placement.at, rotation: placement.rotation }];
     });
     return [...furniture, ...placed];
@@ -298,8 +345,8 @@ export class HomeMapDeviceSync {
     return held === null ? [] : [removeOp(held.floor.id, deviceId)];
   }
 
-  private roomRemovedOps(homeRoomId: string): HomeMapOp[] {
-    return this.ports.maps.get().floors.flatMap((floor) =>
+  private roomRemovedOps(maps: HeldMaps, homeRoomId: string): HomeMapOp[] {
+    return maps.get().floors.flatMap((floor) =>
       floor.rooms
         .filter((room) => room.homeRoomId === homeRoomId)
         .map((room): HomeMapOp => ({
@@ -312,13 +359,14 @@ export class HomeMapDeviceSync {
     );
   }
 
-  private apply(
+  private async apply(
+    maps: HeldMaps,
     ops: readonly HomeMapOp[],
     actor: HomeMapActor = DEVICE_SYNC_ACTOR,
     mapId?: HomeMapId,
-  ): number {
-    if (ops.length === 0) return this.ports.maps.get(mapId).revision;
-    const result = this.ports.maps.apply(ops, actor, {}, mapId);
+  ): Promise<number> {
+    if (ops.length === 0) return maps.get(mapId).revision;
+    const result = await maps.apply(ops, actor, {}, mapId);
     if (result.conflicts.length > 0) {
       this.ports.log.warn('home_map.device_sync_conflicts', { conflicts: result.conflicts.length });
     }

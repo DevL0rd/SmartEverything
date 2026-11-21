@@ -4,6 +4,7 @@ import { literalFits } from '@smarteverything/flow/check/literals';
 import { z } from 'zod';
 import type { AutomationNodeStateRepository } from '../../store/repositories/automation-node-state';
 import type { PersistentVariable } from './variables';
+import type { NodeStateRows } from '../automation-memory';
 
 const DATA_PREFIX = 'data:';
 const INSTANCE_SEPARATOR = '/';
@@ -29,7 +30,7 @@ export interface KeptReset {
 }
 
 export interface KeptDataPorts {
-  readonly rows: Pick<AutomationNodeStateRepository, 'get' | 'save'>;
+  readonly rows: NodeStateRows;
   readonly reset: (reset: KeptReset) => void;
 }
 

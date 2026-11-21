@@ -117,7 +117,7 @@ export class OpenRouterEmbeddings {
             completion_tokens: 0,
             cost: answer.usage.cost ?? null,
           };
-    this.record(request, usage, answer.id ?? null);
+    await this.record(request, usage, answer.id ?? null);
     return { vectors: ordered.map((row) => Float32Array.from(row.embedding)), usage };
   }
 
@@ -136,13 +136,13 @@ export class OpenRouterEmbeddings {
     return vectors;
   }
 
-  private record(
+  private async record(
     request: EmbeddingRequest,
     usage: OrUsage | null,
     generationId: string | null,
-  ): void {
+  ): Promise<void> {
     if (this.meter === undefined || request.metering === undefined) return;
-    this.meter(
+    await this.meter(
       photosUsageEntry({
         profileId: request.metering.profileId,
         model: request.model,

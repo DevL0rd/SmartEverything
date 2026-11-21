@@ -41,7 +41,7 @@ function driver(): ReturnType<typeof phoneDriver> {
   return phoneDriver({
     store: test.store,
     phones: idlePhoneNodes(test),
-    originOf: () => ({ source: 'app', client: null }),
+    originOf: () => Promise.resolve({ source: 'app', client: null }),
     now: () => new Date('2026-10-18T10:00:00.000Z'),
     actions: {
       run: (target, action) => {
@@ -124,7 +124,7 @@ describe('the phone driver', () => {
     const refused = phoneDriver({
       store: test.store,
       phones: idlePhoneNodes(test),
-      originOf: () => ({ source: 'app', client: null }),
+      originOf: () => Promise.resolve({ source: 'app', client: null }),
       now: () => new Date('2026-10-18T10:00:00.000Z'),
       actions: { run: () => Promise.resolve({ ok: false, detail: refusal }) },
     });

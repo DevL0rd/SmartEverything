@@ -148,23 +148,23 @@ describe('the acting person of an AI tool call', () => {
     return { store: opened.store, caller: null, actor };
   }
 
-  it('is a member even when no app is named and the owner app would be the fallback', () => {
-    const caller = callerFor(
+  it('is a member even when no app is named and the owner app would be the fallback', async () => {
+    const caller = await callerFor(
       context({ clientId: null, profileId: memberProfile, role: 'member', chatId: null }),
     );
     expect(roleOfCaller(caller)).toBe('member');
     expect(clientOf(caller).role).toBe('member');
   });
 
-  it('stays the owner for an owner call', () => {
-    const caller = callerFor(
+  it('stays the owner for an owner call', async () => {
+    const caller = await callerFor(
       context({ clientId: null, profileId: ownerProfile, role: 'owner', chatId: null }),
     );
     expect(clientOf(caller).role).toBe('owner');
   });
 
-  it('is confined to its conversation for an unlisted plugin person', () => {
-    const caller = callerFor(
+  it('is confined to its conversation for an unlisted plugin person', async () => {
+    const caller = await callerFor(
       context({
         clientId: owner.id,
         profileId: ownerProfile,
@@ -176,7 +176,7 @@ describe('the acting person of an AI tool call', () => {
     );
     expect(clientOf(caller).role).toBe('member');
     expect(confinedChatOf(caller)).toBe(ownerChat.id);
-    expect(chatOwnerOf(opened.store, caller).confinedTo).toBe(ownerChat.id);
+    expect(chatOwnerOf(caller).confinedTo).toBe(ownerChat.id);
     const admit = (name: EndpointName, input: OperationInput): void => {
       admitConfined(opened.store, name, caller, input);
     };
@@ -202,8 +202,8 @@ describe('the acting person of an AI tool call', () => {
     }
   });
 
-  it('is a member but not confined to one chat for an approved plugin person', () => {
-    const caller = callerFor(
+  it('is a member but not confined to one chat for an approved plugin person', async () => {
+    const caller = await callerFor(
       context({
         clientId: owner.id,
         profileId: ownerProfile,

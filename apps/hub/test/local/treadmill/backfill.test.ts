@@ -23,11 +23,11 @@ afterEach(async () => {
   await rig.close();
 });
 
-function walkMinute(): void {
-  rig.batch(0, [statusHex({ state: IDLE })]);
-  rig.batch(1, [statusHex({ state: COUNTDOWN })]);
+async function walkMinute(): Promise<void> {
+  await rig.batch(0, [statusHex({ state: IDLE })]);
+  await rig.batch(1, [statusHex({ state: COUNTDOWN })]);
   for (let second = 2; second <= 62; second += 1) {
-    rig.batch(second, [
+    await rig.batch(second, [
       statusHex({
         state: RUNNING,
         speed10: 40,
@@ -37,7 +37,7 @@ function walkMinute(): void {
       }),
     ]);
   }
-  rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 61, steps: 122 })]);
+  await rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 61, steps: 122 })]);
 }
 
 function record(values: Partial<PadRecord> = {}): PadRecord {
@@ -69,8 +69,8 @@ function reconcile(
 }
 
 describe('the pad’s last record', () => {
-  it('recognises the session it already has and changes nothing', () => {
-    walkMinute();
+  it('recognises the session it already has and changes nothing', async () => {
+    await walkMinute();
     const done = reconcile(record());
     expect(done.created).toBeNull();
     const sessions = rig.test.store.treadmillSessions.finished(rig.row().id, undefined);
@@ -79,8 +79,8 @@ describe('the pad’s last record', () => {
     expect(sessions[0]?.source).toBe('live');
   });
 
-  it('takes the pad’s figures when the pad counted more than the frames did', () => {
-    walkMinute();
+  it('takes the pad’s figures when the pad counted more than the frames did', async () => {
+    await walkMinute();
     reconcile(record({ durationS: 70, distanceM: 700, steps: 150 }));
     const [session] = rig.test.store.treadmillSessions.finished(rig.row().id, undefined);
     expect(session).toMatchObject({
@@ -126,15 +126,15 @@ describe('the pad’s last record', () => {
 });
 
 describe('asking the pad for its record', () => {
-  it('wants the record after a session ends and when the link comes up, once each', () => {
+  it('wants the record after a session ends and when the link comes up, once each', async () => {
     const state = rig.fleet.of(rig.row());
-    walkMinute();
+    await walkMinute();
     expect(state.takeRecordWish()).toBe(true);
     expect(state.takeRecordWish()).toBe(false);
   });
 
-  it('keeps the records a frame carries for the diagnostics and records view', () => {
-    walkMinute();
+  it('keeps the records a frame carries for the diagnostics and records view', async () => {
+    await walkMinute();
     const body = new Array<number>(20).fill(0);
     body[0] = 0xf8;
     body[1] = 0xa7;
@@ -144,7 +144,7 @@ describe('asking the pad for its record', () => {
     body[17] = 3;
     body[18] = body.slice(1, 18).reduce((sum, byte) => sum + byte, 0) & 0xff;
     body[19] = 0xfd;
-    rig.batch(70, [bytesToHex(Uint8Array.from(body))]);
+    await rig.batch(70, [bytesToHex(Uint8Array.from(body))]);
     const state = rig.fleet.of(rig.row());
     expect(state.padRecordsRemaining).toBe(3);
     expect(state.padRecords[0]).toMatchObject({ distanceM: 610, steps: 122 });

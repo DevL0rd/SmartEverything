@@ -1,40 +1,52 @@
-import type { DriveAlbum, DriveAlbumChange, DriveAlbumCreate } from '@smarteverything/domain';
-import type { DriveAlbumsService } from './albums';
-import type { DriveCaller } from './service-write-support';
+import type {
+  DriveAlbum,
+  DriveAlbumChange,
+  DriveAlbumCreate,
+  DriveAlbumSurface,
+} from '@smarteverything/domain';
+import type { Store } from '../store/store';
+import type { DriveActor } from './access';
+import type { AlbumCursor } from './albums';
+import type { AlbumMembers } from './units/albums';
 
 export type AlbumEditing = Pick<
-  DriveAlbumsService,
-  'create' | 'get' | 'rename' | 'setRule' | 'setCover' | 'remove' | 'addItems' | 'removeItems'
+  DriveAlbums,
+  'create' | 'update' | 'remove' | 'addItems' | 'removeItems'
 >;
 
-export class DriveAlbumWriter {
-  constructor(private readonly albums: AlbumEditing) {}
+export class DriveAlbums {
+  constructor(private readonly store: Pick<Store, 'host'>) {}
 
-  create(caller: DriveCaller, input: DriveAlbumCreate): DriveAlbum {
-    const base = { title: input.title, surface: input.surface, scope: input.scope };
-    if (input.kind === 'smart') {
-      return this.albums.create({ ...base, kind: 'smart', rule: input.rule }, caller);
-    }
-    const created = this.albums.create({ ...base, kind: 'manual' }, caller);
-    return input.itemIds.length === 0
-      ? created
-      : this.albums.addItems(created.id, input.itemIds, caller);
+  list(actor: DriveActor, surface: DriveAlbumSurface): Promise<DriveAlbum[]> {
+    return this.store.host.read('driveAlbumsList', { actor, surface });
   }
 
-  update(caller: DriveCaller, albumId: string, change: DriveAlbumChange): DriveAlbum {
-    if (change.title !== undefined) {
-      this.albums.rename(albumId, change.title, caller);
-    }
-    if (change.rule !== undefined) {
-      this.albums.setRule(albumId, change.rule, caller);
-    }
-    if (change.coverItemId !== undefined) {
-      this.albums.setCover(albumId, change.coverItemId, caller);
-    }
-    return this.albums.get(albumId, caller);
+  members(
+    albumId: string,
+    actor: DriveActor,
+    cursor: AlbumCursor | null,
+    limit: number,
+  ): Promise<AlbumMembers> {
+    return this.store.host.read('driveAlbumMembers', { actor, albumId, cursor, limit });
   }
 
-  remove(caller: DriveCaller, albumId: string): void {
-    this.albums.remove(albumId, caller);
+  create(actor: DriveActor, create: DriveAlbumCreate): Promise<DriveAlbum> {
+    return this.store.host.write('driveAlbumCreate', { actor, create });
+  }
+
+  update(actor: DriveActor, albumId: string, change: DriveAlbumChange): Promise<DriveAlbum> {
+    return this.store.host.write('driveAlbumUpdate', { actor, albumId, change });
+  }
+
+  remove(actor: DriveActor, albumId: string): Promise<void> {
+    return this.store.host.write('driveAlbumRemove', { actor, albumId });
+  }
+
+  addItems(albumId: string, itemIds: readonly string[], actor: DriveActor): Promise<DriveAlbum> {
+    return this.store.host.write('driveAlbumAddItems', { actor, albumId, itemIds });
+  }
+
+  removeItems(albumId: string, itemIds: readonly string[], actor: DriveActor): Promise<DriveAlbum> {
+    return this.store.host.write('driveAlbumRemoveItems', { actor, albumId, itemIds });
   }
 }

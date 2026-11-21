@@ -44,23 +44,25 @@ function depsFor(belt: G15Belt): CommandDeps {
     store: rig.test.store,
     fleet: rig.fleet,
     broker: {
-      run: (_target, steps: readonly TreadmillWriteStep[]): Promise<TreadmillActionResult> => {
+      run: async (
+        _target,
+        steps: readonly TreadmillWriteStep[],
+      ): Promise<TreadmillActionResult> => {
         for (const step of steps) {
           written.push(step.hex);
           const status = answer(step.hex);
           second += 1;
-          feed(
+          await feed(
             rig,
             second,
             status === null ? [] : [{ characteristic: FTMS_MACHINE_STATUS, hex: status }],
           );
         }
-        return Promise.resolve({ ok: true, detail: 'Done.' });
+        return { ok: true, detail: 'Done.' };
       },
     },
     guard: new NoStepsGuard(),
     holderOf: (): string | null => rig.holder.clientId,
-    walkerOf: (): string => rig.owner.profile.id,
     holderName: (): string => 'Owner phone',
     now: rig.clock.now,
     log: testLogger('treadmill'),
@@ -89,11 +91,19 @@ function stop(deps: CommandDeps): Promise<unknown> {
   });
 }
 
-function walking(): void {
-  feed(rig, 1, [{ characteristic: FTMS_MACHINE_STATUS, hex: '04' }]);
-  walk(rig, 5, { kmh: 4.5, incline: 0 }, 2);
+async function walking(): Promise<void> {
+  await feed(rig, 1, [{ characteristic: FTMS_MACHINE_STATUS, hex: '04' }]);
+  await walk(rig, 5, { kmh: 4.5, incline: 0 }, 2);
   second = 7;
   expect(rig.fleet.of(rig.row()).runtime.machine.state).toBe('running');
+}
+
+async function settling(): Promise<void> {
+  while (vi.getTimerCount() === 0) {
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+  }
 }
 
 beforeEach(async () => {
@@ -110,7 +120,7 @@ afterEach(async () => {
 
 describe('stopping a walking G15', () => {
   it('pauses the belt first, because the G15 ignores the FTMS stop while the belt runs, then ends the walk', async () => {
-    walking();
+    await walking();
     await expect(stop(depsFor({ honoursPause: true, honoursStopWhenPaused: true }))).resolves.toBe(
       BELT_STOPPED,
     );
@@ -119,9 +129,10 @@ describe('stopping a walking G15', () => {
   });
 
   it('says the belt is paused when the treadmill keeps the walk open after the stop', async () => {
-    walking();
+    await walking();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const result = stop(depsFor({ honoursPause: true, honoursStopWhenPaused: false }));
+    await settling();
     await vi.advanceTimersByTimeAsync(STOP_SETTLE_MS);
     await expect(result).resolves.toBe(BELT_KEPT_PAUSED);
     expect(written).toEqual([FTMS_PAUSE, FTMS_STOP]);
@@ -129,10 +140,11 @@ describe('stopping a walking G15', () => {
   });
 
   it('fails the command instead of reporting done when the belt keeps running', async () => {
-    walking();
+    await walking();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const result = stop(depsFor({ honoursPause: false, honoursStopWhenPaused: false }));
     const failed = expect(result).rejects.toThrow('The belt did not stop');
+    await settling();
     await vi.advanceTimersByTimeAsync(STOP_SETTLE_MS);
     await failed;
     expect(written).toEqual([FTMS_PAUSE]);
@@ -141,8 +153,8 @@ describe('stopping a walking G15', () => {
 
 describe('stopping a G15 that is not walking', () => {
   it('sends only the FTMS stop to a paused belt', async () => {
-    walking();
-    feed(rig, 8, [{ characteristic: FTMS_MACHINE_STATUS, hex: STATUS_PAUSED }]);
+    await walking();
+    await feed(rig, 8, [{ characteristic: FTMS_MACHINE_STATUS, hex: STATUS_PAUSED }]);
     second = 8;
     await expect(stop(depsFor({ honoursPause: true, honoursStopWhenPaused: true }))).resolves.toBe(
       BELT_STOPPED,

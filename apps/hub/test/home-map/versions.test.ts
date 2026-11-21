@@ -10,7 +10,8 @@ import {
   type HomeMapPlacement,
 } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { HomeMapService } from '../../src/home-map/service';
+import { directHomeMapVersions } from '../../src/home-map/map-store';
+import type { HomeMapService } from '../../src/home-map/service';
 import { HomeMapVersions } from '../../src/home-map/versions';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
@@ -20,6 +21,7 @@ import { HomeMapVersionsRepository } from '../../src/store/repositories/home-map
 import { HomeMapsRepository } from '../../src/store/repositories/home-maps';
 import { Sql } from '../../src/store/sql';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
+import { directService } from './store-fixtures';
 
 const NOW = '2026-10-25T10:00:00.000Z';
 const ALICE = 'profile:alice';
@@ -89,13 +91,18 @@ const withoutRevision = (map: HomeMap): Omit<HomeMap, 'revision' | 'updatedAt'> 
   return rest;
 };
 
-function secondMap(): HomeMapId {
-  const created = repository.create('Upstairs', ALICE);
-  service.apply([{ op: 'addFloor', floor: floor('ground') }], 'profile:setup', {}, created.id);
+async function secondMap(): Promise<HomeMapId> {
+  const created = await service.exclusive((maps) => maps.create('Upstairs', ALICE));
+  await service.apply(
+    [{ op: 'addFloor', floor: floor('ground') }],
+    'profile:setup',
+    {},
+    created.id,
+  );
   return created.id;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   logs = captureLogs();
   const database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
   const sql = new Sql(database);
@@ -107,51 +114,48 @@ beforeEach(() => {
     () => new Date(Date.parse(NOW) + tick++ * 1000),
   );
   repository = new HomeMapsRepository(context, () => undefined);
-  service = new HomeMapService({
-    maps: repository,
-    knownModel: (): boolean => true,
-    log: testLogger('home-map'),
-  });
+  service = await directService(repository, context);
   versions = new HomeMapVersions({
-    versions: new HomeMapVersionsRepository(context),
+    versions: directHomeMapVersions(repository, new HomeMapVersionsRepository(context), (work) =>
+      context.write(work),
+    ),
     maps: service,
-    mapIds: (): HomeMapId[] => repository.ids(),
     log: testLogger('home-map'),
   });
-  service.apply([{ op: 'addFloor', floor: floor('ground') }, sofa('first')], 'profile:setup');
+  await service.apply([{ op: 'addFloor', floor: floor('ground') }, sofa('first')], 'profile:setup');
 });
 
 describe('saved versions', () => {
-  it('lists the saved versions of one map newest first with name and author', () => {
-    const upstairs = secondMap();
-    const named = versions.save(HOME, 'Before the party', ALICE);
-    const plain = versions.save(HOME, undefined, BOB);
-    versions.save(upstairs, 'Other map', ALICE);
-    const listed = versions.list(HOME);
+  it('lists the saved versions of one map newest first with name and author', async () => {
+    const upstairs = await secondMap();
+    const named = await versions.save(HOME, 'Before the party', ALICE);
+    const plain = await versions.save(HOME, undefined, BOB);
+    await versions.save(upstairs, 'Other map', ALICE);
+    const listed = await versions.list(HOME);
     expect(listed.map((entry) => entry.versionId)).toEqual([plain.versionId, named.versionId]);
     expect(listed.map((entry) => [entry.name, entry.actor])).toEqual([
       [null, BOB],
       ['Before the party', ALICE],
     ]);
-    expect(versions.list(upstairs)).toHaveLength(1);
+    expect(await versions.list(upstairs)).toHaveLength(1);
   });
 
-  it('refuses an unknown map and an unknown or foreign version', () => {
-    const upstairs = secondMap();
-    const saved = versions.save(upstairs, undefined, ALICE);
-    expect(() => versions.list(HOME_MAP_MAP_ID.parse('nothing'))).toThrow(ApiError);
-    expect(() => versions.restore(HOME, saved.versionId, ALICE)).toThrow(ApiError);
-    expect(() => versions.restore(HOME, HOME_MAP_VERSION_ID.parse('nope'), ALICE)).toThrow(
+  it('refuses an unknown map and an unknown or foreign version', async () => {
+    const upstairs = await secondMap();
+    const saved = await versions.save(upstairs, undefined, ALICE);
+    await expect(versions.list(HOME_MAP_MAP_ID.parse('nothing'))).rejects.toThrow(ApiError);
+    await expect(versions.restore(HOME, saved.versionId, ALICE)).rejects.toThrow(ApiError);
+    await expect(versions.restore(HOME, HOME_MAP_VERSION_ID.parse('nope'), ALICE)).rejects.toThrow(
       ApiError,
     );
   });
 });
 
 describe('restoring a version', () => {
-  it('is one revision, brings the saved state back and one undo returns the edits', () => {
-    const saved = versions.save(HOME, 'Tidy', ALICE);
+  it('is one revision, brings the saved state back and one undo returns the edits', async () => {
+    const saved = await versions.save(HOME, 'Tidy', ALICE);
     const tidy = service.get(HOME);
-    service.apply(
+    await service.apply(
       [
         sofa('second'),
         { op: 'add', kind: 'placement', floorId: 'ground', element: lamp },
@@ -161,60 +165,63 @@ describe('restoring a version', () => {
       ALICE,
     );
     const messy = service.get(HOME);
-    const answer = versions.restore(HOME, saved.versionId, ALICE);
+    const answer = await versions.restore(HOME, saved.versionId, ALICE);
     expect(answer.revision).toBe(messy.revision + 1);
     expect(answer.conflicts).toEqual([]);
     expect(withoutRevision(service.get(HOME))).toEqual(withoutRevision(tidy));
-    service.undo(ALICE, HOME);
+    await service.undo(ALICE, HOME);
     expect(service.revision(HOME)).toBe(answer.revision + 1);
     expect(withoutRevision(service.get(HOME))).toEqual(withoutRevision(messy));
-    service.redo(ALICE, HOME);
+    await service.redo(ALICE, HOME);
     expect(withoutRevision(service.get(HOME))).toEqual(withoutRevision(tidy));
   });
 
-  it('restores floors that were removed and removes floors that were added', () => {
-    const saved = versions.save(HOME, undefined, ALICE);
-    service.apply(
+  it('restores floors that were removed and removes floors that were added', async () => {
+    const saved = await versions.save(HOME, undefined, ALICE);
+    await service.apply(
       [
         { op: 'addFloor', floor: floor('attic') },
         { op: 'removeFloor', floorId: 'ground' },
       ],
       ALICE,
     );
-    versions.restore(HOME, saved.versionId, ALICE);
+    await versions.restore(HOME, saved.versionId, ALICE);
     expect(service.get(HOME).floors.map((entry) => entry.id)).toEqual(['ground']);
     expect(objectIds(service.get(HOME))).toEqual(['first']);
   });
 
-  it('writes nothing when the map already equals the version', () => {
-    const saved = versions.save(HOME, undefined, ALICE);
+  it('writes nothing when the map already equals the version', async () => {
+    const saved = await versions.save(HOME, undefined, ALICE);
     const revision = service.revision(HOME);
-    expect(versions.restore(HOME, saved.versionId, ALICE)).toEqual({ revision, conflicts: [] });
+    expect(await versions.restore(HOME, saved.versionId, ALICE)).toEqual({
+      revision,
+      conflicts: [],
+    });
     expect(service.revision(HOME)).toBe(revision);
   });
 
-  it('does not place a device on two maps when it moved to another map since', () => {
-    const upstairs = secondMap();
-    service.apply(
+  it('does not place a device on two maps when it moved to another map since', async () => {
+    const upstairs = await secondMap();
+    await service.apply(
       [{ op: 'add', kind: 'placement', floorId: 'ground', element: lamp }],
       ALICE,
       {},
       HOME,
     );
-    const saved = versions.save(HOME, undefined, ALICE);
-    service.apply(
+    const saved = await versions.save(HOME, undefined, ALICE);
+    await service.apply(
       [{ op: 'remove', kind: 'placement', floorId: 'ground', id: LAMP }],
       ALICE,
       {},
       HOME,
     );
-    service.apply(
+    await service.apply(
       [{ op: 'add', kind: 'placement', floorId: 'ground', element: lamp }],
       ALICE,
       {},
       upstairs,
     );
-    versions.restore(HOME, saved.versionId, ALICE);
+    await versions.restore(HOME, saved.versionId, ALICE);
     expect(placedOn(service.get(HOME))).toEqual([]);
     expect(placedOn(service.get(upstairs))).toEqual([LAMP]);
     expect(logs.events()).toContain('home_map.restore_kept_placements_elsewhere');

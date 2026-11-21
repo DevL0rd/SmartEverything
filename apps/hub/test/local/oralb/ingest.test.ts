@@ -31,10 +31,10 @@ function sectorOf(second: number): { sector: number; secondsInSector: number } {
   return { sector, secondsInSector: second - 30 * (sector - 1) };
 }
 
-function brushByAdvert(
+async function brushByAdvert(
   brushed: OralbRig,
   input: { from: number; seconds: number; high?: readonly number[]; protocol?: number },
-): void {
+): Promise<void> {
   for (let second = 1; second <= input.seconds; second += 1) {
     const spec: AdvertSpec = {
       state: 3,
@@ -44,12 +44,19 @@ function brushByAdvert(
       ...(input.protocol === undefined ? {} : { protocol: input.protocol }),
       ...sectorOf(second),
     };
-    brushed.batch(input.from + second, { adverts: [brushed.advert(input.from + second, spec)] });
+    await brushed.batch(input.from + second, {
+      adverts: [brushed.advert(input.from + second, spec)],
+    });
   }
 }
 
-function summary(brushed: OralbRig, seconds: number, face = 5, protocol?: number): void {
-  brushed.batch(seconds, {
+async function summary(
+  brushed: OralbRig,
+  seconds: number,
+  face = 5,
+  protocol?: number,
+): Promise<void> {
+  await brushed.batch(seconds, {
     adverts: [
       brushed.advert(seconds, {
         state: 9,
@@ -65,12 +72,14 @@ function summary(brushed: OralbRig, seconds: number, face = 5, protocol?: number
 describe('a brush that goes quiet while brushing', () => {
   it('ends the session once nothing is heard for the silence window', async () => {
     const brushed = await open();
-    brushed.batch(0, { adverts: [brushed.advert(0, { state: 2 })] });
-    brushByAdvert(brushed, { from: 0, seconds: 40 });
+    await brushed.batch(0, { adverts: [brushed.advert(0, { state: 2 })] });
+    await brushByAdvert(brushed, { from: 0, seconds: 40 });
     expect(lastState(brushed, 'brush_session')).toBe('running');
     brushed.clock.advanceTo(brushed.at(40 + 29));
+    await brushed.ingest.idle();
     expect(lastState(brushed, 'brush_session')).toBe('running');
     brushed.clock.advanceTo(brushed.at(40 + 31));
+    await brushed.ingest.idle();
     expect(lastState(brushed, 'brush_session')).toBe('stopped_early');
     expect(lastState(brushed, 'brush_activity')).toBe('asleep');
     const [session] = brushed.test.store.brushingSessions.all(brushed.device.id, undefined);
@@ -81,7 +90,7 @@ describe('a brush that goes quiet while brushing', () => {
 describe('adverts heard without a connection', () => {
   it('turns a standing brush into capabilities', async () => {
     const brushed = await open();
-    brushed.batch(0, { adverts: [brushed.advert(0, { state: 2, mode: 1 })] });
+    await brushed.batch(0, { adverts: [brushed.advert(0, { state: 2, mode: 1 })] });
     expect(lastState(brushed, 'brush_activity')).toBe('standby');
     expect(lastState(brushed, 'brush_mode')).toBe('sensitive');
     expect(lastState(brushed, 'brush_session')).toBe('idle');
@@ -89,15 +98,15 @@ describe('adverts heard without a connection', () => {
 
   it('keeps a brushed session with the real seconds in each quadrant and the result face', async () => {
     const brushed = await open();
-    brushed.batch(0, { adverts: [brushed.advert(0, { state: 2 })] });
-    brushByAdvert(brushed, {
+    await brushed.batch(0, { adverts: [brushed.advert(0, { state: 2 })] });
+    await brushByAdvert(brushed, {
       from: 0,
       seconds: 120,
       high: [50, 51, 52, 53, 54, 55, 56, 57, 58, 59],
     });
     expect(lastState(brushed, 'brush_activity')).toBe('brushing');
     expect(lastState(brushed, 'brush_session')).toBe('running');
-    summary(brushed, 122);
+    await summary(brushed, 122);
     expect(lastState(brushed, 'brush_session')).toBe('completed');
     const [session] = brushed.test.store.brushingSessions.all(brushed.device.id, undefined);
     expect(session).toMatchObject({
@@ -118,9 +127,9 @@ describe('adverts heard without a connection', () => {
 
   it('marks a session that ended before the routine as stopped early', async () => {
     const brushed = await open();
-    brushed.batch(0, { adverts: [brushed.advert(0, { state: 2 })] });
-    brushByAdvert(brushed, { from: 0, seconds: 40 });
-    brushed.batch(41, { adverts: [brushed.advert(41, { state: 9, timerS: 40, face: 2 })] });
+    await brushed.batch(0, { adverts: [brushed.advert(0, { state: 2 })] });
+    await brushByAdvert(brushed, { from: 0, seconds: 40 });
+    await brushed.batch(41, { adverts: [brushed.advert(41, { state: 9, timerS: 40, face: 2 })] });
     expect(lastState(brushed, 'brush_session')).toBe('stopped_early');
     const [session] = brushed.test.store.brushingSessions.all(brushed.device.id, undefined);
     expect(session).toMatchObject({ complete: false, durationS: 40 });
@@ -128,28 +137,28 @@ describe('adverts heard without a connection', () => {
 
   it('reads a session in the selection menu as brushing only while the timer advances', async () => {
     const brushed = await open();
-    brushed.batch(0, { adverts: [brushed.advert(0, { state: 8, timerS: 0 })] });
+    await brushed.batch(0, { adverts: [brushed.advert(0, { state: 8, timerS: 0 })] });
     expect(lastState(brushed, 'brush_activity')).toBe('standby');
-    brushed.batch(1, { adverts: [brushed.advert(1, { state: 8, timerS: 1 })] });
-    brushed.batch(2, { adverts: [brushed.advert(2, { state: 8, timerS: 2 })] });
+    await brushed.batch(1, { adverts: [brushed.advert(1, { state: 8, timerS: 1 })] });
+    await brushed.batch(2, { adverts: [brushed.advert(2, { state: 8, timerS: 2 })] });
     expect(lastState(brushed, 'brush_activity')).toBe('brushing');
-    brushed.batch(30, { adverts: [brushed.advert(30, { state: 8, timerS: 2 })] });
+    await brushed.batch(30, { adverts: [brushed.advert(30, { state: 8, timerS: 2 })] });
     expect(lastState(brushed, 'brush_activity')).toBe('standby');
   });
 
   it('maps sleeping, transport and charging states', async () => {
     const brushed = await open();
-    brushed.batch(0, { adverts: [brushed.advert(0, { state: 4 })] });
+    await brushed.batch(0, { adverts: [brushed.advert(0, { state: 4 })] });
     expect(lastState(brushed, 'brush_activity')).toBe('charging');
-    brushed.batch(1, { adverts: [brushed.advert(1, { state: 115 })] });
+    await brushed.batch(1, { adverts: [brushed.advert(1, { state: 115 })] });
     expect(lastState(brushed, 'brush_activity')).toBe('asleep');
-    brushed.batch(2, { adverts: [brushed.advert(2, { state: 116 })] });
+    await brushed.batch(2, { adverts: [brushed.advert(2, { state: 116 })] });
     expect(lastState(brushed, 'brush_activity')).toBe('off');
   });
 
   it('reports an advert of an old protocol as unreadable and changes nothing', async () => {
     const brushed = await open();
-    brushed.batch(0, {
+    await brushed.batch(0, {
       adverts: [{ at: brushed.at(0), rssi: -60, hex: '0201080220000001010004' }],
     });
     expect(lastState(brushed, 'brush_activity')).toBeUndefined();
@@ -159,26 +168,27 @@ describe('adverts heard without a connection', () => {
 describe('pausing', () => {
   it('resumes the same session when the brush runs again within the grace', async () => {
     const brushed = await open();
-    brushed.batch(0, { adverts: [brushed.advert(0, { state: 2 })] });
-    brushByAdvert(brushed, { from: 0, seconds: 40 });
-    brushed.batch(41, { adverts: [brushed.advert(41, { state: 2, timerS: 40 })] });
+    await brushed.batch(0, { adverts: [brushed.advert(0, { state: 2 })] });
+    await brushByAdvert(brushed, { from: 0, seconds: 40 });
+    await brushed.batch(41, { adverts: [brushed.advert(41, { state: 2, timerS: 40 })] });
     expect(lastState(brushed, 'brush_session')).toBe('paused');
-    brushed.batch(45, {
+    await brushed.batch(45, {
       adverts: [brushed.advert(45, { state: 3, timerS: 41, sector: 2, secondsInSector: 11 })],
     });
     expect(lastState(brushed, 'brush_session')).toBe('running');
     expect(brushed.test.store.brushingSessions.all(brushed.device.id, undefined)).toHaveLength(0);
-    brushed.batch(46, { adverts: [brushed.advert(46, { state: 9, timerS: 41, face: 3 })] });
+    await brushed.batch(46, { adverts: [brushed.advert(46, { state: 9, timerS: 41, face: 3 })] });
     expect(brushed.test.store.brushingSessions.all(brushed.device.id, undefined)).toHaveLength(1);
   });
 
   it('closes the session by the deadline when nothing is heard after the stop', async () => {
     const brushed = await open();
-    brushed.batch(0, { adverts: [brushed.advert(0, { state: 2 })] });
-    brushByAdvert(brushed, { from: 0, seconds: 40 });
-    brushed.batch(41, { adverts: [brushed.advert(41, { state: 2, timerS: 40 })] });
+    await brushed.batch(0, { adverts: [brushed.advert(0, { state: 2 })] });
+    await brushByAdvert(brushed, { from: 0, seconds: 40 });
+    await brushed.batch(41, { adverts: [brushed.advert(41, { state: 2, timerS: 40 })] });
     expect(brushed.clock.pending()).toEqual([brushed.at(61)]);
     brushed.clock.advanceTo(brushed.at(62));
+    await brushed.ingest.idle();
     expect(lastState(brushed, 'brush_session')).toBe('stopped_early');
     const sessions = brushed.test.store.brushingSessions.all(brushed.device.id, undefined);
     expect(sessions).toHaveLength(1);
@@ -189,17 +199,17 @@ describe('pausing', () => {
 describe('a connected brush', () => {
   it('learns the force bands at the end of a session and keeps them', async () => {
     const brushed = await open();
-    brushed.batch(0, {
+    await brushed.batch(0, {
       phase: 'linked',
       frames: [brushed.frame('ff04', bytes(2, 0), 0), brushed.frame('ff26', '1e1e1e1e00000000', 0)],
     });
-    brushed.batch(1, { phase: 'linked', frames: [brushed.frame('ff04', bytes(3, 0), 1)] });
+    await brushed.batch(1, { phase: 'linked', frames: [brushed.frame('ff04', bytes(3, 0), 1)] });
     for (let second = 1; second <= 30; second += 1) {
       const low = second >= 5 && second <= 7;
       const high = second >= 10 && second <= 12;
       const pressure = low ? 0 : high ? 2 : 1;
       const force = low ? 400 + second * 20 : high ? 3000 + (second - 10) * 100 : 2000;
-      brushed.batch(1 + second, {
+      await brushed.batch(1 + second, {
         phase: 'linked',
         frames: [
           brushed.frame('ff08', bytes(0, second), 1 + second),
@@ -207,7 +217,7 @@ describe('a connected brush', () => {
         ],
       });
     }
-    brushed.batch(33, { phase: 'linked', frames: [brushed.frame('ff04', bytes(9, 0), 33)] });
+    await brushed.batch(33, { phase: 'linked', frames: [brushed.frame('ff04', bytes(9, 0), 33)] });
     expect(
       oralbSettingsOf(brushed.test.store.localDevices.byExternalId(brushed.device.external_id))
         .forceBands,
@@ -222,11 +232,11 @@ describe('a connected brush', () => {
   it('shows the live force and angle only to the person who brushes', async () => {
     const brushed = await open();
     brushed.watched.value = true;
-    brushed.batch(0, {
+    await brushed.batch(0, {
       phase: 'linked',
       frames: [brushed.frame('ff04', bytes(3, 0), 0), brushed.frame('ff08', bytes(0, 5), 0)],
     });
-    brushed.batch(1, {
+    await brushed.batch(1, {
       phase: 'linked',
       frames: [brushed.frame('ff0b', pressureHex(1, 2500, 2800), 1)],
     });
@@ -247,20 +257,35 @@ describe('the brush head', () => {
 
   it('counts from the first reading, warns once and detects a replaced head', async () => {
     const brushed = await open();
-    brushed.batch(0, { phase: 'linked', frames: [brushed.frame('ff2d', reading(30, 600), 0)] });
+    await brushed.batch(0, {
+      phase: 'linked',
+      frames: [brushed.frame('ff2d', reading(30, 600), 0)],
+    });
     expect(
       oralbSettingsOf(brushed.test.store.localDevices.byExternalId(brushed.device.external_id))
         .headBaseline,
     ).toMatchObject({ days: 30, seconds: 600 });
     expect(lastState(brushed, 'brush_head_days_left')).toBe(30);
     expect(lastState(brushed, 'brush_head_wear')).toBe(0);
-    brushed.batch(10, { phase: 'linked', frames: [brushed.frame('ff2d', reading(20, 400), 10)] });
+    await brushed.batch(10, {
+      phase: 'linked',
+      frames: [brushed.frame('ff2d', reading(20, 400), 10)],
+    });
     expect(lastState(brushed, 'brush_head_wear')).toBe(33);
-    brushed.batch(20, { phase: 'linked', frames: [brushed.frame('ff2d', reading(13, 300), 20)] });
-    brushed.batch(21, { phase: 'linked', frames: [brushed.frame('ff2d', reading(12, 290), 21)] });
+    await brushed.batch(20, {
+      phase: 'linked',
+      frames: [brushed.frame('ff2d', reading(13, 300), 20)],
+    });
+    await brushed.batch(21, {
+      phase: 'linked',
+      frames: [brushed.frame('ff2d', reading(12, 290), 21)],
+    });
     const warnings = brushed.events.filter((event) => event.details['brushHead'] === 'warn');
     expect(warnings).toHaveLength(1);
-    brushed.batch(30, { phase: 'linked', frames: [brushed.frame('ff2d', reading(90, 1800), 30)] });
+    await brushed.batch(30, {
+      phase: 'linked',
+      frames: [brushed.frame('ff2d', reading(90, 1800), 30)],
+    });
     expect(
       brushed.events.filter((event) => event.details['brushHead'] === 'replaced'),
     ).toHaveLength(1);
@@ -278,15 +303,15 @@ describe('the brush own record', () => {
 
   async function brushed(protocol: 6 | 8): Promise<OralbRig> {
     const current = await open({ identity: identityOf({ protocol }) });
-    current.batch(0, { adverts: [current.advert(0, { state: 2, protocol })] });
-    brushByAdvert(current, { from: 0, seconds: 120, protocol });
-    summary(current, 122, 5, protocol);
+    await current.batch(0, { adverts: [current.advert(0, { state: 2, protocol })] });
+    await brushByAdvert(current, { from: 0, seconds: 120, protocol });
+    await summary(current, 122, 5, protocol);
     return current;
   }
 
   it('refines the session heard from adverts with the record of a protocol 8 brush', async () => {
     const current = await brushed(8);
-    current.batch(200, {
+    await current.batch(200, {
       phase: 'linked',
       frames: [
         current.frame('ff22', long(CLOCK), 200),
@@ -331,7 +356,7 @@ describe('the brush own record', () => {
 
   it('merges the header of a protocol 6 brush into the session heard from adverts', async () => {
     const current = await brushed(6);
-    current.batch(200, {
+    await current.batch(200, {
       phase: 'linked',
       frames: [
         current.frame('ff22', long(CLOCK), 200),
@@ -349,7 +374,7 @@ describe('the brush own record', () => {
       oralbSettingsOf(current.test.store.localDevices.byExternalId(current.device.external_id))
         .missed,
     ).toEqual([]);
-    current.batch(260, {
+    await current.batch(260, {
       phase: 'linked',
       frames: [
         current.frame('ff22', long(CLOCK + 60), 260),
@@ -361,7 +386,7 @@ describe('the brush own record', () => {
 
   it('lists a protocol 6 header with no heard session as missed and never invents a session', async () => {
     const current = await brushed(6);
-    current.batch(5000, {
+    await current.batch(5000, {
       phase: 'linked',
       frames: [
         current.frame('ff22', long(CLOCK), 5000),
@@ -382,7 +407,7 @@ describe('the brush own record', () => {
 
   it('keeps a protocol 8 record the brush made while the phone was away as its own session', async () => {
     const current = await open();
-    current.batch(0, {
+    await current.batch(0, {
       phase: 'linked',
       frames: [
         current.frame('ff22', long(CLOCK), 0),

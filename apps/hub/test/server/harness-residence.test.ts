@@ -13,15 +13,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function link(token: string | null = 'token'): {
-  readonly token: string | null;
+function link(): {
   readonly sent: HubHarnessControl[];
   readonly send: (frame: HubHarnessControl) => void;
   readonly terminate: () => void;
 } {
   const sent: HubHarnessControl[] = [];
   return {
-    token,
     sent,
     send: (frame): void => {
       sent.push(frame);
@@ -34,7 +32,6 @@ function residence(gone: () => void = vi.fn()): HarnessResidence {
   return new HarnessResidence(
     rig.service,
     { device_id: randomUUID(), generation: randomUUID(), runtime_instance: randomUUID() },
-    { authenticate: vi.fn() },
     gone,
   );
 }

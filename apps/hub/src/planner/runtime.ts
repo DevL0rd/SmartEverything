@@ -1,18 +1,19 @@
-import type { DeviceRow } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import type { DeviceRow, PlannerPreferences } from '@smarteverything/domain';
+import { background, type Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
 import type { GoogleSyncRunner } from '../google/sync-runner';
 import type { RunningHub } from '../hub';
 import type { WatchOutcome } from '../local/watch-actions';
 import { clientIdOfPhone } from '../phones/phone-device';
 import type { Store } from '../store/store';
-import { AlarmSounds } from './alarm-sound';
+import { AlarmSoundCheck } from './alarm-sound-check';
 import { AlarmScheduler } from './alarms';
 import { BedtimeDesk, type BedtimeChannel } from './bedtime/desk';
 import { CompletionWatcher } from './completion';
 import { FeedService } from './feeds';
+import type { CalendarReader } from './ical/calendar-reader';
 import { PhoneRings, type PhoneRingChannel } from './phone-rings';
-import { plannerPreferencesOf } from './preferences';
+import { loadPlannerPreferences } from './preferences';
 import { ReminderScheduler } from './reminders';
 import { RingDesk } from './rings';
 import { CollaborationDesk } from './sharing/desk';
@@ -30,7 +31,7 @@ export interface PlannerChannels {
   readonly phone: PhoneRingChannel;
   readonly bedtime: BedtimeChannel;
   readonly watch: WatchChannel;
-  readonly profileOfWatch: (deviceId: string) => string | null;
+  readonly profileOfWatch: (deviceId: string) => Promise<string | null>;
 }
 
 export interface PlannerRuntimeOptions {
@@ -40,6 +41,7 @@ export interface PlannerRuntimeOptions {
   readonly submit: RunningHub['submit'];
   readonly automations: Pick<RunningHub['automationEngine'], 'start'>;
   readonly google: Pick<GoogleSyncRunner, 'reminderPull' | 'sync'>;
+  readonly calendars: CalendarReader;
   readonly log: Logger;
 }
 
@@ -59,14 +61,12 @@ function automationRunner(options: PlannerRuntimeOptions): AutomationRunner {
 function bedtimeOf(
   options: PlannerRuntimeOptions,
   channel: BedtimeChannel,
-  sounds: AlarmSounds,
 ): { readonly desk: BedtimeDesk; readonly sleepSound: SleepSoundControl } {
   const { store, clock, signals, log } = options;
-  const preferencesOf = (profileId: string): ReturnType<typeof plannerPreferencesOf> =>
-    plannerPreferencesOf(store, profileId);
+  const preferencesOf = (profileId: string): Promise<PlannerPreferences> =>
+    loadPlannerPreferences(store, profileId);
   const sleepSound = new SleepSoundControl({
     store,
-    sounds,
     deliver: channel.deliver,
     preferencesOf,
     log,
@@ -110,8 +110,8 @@ class ChannelSlot {
     this.attached = channels;
   }
 
-  profileOfWatch(deviceId: string): string | null {
-    return this.attached?.profileOfWatch(deviceId) ?? null;
+  async profileOfWatch(deviceId: string): Promise<string | null> {
+    return this.attached === null ? null : await this.attached.profileOfWatch(deviceId);
   }
 }
 
@@ -133,13 +133,13 @@ function timersOf(options: PlannerRuntimeOptions): TimerService {
 function watchOf(
   options: PlannerRuntimeOptions,
   slot: ChannelSlot,
-  preferences: (profileId: string) => ReturnType<typeof plannerPreferencesOf>,
+  preferences: (profileId: string) => Promise<PlannerPreferences>,
 ): { readonly sync: WatchSync; readonly calendar: WatchCalendar } {
   const { store, clock, log } = options;
   const watch = {
     store,
     channel: slot.watch,
-    profileOf: (deviceId: string): string | null => slot.profileOfWatch(deviceId),
+    profileOf: (deviceId: string): Promise<string | null> => slot.profileOfWatch(deviceId),
     preferences,
     log,
   };
@@ -158,9 +158,10 @@ export class PlannerRuntime {
   readonly timers: TimerService;
   readonly stopwatch: StopwatchService;
   readonly phoneRings: PhoneRings;
-  readonly sounds: AlarmSounds;
+  readonly sounds: AlarmSoundCheck;
   readonly sleepSound: SleepSoundControl;
   readonly feeds: FeedService;
+  readonly calendars: CalendarReader;
   private readonly bedtime: BedtimeDesk;
   private readonly summary: SummaryDesk;
   private readonly reminders: ReminderScheduler;
@@ -170,18 +171,19 @@ export class PlannerRuntime {
   private readonly watchCalendar: WatchCalendar;
   private readonly slot = new ChannelSlot();
   private readonly stops: (() => void)[] = [];
+  private starting: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: PlannerRuntimeOptions) {
     const { store, clock, signals, log } = options;
-    const preferences = (profileId: string): ReturnType<typeof plannerPreferencesOf> =>
-      plannerPreferencesOf(store, profileId);
+    const preferences = (profileId: string): Promise<PlannerPreferences> =>
+      loadPlannerPreferences(store, profileId);
     const rings = new RingDesk({ store, clock, emit: signals.emit, log });
     const wake = new WakeRoutine({ clock, runAutomation: automationRunner(options), log });
     const sunrise = new SunriseRamp({ store, clock, submit: options.submit, log });
     this.alarms = new AlarmScheduler({ store, clock, rings, wake, sunrise, log });
     this.timers = timersOf(options);
     this.stopwatch = new StopwatchService({ store, clock });
-    this.summary = new SummaryDesk({ store, clock, preferencesOf: preferences, log });
+    this.summary = new SummaryDesk({ store, clock, log });
     this.reminders = new ReminderScheduler({
       store,
       clock,
@@ -192,17 +194,16 @@ export class PlannerRuntime {
     });
     this.completion = new CompletionWatcher({ store, clock, emit: signals.emit, log });
     this.collaboration = new CollaborationDesk({ store, clock, emit: signals.emit });
-    this.sounds = new AlarmSounds(store, log);
-    this.feeds = new FeedService({ store, clock, log });
+    this.sounds = new AlarmSoundCheck(store);
+    this.calendars = options.calendars;
+    this.feeds = new FeedService({ store, clock, calendars: options.calendars, log });
     this.phoneRings = new PhoneRings({
       store,
       channel: this.slot.phone,
-      sounds: this.sounds,
-      preferencesOf: preferences,
       now: clock.now,
       log,
     });
-    const bedtime = bedtimeOf(options, this.slot.bedtime, this.sounds);
+    const bedtime = bedtimeOf(options, this.slot.bedtime);
     this.sleepSound = bedtime.sleepSound;
     this.bedtime = bedtime.desk;
     const watch = watchOf(options, this.slot, preferences);
@@ -212,15 +213,18 @@ export class PlannerRuntime {
 
   start(channels: PlannerChannels): void {
     this.slot.attach(channels);
-    this.summary.start();
-    this.alarms.start();
-    this.timers.start();
-    this.reminders.start();
     this.collaboration.start();
     this.phoneRings.start();
     this.feeds.start();
-    this.bedtime.start();
     this.watchSync.start();
+    this.starting = Promise.all([
+      this.summary.start(),
+      this.alarms.start(),
+      this.timers.start(),
+      this.reminders.start(),
+      this.bedtime.start(),
+    ]).then(() => undefined);
+    background(this.starting, 'planner.start_failed');
     this.watchCalendar.start();
     this.stops.push(
       this.completion.attach(this.options.signals),
@@ -228,7 +232,7 @@ export class PlannerRuntime {
         if (change.table === 'devices' && change.record?.online === true) {
           this.connected(change.record, change.oldRecord);
         } else if (change.table === 'settings') {
-          this.bedtime.refreshAll();
+          background(this.bedtime.refreshAll(), 'planner.bedtime_refresh_failed');
         }
       }),
     );
@@ -249,16 +253,38 @@ export class PlannerRuntime {
     this.slot.attach(null);
   }
 
+  async ready(): Promise<void> {
+    await this.starting;
+  }
+
+  async settled(): Promise<void> {
+    await this.starting;
+    await Promise.all([
+      this.summary.settled(),
+      this.reminders.settled(),
+      this.alarms.settled(),
+      this.timers.settled(),
+      this.phoneRings.settled(),
+      this.bedtime.settled(),
+      this.watchSync.settled(),
+      this.watchCalendar.settled(),
+      this.completion.settled(),
+      this.collaboration.settled(),
+      this.feeds.settled(),
+    ]);
+  }
+
   resumed(): void {
-    this.alarms.resumed();
-    this.reminders.resumed();
-    this.bedtime.refreshAll();
+    background(
+      Promise.all([this.alarms.resumed(), this.reminders.resumed(), this.bedtime.refreshAll()]),
+      'planner.resume_failed',
+    );
   }
 
   preferencesChanged(profileId: string): void {
-    this.summary.refresh(profileId);
+    background(this.summary.refresh(profileId), 'planner.summary_failed', { profileId });
     this.phoneRings.preferencesChanged(profileId);
-    this.bedtime.refresh(profileId);
+    background(this.bedtime.refresh(profileId), 'planner.bedtime_refresh_failed', { profileId });
     this.watchSync.preferencesChanged(profileId);
     this.watchCalendar.preferencesChanged(profileId);
   }

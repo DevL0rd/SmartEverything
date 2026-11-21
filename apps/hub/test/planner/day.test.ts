@@ -7,7 +7,7 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { composeDay, composeDayFromStore, frameOf, summarise } from '../../src/planner/day';
-import { instantsOf, recomputeInstants } from '../../src/planner/instants';
+import { instantsOf } from '../../src/planner/instants';
 import { expandOccurrences, type ExpandWindow } from '../../src/planner/occurrences';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
 import { testStore, type TestStore } from '../support/store';
@@ -509,7 +509,7 @@ describe('with the store', () => {
     });
   }
 
-  it('recomputes stored instants on start once', () => {
+  it('recomputes stored instants on start once', async () => {
     const dentist = insert({
       title: 'Dentist',
       start_local: '2026-03-28T22:00',
@@ -520,12 +520,12 @@ describe('with the store', () => {
       start: '2026-03-28T22:00:00.000Z',
       end: '2026-03-29T01:00:00.000Z',
     });
-    expect(recomputeInstants(test.store)).toBe(1);
+    expect(await test.store.host.write('plannerRecomputeInstants', {})).toBe(1);
     expect(test.store.plannerItems.byId(dentist.id, owner.profileId)).toMatchObject({
       start: '2026-03-28T21:00:00.000Z',
       end: '2026-03-29T00:00:00.000Z',
     });
-    expect(recomputeInstants(test.store)).toBe(0);
+    expect(await test.store.host.write('plannerRecomputeInstants', {})).toBe(0);
   });
 
   it('composes a day from the tables, with alarm pins and the next alarm', () => {

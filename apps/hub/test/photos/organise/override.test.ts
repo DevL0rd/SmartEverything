@@ -5,17 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { scanHandler, type ScanEnvironment } from '../../../src/drive/jobs';
 import { DriveRootLanes } from '../../../src/drive/root-lanes';
-import { DriveInodesRepository } from '../../../src/store/repositories/drive-inodes';
-import { DriveMissingRepository } from '../../../src/store/repositories/drive-missing';
-import { DriveFeedRepository } from '../../../src/store/repositories/drive-feed';
 import { metadataHandler, type MetadataEnvironment } from '../../../src/drive/metadata';
 import type { MediaFacts } from '../../../src/drive/metadata-read';
 import { overrideFacts } from '../../../src/photos/organise/override';
 import { DriveMediaRepository } from '../../../src/store/repositories/drive-media';
 import { PhotoMetaOverridesRepository } from '../../../src/store/repositories/photo-meta-overrides';
-import { PhotoDescriptionsRepository } from '../../../src/store/repositories/photo-descriptions';
-import { zonePicker } from '../../../src/drive/metadata-zone';
-import { PhotoDeviceZonesRepository } from '../../../src/store/repositories/photo-device-zones';
 import { testLogger } from '../../support/logs';
 import {
   bundleMetadataWorker,
@@ -26,6 +20,7 @@ import {
   type BundledWorker,
   type DriveFixture,
 } from '../../drive/drive-fixture';
+import { localMetadata, localScans } from '../../drive/local-ports';
 
 const ROOT = '0d000000-0000-4000-8000-000000000002';
 
@@ -69,36 +64,23 @@ afterEach(() => {
 
 async function scanAndRead(): Promise<void> {
   const scan: ScanEnvironment = {
-    store: {
-      driveRoots: drive.roots,
-      driveItems: drive.items,
-      driveInodes: new DriveInodesRepository(drive.context),
-      driveMissing: new DriveMissingRepository(drive.context),
+    ...localScans({
+      roots: drive.roots,
+      items: drive.items,
+      context: drive.context,
       feed: drive.feed,
-      write: (work) => drive.context.write(work),
       now: () => new Date(NOW),
-    },
+    }),
     availability: () => Promise.resolve('online'),
-    mounted: (): boolean => false,
+    mounted: () => Promise.resolve(false),
     workerScript: scannerScript,
     lanes: new DriveRootLanes(),
     log: testLogger(),
   };
   await scanHandler(scan)({ kind: 'scan', rootId: ROOT }, new AbortController().signal);
   const read: MetadataEnvironment = {
-    store: {
-      driveRoots: drive.roots,
-      driveItems: drive.items,
-      settingsKv: drive.settings,
-      photoMetaOverrides: overrides,
-      photoDescriptions: new PhotoDescriptionsRepository(drive.context),
-      write: (work) => drive.context.write(work),
-      feed: drive.feed,
-      driveFeed: new DriveFeedRepository(drive.context),
-    },
-    media,
+    ...localMetadata(drive, 'Asia/Bangkok', { overrides, media }),
     availability: () => Promise.resolve('online'),
-    zones: zonePicker(new PhotoDeviceZonesRepository(drive.context), () => 'Asia/Bangkok'),
     workerScript: metadataWorker.script,
     log: testLogger(),
   };

@@ -91,11 +91,11 @@ function accessEndpoints(context: ExtensionContext, { authorize }: Parts): Exten
     updateMcpTools: bound(E.updateMcpTools, ({ body }) => {
       const disabled = MCP_TOOL_NAMES.filter((name) => body.disabled.includes(name));
       context.log.info('mcp.tools_switched', { disabled });
-      return store.settings.setDisabledMcpTools(disabled);
+      return store.host.write('setDisabledMcpTools', disabled);
     }),
     listMcpConsents: bound(E.listMcpConsents, () => consents.waiting()),
-    decideMcpConsent: bound(E.decideMcpConsent, ({ params, body }) => {
-      decideInApp(authorize, params.consentId, body.decision);
+    decideMcpConsent: bound(E.decideMcpConsent, async ({ params, body }) => {
+      await decideInApp(authorize, params.consentId, body.decision);
       return DONE_REPLY;
     }),
   };
@@ -156,6 +156,7 @@ function mcpRoutes(context: ExtensionContext, options: McpOptions, parts: Parts)
       actor: null,
       layout: context.layout,
       mediaNotes: context.mediaNotes,
+      calendars: context.calendars,
     },
   };
   return [

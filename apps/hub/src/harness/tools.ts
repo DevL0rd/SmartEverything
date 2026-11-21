@@ -47,9 +47,8 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     const session = this.session(execution.agent.id);
     if (session.caller.profileId !== authority.profileId)
       return 'This initiating profile no longer owns the tool grant.';
-    const args = z.record(z.string(), z.unknown()).parse(execution.arguments);
-    const checked = this.restricted(session).check(execution.name, args, session.caller);
-    return checked.ok ? undefined : checked.reason;
+    z.record(z.string(), z.unknown()).parse(execution.arguments);
+    return undefined;
   }
   install(ctx: Context): void {
     ctx.effect(() => bindHomeTools(ctx, new HubHomeTools(this, this.tools)));
@@ -60,15 +59,15 @@ export class HarnessHubTools implements HarnessServerToolAccess {
   declarationNames(id: string): readonly string[] {
     return centralToolDeclarationNames(this.scoped(id));
   }
-  authorizeCall(
+  async authorizeCall(
     id: string,
     name: string,
     args: Readonly<Record<string, unknown>>,
-  ): { readonly caller: ToolCaller; readonly hub: ToolHub } {
+  ): Promise<{ readonly caller: ToolCaller; readonly hub: ToolHub }> {
     const session = this.session(id);
     const hub = this.restricted(session);
     const target = forwardedCall(name, args);
-    const checked = hub.check(target.name, target.arguments, session.caller);
+    const checked = await hub.check(target.name, target.arguments, session.caller);
     if (!checked.ok) throw new HubCapabilityFailure(name, checked.reason);
     return { caller: this.admit(target.name, target.arguments, session.caller), hub };
   }
@@ -78,7 +77,7 @@ export class HarnessHubTools implements HarnessServerToolAccess {
     args: Readonly<Record<string, unknown>>,
     callId?: string,
   ): Promise<HubToolResult> {
-    const { caller, hub } = this.authorizeCall(id, name, args);
+    const { caller, hub } = await this.authorizeCall(id, name, args);
     const claim = this.service.store.dshSessions.attached(id, caller.profileId);
     const verifyWriter = (): void => {
       if (claim?.target.kind !== 'server')

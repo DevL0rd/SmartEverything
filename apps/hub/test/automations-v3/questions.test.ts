@@ -8,6 +8,7 @@ import { AutomationComputersSlot } from '../../src/automations/automation-comput
 import { hubEffectHandlers } from '../../src/automations/hub-effects';
 import { QuestionDesk } from '../../src/automations/questions/desk';
 import { setup } from '../support/executor-setup';
+import { loadedWorld } from '../support/world-mirror';
 import { closeSetups, lit, node, program, RigV3, trigger } from './support/rig-v3';
 
 afterEach(closeSetups);
@@ -47,7 +48,7 @@ async function built(refuse = false): Promise<Built> {
     wake: () => Promise.resolve(),
     stop: (): void => undefined,
     tools: {
-      check: (): ToolCheck => ({ ok: true, tool: TOOL }),
+      check: (): Promise<ToolCheck> => Promise.resolve({ ok: true, tool: TOOL }),
       call: (_name, args): Promise<HubToolResult> => {
         told.push({ personId: args['personId'], text: args['text'] });
         const response = refuse ? { error: 'quiet hours' } : { result: {} };
@@ -62,7 +63,7 @@ async function built(refuse = false): Promise<Built> {
       return holder.rig.clock.now();
     },
   };
-  const desk = new QuestionDesk({ questions: home.db.store.automationQuestions, clock });
+  const desk = new QuestionDesk({ host: home.db.store.host, clock });
   const extraEffects = hubEffectHandlers({
     store: home.db.store,
     clock,
@@ -71,7 +72,7 @@ async function built(refuse = false): Promise<Built> {
     computers: new AutomationComputersSlot(),
     questions: desk,
   });
-  const rig = new RigV3(home, { extraEffects, questions: desk });
+  const rig = new RigV3(home, await loadedWorld(home.db.store), { extraEffects, questions: desk });
   holder.rig = rig;
   return { rig, desk, told, person };
 }
@@ -99,44 +100,49 @@ function asking(
   );
 }
 
-function open(desk: QuestionDesk): AutomationQuestion {
-  const [question] = desk.pending(null);
-  if (question === undefined) throw new Error('no question is waiting');
-  return question;
+async function open(desk: QuestionDesk): Promise<AutomationQuestion> {
+  for (let round = 0; round < 200; round += 1) {
+    const [question] = await desk.pending(null);
+    if (question !== undefined) return question;
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 10);
+    });
+  }
+  throw new Error('no question is waiting');
 }
 
 describe('notify.ask in the V3 engine', () => {
   it('asks the person, keeps the run waiting and continues with the answer', async () => {
     const { rig, desk, told, person } = await built();
     const row = rig.add(asking(rig, person, { timeout: lit(30 * MINUTE) }));
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.press(REMOTE, 'single');
-    await rig.until(() => desk.pending(null).length === 1);
+    await open(desk);
     await rig.settle();
     expect(rig.runs(row.id)[0]).toMatchObject({ status: 'waiting' });
     expect(told).toHaveLength(1);
     expect(String(told[0]?.text)).toContain('Lock the door?');
     expect(told[0]?.personId).toBe(person);
-    const question = open(desk);
+    const question = await open(desk);
     expect(question).toMatchObject({ person_id: person, options: ['Yes', 'No'], state: 'open' });
-    desk.answer(question.id, { profileId: person, owner: false }, 'Yes');
+    await desk.answer(question.id, { profileId: person, owner: false }, 'Yes');
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id)[0]).toMatchObject({ status: 'succeeded' });
-    expect(desk.pending(null)).toEqual([]);
+    expect(await desk.pending(null)).toEqual([]);
   });
 
   it('keeps asking across a hub restart and still takes the answer', async () => {
     const { rig, desk, person } = await built();
     const row = rig.add(asking(rig, person));
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.press(REMOTE, 'single');
-    await rig.until(() => desk.pending(null).length === 1);
+    await open(desk);
     await rig.settle();
-    const question = open(desk);
+    const question = await open(desk);
     rig.restart();
-    rig.engine.sync();
-    expect(rig.engine.boot()).toStrictEqual({ resumed: 1, cancelled: 0, interrupted: 0 });
-    desk.answer(question.id, { profileId: person, owner: true }, 'No');
+    await rig.engine.sync();
+    expect(await rig.engine.boot()).toStrictEqual({ resumed: 1, cancelled: 0, interrupted: 0 });
+    await desk.answer(question.id, { profileId: person, owner: true }, 'No');
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id)[0]).toMatchObject({ status: 'succeeded' });
   });
@@ -144,16 +150,16 @@ describe('notify.ask in the V3 engine', () => {
   it('continues when the answer came while the hub was down', async () => {
     const { rig, desk, person } = await built();
     const row = rig.add(asking(rig, person));
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.press(REMOTE, 'single');
-    await rig.until(() => desk.pending(null).length === 1);
+    await open(desk);
     await rig.settle();
-    const question = open(desk);
+    const question = await open(desk);
     rig.engine.shutdown();
-    desk.answer(question.id, { profileId: person, owner: true }, 'Yes');
+    await desk.answer(question.id, { profileId: person, owner: true }, 'Yes');
     rig.restart();
-    rig.engine.sync();
-    rig.engine.boot();
+    await rig.engine.sync();
+    await rig.engine.boot();
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id)[0]).toMatchObject({ status: 'succeeded' });
   });
@@ -161,46 +167,46 @@ describe('notify.ask in the V3 engine', () => {
   it('times out at the deadline and closes the question', async () => {
     const { rig, desk, person } = await built();
     const row = rig.add(asking(rig, person, { timeout: lit(MINUTE) }));
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.press(REMOTE, 'single');
-    await rig.until(() => desk.pending(null).length === 1);
+    await open(desk);
     await rig.settle();
-    const question = open(desk);
+    const question = await open(desk);
     await rig.advance(MINUTE + 1);
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id)[0]).toMatchObject({ status: 'succeeded' });
-    expect(desk.pending(null)).toEqual([]);
-    expect(() => desk.answer(question.id, { profileId: person, owner: true }, 'Yes')).toThrow(
-      /no longer waiting|run out/,
-    );
+    expect(await desk.pending(null)).toEqual([]);
+    await expect(
+      desk.answer(question.id, { profileId: person, owner: true }, 'Yes'),
+    ).rejects.toThrow(/no longer waiting|run out/);
   });
 
   it('fails the run when the person cannot be told and leaves no open question', async () => {
     const { rig, desk, person } = await built(true);
     const row = rig.add(asking(rig, person));
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.press(REMOTE, 'single');
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id)[0]).toMatchObject({ status: 'failed' });
-    expect(desk.pending(null)).toEqual([]);
+    expect(await desk.pending(null)).toEqual([]);
   });
 
   it('refuses an answer that is not a button, from someone else, or twice', async () => {
     const { rig, desk, person } = await built();
     rig.add(asking(rig, person));
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.press(REMOTE, 'single');
-    await rig.until(() => desk.pending(null).length === 1);
-    const question = open(desk);
-    expect(() => desk.answer(question.id, { profileId: person, owner: false }, 'Maybe')).toThrow(
-      /one of: Yes, No/,
-    );
-    expect(() =>
+    await open(desk);
+    const question = await open(desk);
+    await expect(
+      desk.answer(question.id, { profileId: person, owner: false }, 'Maybe'),
+    ).rejects.toThrow(/one of: Yes, No/);
+    await expect(
       desk.answer(question.id, { profileId: randomUUID(), owner: false }, 'Yes'),
-    ).toThrow(/no such question/);
-    desk.answer(question.id, { profileId: person, owner: false }, 'Yes');
-    expect(() => desk.answer(question.id, { profileId: person, owner: false }, 'No')).toThrow(
-      /no longer waiting/,
-    );
+    ).rejects.toThrow(/no such question/);
+    await desk.answer(question.id, { profileId: person, owner: false }, 'Yes');
+    await expect(
+      desk.answer(question.id, { profileId: person, owner: false }, 'No'),
+    ).rejects.toThrow(/no longer waiting/);
   });
 });

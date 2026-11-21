@@ -13,9 +13,9 @@ export async function statfsOf(
   scope: PosixScope,
   ino: number,
 ): Promise<StatfsReply> {
-  nodes.node(scope, ino);
+  await nodes.node(scope, ino);
   const space = await fsStatfs(env.space, scope.caller, scope.drive.id, scope.baseId ?? undefined);
-  const used = env.change.store.driveInodes.inodeCount(scope.drive.id);
+  const used = await env.change.store.host.call('driveInodes', 'inodeCount', scope.drive.id);
   const free = Math.floor(space.freeBytes / FILESYSTEM_BLOCK_BYTES);
   return {
     blocks: Math.ceil(space.totalBytes / FILESYSTEM_BLOCK_BYTES),

@@ -35,6 +35,7 @@ function device(kind: 'camera' | 'phone' | 'computer', name: string, profileId?:
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   const rules = new ReachRules(opened.store, () => new Date());
   registry = new ListeningRegistry({
     store: opened.store,

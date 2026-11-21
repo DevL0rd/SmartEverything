@@ -5,16 +5,14 @@ import { serialiseRunState } from '@smarteverything/flow/state/run-state';
 import type { RunState, Wait } from '@smarteverything/flow/state/run-state';
 import { z } from 'zod';
 import type { Clock } from '../../clock';
-import type {
-  AutomationRunRecordsRepository,
-  RunParking,
-} from '../../store/repositories/automation-run-records';
+import type { RunParking } from '../../store/repositories/automation-run-records';
+import type { RunLedger } from '../run-ledger';
 
 export const DURABLE_PARK_MS = 5000;
 
 const STATE_OBJECT = z.record(z.string(), JSON_VALUE);
 
-export type ParkRecords = Pick<AutomationRunRecordsRepository, 'park' | 'resume'>;
+export type ParkRecords = Pick<RunLedger, 'park' | 'resume'>;
 
 function waitingOn(wait: Wait, due: number | undefined): RunParking['waitingOn'] {
   const leaves = wait.kind === 'any' ? wait.waits : [wait];

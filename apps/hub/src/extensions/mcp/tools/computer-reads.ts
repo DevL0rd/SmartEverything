@@ -61,7 +61,7 @@ function reader<T, R extends { readonly deviceId?: string | undefined }>(
     input,
     annotations: READS,
     run: async (context, request) => {
-      const deviceId = computerIdOf(context, request.deviceId);
+      const deviceId = await computerIdOf(context, request.deviceId);
       const state = await readState(context, endpoint, deviceId, schema);
       return { structured: project(state, request) };
     },
@@ -93,7 +93,7 @@ export const COMPUTER_READ_TOOLS: readonly Tool[] = [
     input: COMPUTER,
     annotations: READS,
     run: async (context, { deviceId }) => ({
-      structured: await computerNow(context, computerIdOf(context, deviceId)),
+      structured: await computerNow(context, await computerIdOf(context, deviceId)),
     }),
   }),
   reader('get_computer_audio', COMPUTER, view('readComputerAudio', AUDIO_STATE, compactAudio)),
@@ -118,7 +118,7 @@ export const COMPUTER_READ_TOOLS: readonly Tool[] = [
     input: COMPUTER,
     annotations: READS,
     run: async (context, { deviceId }) => {
-      const id = computerIdOf(context, deviceId);
+      const id = await computerIdOf(context, deviceId);
       const [services, startup] = await Promise.all([
         readState(context, 'readComputerServices', id, SERVICES_STATE),
         readState(context, 'readComputerStartup', id, STARTUP_STATE),

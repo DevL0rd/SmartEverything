@@ -6,8 +6,11 @@ import {
 } from '@smarteverything/domain';
 import type { z } from 'zod';
 import type { DriveActor } from '../drive/access';
-import { DRIVE_PAGE_SIZE } from '../drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../drive/page-size';
+import { homeLocation, homeZone } from '../automations/world-v3/zone';
 import type { StoreContext } from '../store/context';
+import { storeUnit } from '../store/host/unit';
+import type { Store } from '../store/store';
 import {
   CAMERA_ROW,
   CLOCK_ROW,
@@ -32,6 +35,7 @@ import {
   twelveMonthsFrom,
   videoTotalsOf,
   weekdayByHour,
+  localDay,
   type InsightsContext,
 } from './insights-shapes';
 import {
@@ -350,3 +354,38 @@ export class InsightsReader {
       }));
   }
 }
+
+function insightsContext(store: Store): InsightsContext {
+  return { today: localDay(store.now(), homeZone(store)), home: homeLocation(store) };
+}
+
+export interface InsightsQuery {
+  readonly actor: DriveActor;
+  readonly range: PhotoInsightRange;
+}
+
+export interface RankingQuery extends InsightsQuery {
+  readonly cursor: string | undefined;
+}
+
+export const PHOTO_INSIGHTS_UNIT = storeUnit((store, input: InsightsQuery) =>
+  new InsightsReader(store.context).read(input.actor, input.range, insightsContext(store)),
+);
+
+export const PHOTO_LARGEST_VIDEOS_UNIT = storeUnit((store, input: RankingQuery) =>
+  new InsightsReader(store.context).largestVideosPage(
+    input.actor,
+    input.range,
+    input.cursor,
+    insightsContext(store),
+  ),
+);
+
+export const PHOTO_BUSIEST_DAYS_UNIT = storeUnit((store, input: RankingQuery) =>
+  new InsightsReader(store.context).busiestDaysPage(
+    input.actor,
+    input.range,
+    input.cursor,
+    insightsContext(store),
+  ),
+);

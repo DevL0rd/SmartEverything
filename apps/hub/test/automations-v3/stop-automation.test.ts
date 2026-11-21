@@ -84,7 +84,7 @@ describe('retiring an automation before it is removed', () => {
   it('cancels its parked run and settles it before returning', async () => {
     const rig = await rigV3();
     const target = rig.add(guardedWait(), 'Target');
-    rig.engine.sync();
+    await rig.engine.sync();
     const runId = startedRun(rig, target.id);
     await rig.settle();
     expect(rig.engine.driver.isLive(runId)).toBe(true);
@@ -100,7 +100,7 @@ describe('the stop automation effect', () => {
     const rig = await rigV3();
     const target = rig.add(guardedWait(), 'Target');
     const caller = stopper(rig, target.id);
-    rig.engine.sync();
+    await rig.engine.sync();
     startedRun(rig, target.id);
     await rig.settle();
     expect(rig.engine.driver.active).toBe(1);
@@ -120,7 +120,7 @@ describe('the stop automation effect', () => {
       'Target',
     );
     const caller = stopper(rig, target.id);
-    rig.engine.sync();
+    await rig.engine.sync();
     startedRun(rig, target.id);
     await rig.settle();
     expect(rig.runs(target.id)[0]).toMatchObject({ status: 'running' });
@@ -139,7 +139,7 @@ describe('the stop automation effect', () => {
       'Target',
     );
     const caller = stopper(rig, target.id);
-    rig.engine.sync();
+    await rig.engine.sync();
     const active = startedRun(rig, target.id);
     const queued = startedRun(rig, target.id);
     await rig.settle();
@@ -176,7 +176,7 @@ describe('the stop automation effect', () => {
       },
       STATIC_KIND_LOOKUP,
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     startedRun(rig, other.id);
     startedRun(rig, self.id);
     await rig.until(() => rig.finished.length === 1);
@@ -193,7 +193,7 @@ describe('the stop automation effect', () => {
       program([node('stop', 'automation.stop', { automation: lit(red.id), key: lit('blue') })]),
       'Keyed stopper',
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const redRun = startedRun(rig, red.id);
     const blueRun = startedRun(rig, blue.id);
     await rig.settle();
@@ -212,7 +212,7 @@ describe('the stop automation effect', () => {
     const rig = await rigV3();
     const idle = rig.add(program([node('pause', 'flow.wait', { duration: lit(1) })]), 'Idle');
     const caller = stopper(rig, idle.id);
-    rig.engine.sync();
+    await rig.engine.sync();
     startedRun(rig, caller.id);
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(caller.id)[0]).toMatchObject({ status: 'succeeded' });

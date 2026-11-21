@@ -21,9 +21,10 @@ export function hubMemoryOf(context: Pick<ServerContext, 'store' | 'openRouter'>
   const { store } = context;
   const completions = auxCompletionsOf(store);
   const model = new ManagerModel({
-    selected: (): string => store.assistantChat.settings().memory_model,
+    selected: (): string => store.live.home.assistant.read().memory_model,
     complete: (request): Promise<string> => completions.complete(request),
-    nameOf: (profileId): string => store.profiles.byId(profileId).name,
+    nameOf: async (profileId): Promise<string> =>
+      (await store.host.call('profiles', 'byId', profileId)).name,
     now: (): Date => new Date(),
     sleep: (ms): Promise<void> => delay(ms),
   });
@@ -33,7 +34,7 @@ export function hubMemoryOf(context: Pick<ServerContext, 'store' | 'openRouter'>
     new OpenRouterMemoryEmbedder(context.openRouter.client),
     {
       judge: model,
-      zone: (): string => store.settings.read().time_zone,
+      zone: (): string => store.live.home.settings.read().time_zone,
       now: (): Date => new Date(),
     },
   );

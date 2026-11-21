@@ -9,7 +9,7 @@ export async function applyDirectLinks(
   account: StoredAccount | null | undefined,
 ): Promise<void> {
   const links = directLinksOf(account);
-  store.televisionSettings.setDirectLinks(links);
+  await store.host.call('televisionSettings', 'setDirectLinks', links);
   await inventory.remove(
     'samsung_tv',
     links.map((link) => link.macAddress),

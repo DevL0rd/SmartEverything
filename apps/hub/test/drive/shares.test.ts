@@ -309,8 +309,8 @@ describe('creating links', () => {
     updateDriveSettings(opened.store, { membersMayShare: true });
     const made = await create(INSIDE, { actor: member });
     expect(made.id).toBeTruthy();
-    expect(shares.list(member, INSIDE)).toHaveLength(1);
-    expect(shares.list(owner, INSIDE)).toHaveLength(1);
+    expect(await shares.list(member, INSIDE)).toHaveLength(1);
+    expect(await shares.list(owner, INSIDE)).toHaveLength(1);
   });
 
   it('refuses an expiry in the past', async () => {
@@ -351,7 +351,7 @@ describe('opening links', () => {
 
   it('answers the same no-longer-available for unknown, malformed, revoked and expired tokens', async () => {
     const revoked = await create(INSIDE);
-    shares.revoke(owner, revoked.id);
+    await shares.revoke(owner, revoked.id);
     expect((await fetch(`${base}/s/${revoked.token}`)).status).toBe(404);
     expect((await fetch(`${base}/s/${'A'.repeat(43)}`)).status).toBe(404);
     expect((await fetch(`${base}/s/short`)).status).toBe(404);
@@ -370,9 +370,9 @@ describe('opening links', () => {
       profileId: opened.store.profiles.create({ name: 'Ida' }).id,
       owner: false,
     };
-    expect(shares.list(stranger, INSIDE)).toHaveLength(1);
+    expect(await shares.list(stranger, INSIDE)).toHaveLength(1);
     expect((await fetch(`${base}/s/${made.token}`)).status).toBe(200);
-    shares.revoke(stranger, made.id);
+    await shares.revoke(stranger, made.id);
     expect((await fetch(`${base}/s/${made.token}`)).status).toBe(404);
   });
 
@@ -382,12 +382,12 @@ describe('opening links', () => {
     await mkdir(personal, { recursive: true });
     await writeFile(join(personal, 'mine.txt'), BODY);
     const made = await create(PERSONAL_FILE, { actor: member });
-    expect(shares.list(member, PERSONAL_FILE)).toHaveLength(1);
-    expect(() => shares.list(owner, PERSONAL_FILE)).toThrow(/no such file/u);
-    expect(() => shares.revoke(owner, made.id)).toThrow(/no such share/u);
+    expect(await shares.list(member, PERSONAL_FILE)).toHaveLength(1);
+    await expect(shares.list(owner, PERSONAL_FILE)).rejects.toThrow(/no such file/u);
+    await expect(shares.revoke(owner, made.id)).rejects.toThrow(/no such share/u);
     await expect(create(PERSONAL_FILE, { actor: owner })).rejects.toThrow(/no such file/u);
     expect((await fetch(`${base}/s/${made.token}`)).status).toBe(200);
-    shares.revoke(member, made.id);
+    await shares.revoke(member, made.id);
     expect((await fetch(`${base}/s/${made.token}`)).status).toBe(404);
   });
 
@@ -398,9 +398,9 @@ describe('opening links', () => {
       { itemId: PERSONAL_FILE, profileId: owner.profileId, role: 'edit', expiresAt: null },
       member.profileId,
     );
-    expect(shares.list(owner, PERSONAL_FILE)).toEqual([]);
+    expect(await shares.list(owner, PERSONAL_FILE)).toEqual([]);
     await expect(create(PERSONAL_FILE, { actor: owner })).rejects.toThrow(/whose drive/u);
-    expect(() => shares.revoke(owner, made.id)).toThrow(/no such share/u);
+    await expect(shares.revoke(owner, made.id)).rejects.toThrow(/no such share/u);
   });
 
   it('says a trashed item is no longer available', async () => {
@@ -544,7 +544,7 @@ describe('logs', () => {
     const made = await create(INSIDE, { password: PASSWORD });
     await unlock(made.token, 'wrong');
     await unlocked(made.token);
-    shares.revoke(owner, made.id);
+    await shares.revoke(owner, made.id);
     await fetch(`${base}/s/${made.token}`);
     expect(logs.events()).toContain('drive_share.created');
     expect(logs.events()).toContain('drive_share.password_failed');
@@ -626,8 +626,8 @@ describe('the Locked folder', () => {
 
   it('does not reach a locked item through a folder link', async () => {
     const { token } = await create(FOLDER);
-    const access = shares.open(token);
+    const access = await shares.open(token);
     item(INSIDE, FOLDER, '.locked/inside.txt', 'document');
-    expect(() => shares.within(access, INSIDE)).toThrow(ApiError);
+    await expect(shares.within(access, INSIDE)).rejects.toThrow(ApiError);
   });
 });

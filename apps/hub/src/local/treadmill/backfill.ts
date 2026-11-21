@@ -23,9 +23,9 @@ export interface Reconciled {
 }
 
 export interface BackfillDeps {
-  readonly store: Pick<Store, 'treadmillSessions' | 'write'>;
+  readonly store: Pick<Store, 'treadmillSessions'>;
   readonly now: () => Date;
-  readonly log: Logger;
+  readonly log: Pick<Logger, 'info'>;
 }
 
 export function fingerprintOf(record: PadRecord): string {

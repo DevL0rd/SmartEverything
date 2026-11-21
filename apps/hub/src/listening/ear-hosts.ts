@@ -75,7 +75,7 @@ export interface RelayedEarMessage {
 }
 
 export interface EarHostsOptions {
-  readonly store: Pick<Store, 'settings' | 'feed'>;
+  readonly store: Pick<Store, 'live' | 'feed'>;
   readonly log: Logger;
 }
 
@@ -89,7 +89,7 @@ export class EarHosts implements SessionEarHosts {
   private stop: (() => void) | null = null;
 
   constructor(private readonly options: EarHostsOptions) {
-    this.chosen = options.store.settings.read().ear_host_device_id;
+    this.chosen = options.store.live.home.settings.read().ear_host_device_id;
   }
 
   start(): void {

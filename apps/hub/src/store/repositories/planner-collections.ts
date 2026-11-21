@@ -15,7 +15,12 @@ const STORED_COLLECTION = storedRow(PLANNER_COLLECTION_ROW, {
 const COLUMNS = `id, profile_id, kind, name, colour, icon, position, visible, default_reminders,
   audience, source, google, feed, created_at, updated_at`;
 
-export type PlannerCollectionInput = Omit<PlannerCollectionRow, 'id' | 'created_at' | 'updated_at'>;
+export type PlannerCollectionInput = Omit<
+  PlannerCollectionRow,
+  'id' | 'created_at' | 'updated_at'
+> & {
+  readonly id?: string | undefined;
+};
 
 type PlannerCollectionPatchFields = Omit<
   PlannerCollectionRow,
@@ -113,7 +118,7 @@ export class PlannerCollectionsRepository {
       const now = this.context.now();
       const row = PLANNER_COLLECTION_ROW.parse({
         ...input,
-        id: this.context.newId(),
+        id: input.id ?? this.context.newId(),
         created_at: now,
         updated_at: now,
       });

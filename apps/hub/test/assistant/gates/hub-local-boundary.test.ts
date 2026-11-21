@@ -68,7 +68,7 @@ const CONTROL_DEVICES: HubTool = {
 function controlDevices(reached: string[]): ToolSource {
   return {
     tools: () => [CONTROL_DEVICES],
-    validate: () => null,
+    validate: () => Promise.resolve(null),
     changes: (): (() => void) => () => undefined,
     call: (_tool, args): Promise<HubToolResult> => {
       const room = /"rooms":\["([^"]+)"/.exec(JSON.stringify(args))?.[1];
@@ -86,7 +86,7 @@ function hubTools(source: ToolSource): HarnessHubTools {
   return new HarnessHubTools(rig.service, new ToolHub([source]));
 }
 
-function deskSession(): string {
+async function deskSession(): Promise<string> {
   const { store } = rig.opened;
   const chat = rig.newChat(rig.desk.target);
   const event = store.assistantEvents.add({
@@ -99,11 +99,13 @@ function deskSession(): string {
     text: 'turn off the office',
   });
   eventAuthority(store, event);
-  return rig.service.prepare(rig.owner, chat.id, {
-    kind: 'trigger',
-    profileId: rig.owner.profileId,
-    grantId: event.id,
-  }).claim.session_id;
+  return (
+    await rig.service.prepare(rig.owner, chat.id, {
+      kind: 'trigger',
+      profileId: rig.owner.profileId,
+      grantId: event.id,
+    })
+  ).claim.session_id;
 }
 
 function hubChat(): ConversationAuthority {
@@ -122,7 +124,7 @@ function hubChat(): ConversationAuthority {
 }
 
 function boundary(local?: string): HubLocalBoundary {
-  if (local !== undefined) rig.opened.store.computerAi.bindLocal(local);
+  if (local !== undefined) rig.opened.store.live.computers.bindLocal(local);
   return new HubLocalBoundary(rig.opened.store);
 }
 
@@ -149,7 +151,7 @@ describe('a hub chat controlling devices that include a computer', () => {
     rig.opened.store.devices.update(hubMachine, { room_id: office.id });
     const reached: string[] = [];
     const tools = hubTools(controlDevices(reached));
-    const session = deskSession();
+    const session = await deskSession();
     const result = await tools.call(session, 'device_control', {
       rooms: [office.id],
       capability: 'power',
@@ -159,10 +161,10 @@ describe('a hub chat controlling devices that include a computer', () => {
     expect(reached.toSorted()).toStrictEqual([hubMachine, light?.id ?? ''].toSorted());
   });
 
-  it('admits a tool call from a hub conversation through the boundary once', () => {
+  it('admits a tool call from a hub conversation through the boundary once', async () => {
     boundary(hubMachine);
     const refusal = vi.spyOn(HubLocalBoundary.prototype, 'refusal');
-    hubTools(controlDevices([])).authorizeCall(deskSession(), 'device_control', {});
+    await hubTools(controlDevices([])).authorizeCall(await deskSession(), 'device_control', {});
     expect(refusal).toHaveBeenCalledTimes(1);
   });
 

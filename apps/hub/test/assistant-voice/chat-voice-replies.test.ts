@@ -32,6 +32,7 @@ let opened: TestStore;
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
 });
 afterEach(async () => {
   await opened.close();
@@ -138,6 +139,7 @@ function fixture(beforeAudio: () => void = () => undefined): Fixture {
   });
   const files = new AssistantFiles({
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     layout: hubLayout(directory, {}),
     now: (): Date => new Date(),
   });
@@ -165,7 +167,7 @@ it('uses the selected speech model and voice to post playable PCM with its trans
   const { store } = opened;
   const { caller, chat } = conversation();
   const settings = store.assistantChat.settings();
-  store.assistantChat.saveSettings({
+  await store.live.home.assistant.save({
     ...settings,
     voice: { ...settings.voice, speech_model: 'gemini-3.8-flash-tts', speech_voice: 'Kore' },
   });
@@ -211,7 +213,7 @@ it('refuses callers with no turn, a different chat, or no tool grant before send
 it('speaks with the call voice when no separate voice is chosen for one-off lines', async () => {
   const { store } = opened;
   const settings = store.assistantChat.settings();
-  store.assistantChat.saveSettings({
+  await store.live.home.assistant.save({
     ...settings,
     voice: { ...settings.voice, voice: 'Puck', speech_voice: null },
   });

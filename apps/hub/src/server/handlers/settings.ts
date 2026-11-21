@@ -5,7 +5,6 @@ import {
   applyTriggerSettingsChange,
 } from '@smarteverything/domain';
 import type { ServerContext } from '../context';
-import { readBuildSources, updateBuildSources } from '../../self-update/build-source';
 import { bound } from '../router';
 import { clipboardRoutes } from './clipboard';
 import { providerRoutes } from './providers';
@@ -32,7 +31,7 @@ export const settingsRoutes = (context: ServerContext, now: () => Date) =>
       await context.secrets.update((current) => ({ ...current, pushServiceAccount: null }));
       return context.store.settings.setPushProject(null);
     }),
-    listProviders: bound(E.listProviders, () => context.store.providers.list()),
+    listProviders: bound(E.listProviders, () => context.store.host.call('providers', 'list')),
     updateListeningSettings: bound(E.updateListeningSettings, ({ body }) => {
       const { settings, devices } = context.store;
       const host = body.ear_host_device_id;
@@ -43,9 +42,11 @@ export const settingsRoutes = (context: ServerContext, now: () => Date) =>
       const pause = body.end_of_speech_pause_ms;
       return pause === undefined ? settings.read() : settings.setEndOfSpeechPause(pause);
     }),
-    readBuildSources: bound(E.readBuildSources, () => readBuildSources(context.store)),
+    readBuildSources: bound(E.readBuildSources, () =>
+      context.store.host.read('buildSources', null),
+    ),
     updateBuildSources: bound(E.updateBuildSources, ({ body }) =>
-      updateBuildSources(context.store, body),
+      context.store.host.write('buildSourcesUpdate', body),
     ),
     updateHistorySettings: bound(E.updateHistorySettings, ({ body }) => {
       const { settings } = context.store;

@@ -209,7 +209,7 @@ function shown(listed: Listed, owner: boolean): boolean {
   );
 }
 
-function catalogueOf(
+async function catalogueOf(
   deps: ProgramReadDeps,
   query: {
     readonly query?: string | undefined;
@@ -217,7 +217,7 @@ function catalogueOf(
     readonly kind?: string | undefined;
   },
   caller: Caller,
-): AutomationCatalogReply {
+): Promise<AutomationCatalogReply> {
   const owner = roleOfCaller(caller) === 'owner';
   const nodes = listedKinds(deps)
     .filter((listed) => shown(listed, owner))
@@ -232,8 +232,7 @@ function catalogueOf(
           .includes(query.query.toLowerCase()),
     )
     .map((listed) => nodeEntry(deps, listed, owner));
-  const functions = deps.functions
-    .list(caller)
+  const functions = (await deps.functions.list(caller))
     .filter((summary) => query.kind === undefined || summary.id === query.kind)
     .filter((summary) => query.group === undefined || summary.category === query.group)
     .map(functionEntry);
@@ -242,8 +241,8 @@ function catalogueOf(
 
 export const automationProgramReadRoutes = (deps: ProgramReadDeps) =>
   ({
-    getAutomationProgram: bound(E.getAutomationProgram, ({ params }) => {
-      const row = deps.store.automations.byId(params.automationId);
+    getAutomationProgram: bound(E.getAutomationProgram, async ({ params }) => {
+      const row = await deps.store.host.call('automations', 'byId', params.automationId);
       return {
         id: row.id,
         name: row.name,
@@ -252,8 +251,8 @@ export const automationProgramReadRoutes = (deps: ProgramReadDeps) =>
         program: row.definition,
       };
     }),
-    getAutomationProgramOutline: bound(E.getAutomationProgramOutline, ({ params }) => {
-      const row = deps.store.automations.byId(params.automationId);
+    getAutomationProgramOutline: bound(E.getAutomationProgramOutline, async ({ params }) => {
+      const row = await deps.store.host.call('automations', 'byId', params.automationId);
       return {
         id: row.id,
         name: row.name,

@@ -6,12 +6,43 @@ import type {
   NodeStateRow,
   SlotKind,
 } from '../../store/repositories/automation-node-state';
+import { background } from '@smarteverything/logging';
+import type { StoreHost } from '../../store/host/host';
 import { STATE_PARTITION } from '../world-v3/node-memory';
 
 const TIMERS: SlotKind = { partition: STATE_PARTITION, prefix: TIMER_SLOT_PREFIX };
 
+export interface TimerRows {
+  readonly due: (through: string) => Promise<NodeStateRow | undefined>;
+  readonly next: () => Promise<string | null>;
+  readonly clear: (row: NodeStateRow) => Promise<void>;
+}
+
+export function hostTimerRows(host: StoreHost): TimerRows {
+  return {
+    due: async (through) =>
+      (await host.call('automationNodeState', 'dueSlots', TIMERS, through))[0],
+    next: () => host.call('automationNodeState', 'nextSlotWake', TIMERS),
+    clear: (row) =>
+      host.call('automationNodeState', 'clearWake', row.automation_id, row.node_id, row.partition),
+  };
+}
+
+export function directTimerRows(
+  rows: Pick<AutomationNodeStateRepository, 'dueSlots' | 'nextSlotWake' | 'clearWake'>,
+): TimerRows {
+  return {
+    due: (through) => Promise.resolve(rows.dueSlots(TIMERS, through)[0]),
+    next: () => Promise.resolve(rows.nextSlotWake(TIMERS)),
+    clear: (row): Promise<void> => {
+      rows.clearWake(row.automation_id, row.node_id, row.partition);
+      return Promise.resolve();
+    },
+  };
+}
+
 interface TimerWakesPorts {
-  readonly rows: Pick<AutomationNodeStateRepository, 'dueSlots' | 'nextSlotWake' | 'clearWake'>;
+  readonly rows: TimerRows;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly emit: (signal: SignalInput) => void;
 }
@@ -19,13 +50,16 @@ interface TimerWakesPorts {
 export class TimerWakes {
   private pending: Cancel | undefined;
   private running = false;
+  private work: Promise<void> = Promise.resolve();
 
   constructor(private readonly ports: TimerWakesPorts) {}
 
   start(): void {
     this.running = true;
-    this.drain();
-    this.arm();
+    this.queue(async () => {
+      await this.drain();
+      await this.arm();
+    });
   }
 
   stop(): void {
@@ -35,14 +69,29 @@ export class TimerWakes {
   }
 
   changed(): void {
-    if (this.running) this.arm();
+    if (this.running) this.queue(() => this.arm());
   }
 
-  private drain(): void {
+  settled(): Promise<void> {
+    return this.work;
+  }
+
+  private queue(step: () => Promise<void>): void {
+    const next = this.work.then(async () => {
+      if (this.running) await step();
+    });
+    this.work = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    background(next, 'automation.timer_wake_failed');
+  }
+
+  private async drain(): Promise<void> {
     for (;;) {
-      const [due] = this.ports.rows.dueSlots(TIMERS, this.ports.clock.now().toISOString());
-      if (due === undefined) return;
-      this.ports.rows.clearWake(due.automation_id, due.node_id, due.partition);
+      const due = await this.ports.rows.due(this.ports.clock.now().toISOString());
+      if (due === undefined || !this.running) return;
+      await this.ports.rows.clear(due);
       this.finish(due);
     }
   }
@@ -61,15 +110,17 @@ export class TimerWakes {
     });
   }
 
-  private arm(): void {
+  private async arm(): Promise<void> {
+    const next = await this.ports.rows.next();
     this.pending?.();
     this.pending = undefined;
-    const next = this.ports.rows.nextSlotWake(TIMERS);
-    if (next === null) return;
+    if (next === null || !this.running) return;
     this.pending = this.ports.clock.at(new Date(next), () => {
       this.pending = undefined;
-      this.drain();
-      this.arm();
+      this.queue(async () => {
+        await this.drain();
+        await this.arm();
+      });
     });
   }
 }

@@ -69,8 +69,8 @@ const day = (date: string): { from: string; to: string } => ({
   to: `${date}T23:59:59.000Z`,
 });
 
-const starts = (page: PlannerBookingPageRow, date: string): string[] =>
-  booking.slots(page.token, day(date)).slots.map((slot) => slot.start.slice(11, 16));
+const starts = async (page: PlannerBookingPageRow, date: string): Promise<string[]> =>
+  (await booking.slots(page.token, day(date))).slots.map((slot) => slot.start.slice(11, 16));
 
 beforeEach(async () => {
   now = new Date('2026-11-14T08:00:00.000Z');
@@ -135,40 +135,42 @@ afterEach(async () => {
 });
 
 describe('bookable times', () => {
-  it('offers the weekly windows in steps of the page length and nothing on a weekend', () => {
+  it('offers the weekly windows in steps of the page length and nothing on a weekend', async () => {
     const page = pageOf();
-    const monday = starts(page, MONDAY);
+    const monday = await starts(page, MONDAY);
     expect(monday).toHaveLength(16);
     expect(monday[0]).toBe('09:00');
     expect(monday.at(-1)).toBe('16:30');
-    expect(starts(page, '2026-11-15')).toEqual([]);
-    expect(PLANNER_BOOKING_SLOTS.parse(booking.slots(page.token, day(MONDAY)))).toMatchObject({
-      page: { title: 'Intro call', host: 'Ann', minutes: 30, host_time_zone: 'UTC' },
-    });
+    expect(await starts(page, '2026-11-15')).toEqual([]);
+    expect(PLANNER_BOOKING_SLOTS.parse(await booking.slots(page.token, day(MONDAY)))).toMatchObject(
+      {
+        page: { title: 'Intro call', host: 'Ann', minutes: 30, host_time_zone: 'UTC' },
+      },
+    );
   });
 
-  it('keeps the minimum notice and the booking horizon', () => {
+  it('keeps the minimum notice and the booking horizon', async () => {
     now = new Date('2026-11-16T08:30:00.000Z');
     const page = pageOf({ notice_minutes: 60, ahead_days: 1 });
-    expect(starts(page, MONDAY)[0]).toBe('09:30');
-    expect(starts(page, '2026-11-17').length).toBeLessThan(16);
-    expect(starts(page, '2026-11-18')).toEqual([]);
+    expect((await starts(page, MONDAY))[0]).toBe('09:30');
+    expect((await starts(page, '2026-11-17')).length).toBeLessThan(16);
+    expect(await starts(page, '2026-11-18')).toEqual([]);
   });
 
-  it('takes the buffers around busy time out', () => {
+  it('takes the buffers around busy time out', async () => {
     const page = pageOf({ buffer_before: 15, buffer_after: 15 });
     eventOf(test.store, ann.profileId, calendarId, {
       start_local: `${MONDAY}T10:00`,
       end_local: `${MONDAY}T11:00`,
     });
-    const times = starts(page, MONDAY);
+    const times = await starts(page, MONDAY);
     expect(times).toContain('09:00');
     expect(times).not.toContain('09:30');
     expect(times).not.toContain('10:30');
     expect(times).toContain('11:30');
   });
 
-  it('does not block on all-day items and blocks on accepted or maybe guests only', () => {
+  it('does not block on all-day items and blocks on accepted or maybe guests only', async () => {
     const page = pageOf();
     const bob = addPerson(test, 'Bob', 'member');
     const bobsCalendar = calendarOf(test.store, bob.profileId, { name: 'Bob' });
@@ -178,7 +180,7 @@ describe('bookable times', () => {
       start_local: MONDAY,
       end_local: null,
     });
-    expect(starts(page, MONDAY)).toHaveLength(16);
+    expect(await starts(page, MONDAY)).toHaveLength(16);
     const answers = ['needs_action', 'no', 'yes', 'maybe'] as const;
     answers.forEach((answer, index) => {
       const hour = String(9 + index).padStart(2, '0');
@@ -203,7 +205,7 @@ describe('bookable times', () => {
         });
       }
     });
-    const times = starts(page, MONDAY);
+    const times = await starts(page, MONDAY);
     expect(times).toContain('09:00');
     expect(times).toContain('10:00');
     expect(times).not.toContain('11:00');
@@ -211,11 +213,11 @@ describe('bookable times', () => {
     expect(times).toContain('13:00');
   });
 
-  it('refuses a page that is off, unknown or malformed', () => {
+  it('refuses a page that is off, unknown or malformed', async () => {
     const page = pageOf({ enabled: false });
-    expect(() => booking.view(page.token)).toThrow(/not available/);
-    expect(() => booking.view('x'.repeat(43))).toThrow(/not available/);
-    expect(() => booking.view('nope')).toThrow(/not available/);
+    await expect(booking.view(page.token)).rejects.toThrow(/not available/);
+    await expect(booking.view('x'.repeat(43))).rejects.toThrow(/not available/);
+    await expect(booking.view('nope')).rejects.toThrow(/not available/);
   });
 
   it('computes slots in the host zone across a daylight saving change', () => {
@@ -278,7 +280,7 @@ describe('making a booking', () => {
     expect(text).toContain('Subject: Confirmed: Intro call: Sam');
     expect(text).toContain('Cancel the booking: http://hub.test/rsvp/');
     expect(text).toContain('METHOD:REQUEST');
-    expect(starts(page, MONDAY)).not.toContain('10:00');
+    expect(await starts(page, MONDAY)).not.toContain('10:00');
   });
 
   it('refuses a second booking of the same time and a time that is not offered', async () => {
@@ -303,14 +305,14 @@ describe('making a booking', () => {
     const confirmation = await booking.book(page.token, request(`${MONDAY}T10:00:00.000Z`));
     await invites.idle();
     const token = confirmation.cancel_path.slice('/rsvp/'.length);
-    expect(rsvp.pageOf(token)).toMatchObject({ booking: true, cancelled: false });
-    rsvp.respond(token, { response: 'no', note: 'Sorry' });
+    expect(await rsvp.pageOf(token)).toMatchObject({ booking: true, cancelled: false });
+    await rsvp.respond(token, { response: 'no', note: 'Sorry' });
     await invites.idle();
     const item = test.store.plannerItems.list(ann.profileId, { collectionIds: [calendarId] })[0];
     expect(item?.status).toBe('cancelled');
-    expect(rsvp.pageOf(token).cancelled).toBe(true);
+    expect((await rsvp.pageOf(token)).cancelled).toBe(true);
     expect(readable(smtp.mails.at(-1)?.data ?? '')).toContain('METHOD:CANCEL');
-    expect(starts(page, MONDAY)).not.toContain('10:00');
+    expect(await starts(page, MONDAY)).not.toContain('10:00');
     expect(notices.some((notice) => notice.type === 'planner_rsvp')).toBe(true);
   });
 
@@ -318,7 +320,10 @@ describe('making a booking', () => {
     const page = pageOf();
     const confirmation = await booking.book(page.token, request(`${MONDAY}T10:00:00.000Z`));
     await invites.idle();
-    rsvp.respond(confirmation.cancel_path.slice('/rsvp/'.length), { response: 'no', note: null });
+    await rsvp.respond(confirmation.cancel_path.slice('/rsvp/'.length), {
+      response: 'no',
+      note: null,
+    });
     await invites.idle();
     const sent = smtp.mails.length;
     await expect(
@@ -401,7 +406,7 @@ describe('the booking page routes', () => {
       await call(routes.resetPlannerBookingLink, ann, { params: { pageId: created.id } }),
     );
     expect(reset.token).not.toBe(created.token);
-    expect(() => booking.view(created.token)).toThrow(/not available/);
+    await expect(booking.view(created.token)).rejects.toThrow(/not available/);
     await call(routes.deletePlannerBookingPage, ann, { params: { pageId: created.id } });
     expect(await call(routes.listPlannerBookingPages, ann)).toEqual([]);
   });

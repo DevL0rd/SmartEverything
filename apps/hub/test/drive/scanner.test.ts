@@ -16,7 +16,8 @@ import type { DriveItem, DriveRoot } from '@smarteverything/domain';
 import { build } from 'esbuild';
 import { DatabaseSync } from 'node:sqlite';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { classify, ScanCommitter, type CommitDependencies } from '../../src/drive/scanner-commit';
+import { classify } from '../../src/drive/file-type';
+import { ScanCommitter, type CommitDependencies } from '../../src/drive/scanner-commit';
 import {
   jobKey,
   runnerOf,
@@ -45,6 +46,7 @@ import { DriveStarsRepository } from '../../src/store/repositories/drive-stars';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
+import { localScans } from './local-ports';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const ROOT = '0d000000-0000-4000-8000-000000000001';
@@ -115,7 +117,10 @@ beforeEach(() => {
   const sql = new Sql(database);
   context = new StoreContext(sql, feed, () => new Date(NOW));
   migrate(sql, MIGRATIONS, NOW, log);
-  roots = new DriveRootsRepository(context, () => tree);
+  roots = new DriveRootsRepository(context, {
+    home: tree,
+    people: { parent: join(tree, 'people'), leaf: '' },
+  });
   items = new DriveItemsRepository(context);
   notices = [];
   feed.subscribeNotices((notice) => {
@@ -136,17 +141,15 @@ afterEach(() => {
 
 function environment(script = workerScript): ScanEnvironment {
   return {
-    store: {
-      driveRoots: roots,
-      driveItems: items,
-      driveInodes: new DriveInodesRepository(context),
-      driveMissing: new DriveMissingRepository(context),
+    ...localScans({
+      roots,
+      items,
+      context,
       feed,
-      write: (work) => context.write(work),
       now: () => new Date(clock),
-    },
+    }),
     availability: () => Promise.resolve(availability),
-    mounted: () => mountedRoot,
+    mounted: () => Promise.resolve(mountedRoot),
     workerScript: script,
     lanes: new DriveRootLanes(),
     log: testLogger(),
@@ -615,8 +618,6 @@ describe('the 100k index', () => {
       items,
       inodes: new DriveInodesRepository(context),
       missing: new DriveMissingRepository(context),
-      hash: () => Promise.reject(new Error('A rescan that only loads hashes nothing.')),
-      write: (work) => context.write(work),
       now: () => new Date(NOW),
       newId: randomUUID,
     };

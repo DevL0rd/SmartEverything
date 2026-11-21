@@ -110,7 +110,7 @@ export class ClaudeLink {
     if (after !== 'installed') {
       throw new ClaudeLinkError('install', `Claude reports the link as ${after}`);
     }
-    const retired = this.options.token.retireBridge();
+    const retired = await this.options.token.retireBridge();
     if (retired > 0) {
       this.options.log.info('link.old_token_retired', { tokens: retired });
     }

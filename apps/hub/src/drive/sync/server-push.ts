@@ -11,17 +11,11 @@ import {
 } from '@smarteverything/domain/drive-sync';
 import { ApiError } from '@smarteverything/domain';
 import type { DriveBlocks } from '../../store/repositories/drive-blocks';
-import { repathItem } from '../service-write-repath';
 import { parentOf, type ChangeActor } from '../changes';
 import { locate, moveWithin, tmpRelPath, TMP_DIRECTORY, type DriveWriteRoot } from '../intents';
-import { DRIVE_PAGE_SIZE } from '../service-read';
-import {
-  assertWritable,
-  inScope,
-  resolveScope,
-  toDrivePath,
-  type SyncScope,
-} from './placement-scope';
+import { DRIVE_PAGE_SIZE } from '../page-size';
+import { assertWritable, resolveScope, type SyncScope } from './placement-scope';
+import { inScope, toDrivePath } from './sync-paths';
 import { commitTrash } from '../trash-purge';
 import { hardLink, pushLink, pushMeta, type Reply } from './server-links';
 import { pathReason } from './server-paths';
@@ -99,15 +93,6 @@ function carriedBlocks(env: SyncEnv, item: DriveItem): readonly DriveBlocks[] {
     const blocks = env.store.driveBlocks.find(file.id, file.rev);
     return blocks === undefined ? [] : [blocks];
   });
-}
-
-function reattach(env: SyncEnv, carried: readonly DriveBlocks[]): void {
-  for (const blocks of carried) {
-    const now = env.store.driveItems.find(blocks.itemId, null);
-    if (now === undefined || now.rev === blocks.rev) continue;
-    env.store.driveBlocks.put({ ...blocks, rev: now.rev });
-    env.store.driveBlocks.removeBefore(now.id, now.rev);
-  }
 }
 
 export class DriveSyncOperations implements SyncOperations {
@@ -305,18 +290,15 @@ export class DriveSyncOperations implements SyncOperations {
     const carried = carriedBlocks(env, from);
     await moveWithin(env.files, root, { from: from.relPath, to: relPath, mode: 'keep' });
     try {
-      env.store.write(() => {
-        repathItem(
-          env,
-          from,
-          {
-            parentId: parentOf(env, root.id, relPath)?.id ?? null,
-            relPath,
-            name: basename(relPath),
-          },
-          { op: dirname(from.relPath) === dirname(relPath) ? 'rename' : 'move', actor },
-        );
-        reattach(env, carried);
+      await env.store.host.write('driveSyncRelocate', {
+        item: from,
+        target: {
+          parentId: parentOf(env, root.id, relPath)?.id ?? null,
+          relPath,
+          name: basename(relPath),
+        },
+        change: { op: dirname(from.relPath) === dirname(relPath) ? 'rename' : 'move', actor },
+        carried,
       });
     } catch (cause) {
       await moveWithin(env.files, root, { from: relPath, to: from.relPath, mode: 'keep' });

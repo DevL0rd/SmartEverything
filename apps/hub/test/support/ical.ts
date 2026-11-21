@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readCalendar } from '../../src/planner/ical/read';
 import type { IcalEntry } from '../../src/planner/ical/model';
+import type { CalendarReader } from '../../src/planner/ical/calendar-reader';
 
 export const NOW = new Date('2026-11-14T12:00:00.000Z');
 export const ZONE = 'America/New_York';
@@ -39,3 +40,7 @@ export function first(text: string): IcalEntry {
   if (entry === undefined) throw new Error('the calendar has no entry');
   return entry;
 }
+
+export const inProcessCalendars: CalendarReader = {
+  read: (text, options) => Promise.resolve().then(() => readCalendar(text, options)),
+};

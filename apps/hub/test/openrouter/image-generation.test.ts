@@ -162,7 +162,7 @@ describe('image operation queue', () => {
     );
     const running = await Promise.all(Array.from({ length: 4 }, () => rig.start({})));
     const queued = await rig.start({});
-    const cancelled = rig.cancel(queued.id);
+    const cancelled = await rig.cancel(queued.id);
     expect([cancelled.state, cancelled.cancellation_requested]).toEqual(['cancelled', true]);
     expect(cancelled.reason).toMatch(/before it was sent.*Nothing was billed/u);
     expect((await rig.settle(queued.id)).state).toBe('cancelled');

@@ -1,5 +1,5 @@
 import { PLANNER_SIGNAL, type PlannerItemRow, type SignalInput } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SimulatedClock } from '../../src/clock/simulated';
 import { CompletionWatcher } from '../../src/planner/completion';
 import { instantsOf } from '../../src/planner/instants';
@@ -140,11 +140,11 @@ afterEach(async () => {
 });
 
 describe('completing from a device signal', () => {
-  it('completes brush my teeth from the Oral-B session and keeps the evidence', () => {
+  it('completes brush my teeth from the Oral-B session and keeps the evidence', async () => {
     const teeth = add(ann, {
       completion: signalRule(BRUSH, { brushing: 'finished', person: 'Ann' }, 'occurrence'),
     });
-    const saved = watcher.handle(
+    const saved = await watcher.handle(
       signal(
         BRUSH,
         {
@@ -171,11 +171,11 @@ describe('completing from a device signal', () => {
     expect(test.store.plannerItems.byId(teeth.id, ann.profileId).status).toBe('done');
   });
 
-  it('publishes task_done for the completed occurrence', () => {
+  it('publishes task_done for the completed occurrence', async () => {
     const teeth = add(ann, {
       completion: signalRule(BRUSH, { brushing: 'finished', person: 'Ann' }, 'occurrence'),
     });
-    watcher.handle(brushed('Ann', '2026-11-07T07:38:00.000Z'));
+    await watcher.handle(brushed('Ann', '2026-11-07T07:38:00.000Z'));
     expect(published).toHaveLength(1);
     expect(PLANNER_SIGNAL.parse(published[0])).toMatchObject({
       kind: 'task_done',
@@ -185,18 +185,18 @@ describe('completing from a device signal', () => {
     });
   });
 
-  it('completes use the treadmill from a Kingsmith finished session at any time that day', () => {
+  it('completes use the treadmill from a Kingsmith finished session at any time that day', async () => {
     const walk = add(ann, {
       title: 'Use the treadmill',
       start_local: null,
       due_date: '2026-11-07',
       completion: signalRule(TREADMILL, { phase: 'finished', kind: 'walk' }, 'day'),
     });
-    watcher.handle(
+    await watcher.handle(
       signal(TREADMILL, { phase: 'started', kind: 'walk' }, '2026-11-07T06:00:00.000Z'),
     );
     expect(test.store.plannerOccurrences.find(walk.id, 'single')).toBeUndefined();
-    watcher.handle(
+    await watcher.handle(
       signal(
         TREADMILL,
         { phase: 'finished', kind: 'walk', duration_s: 1500 },
@@ -214,28 +214,28 @@ describe('completing from a device signal', () => {
     });
   });
 
-  it('ignores a signal from another person', () => {
+  it('ignores a signal from another person', async () => {
     const teeth = add(ann, {
       completion: signalRule(BRUSH, { brushing: 'finished', person: 'Ann' }, 'occurrence'),
     });
-    expect(watcher.handle(brushed('Bob', '2026-11-07T07:38:00.000Z'))).toEqual([]);
+    expect(await watcher.handle(brushed('Bob', '2026-11-07T07:38:00.000Z'))).toEqual([]);
     expect(test.store.plannerOccurrences.find(teeth.id, 'single')).toBeUndefined();
     expect(published).toEqual([]);
   });
 
-  it('keeps a signal that carries another profile away from this person items', () => {
+  it('keeps a signal that carries another profile away from this person items', async () => {
     const teeth = add(ann, {
       completion: signalRule(BRUSH, { brushing: 'finished' }, 'occurrence'),
     });
     const theirs = { ...brushed('Bob', '2026-11-07T07:38:00.000Z'), profileId: bob.profileId };
-    expect(watcher.handle(theirs)).toEqual([]);
+    expect(await watcher.handle(theirs)).toEqual([]);
     expect(test.store.plannerItems.byId(teeth.id, ann.profileId).status).toBe('open');
   });
 
-  it('leaves manual items and other devices alone', () => {
+  it('leaves manual items and other devices alone', async () => {
     add(ann, {});
     add(ann, { completion: signalRule(TREADMILL, { brushing: 'finished' }, 'occurrence') });
-    expect(watcher.handle(brushed('Ann', '2026-11-07T07:38:00.000Z'))).toEqual([]);
+    expect(await watcher.handle(brushed('Ann', '2026-11-07T07:38:00.000Z'))).toEqual([]);
   });
 });
 
@@ -250,32 +250,32 @@ describe('the minimum session length', () => {
     });
   }
 
-  it('completes when the brushing session is long enough', () => {
+  it('completes when the brushing session is long enough', async () => {
     needing(120);
-    const saved = watcher.handle(
+    const saved = await watcher.handle(
       signal(BRUSH, { brushing: 'finished', durationS: 120 }, '2026-11-07T07:38:00.000Z'),
     );
     expect(saved).toHaveLength(1);
   });
 
-  it('stays open when the session is shorter than the minimum', () => {
+  it('stays open when the session is shorter than the minimum', async () => {
     const teeth = needing(120);
-    const saved = watcher.handle(
+    const saved = await watcher.handle(
       signal(BRUSH, { brushing: 'finished', durationS: 119 }, '2026-11-07T07:38:00.000Z'),
     );
     expect(saved).toHaveLength(0);
     expect(test.store.plannerItems.byId(teeth.id, ann.profileId).status).toBe('open');
   });
 
-  it('stays open when the signal states no length', () => {
+  it('stays open when the signal states no length', async () => {
     needing(120);
-    const saved = watcher.handle(
+    const saved = await watcher.handle(
       signal(BRUSH, { brushing: 'finished' }, '2026-11-07T07:38:00.000Z'),
     );
     expect(saved).toHaveLength(0);
   });
 
-  it('reads the treadmill length from duration_s', () => {
+  it('reads the treadmill length from duration_s', async () => {
     needing(600, TREADMILL, { phase: 'finished' });
     const short = signal(
       TREADMILL,
@@ -287,13 +287,13 @@ describe('the minimum session length', () => {
       { phase: 'finished', duration_s: 600 },
       '2026-11-07T07:39:00.000Z',
     );
-    expect(watcher.handle(short)).toHaveLength(0);
-    expect(watcher.handle(long)).toHaveLength(1);
+    expect(await watcher.handle(short)).toHaveLength(0);
+    expect(await watcher.handle(long)).toHaveLength(1);
   });
 
-  it('ignores the length when the rule sets no minimum', () => {
+  it('ignores the length when the rule sets no minimum', async () => {
     add(ann, { completion: signalRule(BRUSH, { brushing: 'finished' }, 'day') });
-    const saved = watcher.handle(
+    const saved = await watcher.handle(
       signal(BRUSH, { brushing: 'finished', durationS: 5 }, '2026-11-07T07:38:00.000Z'),
     );
     expect(saved).toHaveLength(1);
@@ -303,82 +303,65 @@ describe('the minimum session length', () => {
 describe('the occurrence window', () => {
   const rule = signalRule(BRUSH, { brushing: 'finished', person: 'Ann' }, 'occurrence');
 
-  it('does not count a signal before the occurrence starts', () => {
+  it('does not count a signal before the occurrence starts', async () => {
     const teeth = add(ann, { completion: rule });
-    expect(watcher.handle(brushed('Ann', '2026-11-07T07:00:00.000Z'))).toEqual([]);
+    expect(await watcher.handle(brushed('Ann', '2026-11-07T07:00:00.000Z'))).toEqual([]);
     expect(test.store.plannerOccurrences.find(teeth.id, 'single')).toBeUndefined();
   });
 
-  it('does not count a signal after the occurrence ends', () => {
+  it('does not count a signal after the occurrence ends', async () => {
     add(ann, { end_local: '2026-11-07T08:00', completion: rule });
-    expect(watcher.handle(brushed('Ann', '2026-11-07T09:00:00.000Z'))).toEqual([]);
+    expect(await watcher.handle(brushed('Ann', '2026-11-07T09:00:00.000Z'))).toEqual([]);
   });
 
-  it('completes only the repeat whose window holds the signal', () => {
+  it('completes only the repeat whose window holds the signal', async () => {
     const daily = add(ann, { rrule: 'FREQ=DAILY', completion: rule });
-    watcher.handle(brushed('Ann', '2026-11-09T07:38:00.000Z'));
+    await watcher.handle(brushed('Ann', '2026-11-09T07:38:00.000Z'));
     expect(
       test.store.plannerOccurrences.forItems([daily.id]).map((row) => row.occurrence_key),
     ).toEqual(['2026-11-09T07:30:00.000Z']);
     expect(test.store.plannerItems.byId(daily.id, ann.profileId).status).toBe('open');
   });
 
-  it('does not complete the same occurrence twice', () => {
+  it('does not complete the same occurrence twice', async () => {
     add(ann, { completion: rule });
-    watcher.handle(brushed('Ann', '2026-11-07T07:38:00.000Z'));
-    watcher.handle(brushed('Ann', '2026-11-07T07:50:00.000Z'));
+    await watcher.handle(brushed('Ann', '2026-11-07T07:38:00.000Z'));
+    await watcher.handle(brushed('Ann', '2026-11-07T07:50:00.000Z'));
     expect(published).toHaveLength(1);
   });
 });
 
 describe('listening on the signal bus', () => {
-  it('completes from a published signal and ignores its own task_done', () => {
+  it('completes from a published signal and ignores its own task_done', async () => {
     const teeth = add(ann, {
       completion: signalRule(BRUSH, { brushing: 'finished', person: 'Ann' }, 'occurrence'),
     });
     const bus = new SignalBus({ log: testLogger() });
     const detach = watcher.attach(bus);
     bus.emit(brushed('Ann', '2026-11-07T07:38:00.000Z'));
+    await watcher.settled();
+    expect(published).toHaveLength(1);
     expect(test.store.plannerOccurrences.byKey(teeth.id, 'single').status).toBe('done');
     detach();
-    expect(published).toHaveLength(1);
   });
 });
 
 describe('a signal that no planner rule waits for', () => {
-  it('reads only the items completed by a signal and opens no write', () => {
+  it('reads only the items completed by a signal and opens no write', async () => {
     add(ann, { title: 'Water the plants' });
     add(bob, { title: 'Call the bank' });
     const teeth = add(ann, {
       completion: signalRule(BRUSH, { brushing: 'finished', person: 'Ann' }, 'occurrence'),
     });
-    let writes = 0;
-    const write = test.store.write.bind(test.store);
-    watcher = new CompletionWatcher({
-      store: {
-        profiles: test.store.profiles,
-        settings: test.store.settings,
-        plannerOccurrences: test.store.plannerOccurrences,
-        plannerItems: test.store.plannerItems,
-        write: <T>(work: () => T): T => {
-          writes += 1;
-          return write(work);
-        },
-      },
-      clock,
-      emit: (input): void => {
-        published.push(input);
-      },
-      log: testLogger(),
-    });
+    const writes = vi.spyOn(test.store.host, 'write');
     expect(
       test.store.plannerItems.list(ann.profileId, { statuses: ['open'], completion: 'signal' }),
     ).toEqual([teeth]);
-    expect(watcher.handle(signal(TREADMILL, { load: 0.4 }, '2026-11-07T07:38:00.000Z'))).toEqual(
-      [],
-    );
-    expect(writes).toBe(0);
-    expect(watcher.handle(brushed('Ann', '2026-11-07T07:38:00.000Z'))).toHaveLength(1);
-    expect(writes).toBe(1);
+    expect(
+      await watcher.handle(signal(TREADMILL, { load: 0.4 }, '2026-11-07T07:38:00.000Z')),
+    ).toEqual([]);
+    expect(writes).not.toHaveBeenCalled();
+    expect(await watcher.handle(brushed('Ann', '2026-11-07T07:38:00.000Z'))).toHaveLength(1);
+    expect(writes).toHaveBeenCalledOnce();
   });
 });

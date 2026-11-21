@@ -1,6 +1,8 @@
+import { background } from '@smarteverything/logging';
 import type { DriveIntent, DriveIntentInput } from '../store/repositories/drive-intents';
 import { unclaimed } from './replay-claims';
 import type { DriveFileStore } from './intents';
+import { resultOf, writeDriveOps } from './units/ops';
 
 interface QueuedIntent {
   readonly input: DriveIntentInput;
@@ -10,18 +12,25 @@ interface QueuedIntent {
 
 const queues = new WeakMap<DriveFileStore, QueuedIntent[]>();
 
-function flush(store: DriveFileStore, queue: readonly QueuedIntent[]): void {
+async function flush(store: DriveFileStore, queue: readonly QueuedIntent[]): Promise<void> {
   queues.delete(store);
-  let opened: readonly (readonly [QueuedIntent, DriveIntent])[];
+  let results: Awaited<ReturnType<typeof writeDriveOps>>;
   try {
-    opened = store.write(() =>
-      queue.map((queued) => [queued, store.driveIntents.open(queued.input)] as const),
+    results = await writeDriveOps(
+      store,
+      queue.map((queued) => ({ kind: 'intent', intent: queued.input })),
     );
   } catch (cause) {
     for (const queued of queue) queued.reject(cause);
     return;
   }
-  for (const [queued, intent] of opened) queued.resolve(intent);
+  for (const [index, queued] of queue.entries()) {
+    try {
+      queued.resolve(resultOf(results, index, 'intent').intent);
+    } catch (cause) {
+      queued.reject(cause);
+    }
+  }
 }
 
 export function openIntent(store: DriveFileStore, input: DriveIntentInput): Promise<DriveIntent> {
@@ -35,7 +44,7 @@ export function openIntent(store: DriveFileStore, input: DriveIntentInput): Prom
     queues.set(store, queue);
     unclaimed(() => {
       setImmediate(() => {
-        flush(store, queue);
+        background(flush(store, queue), 'drive.intent_batch_failed');
       });
     });
   });

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream, mkdirSync, readdirSync, rmSync } from 'node:fs';
-import { mkdir, rename, stat, statfs } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, readdir, rename, rm, stat, statfs } from 'node:fs/promises';
 import { join, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import type { Readable, Writable } from 'node:stream';
@@ -127,6 +127,7 @@ class ScanIntake {
 
 export class ScanStore {
   private tail: Promise<unknown> = Promise.resolve();
+  private swept: Promise<void> = Promise.resolve();
   private readonly pending = new Set<string>();
 
   constructor(private readonly ports: ScanStorePorts) {}
@@ -141,15 +142,16 @@ export class ScanStore {
   }
 
   async receive(source: Readable, upload: ScanUpload): Promise<ReceivedScan> {
+    await this.swept;
     await this.ensureSpace(upload.declared);
-    const path = this.tempPath();
+    const path = await this.tempPath();
     const intake = new ScanIntake(upload.declared, createScanValidator(upload.format));
     const sink = this.ports.openWrite(path);
     try {
       await pipeline(source, (chunks: AsyncIterable<Buffer>) => intake.run(chunks), sink);
     } catch (error) {
       await closed(sink);
-      this.discardPath(path);
+      await this.discardPath(path);
       throw this.failure(error);
     }
     return intake.result(path);
@@ -163,7 +165,7 @@ export class ScanStore {
       await rename(received.path, target);
     } catch (error) {
       this.pending.delete(target);
-      this.discardPath(received.path);
+      await this.discardPath(received.path);
       throw error;
     }
   }
@@ -172,8 +174,8 @@ export class ScanStore {
     this.pending.delete(this.pathOf(mapId, file));
   }
 
-  discard(received: ReceivedScan): void {
-    this.discardPath(received.path);
+  discard(received: ReceivedScan): Promise<void> {
+    return this.discardPath(received.path);
   }
 
   pathOf(mapId: string, file: ScanFileRef): string {
@@ -191,26 +193,31 @@ export class ScanStore {
     }
   }
 
-  reconcile(mapId: string, scan: HomeMapScan | undefined, held = NOTHING_HELD): void {
+  async reconcile(
+    mapId: string,
+    scan: HomeMapScan | undefined,
+    held = NOTHING_HELD,
+  ): Promise<void> {
     const directory = this.directoryOf(mapId);
     const keep = new Set(held);
     if (scan !== undefined) for (const name of scanFileNames(scan)) keep.add(name);
     if (keep.size === 0 && !this.hasPending(directory)) {
-      this.remove(mapId, directory, { recursive: true });
+      await this.remove(mapId, directory, { recursive: true });
       return;
     }
-    for (const name of this.namesIn(mapId, directory)) {
+    for (const name of await this.namesIn(mapId, directory)) {
       const path = join(directory, name);
-      if (!keep.has(name) && !this.pending.has(path)) this.remove(mapId, path, {});
+      if (!keep.has(name) && !this.pending.has(path)) await this.remove(mapId, path, {});
     }
   }
 
-  removeAll(mapId: string): void {
-    rmSync(this.directoryOf(mapId), { recursive: true, force: true });
+  async removeAll(mapId: string): Promise<void> {
+    await rm(this.directoryOf(mapId), { recursive: true, force: true });
   }
 
-  sweepTemp(): void {
-    rmSync(join(this.ports.root, TEMP_DIRECTORY), { recursive: true, force: true });
+  sweepTemp(): Promise<void> {
+    this.swept = rm(join(this.ports.root, TEMP_DIRECTORY), { recursive: true, force: true });
+    return this.swept;
   }
 
   private hasPending(directory: string): boolean {
@@ -221,9 +228,9 @@ export class ScanStore {
     return join(this.ports.root, Buffer.from(mapId).toString('base64url'));
   }
 
-  private tempPath(): string {
+  private async tempPath(): Promise<string> {
     const directory = join(this.ports.root, TEMP_DIRECTORY);
-    mkdirSync(directory, { recursive: true });
+    await mkdir(directory, { recursive: true });
     return join(directory, `${this.ports.newId()}.part`);
   }
 
@@ -235,9 +242,9 @@ export class ScanStore {
     throw new ScanNoSpaceError();
   }
 
-  private discardPath(path: string): void {
+  private async discardPath(path: string): Promise<void> {
     try {
-      rmSync(path, { force: true });
+      await rm(path, { force: true });
     } catch (error) {
       this.ports.log.error('home_map.scan_temp_delete_failed', { error: String(error) });
     }
@@ -257,9 +264,9 @@ export class ScanStore {
     return error;
   }
 
-  private namesIn(mapId: string, directory: string): string[] {
+  private async namesIn(mapId: string, directory: string): Promise<string[]> {
     try {
-      return readdirSync(directory);
+      return await readdir(directory);
     } catch (error) {
       if (codeOf(error) !== 'ENOENT') {
         this.ports.log.error('home_map.scan_list_failed', { mapId, error: String(error) });
@@ -268,9 +275,13 @@ export class ScanStore {
     }
   }
 
-  private remove(mapId: string, path: string, options: { readonly recursive?: boolean }): void {
+  private async remove(
+    mapId: string,
+    path: string,
+    options: { readonly recursive?: boolean },
+  ): Promise<void> {
     try {
-      rmSync(path, { force: true, ...options });
+      await rm(path, { force: true, ...options });
     } catch (error) {
       this.ports.log.error('home_map.scan_file_delete_failed', { mapId, error: String(error) });
     }

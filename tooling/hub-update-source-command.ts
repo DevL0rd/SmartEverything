@@ -109,7 +109,7 @@ if (import.meta.main) {
   const { data, ownerClient, ...context } = CHECK_REQUEST.parse(
     JSON.parse(z.string().parse(process.argv[2])),
   );
-  const { folder, remote, branch } = configuredHubSource(data);
+  const { folder, remote, branch } = await configuredHubSource(data);
   const check = await checkConfiguredSource(
     folder,
     { remote, branch },

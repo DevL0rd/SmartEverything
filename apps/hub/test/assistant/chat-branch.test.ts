@@ -46,6 +46,7 @@ beforeEach(async () => {
   validated = [];
   refusing = false;
   opened = await testStore(() => new Date('2026-10-09T10:00:00.000Z'));
+  await Promise.all([opened.store.live.aiModels.load(), opened.store.live.computers.load()]);
   const { store } = opened;
   const client = store.clients.create(
     { name: 'This computer', platform: 'desktop', role: 'owner', tokenHash: 'a'.repeat(64) },
@@ -57,6 +58,7 @@ beforeEach(async () => {
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now,
   });
   const chats = new ChatDirectory(store, files, {

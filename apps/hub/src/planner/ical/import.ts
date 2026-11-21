@@ -1,7 +1,7 @@
 import { PLANNER_IMPORT_RESULT, type PlannerImportResult } from '@smarteverything/domain';
-import { applyEntries, type ApplyStore } from './apply';
+import type { Store } from '../../store/store';
 import { unsupportedSummary } from './model';
-import { readCalendar } from './read';
+import type { CalendarReader } from './calendar-reader';
 
 export interface IcsImport {
   readonly profileId: string;
@@ -10,23 +10,23 @@ export interface IcsImport {
   readonly defaultZone: string;
 }
 
-export function importIcs(
-  store: ApplyStore,
+export async function importIcs(
+  store: Pick<Store, 'host'>,
+  calendars: CalendarReader,
   now: () => Date,
   request: IcsImport,
-): PlannerImportResult {
-  const calendar = readCalendar(request.text, { defaultZone: request.defaultZone });
-  const tally = applyEntries(
-    store,
-    now,
-    {
+): Promise<PlannerImportResult> {
+  const calendar = await calendars.read(request.text, { defaultZone: request.defaultZone });
+  const tally = await store.host.write('plannerEntriesApply', {
+    request: {
       profileId: request.profileId,
       collectionId: request.collectionId,
       createdBy: 'person',
       removeMissing: false,
     },
-    calendar.entries,
-  );
+    entries: calendar.entries,
+    nowMs: now().getTime(),
+  });
   return PLANNER_IMPORT_RESULT.parse({
     added: tally.added,
     updated: tally.updated,

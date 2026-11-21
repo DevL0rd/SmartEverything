@@ -236,10 +236,12 @@ async function rig(): Promise<Rig> {
     integration: {
       ownerProfileId: () => owner,
       tools: {
-        check: (_name, args): ToolCheck =>
-          PLANNER_EDIT_INPUT.safeParse(args).success
-            ? { ok: true, tool: TOOL }
-            : { ok: false, reason: 'the arguments do not fit planner_edit' },
+        check: (_name, args): Promise<ToolCheck> =>
+          Promise.resolve(
+            PLANNER_EDIT_INPUT.safeParse(args).success
+              ? { ok: true, tool: TOOL }
+              : { ok: false, reason: 'the arguments do not fit planner_edit' },
+          ),
         call: (name, args, caller): Promise<HubToolResult> => {
           calls.push({ name, args, caller });
           const personId = args['personId'];
@@ -290,7 +292,7 @@ describe('registration', () => {
       integration: {
         ownerProfileId: () => home.owner,
         tools: {
-          check: () => ({ ok: false, reason: 'x' }),
+          check: () => Promise.resolve({ ok: false, reason: 'x' }),
           call: () => Promise.reject(new Error('x')),
         },
       },

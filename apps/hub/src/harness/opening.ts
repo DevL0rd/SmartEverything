@@ -22,7 +22,13 @@ export function openConversation(
   if (joined !== undefined) return joined;
   const result = Promise.resolve()
     .then(async (): Promise<OpenRequest> => {
-      const request = service.prepare(input.owner, input.chatId, input.authority, input.clientId);
+      const request = await service.prepare(
+        input.owner,
+        input.chatId,
+        input.authority,
+        input.clientId,
+      );
+      await service.readyFolder(request);
       await service.directory.execute(request.claim.target, randomUUID(), request);
       return request;
     })

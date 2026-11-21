@@ -11,7 +11,6 @@ import { Logger } from '@smarteverything/logging';
 import type { Store } from '../../store/store';
 import { readAutomation, structuredFunction } from '../../store/repositories/automation-trees';
 import { jsonRecord } from '../engine-v3-start';
-import type { KindLedger } from './catalog';
 import { rewriteProgramKinds, usedKindIds, type KindMigration } from './versions';
 
 const log = new Logger('hub.plugin-kinds');
@@ -206,14 +205,4 @@ export function migratePrograms(
       log.error('plugin_kinds.migration_failed', cause, { functionId: row.id });
     }
   }
-}
-
-export function kindLedger(store: LedgerStore, kinds: () => NodeKindLookup): KindLedger {
-  return {
-    stored: (owner) => store.pluginKinds.forOwner(owner),
-    row: (kindId) => store.pluginKinds.find(kindId),
-    migrated: (migrations): void => {
-      if (migrations.length > 0) migratePrograms(store, kinds(), migrations);
-    },
-  };
 }

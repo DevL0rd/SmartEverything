@@ -25,8 +25,8 @@ type ChatContext = Pick<ServerContext, 'store' | 'assistant'> & {
   readonly harness: { readonly routes: Pick<ServerContext['harness']['routes'], 'supplierRoute'> };
 };
 
-function ownerOf(context: ChatContext, caller: Caller): ChatOwner {
-  return chatOwnerOf(context.store, caller);
+function ownerOf(caller: Caller): ChatOwner {
+  return chatOwnerOf(caller);
 }
 
 function canStartStandalone(caller: Caller): boolean {
@@ -61,43 +61,39 @@ const chatRoutes = (context: ChatContext) =>
   ({
     listAiChats: bound(E.listAiChats, ({ query, caller }) =>
       context.assistant.chats.visible(
-        ownerOf(context, caller),
-        context.store.aiChats.chats({ profileId: profileIdOf(context.store, caller), ...query }),
+        ownerOf(caller),
+        context.store.aiChats.chats({ profileId: profileIdOf(caller), ...query }),
       ),
     ),
     searchAiChats: bound(E.searchAiChats, ({ query, caller }) =>
-      context.assistant.searchChats(ownerOf(context, caller), query),
+      context.assistant.searchChats(ownerOf(caller), query),
     ),
     readAiChatMeterHistory: bound(E.readAiChatMeterHistory, ({ params, caller }) => {
-      const owner = ownerOf(context, caller);
+      const owner = ownerOf(caller);
       return chatMeterHistory(context, context.assistant.chats.own(owner, params.chatId), owner);
     }),
     branchAiChat: bound(E.branchAiChat, ({ params, body, caller }) =>
       context.assistant.branchChat(
-        ownerOf(context, caller),
+        ownerOf(caller),
         params.chatId,
         body,
         canStartStandalone(caller),
       ),
     ),
     createAiChat: bound(E.createAiChat, ({ body, caller }) =>
-      context.assistant.createChat(ownerOf(context, caller), body, canStartStandalone(caller)),
+      context.assistant.createChat(ownerOf(caller), body, canStartStandalone(caller)),
     ),
     updateAiChat: bound(E.updateAiChat, ({ params, body, caller }) =>
-      context.assistant.updateChat(ownerOf(context, caller), params.chatId, body),
+      context.assistant.updateChat(ownerOf(caller), params.chatId, body),
     ),
     openConversationChat: bound(E.openConversationChat, ({ caller }) =>
-      context.assistant.chats.conversationChat(ownerOf(context, caller).profileId),
+      context.assistant.chats.conversationChat(ownerOf(caller).profileId),
     ),
     removeAiChat: removalRoute(context),
     clearAiChats: bound(E.clearAiChats, async ({ caller }) => {
       if (confinedChatOf(caller) !== undefined)
         throw new ApiError('forbidden', 'A request tied to one chat cannot clear the others.');
-      await removeProfileChats(
-        context.store,
-        context.assistant,
-        profileIdOf(context.store, caller),
-      );
+      await removeProfileChats(context.store, context.assistant, profileIdOf(caller));
       return DONE_REPLY;
     }),
   }) as const;
@@ -105,7 +101,7 @@ const chatRoutes = (context: ChatContext) =>
 function removalRoute(context: ChatContext): RouteOf<'removeAiChat'> {
   const { store, assistant } = context;
   return bound(E.removeAiChat, async ({ params, query, caller }) => {
-    const owner = ownerOf(context, caller);
+    const owner = ownerOf(caller);
     const runId = query.expected_inactive_run_id;
     const inactiveOnly = removalNeedsInactive(
       store,
@@ -138,17 +134,17 @@ function removalRoute(context: ChatContext): RouteOf<'removeAiChat'> {
 const messageRoutes = (context: ChatContext) =>
   ({
     listAiChatMessages: bound(E.listAiChatMessages, ({ params, query, caller }) => {
-      context.assistant.chats.own(ownerOf(context, caller), params.chatId);
+      context.assistant.chats.own(ownerOf(caller), params.chatId);
       return wireMessages(context.assistant.messages(params.chatId, query.before, query.limit));
     }),
     readAiToolResult: bound(E.readAiToolResult, ({ params, query, caller }) => {
-      context.assistant.chats.own(ownerOf(context, caller), params.chatId);
+      context.assistant.chats.own(ownerOf(caller), params.chatId);
       return readToolResult(context.store, { ...params, ...query, cursor: query.cursor });
     }),
     sendAiChatMessage: bound(E.sendAiChatMessage, ({ params, body, caller }) =>
       context.assistant.submissions.send(
         caller,
-        { clientId: clientOf(caller).id, profileId: profileIdOf(context.store, caller) },
+        { clientId: clientOf(caller).id, profileId: profileIdOf(caller) },
         body,
         params.chatId,
       ),
@@ -159,20 +155,20 @@ const messageRoutes = (context: ChatContext) =>
       return [...reactions];
     }),
     retryAiChatMessage: bound(E.retryAiChatMessage, ({ params, body, caller }) => {
-      return context.assistant.retry(ownerOf(context, caller), params, body.from, {
+      return context.assistant.retry(ownerOf(caller), params, body.from, {
         clientId: caller.kind === 'service' ? null : clientOf(caller).id,
         caller,
       });
     }),
     editAiChatMessage: bound(E.editAiChatMessage, ({ params, body, caller }) => {
-      return context.assistant.edit(ownerOf(context, caller), params, body, {
+      return context.assistant.edit(ownerOf(caller), params, body, {
         clientId: caller.kind === 'service' ? null : clientOf(caller).id,
         caller,
       });
     }),
     compactAiChat: compactionRoute(context),
     interruptAiChat: bound(E.interruptAiChat, async ({ params, caller }) => {
-      await context.assistant.interrupt(ownerOf(context, caller), params.chatId);
+      await context.assistant.interrupt(ownerOf(caller), params.chatId);
       return DONE_REPLY;
     }),
   }) as const;
@@ -184,7 +180,7 @@ function compactionRoute(context: ChatContext): RouteOf<'compactAiChat'> {
   return bound(E.compactAiChat, async ({ params, caller }) => {
     return {
       compacted: await context.assistant.compact(
-        ownerOf(context, caller),
+        ownerOf(caller),
         params.chatId,
         clientOf(caller).id,
       ),

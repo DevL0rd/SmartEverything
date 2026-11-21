@@ -12,14 +12,12 @@ export interface AutomationQuestionDeps {
 export const automationQuestionRoutes = (deps: AutomationQuestionDeps) =>
   ({
     listAutomationQuestions: bound(E.listAutomationQuestions, ({ caller }) =>
-      deps.questions.pending(
-        roleOfCaller(caller) === 'owner' ? null : profileIdOf(deps.store, caller),
-      ),
+      deps.questions.pending(roleOfCaller(caller) === 'owner' ? null : profileIdOf(caller)),
     ),
     answerAutomationQuestion: bound(E.answerAutomationQuestion, ({ params, body, caller }) =>
       deps.questions.answer(
         params.questionId,
-        { profileId: profileIdOf(deps.store, caller), owner: roleOfCaller(caller) === 'owner' },
+        { profileId: profileIdOf(caller), owner: roleOfCaller(caller) === 'owner' },
         body.answer,
       ),
     ),

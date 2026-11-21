@@ -42,9 +42,9 @@ let sessionId: string;
 let attachmentId: string;
 let nodes: ComputerNodeAccess;
 
-function pairing(machine: string): string {
-  const { code } = nodes.pair('https://hub.example.com', rig.clientId);
-  return nodes.claim(code, helloOf(machine), 'test').paired.token;
+async function pairing(machine: string): Promise<string> {
+  const { code } = await nodes.pair('https://hub.example.com', rig.clientId);
+  return (await nodes.claim(code, helloOf(machine), 'test')).paired.token;
 }
 
 async function storedAttachment(chatId: string): Promise<string> {
@@ -93,11 +93,13 @@ beforeEach(async () => {
   const { store } = rig.opened;
   nodes = new ComputerNodeAccess(store, () => new Date());
   const chat = rig.newChat(rig.desk.target);
-  sessionId = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId).claim.session_id;
+  sessionId = (await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId)).claim
+    .session_id;
   attachmentId = await storedAttachment(chat.id);
   const files = new AssistantFiles({
     layout: hubLayout(rig.opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: (): Date => new Date(),
   });
   const ports = { context: { computerNodes: nodes, assistant: { files } }, service: rig.service };
@@ -126,7 +128,7 @@ afterEach(async () => {
 
 describe('GET of a stored attachment by the granted computer', () => {
   it('serves the stored bytes to the computer that hosts the conversation', async () => {
-    const token = pairing('a');
+    const token = await pairing('a');
 
     const response = await fetch(base, { headers: { authorization: `Bearer ${token}` } });
 
@@ -135,8 +137,8 @@ describe('GET of a stored attachment by the granted computer', () => {
   });
 
   it('refuses another paired computer', async () => {
-    pairing('a');
-    const other = pairing('b');
+    await pairing('a');
+    const other = await pairing('b');
 
     const response = await fetch(base, { headers: { authorization: `Bearer ${other}` } });
 

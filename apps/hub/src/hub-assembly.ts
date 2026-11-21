@@ -18,6 +18,7 @@ import type { AutomationIntegrationSlot } from './automations/automation-integra
 import type { AutomationTraceSlot } from './automations/automation-trace';
 import type { EngineV3 } from './automations/engine-v3';
 import { assembleHubEngine } from './automations/hub-engine';
+import type { WorldMirror } from './automations/world-v3/world-mirror';
 import type { PluginKindCatalog } from './automations/plugin-kinds/catalog';
 import type { QuestionDesk } from './automations/questions/desk';
 import type { TimerWakes } from './automations/timers/timer-wakes';
@@ -52,6 +53,7 @@ import type { Store } from './store/store';
 import { Viewers, type DeviceDetail } from './metrics/viewers';
 import { systemRouteTimer } from './vacuum/live-route';
 import { VacuumHub } from './vacuum/vacuum-hub';
+import { BUNDLED_MAP_WORKER, MapDecodeWorker } from './vacuum/map-decode-worker';
 import type { VacuumVideoPorts } from './vacuum/video-session';
 
 export interface HubParts {
@@ -91,6 +93,7 @@ export interface Core {
   readonly automationTimers: TimerWakes;
   readonly automationQuestions: QuestionDesk;
   readonly automationKinds: PluginKindCatalog;
+  readonly automationWorld: WorldMirror;
   readonly drivers: DeviceDriverRegistry;
   readonly irAssumed: IrAssumedState;
   readonly vacuums: VacuumHub;
@@ -214,8 +217,8 @@ function providerManager(
   vacuums: VacuumHub,
 ): ProviderManager {
   return new ProviderManager({
-    prepareAdapter: (adapter): void => {
-      preparePassiveAdapter(adapter, parts);
+    prepareAdapter: async (adapter): Promise<void> => {
+      await preparePassiveAdapter(adapter, parts);
       if (adapter instanceof XiaomiAdapter) vacuums.link.bind(adapter.vacuumLink());
     },
     releaseAdapter: (adapter): void => {
@@ -350,6 +353,7 @@ function vacuumHubOf(
     viewers,
     timer: systemRouteTimer,
     video: parts.vacuumVideo,
+    decoder: new MapDecodeWorker(BUNDLED_MAP_WORKER),
     now: parts.clock.now,
     log: areaOf(parts, 'vacuum'),
   });
@@ -373,6 +377,7 @@ function assembleAutomationCore(
   | 'automationTimers'
   | 'automationQuestions'
   | 'automationKinds'
+  | 'automationWorld'
 > {
   const hubEngine = assembleHubEngine({
     store: parts.store,
@@ -400,5 +405,6 @@ function assembleAutomationCore(
     automationTimers: hubEngine.timers,
     automationQuestions: hubEngine.questions,
     automationKinds: hubEngine.kinds,
+    automationWorld: hubEngine.world,
   };
 }

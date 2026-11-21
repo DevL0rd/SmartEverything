@@ -2,15 +2,16 @@ import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import type { RuntimeLogAck } from '@smarteverything/domain';
 import { messageOf, type Logger } from '@smarteverything/logging';
-import { Sql } from '../store/sql';
-import { readFilter, RuntimeLogReads } from '../store/repositories/runtime-log-reads';
+import { readFilter, type RuntimeLogReads } from '../store/repositories/runtime-log-reads';
 import type {
   LogAccess,
+  LogAround,
+  LogSearch,
   LogSourceInfo,
   StoredLogRecord,
 } from '../store/repositories/runtime-log-types';
-import { LOG_REPLY, type LogReply, type LogRequestInput } from './messages';
-import { openLogReader, openLogWriter } from './schema';
+import { LOG_REPLY, type LogRead, type LogReply, type LogRequestInput } from './messages';
+import { openLogWriter } from './schema';
 import { checkIngestAccess, HUB_CLIENT, type IngestRequest, type RepairEvidence } from './writes';
 
 export const BUNDLED_LOG_WORKER = fileURLToPath(new URL('./log-worker.mjs', import.meta.url));
@@ -31,7 +32,10 @@ export interface LogStoreOptions {
 
 type Written = Extract<LogReply, { readonly kept: number }>;
 type Changed = Extract<LogReply, { readonly changed: number }>;
-type Answer = Written | Changed;
+type Read = Extract<LogReply, { readonly value: unknown }>;
+type Answer = Written | Changed | Read;
+
+type ReadResult<M extends keyof RuntimeLogReads> = ReturnType<RuntimeLogReads[M]>;
 
 interface Pending {
   readonly resolve: (answer: Answer) => void;
@@ -46,9 +50,9 @@ class LogWriterStoppedError extends Error {
   override readonly name = 'LogWriterStoppedError';
 }
 
-export class LogStore extends RuntimeLogReads {
+export class LogStore {
   private readonly worker: Worker;
-  private readonly reader: Sql;
+  private readonly reader: Worker;
   private readonly pending = new Map<number, Pending>();
   private next = 0;
   private stopped: Error | null = null;
@@ -58,30 +62,52 @@ export class LogStore extends RuntimeLogReads {
 
   static open(options: LogStoreOptions): LogStore {
     openLogWriter(options.path).close();
-    return new LogStore(options, new Sql(openLogReader(options.path)));
+    return new LogStore(options);
   }
 
-  private constructor(
-    private readonly options: LogStoreOptions,
-    reader: Sql,
-  ) {
-    super(reader);
-    this.reader = reader;
-    this.worker = new Worker(options.workerScript, { workerData: { path: options.path } });
-    this.worker.unref();
-    this.worker.on('message', (raw: unknown) => {
-      this.answered(LOG_REPLY.parse(raw));
-    });
-    this.worker.on('error', (cause) => {
-      this.halt(
-        new LogWriterStoppedError(`The runtime log writer failed: ${messageOf(cause)}`, { cause }),
-      );
-    });
-    this.worker.on('exit', (code) => {
-      this.halt(
-        new LogWriterStoppedError(`The runtime log writer stopped with code ${String(code)}.`),
-      );
-    });
+  private constructor(private readonly options: LogStoreOptions) {
+    this.worker = this.started('write', 'writer');
+    this.reader = this.started('read', 'reader');
+  }
+
+  search(access: LogAccess, search: LogSearch): Promise<ReadResult<'search'>> {
+    return this.read({ method: 'search', access, search });
+  }
+
+  around(access: LogAccess, around: LogAround): Promise<ReadResult<'around'>> {
+    return this.read({ method: 'around', access, around });
+  }
+
+  sources(access: LogAccess): Promise<ReadResult<'sources'>> {
+    return this.read({ method: 'sources', access });
+  }
+
+  components(
+    access: LogAccess,
+    since: string,
+    levels: readonly string[],
+  ): Promise<ReadResult<'components'>> {
+    return this.read({ method: 'components', access, since, levels });
+  }
+
+  signatures(
+    access: LogAccess,
+    since: string,
+    component: string | undefined,
+  ): Promise<ReadResult<'signatures'>> {
+    return this.read({ method: 'signatures', access, since, component });
+  }
+
+  platforms(access: LogAccess): Promise<ReadResult<'platforms'>> {
+    return this.read({ method: 'platforms', access });
+  }
+
+  gaps(access: LogAccess): Promise<ReadResult<'gaps'>> {
+    return this.read({ method: 'gaps', access });
+  }
+
+  clientOf(logId: number): Promise<ReadResult<'clientOf'>> {
+    return this.read({ method: 'clientOf', logId });
   }
 
   onRepairEvidence(listener: RepairListener): () => void {
@@ -145,8 +171,42 @@ export class LogStore extends RuntimeLogReads {
     this.closing = true;
     await this.settled();
     this.halt(new LogWriterStoppedError('The runtime log writer was closed.'));
-    await this.worker.terminate();
-    this.reader.database.close();
+    await Promise.all([this.worker.terminate(), this.reader.terminate()]);
+  }
+
+  private started(mode: 'write' | 'read', role: string): Worker {
+    const worker = new Worker(this.options.workerScript, {
+      workerData: { path: this.options.path, mode },
+    });
+    worker.unref();
+    worker.on('message', (raw: unknown) => {
+      this.answered(LOG_REPLY.parse(raw));
+    });
+    worker.on('error', (cause) => {
+      this.halt(
+        new LogWriterStoppedError(`The runtime log ${role} failed: ${messageOf(cause)}`, {
+          cause,
+        }),
+      );
+    });
+    worker.on('exit', (code) => {
+      this.halt(
+        new LogWriterStoppedError(`The runtime log ${role} stopped with code ${String(code)}.`),
+      );
+    });
+    return worker;
+  }
+
+  private read<M extends LogRead['method']>(
+    read: Extract<LogRead, { readonly method: M }>,
+  ): Promise<ReadResult<M>>;
+  private async read(read: LogRead): Promise<unknown> {
+    if (read.method !== 'clientOf') readFilter(read.access);
+    const answer = await this.posted((id) => {
+      this.reader.postMessage({ id, read });
+    });
+    if (!('value' in answer)) throw new Error('The runtime log reader answered a read as a write.');
+    return answer.value;
   }
 
   private tracked<T>(work: Promise<T>): Promise<T> {
@@ -182,12 +242,18 @@ export class LogStore extends RuntimeLogReads {
   }
 
   private request(request: Unsent): Promise<Answer> {
+    return this.posted((id) => {
+      this.worker.postMessage({ ...request, id, clock: this.options.now().toISOString() });
+    });
+  }
+
+  private posted(send: (id: number) => void): Promise<Answer> {
     if (this.stopped !== null) return Promise.reject(this.stopped);
     this.next += 1;
     const id = this.next;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ ...request, id, clock: this.options.now().toISOString() });
+      send(id);
     });
   }
 
@@ -214,7 +280,7 @@ export class LogStore extends RuntimeLogReads {
     }
     const pending = this.pending.get(reply.id);
     if (pending === undefined)
-      throw new Error(`The runtime log writer answered unknown request ${String(reply.id)}.`);
+      throw new Error(`The runtime log worker answered unknown request ${String(reply.id)}.`);
     this.pending.delete(reply.id);
     if ('failure' in reply) pending.reject(new Error(reply.failure));
     else pending.resolve(reply);

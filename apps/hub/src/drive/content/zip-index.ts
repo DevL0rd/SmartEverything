@@ -1,6 +1,6 @@
 import { PassThrough, Transform, type Readable } from 'node:stream';
 import type { DriveZipEntry, DriveZipTotals } from '@smarteverything/domain';
-import { classify } from '../scanner-commit';
+import { classify } from '../file-type';
 import {
   closeZip,
   isFolderEntry,

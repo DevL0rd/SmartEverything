@@ -24,6 +24,7 @@ let context: OperatingContext;
 beforeEach(async () => {
   captureLogs();
   opened = await testStore();
+  await Promise.all([opened.store.live.aiModels.load(), opened.store.live.computers.load()]);
   const { store } = opened;
   const client = store.clients.create(
     { name: 'This computer', platform: 'desktop', role: 'owner', tokenHash: 'a' },
@@ -34,7 +35,12 @@ beforeEach(async () => {
   const now = (): Date => new Date();
   chats = new ChatDirectory(
     store,
-    new AssistantFiles({ layout: hubLayout(opened.directory, {}), chat: store.assistantChat, now }),
+    new AssistantFiles({
+      layout: hubLayout(opened.directory, {}),
+      chat: store.assistantChat,
+      attachments: store.live.attachments,
+      now,
+    }),
   );
   const delegation = new Delegation({
     store,
@@ -91,8 +97,8 @@ describe('the subagent tool', () => {
     });
   });
 
-  it('refuses a chat id from the AI', () => {
-    expect(() => run(context, { chatId: parentId, task: 'Anything', wait: false })).toThrow(
+  it('refuses a chat id from the AI', async () => {
+    await expect(run(context, { chatId: parentId, task: 'Anything', wait: false })).rejects.toThrow(
       'leave chatId out',
     );
   });

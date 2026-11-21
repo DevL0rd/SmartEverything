@@ -13,6 +13,6 @@ export const CONTROL_TOOLS: readonly Tool[] = [
     name: 'automation_read',
     input: AUTOMATION_FILTER,
     annotations: READS,
-    run: (context, input) => ({ structured: listAutomations(context, input) }),
+    run: async (context, input) => ({ structured: await listAutomations(context, input) }),
   }),
 ];

@@ -8,12 +8,11 @@ import {
 } from '@smarteverything/domain';
 import { shareOriginOf } from '../../drive/shares';
 import type { FeedKindHandler } from '../../planner/feeds/registry';
-import { collectionOf } from '../../planner/feeds/access';
 import type { FeedService } from '../../planner/feeds';
 import type { PlannerExportLinkRow } from '../../store/repositories/planner-export-links';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound } from '../router';
-import { plannerProfileOf, type PlannerContext } from './planner-items';
+import { plannerProfileOf, type PlannerContext } from './planner-profile';
 
 export interface FeedOrigin {
   readonly url: string;
@@ -64,6 +63,18 @@ export function exportLinkOf(row: PlannerExportLinkRow, origin: FeedOrigin): Pla
   };
 }
 
+function editable(
+  context: PlannerContext,
+  profileId: string,
+  collectionId: string,
+): Promise<PlannerCollectionRow> {
+  return context.store.host.read('plannerFeedCollection', {
+    profileId,
+    collectionId,
+    need: 'edit',
+  });
+}
+
 export const plannerFeedRoutes = (context: PlannerContext, services: PlannerFeedServices) =>
   ({
     createPlannerFeed: bound(E.createPlannerFeed, ({ query, body, caller }) =>
@@ -71,34 +82,34 @@ export const plannerFeedRoutes = (context: PlannerContext, services: PlannerFeed
         .of(body.kind)
         .create({ profileId: plannerProfileOf(context, caller, query.personId), input: body }),
     ),
-    updatePlannerFeed: bound(E.updatePlannerFeed, ({ params, query, body, caller }) => {
+    updatePlannerFeed: bound(E.updatePlannerFeed, async ({ params, query, body, caller }) => {
       const profileId = plannerProfileOf(context, caller, query.personId);
-      const collection = collectionOf(context.store, profileId, params.collectionId, 'edit');
+      const collection = await editable(context, profileId, params.collectionId);
       return handlerOf(services.feeds, collection).update(collection, body);
     }),
-    refreshPlannerFeed: bound(E.refreshPlannerFeed, ({ params, query, caller }) => {
+    refreshPlannerFeed: bound(E.refreshPlannerFeed, async ({ params, query, caller }) => {
       const profileId = plannerProfileOf(context, caller, query.personId);
-      const collection = collectionOf(context.store, profileId, params.collectionId, 'edit');
+      const collection = await editable(context, profileId, params.collectionId);
       return handlerOf(services.feeds, collection).refresh(collection);
     }),
-    readPlannerExportLink: bound(E.readPlannerExportLink, ({ params, query, caller }) => {
+    readPlannerExportLink: bound(E.readPlannerExportLink, async ({ params, query, caller }) => {
       const profileId = plannerProfileOf(context, caller, query.personId);
-      const collection = collectionOf(context.store, profileId, params.collectionId, 'edit');
-      const row = context.store.plannerExportLinks.find(collection.id);
+      const collection = await editable(context, profileId, params.collectionId);
+      const row = await context.store.host.call('plannerExportLinks', 'find', collection.id);
       return row === undefined ? null : exportLinkOf(row, services.origin());
     }),
-    createPlannerExportLink: bound(E.createPlannerExportLink, ({ params, query, caller }) => {
+    createPlannerExportLink: bound(E.createPlannerExportLink, async ({ params, query, caller }) => {
       const profileId = plannerProfileOf(context, caller, query.personId);
-      const collection = collectionOf(context.store, profileId, params.collectionId, 'edit');
+      const collection = await editable(context, profileId, params.collectionId);
       return exportLinkOf(
-        context.store.plannerExportLinks.publish(collection.id),
+        await context.store.host.call('plannerExportLinks', 'publish', collection.id),
         services.origin(),
       );
     }),
-    deletePlannerExportLink: bound(E.deletePlannerExportLink, ({ params, query, caller }) => {
+    deletePlannerExportLink: bound(E.deletePlannerExportLink, async ({ params, query, caller }) => {
       const profileId = plannerProfileOf(context, caller, query.personId);
-      const collection = collectionOf(context.store, profileId, params.collectionId, 'edit');
-      context.store.plannerExportLinks.remove(collection.id);
+      const collection = await editable(context, profileId, params.collectionId);
+      await context.store.host.call('plannerExportLinks', 'remove', collection.id);
       return DONE_REPLY;
     }),
   }) as const;

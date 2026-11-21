@@ -6,13 +6,13 @@ import { operation, payloadOperation, type Executors } from './operation';
 import { Attachment } from './session';
 import type { MountServices } from './services';
 
-function relPathOf(services: MountServices, ino: number): string {
-  const { store } = services;
-  const inode = store.driveInodes.find(ino);
-  if (inode?.isRoot === true) return '';
-  const id = store.driveInodes.names(ino)[0];
-  const item = id === undefined ? undefined : store.driveItems.find(id, null);
-  return item?.relPath ?? orphanRelPath(ino);
+async function relPathOf(services: MountServices, scope: PosixScope, ino: number): Promise<string> {
+  const path = await services.store.host.read('driveMountPath', {
+    driveId: scope.drive.id,
+    ino,
+    name: null,
+  });
+  return path ?? orphanRelPath(ino);
 }
 
 async function durable(
@@ -20,8 +20,8 @@ async function durable(
   scope: PosixScope,
   request: { readonly ino: number; readonly directory: boolean },
 ): Promise<void> {
-  const relPath = relPathOf(services, request.ino);
-  const root = services.store.driveRoots.byId(scope.drive.id);
+  const relPath = await relPathOf(services, scope, request.ino);
+  const root = await services.store.host.call('driveRoots', 'byId', scope.drive.id);
   const path = await locate(root, relPath);
   await services.fsync.request(request.directory ? [path] : [path, dirname(path)]);
 }
@@ -36,24 +36,21 @@ function attachment(services: MountServices): Executors {
       active.helperSeqs.delete(attached.root);
       const attachment = new Attachment(attached.scope, hinted ?? attached.seq);
       active.attachments.set(call.meta.placementId, attachment);
-      store.driveMountCommits.sweep(call.meta.placementId, [...active.journal]);
-      for (const commit of store.driveMountCommits.open(call.meta.placementId)) {
+      const { host } = store;
+      await host.call('driveMountCommits', 'sweep', call.meta.placementId, [...active.journal]);
+      for (const commit of await commits.attach(call.meta.placementId)) {
+        if (commit.state !== 'open') continue;
         if (commit.nodeId !== active.nodeId || active.journal.has(commit.id)) continue;
-        commits.abortRow(commit.id);
+        await commits.abortRow(commit.id);
         await staging.remove(attached.root, commit.id);
       }
       setImmediate(() => {
-        background(
-          Promise.resolve().then(() => {
-            push.pump(active, attachment);
-          }),
-          'drive_mount.push_failed',
-        );
+        background(push.pump(active, attachment), 'drive_mount.push_failed');
       });
       return { root: attached.root, ino: attached.ino, attr: attached.attr, seq: attached.seq };
     }),
     LEASE: operation('LEASE', (call) =>
-      Promise.resolve(store.driveInodeLeases.grant(call.session.nodeId, call.meta.count)),
+      store.host.call('driveInodeLeases', 'grant', call.session.nodeId, call.meta.count),
     ),
     CANCEL: operation('CANCEL', (call) => {
       call.session.inflight.get(call.meta.requestId)?.cancel();
@@ -68,7 +65,7 @@ function handles(services: MountServices): Executors {
     OPEN: operation('OPEN', async (call) => ({
       handle: await table.open(
         call.session,
-        call.session.scopeOf(store, call.meta.ino),
+        await call.session.scopeOf(store, call.meta.ino),
         call.meta.ino,
       ),
     })),
@@ -89,10 +86,10 @@ function handles(services: MountServices): Executors {
     }),
     COPY: operation('COPY', (call) => services.copy.copy(call.session, call.meta)),
     ACCESS: operation('ACCESS', async (call) => ({
-      attr: await posix.access(call.session.scopeOf(store, call.meta.ino), call.meta),
+      attr: await posix.access(await call.session.scopeOf(store, call.meta.ino), call.meta),
     })),
     FSYNC: operation('FSYNC', async (call) => {
-      await durable(services, call.session.scopeOf(store, call.meta.ino), call.meta);
+      await durable(services, await call.session.scopeOf(store, call.meta.ino), call.meta);
       return {};
     }),
   };
@@ -103,10 +100,10 @@ function extended(services: MountServices): Executors {
   return {
     GETXATTR: payloadOperation('GETXATTR', async (call) => ({
       meta: {},
-      payload: await posix.getxattr(call.session.scopeOf(store, call.meta.ino), call.meta),
+      payload: await posix.getxattr(await call.session.scopeOf(store, call.meta.ino), call.meta),
     })),
-    LISTXATTR: operation('LISTXATTR', (call) =>
-      posix.listxattr(call.session.scopeOf(store, call.meta.ino), call.meta.ino),
+    LISTXATTR: operation('LISTXATTR', async (call) =>
+      posix.listxattr(await call.session.scopeOf(store, call.meta.ino), call.meta.ino),
     ),
   };
 }
@@ -131,9 +128,9 @@ function commits(services: MountServices): Executors {
       await protocol.abort(call.session, call.meta);
       return {};
     }),
-    FORGET: operation('FORGET', (call) => {
-      protocol.forget(call.session, call.meta);
-      return Promise.resolve({});
+    FORGET: operation('FORGET', async (call) => {
+      await protocol.forget(call.session, call.meta);
+      return {};
     }),
   };
 }
@@ -141,12 +138,12 @@ function commits(services: MountServices): Executors {
 function locks(services: MountServices): Executors {
   const { locks: table, store } = services;
   return {
-    GETLK: operation('GETLK', (call) => {
-      call.session.scopeOf(store, call.meta.ino);
-      return Promise.resolve(table.get(call.session, call.meta));
+    GETLK: operation('GETLK', async (call) => {
+      await call.session.scopeOf(store, call.meta.ino);
+      return table.get(call.session, call.meta);
     }),
     SETLK: operation('SETLK', async (call) => {
-      call.session.scopeOf(store, call.meta.ino);
+      await call.session.scopeOf(store, call.meta.ino);
       await table.set(call.session, call.meta, (lockId) => {
         call.cancellable(() => {
           table.cancel(lockId);

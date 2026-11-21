@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
-import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
+import { promisify } from 'node:util';
+import { brotliDecompress, gunzip, inflate } from 'node:zlib';
 import { z } from 'zod';
 import type { Params } from './catalogue';
 
@@ -176,15 +177,19 @@ export function relay(response: Response): Response {
   };
 }
 
-export function decodedBody(payload: Payload): Buffer {
+const gunzipped = promisify(gunzip);
+const inflated = promisify(inflate);
+const unbrotlied = promisify(brotliDecompress);
+
+export async function decodedBody(payload: Payload): Promise<Buffer> {
   const encoding = (payload.headers['content-encoding'] ?? '').toLowerCase();
   if (encoding.includes('gzip')) {
-    return gunzipSync(payload.body);
+    return gunzipped(payload.body);
   }
   if (encoding.includes('deflate')) {
-    return inflateSync(payload.body);
+    return inflated(payload.body);
   }
-  return encoding.includes('br') ? brotliDecompressSync(payload.body) : payload.body;
+  return encoding.includes('br') ? unbrotlied(payload.body) : payload.body;
 }
 
 const CLOUD_REPLY = z.looseObject({

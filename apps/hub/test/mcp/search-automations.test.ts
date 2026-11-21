@@ -21,9 +21,9 @@ function hits(query: string): ReturnType<typeof automationHits> {
 }
 
 describe('searching automations from the assistant', () => {
-  it('finds an automation by name and gives the target that opens its page', () => {
+  it('finds an automation by name and gives the target that opens its page', async () => {
     const saved = saveAutomation(opened.store, { name: 'Night check' });
-    expect(hits('night')).toEqual([
+    expect(await hits('night')).toEqual([
       {
         id: saved.id,
         name: 'Night check',
@@ -31,21 +31,21 @@ describe('searching automations from the assistant', () => {
         target: { kind: 'automation', automationId: saved.id, focus: null },
       },
     ]);
-    expect(hits('morning')).toEqual([]);
+    expect(await hits('morning')).toEqual([]);
   });
 
-  it('finds an automation by the words of its trigger', () => {
+  it('finds an automation by the words of its trigger', async () => {
     const saved = saveAutomation(opened.store, {
       name: 'Kitchen',
       triggers: [trigger('trigger.button', { press: 'single_press' })],
     });
-    expect(hits('button').map((hit) => hit['id'])).toEqual([saved.id]);
+    expect((await hits('button')).map((hit) => hit['id'])).toEqual([saved.id]);
   });
 
-  it('finds a step by its title and gives the target that opens the editor at that node', () => {
+  it('finds a step by its title and gives the target that opens the editor at that node', async () => {
     const step = node('flow.wait', { duration: 1000 });
     const saved = saveAutomation(opened.store, { name: 'Plain', body: [step] });
-    const [hit] = hits('wait');
+    const [hit] = await hits('wait');
     expect(hit).toMatchObject({
       id: saved.id,
       target: { kind: 'automation', automationId: saved.id, focus: null },

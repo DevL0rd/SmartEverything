@@ -16,6 +16,7 @@ import type { Operations } from './server/operations';
 import type { ComputerNodeSockets } from './server/node-socket';
 import type { ReleasePublications } from './self-update/release-publications';
 import type { SessionPlacementSource } from './computers/placements-slot';
+import type { CalendarReader } from './planner/ical/calendar-reader';
 import type { Store } from './store/store';
 import type { MediaNotes } from './transcripts/media-notes';
 
@@ -33,6 +34,7 @@ export interface ExtensionContext {
   readonly machineApprovals: MachineApprovals;
   readonly openCalls: OpenCalls;
   readonly mediaNotes: MediaNotes;
+  readonly calendars: CalendarReader;
   readonly links: MediaLinks;
   readonly operations: Operations;
   readonly publications: ReleasePublications;

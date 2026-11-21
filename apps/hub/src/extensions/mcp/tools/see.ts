@@ -23,12 +23,12 @@ export function pictureSizeOf(capture: Pick<ComputerCapture, 'width' | 'height'>
   return `${String(capture.width)}x${String(capture.height)} pixels; coordinates for computer_use are in this size, whatever size the picture looks`;
 }
 
-export function machineOf(
+export async function machineOf(
   context: Pick<ToolContext, 'store' | 'actor'>,
   kind: 'computer' | 'phone',
   wanted: string | undefined,
-): Placed {
-  const machines = placedDevices(context.store, deviceScopeOfActor(context)).filter(
+): Promise<Placed> {
+  const machines = (await placedDevices(context.store, deviceScopeOfActor(context))).filter(
     ({ device }) => device.kind === kind,
   );
   if (wanted !== undefined) {
@@ -46,10 +46,12 @@ export function machineOf(
   return first;
 }
 
-function cameraOf(context: ToolContext, wanted: string): Placed {
-  const cameras = new Set(context.store.cameras.list().map((camera) => camera.device_id));
+async function cameraOf(context: ToolContext, wanted: string): Promise<Placed> {
+  const cameras = new Set(
+    (await context.store.host.call('cameras', 'list')).map((camera) => camera.device_id),
+  );
   return resolveNamed(
-    placedDevices(context.store, deviceScopeOfActor(context)).filter(({ device }) =>
+    (await placedDevices(context.store, deviceScopeOfActor(context))).filter(({ device }) =>
       cameras.has(device.id),
     ),
     wanted,
@@ -58,8 +60,8 @@ function cameraOf(context: ToolContext, wanted: string): Placed {
   );
 }
 
-function frontApp(context: ToolContext, computer: Placed): string {
-  const value = context.store.state.value(computer.device.id, FOCUSED_APP);
+async function frontApp(context: ToolContext, computer: Placed): Promise<string> {
+  const value = await context.store.host.call('state', 'value', computer.device.id, FOCUSED_APP);
   return typeof value === 'string' ? value : '';
 }
 
@@ -108,7 +110,7 @@ export const SEE_TOOL: Tool = defineTool({
   annotations: { ...READS, idempotentHint: false, openWorldHint: true },
   run: async (context, input) => {
     if (input.source === 'home_camera') {
-      const shot = await shotOf(context, cameraOf(context, input.camera), 'full');
+      const shot = await shotOf(context, await cameraOf(context, input.camera), 'full');
       if (shot.image === null) {
         throw new ToolError(`That camera cannot be seen right now: ${JSON.stringify(shot.item)}`);
       }
@@ -118,16 +120,16 @@ export const SEE_TOOL: Tool = defineTool({
       };
     }
     if (input.source === 'phone_screenshot') {
-      const phone = machineOf(context, 'phone', input.phone);
+      const phone = await machineOf(context, 'phone', input.phone);
       const shot = await phoneShot(context, phone);
       return {
         structured: { source: input.source, what: `${phone.name} screen`, at: shot.at },
         images: [{ data: shot.data, mimeType: SNAPSHOT_TYPE }],
       };
     }
-    const computer = machineOf(context, 'computer', input.computer);
+    const computer = await machineOf(context, 'computer', input.computer);
     if (input.source === 'desktop_window') {
-      const front = frontApp(context, computer);
+      const front = await frontApp(context, computer);
       if (!matches(input.window, front)) {
         throw new ToolError(
           `"${input.window}" is not the window in front on ${computer.name}${front === '' ? '' : ` (${front} is)`}; the SmartEverything app can show any window while they share it`,

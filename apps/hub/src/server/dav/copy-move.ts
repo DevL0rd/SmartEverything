@@ -1,20 +1,14 @@
 import type { IncomingMessage } from 'node:http';
 import { basename, dirname } from 'node:path/posix';
 import type { DriveItem } from '@smarteverything/domain';
-import {
-  commitContent,
-  folderDraft,
-  identityOf,
-  isoOf,
-  parentOf,
-  recordItem,
-} from '../../drive/changes';
-import { DriveWriteError, locate, moveWithin, type DriveWriteRoot } from '../../drive/intents';
+import { commitContent, folderDraft, parentOf, recordItem } from '../../drive/changes';
+import { identityOf, isoOf } from '../../drive/change-rows';
+import { locate, moveWithin, type DriveWriteRoot } from '../../drive/intents';
+import { DriveWriteError } from '../../drive/write-error';
 import { DrivePathError, isInside, normalizeRelativePath } from '../../drive/paths';
 import { checkDriveWrite } from '../../drive/quotas';
 import { MARKER_DIRECTORY } from '../../drive/root-marker';
-import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
-import { repathItem } from '../../drive/service-write-repath';
+import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
 import { commitTrash } from '../../drive/trash-purge';
 import { stageBytes } from '../../drive/versions';
 import {
@@ -79,7 +73,7 @@ export function targetOfHref(
   caller: DavCaller,
   request: IncomingMessage,
   href: string,
-): DavTarget {
+): Promise<DavTarget> {
   return targetIn(deps, caller, locationOfHref(request, href));
 }
 
@@ -87,7 +81,7 @@ export function destinationOf(
   deps: DavDeps,
   caller: DavCaller,
   request: IncomingMessage,
-): DavTarget {
+): Promise<DavTarget> {
   const header = headerOf(request, 'destination');
   if (header === undefined) {
     throw new DavError(400, 'Send the target address in a Destination header.');
@@ -143,10 +137,15 @@ function assertPlace(item: DriveItem, source: DavTarget, destination: DavTarget)
   }
 }
 
-function planOf(deps: DavDeps, caller: DavCaller, request: IncomingMessage, move: boolean): Plan {
-  const source = targetOf(deps, caller, request);
+async function planOf(
+  deps: DavDeps,
+  caller: DavCaller,
+  request: IncomingMessage,
+  move: boolean,
+): Promise<Plan> {
+  const source = await targetOf(deps, caller, request);
   const item = sourceOf(source);
-  const destination = destinationOf(deps, caller, request);
+  const destination = await destinationOf(deps, caller, request);
   assertPlace(item, source, destination);
   const overwrite = overwriteOf(request);
   const shallow = shallowOf(request, move);
@@ -172,12 +171,14 @@ async function relocate(plan: Plan): Promise<void> {
   const back = { from: relPath, to: item.relPath, mode: 'keep' } as const;
   await moveWithin(deps.env.files, root, { from: item.relPath, to: relPath, mode: 'keep' });
   try {
-    repathItem(
-      deps.env,
+    await deps.env.store.host.write('driveRepath', {
       item,
-      { parentId: parent?.id ?? null, relPath, name: basename(relPath) },
-      { op: dirname(item.relPath) === dirname(relPath) ? 'rename' : 'move', actor: caller.change },
-    );
+      target: { parentId: parent?.id ?? null, relPath, name: basename(relPath) },
+      change: {
+        op: dirname(item.relPath) === dirname(relPath) ? 'rename' : 'move',
+        actor: caller.change,
+      },
+    });
   } catch (cause) {
     await moveWithin(deps.env.files, root, back);
     throw cause;
@@ -281,7 +282,7 @@ function transfer(
 ): Promise<void> {
   const { request, response } = exchange;
   return guarded(exchange, async () => {
-    const plan = planOf(deps, caller, request, move);
+    const plan = await planOf(deps, caller, request, move);
     if (plan.existing !== undefined) {
       await commitTrash(deps.env, plan.root, plan.existing.id, caller.change);
     }

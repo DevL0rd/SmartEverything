@@ -12,6 +12,7 @@ import {
   type KindCatalog,
 } from '../../../src/automations/plugin-kinds/catalog';
 import { persistPluginKinds } from '../../../src/automations/plugin-kinds/store';
+import { settleWithHost } from '../../support/host-settle';
 import { pluginContribution } from '../../../src/automations/plugin-kinds/contributions';
 import type { Caller } from '../../../src/server/auth';
 import { automationProgramReadRoutes } from '../../../src/server/handlers/automation-program-reads';
@@ -79,7 +80,7 @@ async function catalogue(
   const routes = automationProgramReadRoutes({
     store: opened.store,
     secrets: { list: (): never[] => [] },
-    functions: { list: (): never[] => [] },
+    functions: { list: () => Promise.resolve([]) },
     kinds,
   });
   const reply = await routes.listAutomationCatalog.run(
@@ -157,8 +158,11 @@ describe('the catalogue view of plugin kinds', () => {
 
   it('lists the kinds of a switched off plugin as unavailable instead of hiding them', async () => {
     const kinds = chatHub();
-    const stop = persistPluginKinds(kinds, opened.store.pluginKinds, () => new Set());
+    const stop = persistPluginKinds(kinds, async (batch) => {
+      await opened.store.host.write('persistPluginKinds', batch);
+    });
     stop();
+    await settleWithHost();
     opened.store.pluginKinds.switchOff('plugin:chat-hub');
     const { nodes } = await catalogue(createKindCatalog(), { group: 'plugins' });
     const post = nodes.find((entry) => entry.kind === POST);

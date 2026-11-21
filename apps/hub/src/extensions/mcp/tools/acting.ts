@@ -6,7 +6,6 @@ import {
   type EndpointName,
 } from '@smarteverything/domain';
 import { inLockedFolder } from '../../../drive/access';
-import { effectiveClientById } from '../../../server/person-access';
 import { profileIdOf, roleOfCaller, type Caller } from '../../../server/auth';
 import type { OperationInput } from '../../../server/operations';
 import { areaRefusal, reachableAreas } from './person-reach';
@@ -22,17 +21,23 @@ export interface ActingAs {
   readonly clientId?: string | undefined;
 }
 
-export function ownerOf(context: ActingContext): ClientRow {
-  const owner = context.store.clients.owner();
-  if (owner === undefined) {
-    throw new ToolError('This server has no owner yet; open the desktop app once to create one');
-  }
+function noOwner(): ToolError {
+  return new ToolError('This server has no owner yet; open the desktop app once to create one');
+}
+
+export async function ownerOf(context: ActingContext): Promise<ClientRow> {
+  const owner = await context.store.host.read('mcpActingClient', null);
+  if (owner === null) throw noOwner();
   return owner;
 }
 
-function clientFor(context: ActingContext, clientId: string | undefined): ClientRow {
-  const chosen = clientId ?? context.actor?.clientId ?? null;
-  return chosen === null ? ownerOf(context) : effectiveClientById(context.store, chosen);
+async function clientFor(context: ActingContext, clientId: string | undefined): Promise<ClientRow> {
+  const client = await context.store.host.read(
+    'mcpActingClient',
+    clientId ?? context.actor?.clientId ?? null,
+  );
+  if (client === null) throw noOwner();
+  return client;
 }
 
 type ActingCaller = Extract<Caller, { kind: 'client' | 'service' }>;
@@ -85,7 +90,7 @@ function clientCaller(context: ActingContext, client: ClientRow): ActingCaller {
   };
 }
 
-function principalOf(context: ActingContext): ActingCaller {
+async function principalOf(context: ActingContext): Promise<ActingCaller> {
   const authority = context.actor?.authority;
   if (authority?.kind === 'service' && authority.role !== 'owner') {
     return {
@@ -96,38 +101,37 @@ function principalOf(context: ActingContext): ActingCaller {
       ...pluginOrigin(context),
     };
   }
-  return clientCaller(context, clientFor(context, undefined));
+  return clientCaller(context, await clientFor(context, undefined));
 }
 
-function admit(context: ActingContext, as: ActingAs): ActingCaller {
-  const principal = principalOf(context);
+async function admit(context: ActingContext, as: ActingAs): Promise<ActingCaller> {
+  const principal = await principalOf(context);
   if (roleOfCaller(principal) === 'owner') return principal;
-  const own = context.actor?.profileId ?? profileIdOf(context.store, principal);
+  const own = context.actor?.profileId ?? profileIdOf(principal);
   const ownClient = principal.kind === 'client' ? principal.client.id : undefined;
   if ((as.personId ?? own) !== own || (as.clientId ?? ownClient) !== ownClient)
     throw new ToolError('Only an owner may act for another person or app.', 'forbidden');
   return principal;
 }
 
-export function profileFor(context: ActingContext, as: ActingAs): string {
-  admit(context, as);
+export async function profileFor(context: ActingContext, as: ActingAs): Promise<string> {
+  await admit(context, as);
   const personId = as.personId ?? context.actor?.profileId;
-  if (personId !== undefined) {
-    return context.store.profiles.byId(personId).id;
-  }
-  const clientId = as.clientId ?? context.actor?.clientId ?? null;
-  return clientId === null
-    ? context.store.personAccess.homeOwner()
-    : context.store.profiles.activeOf(clientId).id;
+  return context.store.host.read(
+    'mcpActingProfile',
+    personId !== undefined
+      ? { kind: 'person', personId }
+      : { kind: 'client', clientId: as.clientId ?? context.actor?.clientId ?? null },
+  );
 }
 
-export function callerFor(context: ActingContext, as: ActingAs = {}): Caller {
-  const principal = admit(context, as);
+export async function callerFor(context: ActingContext, as: ActingAs = {}): Promise<Caller> {
+  const principal = await admit(context, as);
   if (principal.kind === 'service') return principal;
-  const acting = clientCaller(context, clientFor(context, as.clientId));
+  const acting = clientCaller(context, await clientFor(context, as.clientId));
   return as.personId === undefined && as.clientId !== undefined && context.actor === null
     ? acting
-    : { ...acting, profileId: profileFor(context, as) };
+    : { ...acting, profileId: await profileFor(context, as) };
 }
 
 function ownerCaller(caller: Caller): boolean {
@@ -136,25 +140,29 @@ function ownerCaller(caller: Caller): boolean {
   );
 }
 
-export function operate(
+export async function operate(
   context: OperatingContext,
   name: EndpointName,
   input: OperationInput,
   as: ActingAs = {},
 ): Promise<unknown> {
-  const caller = callerFor(context, as);
+  const caller = await callerFor(context, as);
   if (!ownerCaller(caller) && API_ENDPOINTS[name].access === 'owner') {
     throw new ToolError(`Only an owner may use ${name}`, 'forbidden');
   }
   admitArea(context, name);
-  refuseLocked(context, caller, input);
+  await refuseLocked(context, caller, input);
   return context.operations.run(name, caller, input);
 }
 
-function refuseLocked(context: OperatingContext, caller: Caller, input: OperationInput): void {
+async function refuseLocked(
+  context: OperatingContext,
+  caller: Caller,
+  input: OperationInput,
+): Promise<void> {
   const itemId = input.params?.['itemId'];
   if (itemId === undefined) return;
-  const item = context.store.driveItems.find(itemId, profileIdOf(context.store, caller));
+  const item = await context.store.host.call('driveItems', 'find', itemId, profileIdOf(caller));
   if (item !== undefined && inLockedFolder(item)) {
     throw new ToolError('There is no such file or folder for this caller.', 'not_found');
   }

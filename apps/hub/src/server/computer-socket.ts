@@ -89,7 +89,7 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
     });
   }
 
-  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+  async upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
     const offered = (request.headers['sec-websocket-protocol'] ?? '')
       .split(',')
       .map((value) => value.trim());
@@ -98,7 +98,7 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
         'invalid_request',
         `Open this socket with the ${this.protocol} subprotocol.`,
       );
-    const identity = this.authenticated(request);
+    const identity = await this.authenticated(request);
     this.server.handleUpgrade(request, socket, head, (ws) => {
       this.accept(ws, identity, request);
     });
@@ -174,9 +174,9 @@ export abstract class ComputerSockets<C extends ComputerConnection> {
     });
   }
 
-  private authenticated(request: IncomingMessage): ComputerNodeRow {
+  private async authenticated(request: IncomingMessage): Promise<ComputerNodeRow> {
     try {
-      return this.access.authenticate(bearerOf(request));
+      return await this.access.authenticate(bearerOf(request));
     } catch (cause) {
       this.log.warn('computer.auth_failed', {
         protocol: this.protocol,

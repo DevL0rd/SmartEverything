@@ -116,10 +116,11 @@ function edit(
   );
 }
 
-function taskCollection(store: Store, profileId: string): string {
-  const preferred =
-    store.plannerPreferences.find(profileId)?.preferences.tasks.default_collection_id;
-  const collections = store.plannerCollections.list(profileId);
+async function taskCollection(store: Pick<Store, 'host'>, profileId: string): Promise<string> {
+  const { host } = store;
+  const preferred = (await host.call('plannerPreferences', 'find', profileId))?.preferences.tasks
+    .default_collection_id;
+  const collections = await host.call('plannerCollections', 'list', profileId);
   const chosen =
     collections.find((collection) => collection.id === preferred) ??
     collections.find((collection) => collection.kind === 'list');
@@ -135,7 +136,7 @@ function addTask(ports: PlannerEffectPorts): EffectHandler {
     try {
       const profileId = profileOf(ports, ask.person);
       const item = {
-        collection_id: taskCollection(ports.store, profileId),
+        collection_id: await taskCollection(ports.store, profileId),
         kind: 'task',
         title: ask.title,
         ...(ask.notes === undefined ? {} : { notes: ask.notes }),
@@ -155,16 +156,16 @@ function addTask(ports: PlannerEffectPorts): EffectHandler {
   };
 }
 
-function dueNow(
+async function dueNow(
   ports: PlannerEffectPorts,
   item: PlannerItemRow,
-): PlannerOccurrenceView | undefined {
+): Promise<PlannerOccurrenceView | undefined> {
   const now = Temporal.Instant.fromEpochMilliseconds(ports.clock.now().getTime());
   const first = item.start ?? item.due_at ?? item.created_at;
   const from = Temporal.Instant.from(first).epochMilliseconds;
   const views = expandOccurrences({
     items: [item],
-    stored: ports.store.plannerOccurrences.forItems([item.id]),
+    stored: await ports.store.host.call('plannerOccurrences', 'forItems', [item.id]),
     window: {
       from: Temporal.Instant.fromEpochMilliseconds(Math.min(from, now.epochMilliseconds)),
       to: now,
@@ -175,9 +176,12 @@ function dueNow(
   return views.findLast((view) => view.status === 'open' || view.status === 'missed');
 }
 
-function occurrenceKeyOf(ports: PlannerEffectPorts, item: PlannerItemRow): string | undefined {
+async function occurrenceKeyOf(
+  ports: PlannerEffectPorts,
+  item: PlannerItemRow,
+): Promise<string | undefined> {
   if (item.rrule === null) return PLANNER_OCCURRENCE_SINGLE;
-  return dueNow(ports, item)?.occurrence_key;
+  return (await dueNow(ports, item))?.occurrence_key;
 }
 
 function completeTask(ports: PlannerEffectPorts): EffectHandler {
@@ -186,9 +190,14 @@ function completeTask(ports: PlannerEffectPorts): EffectHandler {
     if (!checked.ok) return checked;
     try {
       const profileId = profileOf(ports, checked.value.person);
-      const item = ports.store.plannerItems.find(checked.value.itemId, profileId);
+      const item = await ports.store.host.call(
+        'plannerItems',
+        'find',
+        checked.value.itemId,
+        profileId,
+      );
       if (item === undefined) throw new ApiError('not_found', 'That task is not in the planner.');
-      const occurrenceKey = occurrenceKeyOf(ports, item);
+      const occurrenceKey = await occurrenceKeyOf(ports, item);
       if (occurrenceKey === undefined) return { ok: true, value: outputs({ ok: false }) };
       const done = OCCURRENCE.parse(
         await edit(ports, run, profileId, {
@@ -272,7 +281,7 @@ function setAlarm(ports: PlannerEffectPorts): EffectHandler {
       const created = ALARM.parse(
         await edit(ports, run, profileId, { action: 'alarm_set', alarm: alarmOf(ports, ask) }),
       );
-      const row = ports.store.plannerAlarms.byId(created.id, profileId);
+      const row = await ports.store.host.call('plannerAlarms', 'byId', created.id, profileId);
       return { ok: true, value: outputs({ alarmId: row.id, nextAt: nextAt(ports, row) }) };
     } catch (cause) {
       return effectFailure(cause);

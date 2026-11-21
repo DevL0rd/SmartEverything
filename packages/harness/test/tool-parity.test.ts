@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { HarnessAuthority } from '../src/host/server-policy';
+import type { HarnessAuthority } from '../src/host/authority';
 import { bootRuntime, spoken, turnsFinished } from './support/runtime';
 import type { RuntimeFixture } from './support/runtime';
 

@@ -1,5 +1,5 @@
 import type { CommandRow, JsonValue } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeSetups, setup } from './support/executor-setup';
 import { captureLogs } from './support/logs';
 
@@ -209,8 +209,9 @@ describe('CommandExecutor on one control', () => {
       commands.add({ device_id: lampId, capability: 'power', value: false }),
       true,
     );
-    await tick();
-    expect(adapter.executed.map((command) => command.value)).toStrictEqual([true]);
+    await vi.waitFor(() => {
+      expect(adapter.executed.map((command) => command.value)).toStrictEqual([true]);
+    });
     adapter.release();
     await tick();
     adapter.release();

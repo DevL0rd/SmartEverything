@@ -11,7 +11,7 @@ import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-14T00:00:00.000Z';
 
@@ -85,7 +85,7 @@ beforeEach(() => {
   );
   const context = new StoreContext(sql, new ChangeFeed(log), () => new Date(NOW));
   owner = new ProfilesRepository(context).create({ name: 'Robin' }).id;
-  new DriveRootsRepository(context, drivePathOf).insert(sharedDriveRoot(ROOT));
+  new DriveRootsRepository(context, driveFolders).insert(sharedDriveRoot(ROOT));
   insert('devices', {
     id: DEVICE,
     provider: 'local',

@@ -1,3 +1,4 @@
+import { inlineMetrics } from '../../../src/node/metrics/node-metrics';
 import {
   NODE_FRAME,
   type ComputerFeature,
@@ -83,7 +84,7 @@ function rig(host: 'hosting' | 'none' = 'hosting', fakes: EarRig = earRig()): Ri
       scoreFailed,
     );
   const node = new ComputerNode({
-    collector: COLLECTOR,
+    metrics: inlineMetrics(COLLECTOR),
     controls: inertControls(),
     link: links.node,
     now: (): Date => new Date(),

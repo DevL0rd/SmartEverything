@@ -47,11 +47,11 @@ export function nativeHistoryPrefix(
   return [...history, ...replacementEvents(history, removed)];
 }
 
-export function rewriteNativeHistory(
+export async function rewriteNativeHistory(
   service: HarnessService,
   chat: AiChatRow,
   rows: readonly AssistantMessageRow[],
-): void {
+): Promise<void> {
   if (chat.engine.kind !== 'dsh' || chat.engine.session_id === null) return;
   const id = chat.engine.session_id;
   const metadata = service.store.dshSessions.stat(id, chat.profile_id);
@@ -65,7 +65,7 @@ export function rewriteNativeHistory(
   if (removed.size === priorRemoved) return;
   const replacements = replacementEvents(history, removed);
   if (replacements.length === 0) return;
-  service.store.dshSessions.rewrite(id, chat.profile_id, replacements);
+  await service.store.live.dshSessions.rewrite(id, chat.profile_id, replacements);
 }
 function nativeHistory(
   service: HarnessService,

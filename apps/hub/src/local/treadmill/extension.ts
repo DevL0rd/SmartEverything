@@ -6,15 +6,15 @@ import {
   type TreadmillLiveNotice,
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
+import type { DeviceDriver } from '../device-driver';
 import type { ExtensionContext, RunningExtension, ServerExtension } from '../../extensions';
 import { scopesOfClient } from '../../server/person-scope';
 import { registerTreadmillAutomation } from './automation';
 import { issueThroughHub, treadmillAutomationRuntime } from './automation-tools';
 import { treadmillDriver } from './commands';
 import { entrySettingsOf } from './config';
-import { closeOrphans } from './keeper';
-import { treadmillOf } from './known';
-import { liveFrameOf, mayShowBody, noticeOf, watchHeartRate } from './live';
+import type { Fleet } from './fleet';
+import { liveFrameOf, mayShowBody, noticeOf } from './live';
 import { controlOf } from './plan';
 import { treadmillRoutes } from './routes';
 import { BeltStopFailedError, stopBelt, type StopIo } from './stop';
@@ -28,20 +28,24 @@ function keyframeOf(
 ): TreadmillLiveNotice {
   const { store } = context;
   const { device, client } = target;
-  const walker = wiring.ingest.walkerFacts(device);
+  const state = wiring.fleet.of(device);
+  const { walker } = state;
   const profileId = store.profiles.activeOf(client.id).id;
-  const at = now();
   const frame = liveFrameOf(
     {
-      state: wiring.fleet.of(device),
-      at: at.toISOString(),
+      state,
+      at: now().toISOString(),
       walker,
-      heartRate: watchHeartRate(store, walker.profileId, at),
-      scale: entrySettingsOf(wiring.fleet.of(device).entry).inclineScale,
+      heartRate: walker.heartRate,
+      scale: entrySettingsOf(state.entry).inclineScale,
     },
     mayShowBody(client, profileId, walker.profileId),
   );
   return noticeOf(device, frame);
+}
+
+function treadmillOf(fleet: Fleet, deviceId: string): DeviceRow | null {
+  return fleet.device(deviceId) ?? null;
 }
 
 function watchLive(context: ExtensionContext, wiring: Wiring, now: () => Date): () => void {
@@ -49,12 +53,12 @@ function watchLive(context: ExtensionContext, wiring: Wiring, now: () => Date): 
   return context.live.watches.attach({
     viewers: context.hub.drivers.viewers,
     allowed: (client, deviceId) => {
-      const device = treadmillOf(context.store, deviceId);
+      const device = treadmillOf(wiring.fleet, deviceId);
       const scope = scopesOfClient(store, client)?.devices ?? null;
       return device !== null && (scope === null || deviceInScope(scope, device));
     },
     keyframe: (deviceId, client) => {
-      const device = treadmillOf(context.store, deviceId);
+      const device = treadmillOf(wiring.fleet, deviceId);
       return device === null ? null : keyframeOf(context, wiring, { device, client }, now);
     },
   });
@@ -127,33 +131,40 @@ function afterReport(
   };
 }
 
-export function treadmillsExtension(now: () => Date): ServerExtension {
-  return (context): Promise<RunningExtension> => {
-    const wiring = buildWiring(context, now);
-    const detach = watchLive(context, wiring, now);
-    const driver = treadmillDriver(wiring.commands, (driverContext) => {
-      wiring.slot.set(driverContext.sink);
-      for (const session of closeOrphans(context.store, context.log)) {
-        wiring.health.save(session);
-      }
-      return Promise.resolve(() => {
-        wiring.slot.set(null);
-        return Promise.resolve();
+function driverStart(context: ExtensionContext, wiring: Wiring): DeviceDriver['start'] {
+  return async (driverContext) => {
+    wiring.slot.set(driverContext.sink);
+    for (const closed of await context.store.host.write('treadmillCloseOrphans', null)) {
+      context.log.info('treadmill.orphan_closed', {
+        session: closed.session.id,
+        kept: closed.kept,
       });
-    });
+    }
+    return () => {
+      wiring.slot.set(null);
+      return Promise.resolve();
+    };
+  };
+}
+
+export function treadmillsExtension(now: () => Date): ServerExtension {
+  return async (context): Promise<RunningExtension> => {
+    const wiring = buildWiring(context, now);
+    const unfollow = await wiring.fleet.start();
+    const detach = watchLive(context, wiring, now);
+    const driver = treadmillDriver(wiring.commands, driverStart(context, wiring));
     const unregisterKinds = registerTreadmillAutomation(
       context.hub.automationKinds,
       treadmillAutomationRuntime({
-        find: (deviceId) => treadmillOf(context.store, deviceId),
+        find: (deviceId) => wiring.fleet.roster.member(deviceId),
         issue: issueThroughHub({ store: context.store, submit: context.hub.submit }),
       }),
     );
     const unregister = context.hub.drivers.registry.register(driver);
-    return Promise.resolve({
+    return {
       endpoints: treadmillRoutes({
         store: context.store,
         fleet: wiring.fleet,
-        local: context.hub.local,
         bridges: wiring.bridges,
         ingest: wiring.ingest,
         broker: wiring.broker,
@@ -164,12 +175,13 @@ export function treadmillsExtension(now: () => Date): ServerExtension {
       }),
       routes: [],
       stop: (): Promise<void> => {
+        unfollow();
         detach();
         unregister();
         unregisterKinds();
         wiring.broker.stop();
         return Promise.resolve();
       },
-    });
+    };
   };
 }

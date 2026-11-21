@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ChatDirectory } from '../../src/assistant/chat-directory';
 import { ConversationLog } from '../../src/assistant/conversation-log';
-import { AssistantDelivery, type Routing } from '../../src/assistant/delivery';
+import {
+  AssistantDelivery,
+  hostedDeliveryEvents,
+  type Routing,
+} from '../../src/assistant/delivery';
 import { AssistantFiles } from '../../src/assistant/files';
 import { completionFailure } from '../../src/assistant/engines/dsh/projector-completion';
 import {
@@ -47,13 +51,14 @@ beforeEach(async () => {
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now,
   });
   const chats = new ChatDirectory(store, files);
   chatId = chats.create({ profileId, role: 'owner' }, { engine: TEST_ENGINE }).id;
   log = new ConversationLog(store);
   delivery = new CountingDelivery({
-    events: store.assistantEvents,
+    events: hostedDeliveryEvents(store),
     route: (): Routing => ({ kind: 'blocked', reason: 'not routed in this test' }),
     delivered: (): void => undefined,
     failed: (): void => undefined,
@@ -76,19 +81,26 @@ afterEach(async () => {
   await opened.close();
 });
 
-function interruptedTurn(code: 'stopped' | 'interrupted' | 'unknown', reason: string): string {
+async function interruptedTurn(
+  code: 'stopped' | 'interrupted' | 'unknown',
+  reason: string,
+): Promise<string> {
   const { store } = opened;
-  const asked = requests.send(
+  const asked = await requests.send(
     sender,
     { text: 'Tidy the lights', attachments: [] },
     store.aiChats.chat(chatId),
   );
-  const reply = log.startReply(store.aiChats.chat(chatId), asked.id, MODEL);
-  log.failReply(reply.id, { text: 'Starting with the lounge.', reason, code }, [
+  const reply = await log.startReply({
+    chat: store.aiChats.chat(chatId),
+    replyTo: asked.id,
+    model: MODEL,
+  });
+  await log.failReply(reply.id, { text: 'Starting with the lounge.', reason, code }, [
     { title: 'Read devices', outcome: 'done' },
     { title: 'Control devices', outcome: 'done' },
   ]);
-  log.failedMessage(asked.id, reason, code);
+  await log.failedMessage(asked.id, reason, code);
   return asked.id;
 }
 
@@ -121,23 +133,23 @@ describe('how a native turn ending is classed', () => {
 });
 
 describe('the interruption note', () => {
-  it('names how the last turn ended and what it had finished', () => {
-    interruptedTurn('stopped', STOPPED_BY_USER);
+  it('names how the last turn ended and what it had finished', async () => {
+    await interruptedTurn('stopped', STOPPED_BY_USER);
     const note = interruptionNote(opened.store, chatId);
     expect(note).toContain('Your previous turn was interrupted (stopped by the user).');
     expect(note).toContain('Carry on with the work from where you left off.');
     expect(note).toContain('Read devices; Control devices');
   });
 
-  it('keeps telling the AI while the continuing reply is still working', () => {
-    interruptedTurn('interrupted', HUB_RESTARTED);
-    log.startReply(opened.store.aiChats.chat(chatId), null, MODEL);
+  it('keeps telling the AI while the continuing reply is still working', async () => {
+    await interruptedTurn('interrupted', HUB_RESTARTED);
+    await log.startReply({ chat: opened.store.aiChats.chat(chatId), replyTo: null, model: MODEL });
     expect(interruptionNote(opened.store, chatId)).toContain('the hub restarted');
   });
 
-  it('is gone once the person writes something new', () => {
-    interruptedTurn('stopped', STOPPED_BY_USER);
-    requests.send(
+  it('is gone once the person writes something new', async () => {
+    await interruptedTurn('stopped', STOPPED_BY_USER);
+    await requests.send(
       sender,
       { text: 'Never mind', attachments: [] },
       opened.store.aiChats.chat(chatId),
@@ -145,22 +157,26 @@ describe('the interruption note', () => {
     expect(interruptionNote(opened.store, chatId)).toBeNull();
   });
 
-  it('is gone once a later reply was answered', () => {
-    interruptedTurn('stopped', STOPPED_BY_USER);
-    const next = log.startReply(opened.store.aiChats.chat(chatId), null, MODEL);
-    log.finishReply(next.id, 'Done.', { model: MODEL, steps: [], sources: [] });
+  it('is gone once a later reply was answered', async () => {
+    await interruptedTurn('stopped', STOPPED_BY_USER);
+    const next = await log.startReply({
+      chat: opened.store.aiChats.chat(chatId),
+      replyTo: null,
+      model: MODEL,
+    });
+    await log.finishReply(next.id, 'Done.', { model: MODEL, steps: [], sources: [] });
     expect(interruptionNote(opened.store, chatId)).toBeNull();
   });
 
-  it('stays out of the way of an ordinary failure', () => {
-    interruptedTurn('unknown', 'The model failed.');
+  it('stays out of the way of an ordinary failure', async () => {
+    await interruptedTurn('unknown', 'The model failed.');
     expect(interruptionNote(opened.store, chatId)).toBeNull();
   });
 });
 
 describe('continuing an interrupted turn', () => {
   it('queues the continue as a SmartEverything note, not as the person, and keeps the partial reply', async () => {
-    const askedId = interruptedTurn('stopped', STOPPED_BY_USER);
+    const askedId = await interruptedTurn('stopped', STOPPED_BY_USER);
     const { store } = opened;
     const replies = store.assistantChat.repliesTo(askedId).map((row) => row.id);
     const messages = store.assistantChat.since(chatId, null).length;
@@ -187,7 +203,7 @@ describe('continuing an interrupted turn', () => {
   });
 
   it('does nothing the second time it is pressed', async () => {
-    const askedId = interruptedTurn('interrupted', HUB_RESTARTED);
+    const askedId = await interruptedTurn('interrupted', HUB_RESTARTED);
     const { store } = opened;
     await requests.retry(store.aiChats.chat(chatId), askedId, 'failed', sender.clientId);
     const before = delivery.added_count;
@@ -198,7 +214,7 @@ describe('continuing an interrupted turn', () => {
   });
 
   it('still tells the AI what was done once the continuation is under way', async () => {
-    const askedId = interruptedTurn('interrupted', HUB_RESTARTED);
+    const askedId = await interruptedTurn('interrupted', HUB_RESTARTED);
     const { store } = opened;
     await requests.retry(store.aiChats.chat(chatId), askedId, 'failed', sender.clientId);
     expect(interruptionNote(store, chatId)).toContain('Read devices; Control devices');
@@ -207,10 +223,14 @@ describe('continuing an interrupted turn', () => {
 
 describe('retrying a failed turn', () => {
   it('deletes nothing, does not re-queue the request and adds exactly one short note', async () => {
-    const askedId = interruptedTurn('unknown', 'The model failed.');
+    const askedId = await interruptedTurn('unknown', 'The model failed.');
     const { store } = opened;
-    const empty = log.startReply(store.aiChats.chat(chatId), askedId, MODEL);
-    log.failReply(empty.id, { text: '', reason: 'x', code: 'unknown' }, []);
+    const empty = await log.startReply({
+      chat: store.aiChats.chat(chatId),
+      replyTo: askedId,
+      model: MODEL,
+    });
+    await log.failReply(empty.id, { text: '', reason: 'x', code: 'unknown' }, []);
     const replies = store.assistantChat.repliesTo(askedId).map((row) => row.id);
     const messages = store.assistantChat.since(chatId, null).length;
     await requests.retry(store.aiChats.chat(chatId), askedId, 'failed', sender.clientId);
@@ -224,10 +244,10 @@ describe('retrying a failed turn', () => {
 });
 
 describe('a hub restart', () => {
-  it('fails the working reply and the delivered request as interrupted and leaves settled ones', () => {
+  it('fails the working reply and the delivered request as interrupted and leaves settled ones', async () => {
     const { store } = opened;
     const logs = captureLogs();
-    const asked = requests.send(
+    const asked = await requests.send(
       sender,
       { text: 'Tidy the lights', attachments: [] },
       store.aiChats.chat(chatId),
@@ -235,10 +255,18 @@ describe('a hub restart', () => {
     const event = store.assistantEvents.pending().find((row) => row.message_id === asked.id);
     if (event === undefined) throw new Error('the request has no event');
     store.assistantEvents.mark(event.id, 'delivered_at');
-    const working = log.startReply(store.aiChats.chat(chatId), asked.id, MODEL);
-    const settled = log.startReply(store.aiChats.chat(chatId), null, MODEL);
-    log.finishReply(settled.id, 'Done.', { model: MODEL, steps: [], sources: [] });
-    log.interrupted(HUB_RESTARTED);
+    const working = await log.startReply({
+      chat: store.aiChats.chat(chatId),
+      replyTo: asked.id,
+      model: MODEL,
+    });
+    const settled = await log.startReply({
+      chat: store.aiChats.chat(chatId),
+      replyTo: null,
+      model: MODEL,
+    });
+    await log.finishReply(settled.id, 'Done.', { model: MODEL, steps: [], sources: [] });
+    await log.interrupted(HUB_RESTARTED);
     expect(store.assistantChat.message(working.id)).toMatchObject({
       state: 'failed',
       reason: HUB_RESTARTED,

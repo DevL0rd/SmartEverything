@@ -68,13 +68,16 @@ export class TurnSessions {
   async open(request: TurnRequest): Promise<TurnSession> {
     const { store, provider, responder, tools, memory, prices, now, log } = this.options;
     const id = randomUUID();
+    const caller = await hostedCallerOf(store, request.caller);
+    const { tools: chatTools } = await store.host.call('aiChats', 'chat', request.chatId);
     const session: TurnSession = new TurnSession({
       id,
       kit: { store, responder, tools, memory, now, prices, log },
       provider,
       who: {
-        caller: hostedCallerOf(store, request.caller),
+        caller,
         chatId: request.chatId,
+        chatTools,
         place: request.place,
         speaking: request.speaking,
         canSee: false,

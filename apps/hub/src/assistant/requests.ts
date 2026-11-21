@@ -1,13 +1,12 @@
-import { assertOrdinaryMessageKey } from './delegation/helper-dialogue';
 import { ReferenceSubmissions } from './reference-submission';
 import type { Delegation } from './delegation/delegation';
 import { MessageReplay } from './message-replay';
 import { admitChatExecution } from './native-helpers';
-import { ownedUploads, queueEvent } from './request-events';
+import { queueEvent, queuedLog } from './request-events';
 import type { ReferenceService } from '../references/service';
 import type { EngineRegistry } from './engines/registry';
 import { outputAuthority } from './turn-authority';
-import { eventAuthority } from './turn-authority';
+import { authorityScope, eventAuthority } from './turn-authority';
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@smarteverything/logging';
 import {
@@ -20,13 +19,14 @@ import {
   type AssistantPost,
   type MessageOrigin,
 } from '@smarteverything/domain';
-import type { StoredAttachment } from '../store/repositories/assistant-chat';
 import type { ConversationAuthority } from '../harness/authority-contract';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { Store } from '../store/store';
 import type { ChatDirectory, ChatOwner } from './chat-directory';
-import type { ConversationLog } from './conversation-log';
+import { personMessage, type ConversationLog } from './conversation-log';
+import type { SentMessage } from './store-units';
 import { quoteForChat } from './message-quote';
+import type { SendInputs } from './send-inputs';
 import type { AssistantDelivery } from './delivery';
 import type { AssistantFiles } from './files';
 import type { VoiceResultHandler, VoiceTask } from './voice-link';
@@ -83,27 +83,27 @@ export class AssistantRequests {
     });
   }
 
-  send(sender: Sender, body: AssistantNewMessage, chat: AiChatRow): AssistantMessageRow {
+  async send(
+    sender: Sender,
+    body: AssistantNewMessage,
+    chat: AiChatRow,
+  ): Promise<AssistantMessageRow> {
     const { store } = this.deps;
-    assertOrdinaryMessageKey(this.deps.store, chat, body.client_message_id);
-    const sent =
-      body.client_message_id === undefined
-        ? undefined
-        : store.assistantSearch.byClientMessageId(chat.id, body.client_message_id);
-    if (sent !== undefined) {
-      log.debug('request.duplicate_ignored', {
-        chatId: chat.id,
-        messageId: sent.id,
-        profileId: sender.profileId,
-        clientId: sender.clientId,
-      });
-      return sent;
-    }
+    const inputs = await store.host.read('assistantSendInputs', {
+      chat,
+      profileId: sender.profileId,
+      clientMessageId: body.client_message_id,
+      quoteMessageId: body.quote_message_id,
+      attachments: body.attachments,
+    });
+    if (inputs.known !== null) return this.duplicate(sender, inputs.known);
     admitChatExecution(chat);
-    const row = store.write(() => this.accept(sender, body, chat));
+    const sent = await this.accept(sender, body, chat, inputs);
+    if (sent.duplicate) return this.duplicate(sender, sent.row);
+    queuedLog(sent.event, 'derived');
     log.debug('request.accepted', {
       chatId: chat.id,
-      messageId: row.id,
+      messageId: sent.row.id,
       profileId: sender.profileId,
       clientId: sender.clientId,
       textLength: body.text.length,
@@ -111,34 +111,56 @@ export class AssistantRequests {
       references: body.references?.length ?? 0,
     });
     this.deps.delivery().added();
-    return row;
+    return sent.row;
   }
 
-  private accept(sender: Sender, body: AssistantNewMessage, chat: AiChatRow): AssistantMessageRow {
+  private duplicate(sender: Sender, sent: AssistantMessageRow): AssistantMessageRow {
+    log.debug('request.duplicate_ignored', {
+      chatId: sent.chat_id,
+      messageId: sent.id,
+      profileId: sender.profileId,
+      clientId: sender.clientId,
+    });
+    return sent;
+  }
+
+  private accept(
+    sender: Sender,
+    body: AssistantNewMessage,
+    chat: AiChatRow,
+    inputs: Extract<SendInputs, { known: null }>,
+  ): Promise<SentMessage> {
     const { store } = this.deps;
-    const files = this.ownFiles(sender.profileId, body.attachments);
-    const row = this.deps.conversation.person({
+    const { files } = inputs;
+    const key = body.client_message_id ?? null;
+    const row = personMessage({
       chat,
       clientId: sender.clientId,
-      author: store.profiles.byId(sender.profileId).name,
+      author: inputs.author,
       text: body.text,
       files,
       ...(body.references === undefined ? {} : { references: body.references }),
-      quote: quoteForChat(store, chat, body.quote_message_id),
+      quote: inputs.quote,
       origin: { source: 'app', plugin_id: null, device_id: null, name: null },
       ...(body.client_message_id === undefined ? {} : { clientMessageId: body.client_message_id }),
     });
-    this.queued({
-      id: randomUUID(),
-      kind: 'chat',
-      chat_id: chat.id,
-      message_id: row.id,
-      profile_id: sender.profileId,
-      client_id: sender.clientId,
-      text: body.text,
-    });
-    store.aiChats.update(chat.id, { read: true });
-    return row;
+    store.live.chatWork.holds.assertQueued(chat.id);
+    const ids = files.map((file) => file.id);
+    return store.live.attachments.attach(ids, () =>
+      store.host.write('assistantMessageSend', {
+        message: { row, files: ids },
+        clientMessageId: key,
+        event: {
+          id: randomUUID(),
+          kind: 'chat',
+          chat_id: chat.id,
+          profile_id: sender.profileId,
+          client_id: sender.clientId,
+          text: body.text,
+        },
+        scope: authorityScope(),
+      }),
+    );
   }
 
   retry(
@@ -224,6 +246,7 @@ export class AssistantRequests {
     const added = this.deps.store.write(() => {
       if (this.deps.store.assistantEvents.find(id) !== undefined) return false;
       admitChatExecution(this.deps.store.aiChats.chat(scope.chatId));
+      this.deps.store.live.chatWork.holds.assertQueued(scope.chatId);
       const event = this.deps.store.assistantEvents.add({
         id,
         kind: 'wake',
@@ -287,7 +310,7 @@ export class AssistantRequests {
         }),
       ),
     );
-    const row = this.deps.conversation.person({
+    const row = personMessage({
       chat: turn.chat,
       clientId: null,
       author: turn.author.slice(0, 120),
@@ -295,18 +318,26 @@ export class AssistantRequests {
       files,
       origin: turn.origin,
     });
-    const eventId = randomUUID();
-    this.queued({
-      id: eventId,
-      kind: 'plugin',
-      chat_id: turn.chat.id,
-      message_id: row.id,
-      profile_id: turn.chat.profile_id,
-      client_id: null,
-      text: turn.engineText,
-    });
+    const { store } = this.deps;
+    store.live.chatWork.holds.assertQueued(turn.chat.id);
+    const ids = files.map((file) => file.id);
+    const added = await store.live.attachments.attach(ids, () =>
+      store.host.write('assistantMessageEvent', {
+        message: { row, files: ids },
+        event: {
+          id: randomUUID(),
+          kind: 'plugin',
+          chat_id: turn.chat.id,
+          profile_id: turn.chat.profile_id,
+          client_id: null,
+          text: turn.engineText,
+        },
+        scope: authorityScope(),
+      }),
+    );
+    queuedLog(added.event, 'derived');
     this.deps.delivery().added();
-    return { eventId, messageId: row.id };
+    return { eventId: added.event.id, messageId: added.row.id };
   }
 
   finished(event: StoredEvent, text: string, ok: boolean): void {
@@ -331,8 +362,5 @@ export class AssistantRequests {
     source?: ConversationAuthority,
   ): StoredEvent {
     return queueEvent(this.deps.store, input, source);
-  }
-  private ownFiles(profileId: string, ids: readonly string[]): StoredAttachment[] {
-    return ownedUploads(this.deps.store, profileId, ids);
   }
 }

@@ -14,7 +14,7 @@ export function weatherOutputName(metric: WeatherMetric): string {
 export function weatherHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
     'weather.read': (): ReadResult => {
-      const { forecast } = deps.store.weather.read();
+      const { forecast } = deps.world.weather.read();
       if (forecast === null) return outputsOf({});
       const metrics = WEATHER_METRICS.map(
         (metric) => [weatherOutputName(metric), weatherMetricValue(forecast, metric)] as const,

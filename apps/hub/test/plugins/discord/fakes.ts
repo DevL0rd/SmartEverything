@@ -122,7 +122,7 @@ export function peopleOf(
     find: (externalId) => everyone.find((one) => one.external_id === externalId) ?? null,
     list: () => everyone,
     requesterOf: (externalId) =>
-      everyone.find((one) => one.external_id === externalId)?.status ?? 'unlisted',
+      Promise.resolve(everyone.find((one) => one.external_id === externalId)?.status ?? 'unlisted'),
     watch: () => nothing,
   };
 }

@@ -15,17 +15,14 @@ import type { LocalDevices } from '../local-devices';
 import type { WatchBridges } from '../watch-bridge';
 import type { TreadmillActionBroker } from './broker';
 import { entrySettingsOf } from './config';
-import { recomputeSessions } from './figures';
 import type { Fleet } from './fleet';
-import type { TreadmillHealth } from './health';
 import type { Viewer } from './views';
 
 export interface ActDeps {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host'>;
   readonly fleet: Fleet;
   readonly local: Pick<LocalDevices, 'observe'>;
   readonly bridges: Pick<WatchBridges, 'takeOver'>;
-  readonly health: TreadmillHealth;
   readonly broker: Pick<TreadmillActionBroker, 'run'>;
   readonly holderOf: (device: DeviceRow) => string | null;
   readonly now: () => Date;
@@ -45,14 +42,19 @@ function ownerOnly(actor: Actor, what: string): void {
   }
 }
 
-function saveSettings(deps: ActDeps, device: DeviceRow, settings: TreadmillSettings): void {
+async function saveSettings(
+  deps: ActDeps,
+  device: DeviceRow,
+  settings: TreadmillSettings,
+): Promise<void> {
   const state = deps.fleet.of(device);
   const { entry } = state;
-  deps.store.localDevices.updateConfig(entry.externalId, {
-    ...entry.config,
-    settings: JSON_VALUE.parse(TREADMILL_SETTINGS.parse(settings)),
-  });
-  state.useEntry(deps.store.localDevices.byExternalId(entry.externalId));
+  state.useEntry(
+    await deps.store.host.write('localConfig', {
+      externalId: entry.externalId,
+      config: { ...entry.config, settings: JSON_VALUE.parse(TREADMILL_SETTINGS.parse(settings)) },
+    }),
+  );
 }
 
 function mergedPolicy(
@@ -71,15 +73,15 @@ function mergedPolicy(
 
 type ConfigureChange = Extract<TreadmillAction, { action: 'configure' }>['settings'];
 
-function configure(
+async function configure(
   deps: ActDeps,
   device: DeviceRow,
   actor: Actor,
   change: ConfigureChange,
-): TreadmillActionResult {
+): Promise<TreadmillActionResult> {
   ownerOnly(actor, 'change the treadmill settings');
   const before = entrySettingsOf(deps.fleet.of(device).entry);
-  saveSettings(deps, device, {
+  await saveSettings(deps, device, {
     ...before,
     gradePercent: change.gradePercent ?? before.gradePercent,
     inclineScale: change.inclineScale ?? before.inclineScale,
@@ -91,31 +93,30 @@ function configure(
   });
   if (change.inclineScale !== undefined && change.inclineScale !== before.inclineScale) {
     const state = deps.fleet.of(device);
-    const updated = recomputeSessions(
-      deps,
-      device.id,
-      entrySettingsOf(state.entry),
-      state.runtime.identity.inclineMaxPercent !== null,
-    );
-    deps.log.info('treadmill.sessions_recomputed', { device: device.id, sessions: updated.length });
+    const updated = await deps.store.host.write('treadmillRecompute', {
+      deviceId: device.id,
+      settings: entrySettingsOf(state.entry),
+      hasIncline: state.runtime.identity.inclineMaxPercent !== null,
+    });
+    deps.log.info('treadmill.sessions_recomputed', { device: device.id, sessions: updated });
   }
   deps.log.info('treadmill.settings_changed', { device: device.id, by: actor.clientId });
   return OK;
 }
 
-function setGoal(
+async function setGoal(
   deps: ActDeps,
   device: DeviceRow,
   actor: Actor,
   request: Extract<TreadmillAction, { action: 'set_goal' }>,
-): TreadmillActionResult {
+): Promise<TreadmillActionResult> {
   const personId = request.personId ?? actor.profileId;
   if (personId !== actor.profileId) {
     ownerOnly(actor, 'set another person’s treadmill goals');
   }
   const before = entrySettingsOf(deps.fleet.of(device).entry);
   const current = before.goals[personId] ?? TREADMILL_GOALS.parse({});
-  saveSettings(deps, device, {
+  await saveSettings(deps, device, {
     ...before,
     goals: { ...before.goals, [personId]: TREADMILL_GOALS.parse({ ...current, ...request.goals }) },
   });
@@ -128,51 +129,46 @@ function assertSessionOwned(actor: Actor, walkerProfileId: string | null): void 
   }
 }
 
-function assignWalker(
+async function assignWalker(
   deps: ActDeps,
   actor: Actor,
   request: Extract<TreadmillAction, { action: 'assign_walker' }>,
-): TreadmillActionResult {
-  const session = deps.store.treadmillSessions.byId(request.sessionId);
+): Promise<TreadmillActionResult> {
+  const session = await deps.store.host.call('treadmillSessions', 'byId', request.sessionId);
   assertSessionOwned(actor, session.walkerProfileId);
   if (request.personId !== null) {
-    deps.store.profiles.byId(request.personId);
+    await deps.store.host.call('profiles', 'byId', request.personId);
   }
-  deps.store.write(() => {
-    deps.store.treadmillSessions.reassign(session.id, request.personId);
-    deps.health.move({ ...session, walkerProfileId: request.personId }, session.walkerProfileId);
-  });
+  await deps.store.host.write('treadmillAssign', { session, personId: request.personId });
   return OK;
 }
 
-function forgetSession(
+async function forgetSession(
   deps: ActDeps,
   actor: Actor,
   request: Extract<TreadmillAction, { action: 'forget_session' }>,
-): TreadmillActionResult {
-  const session = deps.store.treadmillSessions.byId(request.sessionId);
+): Promise<TreadmillActionResult> {
+  const session = await deps.store.host.call('treadmillSessions', 'byId', request.sessionId);
   assertSessionOwned(actor, session.walkerProfileId);
-  deps.store.write(() => {
-    deps.health.forget(session);
-    deps.store.treadmillSessions.remove(session.id);
-  });
+  await deps.store.host.write('treadmillForget', session);
   return OK;
 }
 
-function setWalker(
+async function setWalker(
   deps: ActDeps,
   device: DeviceRow,
   actor: Actor,
   personId: string | null,
 ): Promise<TreadmillActionResult> {
   if (personId !== null) {
-    deps.store.profiles.byId(personId);
+    await deps.store.host.call('profiles', 'byId', personId);
   }
   const currentOk = actor.role === 'owner' || personId === actor.profileId || personId === null;
   if (!currentOk) {
     throw new ApiError('forbidden', 'Only the owner puts another person on the belt.');
   }
-  return deps.local.observe(device.external_id, { walkerProfileId: personId }).then(() => OK);
+  await deps.local.observe(device.external_id, { walkerProfileId: personId });
+  return OK;
 }
 
 async function takeOver(
@@ -207,7 +203,7 @@ export async function actTreadmill(
       return configure(deps, device, actor, action.settings);
     case 'mark_lubricated':
       ownerOnly(actor, 'mark the belt as lubricated');
-      saveSettings(deps, device, {
+      await saveSettings(deps, device, {
         ...entrySettingsOf(deps.fleet.of(device).entry),
         lubricatedAt: deps.now().toISOString(),
       });

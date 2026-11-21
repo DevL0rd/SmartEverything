@@ -22,6 +22,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ScanReach } from '../../src/home-map/scan-reach';
 import { ScanStore } from '../../src/home-map/scan-store';
+import { directHomeMapStore } from '../../src/home-map/map-store';
 import { HomeMapService } from '../../src/home-map/service';
 import { apiErrorFor } from '../../src/server/errors';
 import {
@@ -51,6 +52,7 @@ interface Rig {
   readonly disk: { free: number };
   readonly changes: readonly LiveChange[];
   readonly follow: (change: LiveChange) => void;
+  readonly settled: () => Promise<void>;
   readonly clock: { now: number };
   readonly access: { member: boolean };
 }
@@ -86,32 +88,37 @@ function serve(services: HomeMapScanServices, handled: () => void): Server {
   });
 }
 
-function publishingService(onChange: (change: LiveChange) => void): HomeMapService {
+async function publishingService(onChange: (change: LiveChange) => void): Promise<HomeMapService> {
   const sql = new Sql(new DatabaseSync(':memory:', { enableForeignKeyConstraints: true }));
   migrate(sql, MIGRATIONS, NOW, testLogger());
   const context = new StoreContext(sql, new ChangeFeed(testLogger('store')), () => new Date(NOW));
   let seq = 0;
-  return new HomeMapService({
-    maps: new HomeMapsRepository(context, (operation, summary, previous) => {
-      onChange({
-        type: 'change',
-        table: 'home_maps',
-        operation,
-        record: summary,
-        oldRecord: previous,
-        seq: (seq += 1),
-      });
-    }),
-    knownModel: () => true,
+  const repository = new HomeMapsRepository(context, (operation, summary, previous) => {
+    onChange({
+      type: 'change',
+      table: 'home_maps',
+      operation,
+      record: summary,
+      oldRecord: previous,
+      seq: (seq += 1),
+    });
+  });
+  const service = new HomeMapService({
+    store: directHomeMapStore(repository, (work) => context.write(work)),
+    knownModel: (): boolean => true,
+    applied: (): undefined => undefined,
+    now: (): string => context.now(),
     log: testLogger('home-map'),
   });
+  await service.load();
+  return service;
 }
 
 async function startRig(): Promise<Rig> {
   const root = mkdtempSync(join(tmpdir(), 'scan-http-'));
   const followed: { current: (change: LiveChange) => void } = { current: () => undefined };
   const changes: LiveChange[] = [];
-  const service = publishingService((change) => {
+  const service = await publishingService((change) => {
     changes.push(change);
     followed.current(change);
   });
@@ -132,8 +139,9 @@ async function startRig(): Promise<Rig> {
   });
   const services: HomeMapScanServices = {
     authorize: () => {
-      if (!access.member) throw new ApiError('unauthorized', 'Sign in as a member.');
-      return { kind: 'anonymous' };
+      if (!access.member)
+        return Promise.reject(new ApiError('unauthorized', 'Sign in as a member.'));
+      return Promise.resolve({ kind: 'anonymous' });
     },
     actorOf: () => 'profile:tester',
     scans,
@@ -167,6 +175,7 @@ async function startRig(): Promise<Rig> {
     follow: (change): void => {
       followed.current(change);
     },
+    settled: () => scans.exclusive(() => undefined),
     clock,
     access,
   };
@@ -320,12 +329,12 @@ describe('the scan files and the undo history', () => {
     await put(first, 'splat');
     await put(second, 'spz');
     expect(stored()).toEqual([`${sha(first)}.splat`, `${sha(second)}.spz`].sort());
-    rig.service.undo('profile:tester');
+    await rig.service.undo('profile:tester');
     expect(rig.service.get().scan?.file.hash).toBe(sha(first));
     const served = await fetch(await fileUrl());
     expect(served.status).toBe(200);
     expect(Buffer.from(await served.arrayBuffer()).equals(first)).toBe(true);
-    rig.service.redo('profile:tester');
+    await rig.service.redo('profile:tester');
     const again = await fetch(await fileUrl());
     expect(Buffer.from(await again.arrayBuffer()).equals(second)).toBe(true);
   });
@@ -334,7 +343,7 @@ describe('the scan files and the undo history', () => {
     const file = splatFile(10);
     await put(file, 'splat');
     await fetch(scanUrl(), { method: 'DELETE' });
-    rig.service.undo('profile:tester');
+    await rig.service.undo('profile:tester');
     expect(rig.service.get().scan?.file.hash).toBe(sha(file));
     const served = await fetch(await fileUrl());
     expect(served.status).toBe(200);
@@ -344,12 +353,12 @@ describe('the scan files and the undo history', () => {
   it('keeps the files of a scan removed through the generic edit path until undone', async () => {
     const file = splatFile(10);
     await put(file, 'splat');
-    rig.service.edit(
+    await rig.service.edit(
       { baseRevision: rig.service.revision(), ops: [{ op: 'removeScan' }] },
       'profile:tester',
     );
     expect(stored()).toEqual([`${sha(file)}.splat`]);
-    rig.service.undo('profile:tester');
+    await rig.service.undo('profile:tester');
     expect((await fetch(await fileUrl())).status).toBe(200);
   });
 
@@ -358,12 +367,13 @@ describe('the scan files and the undo history', () => {
     const second = spzFile(30);
     await put(first, 'splat');
     await put(second, 'spz');
-    rig.service.undo('profile:tester');
+    await rig.service.undo('profile:tester');
     expect(stored()).toHaveLength(2);
-    rig.service.edit(
+    await rig.service.edit(
       { baseRevision: rig.service.revision(), ops: [{ op: 'setMap', patch: { name: 'Home' } }] },
       'profile:tester',
     );
+    await rig.settled();
     expect(stored()).toEqual([`${sha(first)}.splat`]);
   });
 
@@ -372,6 +382,7 @@ describe('the scan files and the undo history', () => {
     const last = rig.changes.at(-1);
     if (last?.table !== 'home_maps' || last.record === null) throw new Error('no change');
     rig.follow({ ...last, operation: 'DELETE', record: null, oldRecord: last.record });
+    await rig.settled();
     expect(existsSync(folder())).toBe(false);
   });
 });

@@ -1,4 +1,5 @@
 import {
+  CLIENT_PREFS,
   PLANNER_COLLECTION_ROW,
   PLANNER_DAY,
   PLANNER_COMPLETION_SUGGESTION,
@@ -153,7 +154,7 @@ beforeEach(async () => {
     catalogueOf: () => catalogue,
     feeds: { registry: new FeedRegistry() },
   });
-  items = plannerItemRoutes(context, () => NOW);
+  items = plannerItemRoutes(context);
   collections = plannerCollectionRoutes(context);
 });
 
@@ -240,6 +241,11 @@ describe('parse', () => {
   it('reads the text into a draft placed on the named list', async () => {
     await collection(ann, 'list', 'Inbox');
     const health = await collection(ann, 'list', 'Health');
+    test.store.personal.saveLayout(
+      { clientId: ann.client.id, profileId: ann.profileId },
+      CLIENT_PREFS.clock_format.storageKey,
+      CLIENT_PREFS.clock_format.encode({ hour24: true }),
+    );
     const result = PLANNER_PARSE_RESULT.parse(
       await call(core.parsePlannerText, ann, {
         body: { text: 'brush teeth every day 07:30 #health !2' },

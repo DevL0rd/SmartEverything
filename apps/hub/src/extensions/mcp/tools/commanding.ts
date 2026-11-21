@@ -8,7 +8,6 @@ import { submitAndWait, type Outcome } from '../command-waiter';
 import { operate } from './acting';
 import type { OperationInput } from '../../../server/operations';
 import type { ToolContext } from './registry';
-import { deviceNames } from './targets';
 
 export interface CommandRequest {
   readonly device_id: string | null;
@@ -29,7 +28,7 @@ export function waitFor(
     waitMs: context.commandWaitMs,
     submit: async (): Promise<readonly CommandRow[]> =>
       COMMAND_ROWS.parse(await operate(context, name, input)),
-    current: (id) => context.store.commands.byId(id),
+    current: (id) => context.store.host.call('commands', 'byId', id),
   });
 }
 
@@ -40,30 +39,12 @@ export function sendAndWait(
   return waitFor(context, 'sendCommands', { body: { commands } });
 }
 
-function currentValue(context: Pick<ToolContext, 'store'>, command: CommandRow): JsonValue {
-  if (command.device_id === null) {
-    return null;
-  }
-  return context.store.state.value(command.device_id, command.capability) ?? null;
-}
-
-export function reported(
+export async function reported(
   context: Pick<ToolContext, 'store'>,
   outcome: Outcome,
-): Record<string, unknown> {
-  const names = deviceNames(context.store);
+): Promise<Record<string, unknown>> {
   return {
-    commands: outcome.commands.map((command) => ({
-      id: command.id,
-      device_id: command.device_id,
-      device: command.device_id === null ? null : (names.get(command.device_id) ?? null),
-      capability: command.capability,
-      value: command.value,
-      status: command.status,
-      result: command.result,
-      error: command.error,
-      now: currentValue(context, command),
-    })),
+    commands: await context.store.host.read('mcpReported', outcome.commands),
     allFinished: outcome.allFinished,
   };
 }

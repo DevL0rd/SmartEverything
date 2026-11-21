@@ -80,6 +80,7 @@ export const LEGACY_NAMES: LayoutNames = {
     smartthingsCapabilities: 'providers/smartthings/capabilities',
     codexInputs: 'codex/inputs',
     buildHost: 'build-host',
+    compile: 'compile-cache',
   },
   backups: { releases: 'release-backups', manual: 'backups', legacyDatabase: '' },
   provider: (id) => `providers/${id}`,
@@ -89,7 +90,7 @@ export const LEGACY_NAMES: LayoutNames = {
   derived: (itemId) => `drive-derived/${derivedShard(itemId)}`,
   person: {
     root: (profileId) => `drive/Members/${profileId}`,
-    drive: (profileId) => `drive/Members/${profileId}`,
+    drive: { parent: 'drive/Members', leaf: '' },
     attachments: () => 'assistant/files',
     harnessAttachments: () => 'harness',
   },

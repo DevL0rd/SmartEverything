@@ -17,15 +17,20 @@ import {
 
 let social: Social;
 let notices: DriveEditNotices;
+let stopNotices: () => void;
 
 beforeEach(async () => {
   social = await openSocial();
   share(social, TRIP, social.robin, 'view');
   share(social, TRIP, social.kim, 'edit');
   notices = new DriveEditNotices(social.opened.store, testLogger('edit-notices'));
+  stopNotices = notices.start();
+  await notices.ready();
 });
 
 afterEach(async () => {
+  stopNotices();
+  await notices.idle();
   await social.opened.close();
 });
 
@@ -60,8 +65,9 @@ function inbox(profileId: string): readonly DriveNotification[] {
 }
 
 describe('edited notifications', () => {
-  it('tells the drive owner and every grantee except the editor', () => {
+  it('tells the drive owner and every grantee except the editor', async () => {
     notices.noticed(edit(SAM_DRIVE, TRIP_FILE, social.kim.profileId));
+    await notices.idle();
     expect(inbox(social.sam.profileId)).toMatchObject([
       { kind: 'edited', itemId: TRIP_FILE, actorProfileId: social.kim.profileId },
     ]);
@@ -69,55 +75,71 @@ describe('edited notifications', () => {
     expect(inbox(social.kim.profileId)).toHaveLength(0);
   });
 
-  it('never tells the editor about their own edit even when they own the file', () => {
+  it('never tells the editor about their own edit even when they own the file', async () => {
     notices.noticed(edit(SAM_DRIVE, TRIP_FILE, social.sam.profileId));
+    await notices.idle();
     expect(inbox(social.sam.profileId)).toHaveLength(0);
     expect(inbox(social.robin.profileId)).toHaveLength(1);
   });
 
-  it('coalesces repeated edits by the same person while unread and splits editors', () => {
+  it('coalesces repeated edits by the same person while unread and splits editors', async () => {
     notices.noticed(edit(SAM_DRIVE, TRIP_FILE, social.kim.profileId));
+    await notices.idle();
     notices.noticed(edit(SAM_DRIVE, TRIP_FILE, social.kim.profileId));
+    await notices.idle();
     notices.noticed(edit(SAM_DRIVE, TRIP_FILE, social.sam.profileId));
+    await notices.idle();
     const rows = inbox(social.robin.profileId);
     expect(rows).toHaveLength(2);
     expect(rows.find((row) => row.actorProfileId === social.kim.profileId)?.count).toBe(2);
   });
 
-  it('starts a new row after the earlier one was read', () => {
+  it('starts a new row after the earlier one was read', async () => {
     notices.noticed(edit(SAM_DRIVE, TRIP_FILE, social.kim.profileId));
+    await notices.idle();
     social.opened.store.driveNotifications.markRead(social.robin.profileId, { all: true });
     notices.noticed(edit(SAM_DRIVE, TRIP_FILE, social.kim.profileId));
+    await notices.idle();
     expect(inbox(social.robin.profileId)).toHaveLength(2);
   });
 
-  it('does not notify for the Shared Drive, for scans, or for changes that are not edits', () => {
+  it('does not notify for the Shared Drive, for scans, or for changes that are not edits', async () => {
     notices.noticed(edit(HOME, SHARED_FILE, social.kim.profileId));
+    await notices.idle();
     notices.noticed(edit(SAM_DRIVE, TRIP_FILE, null));
+    await notices.idle();
     notices.noticed(edit(SAM_DRIVE, TRIP_FILE, social.kim.profileId, 'create'));
+    await notices.idle();
     notices.noticed(edit(SAM_DRIVE, TRIP_FILE, social.kim.profileId, 'trash'));
+    await notices.idle();
     expect(inbox(social.robin.profileId)).toHaveLength(0);
     expect(inbox(social.sam.profileId)).toHaveLength(0);
   });
 
-  it('does not notify people with no access to the item', () => {
+  it('does not notify people with no access to the item', async () => {
     notices.noticed(edit(ROBIN_DRIVE, ROBIN_FILE, social.robin.profileId));
+    await notices.idle();
     expect(inbox(social.sam.profileId)).toHaveLength(0);
     expect(inbox(social.kim.profileId)).toHaveLength(0);
   });
 
-  it('ignores changes written before it started and reads each row once', () => {
+  it('ignores changes written before it started and reads each row once', async () => {
     const before = edit(SAM_DRIVE, TRIP_FILE, social.kim.profileId);
     const late = new DriveEditNotices(social.opened.store, testLogger('late'));
+    const stopLate = late.start();
+    await late.ready();
     late.noticed(before);
+    await late.idle();
+    stopLate();
     expect(inbox(social.robin.profileId)).toHaveLength(0);
     notices.noticed(before);
+    await notices.idle();
     notices.noticed(before);
+    await notices.idle();
     expect(inbox(social.robin.profileId)[0]?.count).toBe(1);
   });
 
-  it('listens to the change feed once started', () => {
-    const stop = notices.start();
+  it('listens to the change feed once started', async () => {
     const { store } = social.opened;
     store.driveFeed.append({
       rootId: SAM_DRIVE,
@@ -136,7 +158,7 @@ describe('edited notifications', () => {
       months: [],
       cursor: store.driveFeed.latestSeq(),
     });
-    stop();
+    await notices.idle();
     expect(inbox(social.robin.profileId)).toHaveLength(1);
   });
 });

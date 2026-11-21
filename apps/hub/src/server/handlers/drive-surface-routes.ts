@@ -1,5 +1,5 @@
 import type { Logger } from '@smarteverything/logging';
-import { ApiError } from '@smarteverything/domain';
+import { ApiError, type DriveSettings } from '@smarteverything/domain';
 import type { ConflictEnv } from '../../drive/conflicts';
 import { nodeInodeProbe } from '../../drive/fs-space';
 import type { DriveActivity } from '../../drive/activity';
@@ -12,6 +12,7 @@ import { DriveSyncServer } from '../../drive/sync/server-socket';
 import type { DriveReadService } from '../../drive/service-read';
 import type { DriveWriteService } from '../../drive/service-write';
 import type { DataSpaceProbe } from '../../drive/data-space';
+import type { ContentHasher } from '../../drive/hasher';
 import type { ComputerNodeAccess } from '../../computers/node-access';
 import type { Store } from '../../store/store';
 import { fileIoThreadsStart } from '../../service/file-io-threads';
@@ -32,6 +33,7 @@ export interface DriveSurfaceServices {
   readonly write: Pick<DriveWriteService, 'change'>;
   readonly files: DriveFiles;
   readonly probe: Pick<DataSpaceProbe, 'space'>;
+  readonly hasher: Pick<ContentHasher, 'hash'>;
 }
 
 export interface DriveSurfaceInputs {
@@ -42,6 +44,7 @@ export interface DriveSurfaceInputs {
   readonly services: DriveSurfaceServices;
   readonly nodes: ComputerNodeAccess;
   readonly log: Logger;
+  readonly settings: DriveSettings;
 }
 
 export interface DriveSurfaces {
@@ -57,6 +60,7 @@ function syncEnvOf(inputs: DriveSurfaceInputs, posix: SyncEnv['posix']): SyncEnv
     store,
     posix,
     space: services.probe.space,
+    hasher: services.hasher,
     authenticate: syncAuthentication(store, nodes),
   };
 }
@@ -94,11 +98,7 @@ function syncRoutes(
       path: SYNC_SOCKET_PATH,
       handle: () =>
         Promise.reject(new ApiError('invalid_request', 'Open this address as a WebSocket.')),
-      upgrade: (request, socket, head): Promise<void> =>
-        new Promise((resolve) => {
-          server.upgrade(request, socket, head);
-          resolve();
-        }),
+      upgrade: (request, socket, head): Promise<void> => server.upgrade(request, socket, head),
     },
     {
       method: 'GET',
@@ -126,10 +126,11 @@ function mountEnvOf(inputs: DriveSurfaceInputs): ConstructorParameters<typeof Dr
     store,
     change: { ...inputs.env, store },
     guard: { status: quota, space: services.probe.space },
-    space: { read: services.read, store, quota, probe: services.probe, inodes: nodeInodeProbe },
+    space: { read: services.read, quota, probe: services.probe, inodes: nodeInodeProbe },
     activity: inputs.activity,
     lanes: inputs.lanes,
     log: inputs.log,
+    settings: inputs.settings,
   };
 }
 
@@ -140,10 +141,7 @@ function mountRoute(socket: DriveMountSocket): RawRoute {
     handle: () =>
       Promise.reject(new ApiError('invalid_request', 'Open this address as a WebSocket.')),
     upgrade: (request, connection, head): Promise<void> =>
-      new Promise((resolve) => {
-        socket.upgrade(request, connection, head);
-        resolve();
-      }),
+      socket.upgrade(request, connection, head),
   };
 }
 

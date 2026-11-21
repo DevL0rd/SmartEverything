@@ -1,10 +1,9 @@
 import sharp, { type Sharp } from 'sharp';
 import type { DriveItem, DriveThumb } from '@smarteverything/domain';
 import { messageOf, type Logger } from '@smarteverything/logging';
-import type { DriveMediaRepository } from '../../store/repositories/drive-media';
-import type { DriveItemsRepository } from '../../store/repositories/drive-items';
+import type { DriveMediaPatch } from '../../store/repositories/drive-media';
 import type { DriveMediaJob } from '../../store/repositories/drive-media-jobs';
-import type { Store } from '../../store/store';
+import type { DerivedRecord, DerivedTarget } from './derived-units';
 import { DERIVED_LONG_EDGE, pruneDerived, writeDerived, type DerivedLayout } from './derived-paths';
 import type { JobHandler } from './jobs';
 import type { GpuOutcome } from './vaapi-decode';
@@ -119,14 +118,13 @@ export type DerivedOutcome =
   | { readonly state: 'ready' }
   | { readonly state: 'failed' | 'unsupported'; readonly reason: string };
 
-export type ThumbWriter = (itemId: string, thumb: DriveThumb) => void;
+export interface DerivedStore {
+  readonly current: (target: DerivedTarget) => Promise<DriveItem | undefined>;
+  readonly record: (record: DerivedRecord) => Promise<boolean>;
+}
 
 export interface PreviewEnvironment {
-  readonly store: Pick<Store, 'write'> & {
-    readonly driveItems: Pick<DriveItemsRepository, 'find'>;
-    readonly driveMedia: Pick<DriveMediaRepository, 'find' | 'update'>;
-  };
-  readonly writeThumb: ThumbWriter;
+  readonly derived: DerivedStore;
   readonly decoders: PreviewDecoders;
   readonly gpu?: GpuDecoder | undefined;
   readonly locate: (item: DriveItem) => Promise<string>;
@@ -140,10 +138,14 @@ function thumbOf(outcome: DerivedOutcome): DriveThumb {
     : { state: outcome.state, reason: outcome.reason };
 }
 
-function mediaPatchOf(outcome: DerivedOutcome): Parameters<DriveMediaRepository['update']>[1] {
+function mediaPatchOf(outcome: DerivedOutcome): DriveMediaPatch {
   return outcome.state === 'ready'
     ? { preview_state: 'ready', preview_reason: null }
     : { preview_state: outcome.state, preview_reason: outcome.reason };
+}
+
+export function targetOf(job: DriveMediaJob, kind: DerivedTarget['kind']): DerivedTarget {
+  return { itemId: job.item_id, rev: job.rev, kind };
 }
 
 export class PreviewHandler implements JobHandler {
@@ -152,13 +154,13 @@ export class PreviewHandler implements JobHandler {
   constructor(private readonly env: PreviewEnvironment) {}
 
   async run(job: DriveMediaJob, signal: AbortSignal): Promise<void> {
-    const item = this.current(job);
+    const item = await this.current(job);
     if (item === undefined) return;
     const file = { path: await this.env.locate(item), mime: item.mime, name: item.name };
     const decoded = await this.decode(job, file, signal);
     if (decoded === undefined) return;
     if (decoded.kind === 'unsupported') {
-      this.record(job, { state: 'unsupported', reason: decoded.reason });
+      await this.record(job, { state: 'unsupported', reason: decoded.reason });
       return;
     }
     const rendered = await renderDerived(decoded.source);
@@ -172,13 +174,13 @@ export class PreviewHandler implements JobHandler {
       { itemId: job.item_id, rev: job.rev, size: 'thumb' },
       rendered.thumb,
     );
-    if (this.record(job, { state: 'ready' })) {
+    if (await this.record(job, { state: 'ready' })) {
       await pruneDerived(this.env.layout, job.item_id, job.rev);
     }
   }
 
-  fail(job: DriveMediaJob, cause: unknown): void {
-    this.record(job, { state: 'failed', reason: messageOf(cause) });
+  async fail(job: DriveMediaJob, cause: unknown): Promise<void> {
+    await this.record(job, { state: 'failed', reason: messageOf(cause) });
   }
 
   private async decode(
@@ -198,31 +200,31 @@ export class PreviewHandler implements JobHandler {
     }
     const decoder = this.env.decoders.find(file);
     if (decoder === undefined) {
-      this.record(job, { state: 'unsupported', reason: `no decoder reads ${file.mime}` });
+      await this.record(job, { state: 'unsupported', reason: `no decoder reads ${file.mime}` });
       return undefined;
     }
     return decoder.decode(file, signal);
   }
 
-  private current(job: DriveMediaJob): Extract<DriveItem, { readonly kind: 'image' }> | undefined {
-    const item = this.env.store.driveItems.find(job.item_id, null);
-    if (
-      item?.kind !== 'image' ||
-      item.rev !== job.rev ||
-      this.env.store.driveMedia.find(item.id) === undefined
-    ) {
+  private async current(
+    job: DriveMediaJob,
+  ): Promise<Extract<DriveItem, { readonly kind: 'image' }> | undefined> {
+    const item = await this.env.derived.current(targetOf(job, 'image'));
+    if (item?.kind !== 'image') {
       this.env.log.debug('photos.preview_skipped', { itemId: job.item_id, rev: job.rev });
       return undefined;
     }
     return item;
   }
 
-  private record(job: DriveMediaJob, outcome: DerivedOutcome): boolean {
-    return this.env.store.write(() => {
-      if (this.current(job) === undefined) return false;
-      this.env.writeThumb(job.item_id, thumbOf(outcome));
-      this.env.store.driveMedia.update(job.item_id, mediaPatchOf(outcome));
-      return true;
+  private async record(job: DriveMediaJob, outcome: DerivedOutcome): Promise<boolean> {
+    const recorded = await this.env.derived.record({
+      target: targetOf(job, 'image'),
+      thumb: thumbOf(outcome),
+      patch: mediaPatchOf(outcome),
     });
+    if (!recorded)
+      this.env.log.debug('photos.preview_skipped', { itemId: job.item_id, rev: job.rev });
+    return recorded;
   }
 }

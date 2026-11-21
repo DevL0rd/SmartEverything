@@ -8,6 +8,7 @@ import { effectiveRow } from '../server/person-access';
 import type { Logger } from '@smarteverything/logging';
 import type { PushCommandChannel } from '../extensions/push/commands';
 import { PushAsks } from '../local/push-asks';
+import { storeUnit } from '../store/host/unit';
 import type { Store } from '../store/store';
 
 const MILLISECONDS = 1000;
@@ -40,12 +41,16 @@ export function approverClients(
   ).map((client) => client.id);
 }
 
+export const MACHINE_APPROVERS_UNIT = storeUnit((store, profileId: string | null) =>
+  approverClients(store, profileId),
+);
+
 export class MachineApprovals {
   private readonly asks: PushAsks<PhoneActionResult>;
 
   constructor(
     push: PushCommandChannel,
-    private readonly store: Pick<Store, 'clients' | 'profiles' | 'personAccess'>,
+    private readonly store: Pick<Store, 'host'>,
     private readonly log: Logger,
   ) {
     this.asks = new PushAsks('approval', push);
@@ -53,7 +58,7 @@ export class MachineApprovals {
 
   async require(request: ApprovalRequest): Promise<void> {
     const { profileId, ...approval } = request;
-    const clients = approverClients(this.store, profileId);
+    const clients = await this.store.host.read('machineApprovers', profileId);
     const result = await this.asks.ask({
       command: 'machine_approval',
       settledCommand: 'machine_approval_cancel',

@@ -97,7 +97,7 @@ describe('sending', () => {
   it('logs the delivery with a hashed address and no address in clear', async () => {
     await write();
     await mail.send(message('Sam@Example.com'));
-    const [row] = mail.recent(5);
+    const [row] = await mail.recent(5);
     expect(row).toMatchObject({ kind: 'invite', outcome: 'sent', detail: null });
     expect(row?.to_hash).toBe(createHash('sha256').update('sam@example.com').digest('hex'));
     expect(JSON.stringify(row)).not.toMatch(/sam@/i);
@@ -110,7 +110,7 @@ describe('sending', () => {
     const result = await mail.send(message('nobody@example.com'));
     expect(result.outcome).toBe('failed');
     expect(JSON.stringify(result)).not.toContain('nobody@');
-    const [row] = mail.recent(5);
+    const [row] = await mail.recent(5);
     expect(row?.outcome).toBe('failed');
     expect(row?.detail).toBeTruthy();
     expect(JSON.stringify(row)).not.toContain('nobody@');
@@ -120,7 +120,7 @@ describe('sending', () => {
     await write({ port: 9 });
     const result = await mail.send(message());
     expect(result.outcome).toBe('failed');
-    expect(mail.recent(5)[0]?.outcome).toBe('failed');
+    expect((await mail.recent(5))[0]?.outcome).toBe('failed');
   });
 
   it('signs in with the stored user name and password', async () => {
@@ -137,11 +137,11 @@ describe('sending', () => {
     await expect(mail.test('sam@example.com')).rejects.toMatchObject({ code: 'conflict' });
     await write();
     expect(await mail.test('sam@example.com')).toEqual({ outcome: 'sent' });
-    expect(mail.recent(1)[0]?.kind).toBe('test');
+    expect((await mail.recent(1))[0]?.kind).toBe('test');
   });
 
   it('answers a send with no server set up as failed without logging', async () => {
     expect((await mail.send(message())).outcome).toBe('failed');
-    expect(mail.recent(5)).toEqual([]);
+    expect(await mail.recent(5)).toEqual([]);
   });
 });

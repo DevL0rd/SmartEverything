@@ -68,7 +68,7 @@ function titleService(reply: string): Rigged {
 
 async function openDshChat(): Promise<{
   readonly chatId: string;
-  readonly log: (events: readonly DshSessionEvent[]) => void;
+  readonly log: (events: readonly DshSessionEvent[]) => Promise<void>;
 }> {
   const chat = rig.opened.store.aiChats.create({
     profileId: rig.owner.profileId,
@@ -88,7 +88,7 @@ async function openDshChat(): Promise<{
       permission: { sandbox: 'danger-full-access', approval: 'never' },
     },
   });
-  const request = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const request = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), request);
   const principal = rig.service.hostPrincipal(
     rig.owner.profileId,
@@ -103,9 +103,9 @@ async function openDshChat(): Promise<{
   );
   return {
     chatId: chat.id,
-    log: (events): void => {
+    log: async (events): Promise<void> => {
       const stat = rig.opened.store.dshSessions.stat(request.claim.session_id, rig.owner.profileId);
-      const appended = rig.opened.store.dshSessions.append(
+      const appended = await rig.opened.store.live.dshSessions.append(
         {
           claim: request.claim,
           operation_id: randomUUID(),
@@ -162,7 +162,7 @@ describe('the title service', () => {
     titleService('unused');
     const opened = await openDshChat();
 
-    opened.log([
+    await opened.log([
       titleEvent(
         { kind: 'provider', provider: 'session-title-first-prompt-llm' },
         '"Garden lights 🌙."',
@@ -178,7 +178,7 @@ describe('the title service', () => {
     titleService('unused');
     const opened = await openDshChat();
 
-    opened.log([
+    await opened.log([
       titleEvent({ kind: 'fallback' }, 'Turn on the garden'),
       titleEvent({ kind: 'user' }, 'Renamed in the log'),
       titleEvent({ kind: 'provider', provider: 'p' }, 'Copied title', { historyReplay: true }),
@@ -193,7 +193,7 @@ describe('the title service', () => {
     const opened = await openDshChat();
     rig.opened.store.aiChats.update(opened.chatId, { title: 'Holiday' });
 
-    opened.log([titleEvent({ kind: 'provider', provider: 'p' }, 'Garden lights')]);
+    await opened.log([titleEvent({ kind: 'provider', provider: 'p' }, 'Garden lights')]);
 
     expect(rig.opened.store.aiChats.chat(opened.chatId).title).toBe('Holiday');
   });

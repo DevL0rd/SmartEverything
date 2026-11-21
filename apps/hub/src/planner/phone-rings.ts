@@ -1,23 +1,16 @@
-import { createHash } from 'node:crypto';
 import {
   PLANNER_ALARM_SOUND,
   PLANNER_BEDTIME_NIGHT,
   PLANNER_CHALLENGE,
   PLANNER_DAYS,
   PLANNER_LOCAL_DATE,
-  type PlannerAlarmRow,
-  type PlannerAlarmSound,
   type PlannerPhoneRingSet,
-  type PlannerPreferences,
-  type PlannerRingTarget,
-  type PlannerTimerRow,
 } from '@smarteverything/domain';
 import { background, type Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import { clientIdOfPhone } from '../phones/phone-device';
+import { Coalesced } from '../store/reader';
 import type { Store } from '../store/store';
-import { DEFAULT_TONE, type AlarmSounds } from './alarm-sound';
-import { ringSetOf } from './phone-ring-set';
+import { PendingWork } from './pending-work';
 
 const ID = z.uuid();
 
@@ -81,63 +74,39 @@ export interface PhoneRingState {
   readonly ackedAt: string | null;
 }
 
-export type PhoneRingStore = Pick<
-  Store,
-  'plannerAlarms' | 'plannerTimers' | 'clients' | 'devices' | 'feed' | 'settings'
->;
+export type PhoneRingStore = Pick<Store, 'host' | 'feed'>;
 
 export interface PhoneRingsOptions {
   readonly store: PhoneRingStore;
   readonly channel: PhoneRingChannel;
-  readonly sounds: Pick<AlarmSounds, 'media' | 'resolve'>;
-  readonly preferencesOf: (profileId: string) => PlannerPreferences;
   readonly now: () => Date;
   readonly log: Logger;
 }
 
-type Targeted = Pick<PlannerAlarmRow | PlannerTimerRow, 'targets'>;
+class Pushing {
+  readonly run: Coalesced;
+  private forced = false;
 
-function alarmRule(alarm: PlannerAlarmRow): z.infer<typeof PHONE_RING_ALARM> {
-  return {
-    id: alarm.id,
-    profileId: alarm.profile_id,
-    label: alarm.label,
-    time: alarm.time,
-    days: alarm.days,
-    onceOn: alarm.once_on,
-    skipOn: alarm.skip_on,
-    sound: alarm.sound,
-    rampSeconds: alarm.ramp_seconds,
-    vibrate: alarm.vibrate,
-    snoozeMinutes: alarm.snooze_minutes,
-    snoozeLimit: alarm.snooze_limit,
-    challenge: alarm.challenge,
-  };
-}
+  constructor(work: (force: boolean) => Promise<void>, failed: (cause: unknown) => void) {
+    this.run = new Coalesced(() => work(this.take()), failed);
+  }
 
-function timerEnd(timer: PlannerTimerRow): z.infer<typeof PHONE_RING_TIMER>[] {
-  return timer.ends_at === null
-    ? []
-    : [{ id: timer.id, profileId: timer.profile_id, label: timer.label, endsAt: timer.ends_at }];
-}
+  request(force: boolean): void {
+    this.forced ||= force;
+    this.run.trigger();
+  }
 
-function bedtimeRule(preferences: PlannerPreferences | null): PhoneRingSet['bedtime'] {
-  const bedtime = preferences?.bedtime;
-  return bedtime?.enabled === true && bedtime.do_not_disturb
-    ? { schedule: bedtime.schedule, windDownMinutes: bedtime.wind_down_minutes }
-    : null;
-}
-
-function versionOf(content: Omit<PhoneRingSet, 'version'>): string {
-  return createHash('sha256').update(JSON.stringify(content)).digest('hex');
-}
-
-function byId<T extends { readonly id: string }>(left: T, right: T): number {
-  return left.id.localeCompare(right.id);
+  private take(): boolean {
+    const force = this.forced;
+    this.forced = false;
+    return force;
+  }
 }
 
 export class PhoneRings {
   private readonly states = new Map<string, PhoneRingState>();
+  private readonly pushing = new Map<string, Pushing>();
+  private readonly work = new PendingWork('planner.phone_ring_push_failed');
   private unsubscribe: (() => void) | null = null;
 
   constructor(private readonly options: PhoneRingsOptions) {}
@@ -145,7 +114,11 @@ export class PhoneRings {
   start(): void {
     this.unsubscribe = this.options.store.feed.subscribe((change) => {
       if (change.table === 'planner_alarms' || change.table === 'planner_timers') {
-        this.changed([change.record, change.oldRecord]);
+        this.follow(
+          this.options.store.host.read('plannerRingClients', {
+            targets: [...(change.record?.targets ?? []), ...(change.oldRecord?.targets ?? [])],
+          }),
+        );
       } else if (
         change.table === 'clients' &&
         change.operation === 'DELETE' &&
@@ -159,12 +132,25 @@ export class PhoneRings {
   stop(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    for (const pushing of this.pushing.values()) {
+      background(pushing.run.stop(), 'planner.phone_ring_stop_failed');
+    }
+    this.pushing.clear();
+  }
+
+  async settled(): Promise<void> {
+    do {
+      await this.work.settled();
+      await Promise.all([...this.pushing.values()].map((pushing) => pushing.run.idle()));
+    } while ([...this.pushing.values()].some((pushing) => pushing.run.busy));
+    await this.work.settled();
   }
 
   connected(clientId: string): void {
-    if (this.hasRings(clientId)) {
-      this.push(clientId, true);
-    }
+    this.follow(
+      this.options.store.host.read('plannerRingClientIds', { clientIds: [clientId] }),
+      true,
+    );
   }
 
   acknowledge(clientId: string, version: string): boolean {
@@ -181,88 +167,55 @@ export class PhoneRings {
     return this.states.get(clientId);
   }
 
-  desired(clientId: string): PhoneRingSet {
-    const profileId = this.options.store.clients.find(clientId)?.profile_id ?? null;
-    const preferences = profileId === null ? null : this.options.preferencesOf(profileId);
-    const alarms = this.options.store.plannerAlarms
-      .enabled()
-      .filter((alarm) => this.reaches(alarm, clientId))
-      .map(alarmRule)
-      .sort(byId);
-    const timers = this.options.store.plannerTimers
-      .running()
-      .filter((timer) => this.reaches(timer, clientId))
-      .flatMap(timerEnd)
-      .sort(byId);
-    const timerSound = preferences?.clock.sound ?? DEFAULT_TONE;
-    const content = {
-      zone: this.options.store.settings.read().time_zone,
-      alarms,
-      timers,
-      timerSound,
-      bedtime: bedtimeRule(preferences),
-      media: this.mediaOf(alarms, timers, timerSound),
-    };
-    return { version: versionOf(content), ...content };
+  desired(clientId: string): Promise<PhoneRingSet> {
+    return this.options.store.host.read('plannerPhoneRingSet', { clientId });
   }
 
-  read(clientId: string, profileId: string): PlannerPhoneRingSet {
-    const set = this.desired(clientId);
+  async read(clientId: string, profileId: string): Promise<PlannerPhoneRingSet> {
+    const { set, rings } = await this.options.store.host.read('plannerPhoneRingRead', {
+      clientId,
+      profileId,
+      nowMs: this.options.now().getTime(),
+    });
     if (this.states.get(clientId)?.version !== set.version) {
       this.states.set(clientId, { version: set.version, reached: true, ackedAt: null });
     }
-    return ringSetOf(set, {
-      sounds: this.options.sounds,
-      preferences: this.options.preferencesOf(profileId),
-      now: this.options.now(),
-      zone: set.zone,
-    });
+    return rings;
   }
 
   preferencesChanged(profileId: string): void {
-    for (const client of this.options.store.clients.list()) {
-      if (client.profile_id === profileId && this.hasRings(client.id)) {
-        this.push(client.id, false);
-      }
-    }
+    this.follow(this.options.store.host.read('plannerProfileRingClients', { profileId }));
   }
 
-  private mediaOf(
-    alarms: readonly z.infer<typeof PHONE_RING_ALARM>[],
-    timers: readonly z.infer<typeof PHONE_RING_TIMER>[],
-    timerSound: PlannerAlarmSound,
-  ): string[] {
-    const entries = alarms.flatMap((alarm) =>
-      this.options.sounds.media(alarm.profileId, alarm.sound),
+  private follow(clients: Promise<readonly string[]>, force = false): void {
+    this.work.run(
+      clients.then((found) => {
+        for (const clientId of found) this.push(clientId, force);
+      }),
     );
-    const ending = timers.flatMap((timer) =>
-      this.options.sounds.media(timer.profileId, timerSound),
-    );
-    return [...new Set([...entries, ...ending])].sort();
-  }
-
-  private changed(rows: readonly (Targeted | null)[]): void {
-    const clients = new Set<string>();
-    for (const row of rows) {
-      for (const target of row?.targets ?? []) {
-        const clientId = this.clientOf(target);
-        if (clientId !== null && this.hasRings(clientId)) {
-          clients.add(clientId);
-        }
-      }
-    }
-    for (const clientId of clients) {
-      this.push(clientId, false);
-    }
   }
 
   private push(clientId: string, force: boolean): void {
-    const set = this.desired(clientId);
+    if (this.unsubscribe === null) return;
+    const pushing =
+      this.pushing.get(clientId) ??
+      new Pushing(
+        (forced) => this.pushNow(clientId, forced),
+        (cause) => {
+          this.options.log.error('planner.phone_ring_push_failed', cause, { clientId });
+        },
+      );
+    this.pushing.set(clientId, pushing);
+    pushing.request(force);
+  }
+
+  private async pushNow(clientId: string, force: boolean): Promise<void> {
+    const set = await this.desired(clientId);
     if (!force && this.states.get(clientId)?.version === set.version) {
       return;
     }
     this.states.set(clientId, { version: set.version, reached: false, ackedAt: null });
-    background(this.deliver(clientId, set), 'planner.phone_ring_push_failed', { clientId });
+    this.work.run(this.deliver(clientId, set), { clientId });
   }
 
   private async deliver(clientId: string, set: PhoneRingSet): Promise<void> {
@@ -278,22 +231,5 @@ export class PhoneRings {
       alarms: set.alarms.length,
       timers: set.timers.length,
     });
-  }
-
-  private reaches(row: Targeted, clientId: string): boolean {
-    return row.targets.some((target) => this.clientOf(target) === clientId);
-  }
-
-  private clientOf(target: PlannerRingTarget): string | null {
-    if (target.kind === 'client') {
-      return target.clientId;
-    }
-    const device = this.options.store.devices.find(target.deviceId);
-    return device?.kind === 'phone' ? clientIdOfPhone(device.external_id) : null;
-  }
-
-  private hasRings(clientId: string): boolean {
-    const platform = this.options.store.clients.find(clientId)?.platform;
-    return platform === 'android' || platform === 'desktop';
   }
 }

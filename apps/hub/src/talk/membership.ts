@@ -1,39 +1,44 @@
 import {
-  channelInScope,
+  ApiError,
   type LiveChange,
   type TalkChannelRow,
   type TalkMemberKind,
   type TalkMemberRow,
 } from '@smarteverything/domain';
-import { effectiveRow } from '../server/person-access';
-import { scopesOfClient } from '../server/person-scope';
 import type { Store } from '../store/store';
+import type { MemberLabel } from './labels';
 
 const TALK_TABLES: ReadonlySet<LiveChange['table']> = new Set(['talk_channels', 'talk_members']);
 
 export class TalkMembership {
   private channels = new Map<string, TalkChannelRow>();
   private members: readonly TalkMemberRow[] = [];
+  private loads = Promise.resolve();
 
-  constructor(private readonly store: Store) {
-    this.reload();
-  }
+  constructor(private readonly store: Pick<Store, 'host'>) {}
 
   affects(change: LiveChange): boolean {
     return TALK_TABLES.has(change.table);
   }
 
-  reload(): void {
-    this.channels = new Map(this.store.talk.channels().map((row) => [row.id, row]));
-    this.members = this.store.talk.members().filter((row) => this.may(row));
+  reload(): Promise<void> {
+    const load = async (): Promise<void> => {
+      const roster = await this.store.host.read('talkRoster', null);
+      this.channels = new Map(roster.channels.map((row) => [row.id, row]));
+      this.members = roster.members;
+    };
+    this.loads = this.loads.then(load, load);
+    return this.loads;
   }
 
-  private may(row: TalkMemberRow): boolean {
-    if (row.member_kind !== 'client') return true;
-    const client = this.store.clients.find(row.member_id);
-    if (client === undefined) return false;
-    const scopes = scopesOfClient(this.store, effectiveRow(this.store, client));
-    return scopes === null || channelInScope(scopes.channels, row.channel_id);
+  labelOf(channelId: string, kind: TalkMemberKind, memberId: string): MemberLabel {
+    const member = this.members.find(
+      (row) =>
+        row.channel_id === channelId && row.member_kind === kind && row.member_id === memberId,
+    );
+    if (member === undefined)
+      throw new ApiError('not_found', `No ${kind} ${memberId} in talk channel ${channelId}.`);
+    return { label: member.label, detail: member.detail };
   }
 
   channel(channelId: string): TalkChannelRow | undefined {

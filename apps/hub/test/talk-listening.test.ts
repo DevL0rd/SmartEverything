@@ -145,6 +145,7 @@ async function speak(
 
 beforeEach(async () => {
   test = await testStore();
+  await test.store.live.home.load();
   ownerClient = test.store.clients.create(
     { name: 'Pixel', platform: 'android', role: 'owner', tokenHash: 'a'.repeat(64) },
     true,
@@ -177,7 +178,7 @@ beforeEach(async () => {
     },
     transcriber: new Transcriber({
       provider,
-      ledger: test.store.ledger,
+      ledger: test.store.host,
       log: testLogger('transcriber'),
     }),
     budget: { capReached: (): boolean => false },
@@ -372,8 +373,9 @@ describe('the name heard on a walkie-talkie channel', () => {
 });
 
 describe('which messages the AI listens to', () => {
-  function transmissions(): Transmissions {
+  async function transmissions(): Promise<Transmissions> {
     const membership = new TalkMembership(test.store);
+    await membership.reload();
     const log = testLogger('talk');
     const ready = (): Promise<void> => Promise.resolve();
     return new Transmissions({
@@ -410,10 +412,15 @@ describe('which messages the AI listens to', () => {
     };
   }
 
-  function attached(aiListens: boolean): { bench: Transmissions; opened: string[] } {
+  async function attached(aiListens: boolean): Promise<{ bench: Transmissions; opened: string[] }> {
     const opened: string[] = [];
     test.store.talk.updateChannel(channel.id, { ai_listens: aiListens, keep_hours: 0 });
-    const bench = transmissions();
+    test.store.talk.setMember(
+      { channelId: channel.id, kind: 'client', memberId: ownerClient },
+      true,
+      { label: 'Owner', detail: null },
+    );
+    const bench = await transmissions();
     bench.attachListening({
       open: (row): PacketSink => {
         opened.push(row.id);
@@ -423,14 +430,14 @@ describe('which messages the AI listens to', () => {
     return { bench, opened };
   }
 
-  it('opens a listener for a channel the AI listens to', () => {
-    const { bench, opened } = attached(true);
+  it('opens a listener for a channel the AI listens to', async () => {
+    const { bench, opened } = await attached(true);
     bench.talk(endpoint(), channel.id);
     expect(opened).toEqual([channel.id]);
   });
 
-  it('opens no listener once the setting is off', () => {
-    const { bench, opened } = attached(false);
+  it('opens no listener once the setting is off', async () => {
+    const { bench, opened } = await attached(false);
     bench.talk(endpoint(), channel.id);
     expect(opened).toEqual([]);
   });

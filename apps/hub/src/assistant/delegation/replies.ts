@@ -73,6 +73,7 @@ export class Replies {
         ? conversation.note(target, speaker.author, body, speaker.origin)
         : conversation.person({ ...speaker, chat: target, clientId: null, text: body, files: [] });
     const eventId = randomUUID();
+    store.live.chatWork.holds.assertQueued(target.id);
     store.assistantEvents.add({
       id: eventId,
       kind: 'report',

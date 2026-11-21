@@ -7,10 +7,10 @@ import {
   type PhotoAiModelRole,
   type PhotoAiModelsUpdate,
 } from '@smarteverything/domain';
-import type { AiModelsRepository } from '../../openrouter/models-repository';
+import type { AiModelsState } from '../../store/ai-models-state';
 
 export interface CatalogueStore {
-  readonly aiModels: Pick<AiModelsRepository, 'all'>;
+  readonly aiModels: Pick<AiModelsState, 'all'>;
 }
 
 export type ZdrModelIds = () => Promise<ReadonlySet<string>>;

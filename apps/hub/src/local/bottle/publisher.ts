@@ -10,7 +10,7 @@ import {
 } from '@smarteverything/domain';
 import type { Level } from './summary';
 
-interface PublishInput {
+export interface PublishInput {
   readonly externalId: string;
   readonly at: string;
   readonly level: Level;

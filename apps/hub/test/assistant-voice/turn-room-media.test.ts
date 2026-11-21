@@ -86,6 +86,7 @@ async function openTurn(): Promise<Awaited<ReturnType<TurnSessions['open']>>> {
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   events = null;
   seen = [];
   heardByPlugin = [];

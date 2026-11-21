@@ -1,4 +1,3 @@
-import { renewHelperWriter as renewWriter } from '../../../harness/helper-writer-renewal';
 import { randomUUID } from 'node:crypto';
 import {
   HELPER_SETTLEMENT_PROOF,
@@ -22,7 +21,7 @@ import type { HarnessGrant } from '../../../harness/grant';
 import type { HarnessService } from '../../../harness/service';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
 import type { ChatOwner } from '../../chat-directory';
-import { rememberHelperRenewal, retainedHelperSettlement } from './helper-renewal-proof';
+import { retainedHelperSettlement } from './helper-renewal-proof';
 import type { HelperSettlement } from './helper-renewal-proof';
 
 export interface Continuation {
@@ -230,7 +229,7 @@ export async function prepareHelperContinuation(
   const wasCurrent = current(binding);
   const child = wasCurrent
     ? binding.child
-    : renewHelperWriter(service, binding, assertColdHelper(service, binding, pendingInput));
+    : await renewHelperWriter(service, binding, assertColdHelper(service, binding, pendingInput));
   if (
     child.epoch !== binding.adoptionEpoch &&
     !sessionAttached(service, child.session_id, chat.profile_id)
@@ -253,20 +252,16 @@ function renewHelperWriter(
   service: HarnessService,
   binding: HelperBinding,
   settlement: HelperSettlement,
-): DshWriterClaim {
+): Promise<DshWriterClaim> {
   const { store } = service;
   const { child, parent, host, grant } = binding;
-  return store.durableWrite(() => {
-    store.dshSessions.verifyWriter(parent, service.hostPrincipal(grant.profile_id, host));
-    const retained = store.dshSessions.attached(child.session_id, grant.profile_id);
-    if (retained?.epoch !== child.epoch)
-      throw new ApiError('conflict', 'A different writer already holds this helper.');
-    const principal = service.hostPrincipal(grant.profile_id, host);
-    const { claim, metadata: renewed } = renewWriter(store, child, principal, grant);
-    if (renewed.next_seq !== settlement.nextSeq)
-      throw new ApiError('conflict', 'The helper log changed before writer renewal.');
-    rememberHelperRenewal(store, { previousEpoch: child.epoch, parent, child: claim, settlement });
-    return claim;
+  return store.host.write('helperWriterRenew', {
+    child,
+    parent,
+    principal: service.hostPrincipal(grant.profile_id, host),
+    grant,
+    settlement: HELPER_SETTLEMENT_PROOF_DATA.parse(settlement),
+    held: store.live.chatWork.holds.held(),
   });
 }
 

@@ -10,13 +10,13 @@ import type { ServerContext } from '../context';
 import { DONE_REPLY, bound, type RouteOf } from '../router';
 import { failureLine } from '@smarteverything/logging';
 
-function syncingSourceOf(context: ServerContext, caller: Caller): HealthSourceRow {
-  const source = context.store.healthSources.find(clientOf(caller).id);
+async function syncingSourceOf(context: ServerContext, caller: Caller): Promise<HealthSourceRow> {
+  const source = await context.store.host.call('healthSources', 'find', clientOf(caller).id);
   if (source === undefined) {
     context.log.warn('health.ingest_refused', {
       clientId: clientOf(caller).id,
       reason: 'phone_not_registered_as_health_source',
-      registeredSources: context.store.healthSources.list().length,
+      registeredSources: (await context.store.host.call('healthSources', 'list')).length,
     });
     throw new ApiError(
       'forbidden',
@@ -28,11 +28,14 @@ function syncingSourceOf(context: ServerContext, caller: Caller): HealthSourceRo
 
 function ingestRoute(context: ServerContext): RouteOf<'ingestHealth'> {
   const { store } = context;
-  return bound(E.ingestHealth, ({ body, caller }) => {
-    const { client_id: clientId } = syncingSourceOf(context, caller);
+  return bound(E.ingestHealth, async ({ body, caller }) => {
+    const { client_id: clientId } = await syncingSourceOf(context, caller);
     try {
-      const result = store.health.ingest(body, profileIdOf(store, caller));
-      store.healthSources.synced(clientId, body.grantedTypes);
+      const result = await store.host.write('ingestHealth', {
+        clientId,
+        profileId: profileIdOf(caller),
+        body,
+      });
       context.log.info('health.ingested', {
         clientId,
         stored: result.stored,
@@ -40,7 +43,7 @@ function ingestRoute(context: ServerContext): RouteOf<'ingestHealth'> {
       });
       return result;
     } catch (cause) {
-      store.healthSources.failed(clientId, failureLine(cause));
+      await store.host.call('healthSources', 'failed', clientId, failureLine(cause));
       throw cause;
     }
   });
@@ -48,51 +51,52 @@ function ingestRoute(context: ServerContext): RouteOf<'ingestHealth'> {
 
 export const healthRoutes = (context: ServerContext) =>
   ({
-    listHealthSources: bound(E.listHealthSources, () => context.store.healthSources.list()),
-    createHealthSource: bound(E.createHealthSource, ({ body, caller }) =>
-      context.store.healthSources.register(clientOf(caller).id, body.name),
+    listHealthSources: bound(E.listHealthSources, () =>
+      context.store.host.call('healthSources', 'list'),
     ),
-    revokeHealthSource: bound(E.revokeHealthSource, ({ params }) => {
-      context.store.healthSources.remove(params.clientId);
+    createHealthSource: bound(E.createHealthSource, ({ body, caller }) =>
+      context.store.host.call('healthSources', 'register', clientOf(caller).id, body.name),
+    ),
+    revokeHealthSource: bound(E.revokeHealthSource, async ({ params }) => {
+      await context.store.host.call('healthSources', 'remove', params.clientId);
       return DONE_REPLY;
     }),
     ingestHealth: ingestRoute(context),
     readHealthDaily: bound(E.readHealthDaily, ({ query, caller }) =>
-      context.store.health.dailyRange(
-        profileIdOf(context.store, caller),
+      context.store.host.call(
+        'health',
+        'dailyRange',
+        profileIdOf(caller),
         query.from,
         query.to,
         query.metrics,
       ),
     ),
     readBestDay: bound(E.readBestDay, ({ query, caller }) =>
-      context.store.health.bestDay(profileIdOf(context.store, caller), query.metric, query.lowest),
+      context.store.host.call('health', 'bestDay', profileIdOf(caller), query.metric, query.lowest),
     ),
     readHealthRecords: bound(E.readHealthRecords, ({ query, caller }) =>
-      context.store.health.records(query, profileIdOf(context.store, caller)),
+      context.store.host.call('health', 'records', query, profileIdOf(caller)),
     ),
     readHealthRecord: bound(E.readHealthRecord, ({ params, caller }) =>
-      context.store.health.requireRecord(params.recordId, profileIdOf(context.store, caller)),
+      context.store.host.call('health', 'requireRecord', params.recordId, profileIdOf(caller)),
     ),
     readHealthSightings: bound(E.readHealthSightings, ({ query, caller }) =>
-      context.store.health.sightings(query.since, profileIdOf(context.store, caller)),
+      context.store.host.call('health', 'sightings', query.since, profileIdOf(caller)),
     ),
     updateFitnessSettings: bound(E.updateFitnessSettings, ({ body, caller }) =>
-      context.store.write(() => {
-        context.store.profiles.updateFitness(profileIdOf(context.store, caller), body);
-        return context.store.settings.read();
-      }),
+      context.store.host.write('updateFitnessSettings', { profileId: profileIdOf(caller), body }),
     ),
   }) as const;
 
 export const assistantRoutes = ({ store }: ServerContext) =>
   ({
-    listMcpTokens: bound(E.listMcpTokens, () => store.oauth.personalTokens()),
-    createMcpToken: bound(E.createMcpToken, ({ body }) => {
+    listMcpTokens: bound(E.listMcpTokens, () => store.host.call('oauth', 'personalTokens')),
+    createMcpToken: bound(E.createMcpToken, async ({ body }) => {
       const token = createMcpToken();
       return {
         token,
-        row: store.oauth.createPersonalToken({
+        row: await store.host.call('oauth', 'createPersonalToken', {
           name: body.name,
           tokenHash: hashMcpToken(token),
           localOnly: false,
@@ -101,11 +105,11 @@ export const assistantRoutes = ({ store }: ServerContext) =>
       };
     }),
     revokeMcpToken: bound(E.revokeMcpToken, ({ params }) =>
-      store.oauth.revokePersonalToken(params.tokenId),
+      store.host.call('oauth', 'revokePersonalToken', params.tokenId),
     ),
-    listOAuthGrants: bound(E.listOAuthGrants, () => store.oauth.grants()),
-    revokeOAuthGrant: bound(E.revokeOAuthGrant, ({ params }) => {
-      store.oauth.revokeGrant(params.clientId);
+    listOAuthGrants: bound(E.listOAuthGrants, () => store.host.call('oauth', 'grants')),
+    revokeOAuthGrant: bound(E.revokeOAuthGrant, async ({ params }) => {
+      await store.host.call('oauth', 'revokeGrant', params.clientId);
       return DONE_REPLY;
     }),
   }) as const;

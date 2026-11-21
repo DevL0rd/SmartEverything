@@ -24,12 +24,12 @@ interface Opened {
   readonly seen: AiHarnessEvent[];
   readonly claimed: DshWriterClaim;
   readonly send: (body: Record<string, unknown>) => void;
-  readonly log: (events: readonly DshSessionEvent[]) => void;
+  readonly log: (events: readonly DshSessionEvent[]) => Promise<void>;
 }
 
 async function open(target: AiHarnessTarget = rig.hub.target): Promise<Opened> {
   const chat = rig.newChat(target);
-  const request = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const request = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(target, randomUUID(), request);
   const sessionId = request.claim.session_id;
   const seen: AiHarnessEvent[] = [];
@@ -49,9 +49,9 @@ async function open(target: AiHarnessTarget = rig.hub.target): Promise<Opened> {
         HARNESS_NATIVE_FRAME.parse({ session_id: sessionId, epoch: request.claim.epoch, ...body }),
       );
     },
-    log: (events): void => {
+    log: async (events): Promise<void> => {
       const stat = rig.opened.store.dshSessions.stat(sessionId, rig.owner.profileId);
-      const appended = rig.opened.store.dshSessions.append(
+      const appended = await rig.opened.store.live.dshSessions.append(
         {
           claim: request.claim,
           operation_id: randomUUID(),
@@ -125,7 +125,7 @@ describe('native frames reaching the hub', () => {
 
   it('measure the context from the log the hub stored', async () => {
     const opened = await open();
-    opened.log([
+    await opened.log([
       {
         type: 'request/context',
         seq: 0,
@@ -165,9 +165,9 @@ describe('native frames reaching the hub', () => {
     opened.send({ kind: 'open' });
     const delivery = randomUUID();
 
-    opened.log([claim(delivery), turnStart(1)]);
+    await opened.log([claim(delivery), turnStart(1)]);
     opened.send({ kind: 'input', message_id: delivery, turn: 1 });
-    opened.log([turnEnd(1, 'completed')]);
+    await opened.log([turnEnd(1, 'completed')]);
 
     const stored = rig.opened.store.dshSessions.stat(opened.sessionId, rig.owner.profileId);
     expect(opened.seen.at(-1)).toMatchObject({
@@ -185,7 +185,7 @@ describe('native frames reaching the hub', () => {
     const delivery = randomUUID();
     opened.send({ kind: 'open' });
 
-    opened.log([claim(delivery), turnStart(1)]);
+    await opened.log([claim(delivery), turnStart(1)]);
     opened.send({ kind: 'input', message_id: delivery, turn: 1 });
     opened.send({ kind: 'status', status: 'running', work: [] });
     opened.send({ kind: 'attempt', id: 'a:1', state: 'started' });
@@ -193,7 +193,7 @@ describe('native frames reaching the hub', () => {
     opened.send({ kind: 'text', delta: 'lo' });
     opened.send({ kind: 'usage', usage: { inputTokens: 12, outputTokens: 2 } });
     opened.send({ kind: 'attempt', id: 'a:1', state: 'committed' });
-    opened.log([turnEnd(1, 'completed')]);
+    await opened.log([turnEnd(1, 'completed')]);
     opened.send({ kind: 'status', status: 'idle', work: [] });
 
     const delivered = opened.seen.filter((event) => event.delivery_id === delivery);
@@ -225,11 +225,11 @@ describe('native frames reaching the hub', () => {
     const opened = await open();
     const delivery = randomUUID();
     opened.send({ kind: 'open' });
-    opened.log([claim(delivery), turnStart(1)]);
+    await opened.log([claim(delivery), turnStart(1)]);
     opened.send({ kind: 'input', message_id: delivery, turn: 1 });
     opened.send({ kind: 'status', status: 'running', work: [] });
 
-    opened.log([turnEnd(1, 'completed')]);
+    await opened.log([turnEnd(1, 'completed')]);
 
     expect(opened.seen.at(-1)).toMatchObject({ kind: 'completed', delivery_id: delivery });
     expect(rig.service.state(rig.owner, opened.chat.id).state).toBe('idle');
@@ -239,10 +239,10 @@ describe('native frames reaching the hub', () => {
     const opened = await open();
     const delivery = randomUUID();
     opened.send({ kind: 'open' });
-    opened.log([claim(delivery), turnStart(1)]);
+    await opened.log([claim(delivery), turnStart(1)]);
     opened.send({ kind: 'input', message_id: delivery, turn: 1 });
 
-    opened.log([turnEnd(1, 'blocked')]);
+    await opened.log([turnEnd(1, 'blocked')]);
 
     expect(opened.seen.at(-1)).toMatchObject({
       kind: 'failed',
@@ -254,7 +254,7 @@ describe('native frames reaching the hub', () => {
     const opened = await open();
     const delivery = randomUUID();
     opened.send({ kind: 'open' });
-    opened.log([claim(delivery), turnStart(1)]);
+    await opened.log([claim(delivery), turnStart(1)]);
     opened.send({ kind: 'input', message_id: delivery, turn: 1 });
     const stat = rig.opened.store.dshSessions.stat(opened.sessionId, rig.owner.profileId);
     const append = {
@@ -267,8 +267,8 @@ describe('native frames reaching the hub', () => {
       rig.service.directory.get(rig.hub.target).host,
     );
 
-    rig.opened.store.dshSessions.append(append, principal);
-    rig.opened.store.dshSessions.append(append, principal);
+    await rig.opened.store.live.dshSessions.append(append, principal);
+    await rig.opened.store.live.dshSessions.append(append, principal);
 
     expect(opened.seen.filter((event) => event.kind === 'completed')).toHaveLength(1);
   });

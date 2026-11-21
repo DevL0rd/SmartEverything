@@ -144,7 +144,10 @@ export class StateWriter {
     }
   }
 
-  async commitObservation(row: StateRecord | null, commit: () => boolean): Promise<boolean> {
+  async commitObservation(
+    row: StateRecord | null,
+    commit: () => Promise<boolean>,
+  ): Promise<boolean> {
     await this.queue.settled();
     if (row === null) {
       return commit();
@@ -153,10 +156,10 @@ export class StateWriter {
     const record = { ...row, observedAt: new Date(row.observedAt).toISOString() };
     const observed = this.observed.get(key);
     if (observed !== undefined && record.observedAt < observed.observedAt) return false;
-    const previous = this.values.get(key);
-    if (!commit()) {
+    if (!(await commit())) {
       return false;
     }
+    const previous = this.values.get(key);
     this.values.set(key, row.value);
     this.observed.set(key, record);
     if (previous === undefined || !jsonEquals(previous, row.value)) {

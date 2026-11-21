@@ -8,6 +8,7 @@ import { hubBootRun } from '../self-update/boot-receipt';
 import type { FileIoThreadsStart } from './file-io-threads';
 import { selectFfmpeg } from '../media/ffmpeg-path';
 import { stopOnUncaught } from './uncaught';
+import { startLoopBlockMonitor, type LoopBlockMonitor } from './loop-block-monitor';
 import { RESTART_EXIT_CODE, readServiceConfig, type HubServiceConfig } from './configuration';
 import { migrateHubServiceConfig } from './config-migration';
 import {
@@ -27,6 +28,8 @@ export interface ServiceHost {
   readonly pointer: Pick<Location, 'rootId' | 'state'>;
   readonly fileIoThreads: FileIoThreadsStart;
   readonly logWorkerScript: string;
+  readonly codecWorkerScript: string;
+  readonly storeHostScript: string;
   readonly exit: (code: number) => void;
   readonly onSignal: (signal: 'SIGTERM' | 'SIGINT', handler: () => void) => void;
 }
@@ -41,13 +44,16 @@ class Lifecycle {
   restart: RequestWatch | null = null;
   ready: ReadyFile | null = null;
   uncaught: (() => void) | null = null;
+  readonly blocks: LoopBlockMonitor;
   private stopping: Promise<void> | null = null;
 
   constructor(
     private readonly host: ServiceHost,
     private readonly log: Logger,
     readonly files: { readonly logFile: LogFile; readonly pidFile: PidFile },
-  ) {}
+  ) {
+    this.blocks = startLoopBlockMonitor({ log: log.forArea('hub.loop') });
+  }
 
   shutdown(code: number): Promise<void> {
     this.stopping ??= this.stop(code);
@@ -63,6 +69,7 @@ class Lifecycle {
     });
     await clearRequest(this.host.layout.system.run.restartRequest);
     await this.files.pidFile.remove();
+    this.blocks.stop();
     await this.files.logFile.close();
     this.uncaught?.();
     this.host.exit(code);
@@ -79,6 +86,8 @@ function serverOptions(
     layout: host.layout,
     logLines: lifecycle.files.logFile.lines,
     logWorkerScript: host.logWorkerScript,
+    codecWorkerScript: host.codecWorkerScript,
+    storeHostScript: host.storeHostScript,
     port: config.port,
     ...(config.lan === undefined ? {} : { lan: config.lan }),
     host: config.host,
@@ -140,7 +149,11 @@ async function openServiceFiles(
 ): Promise<{ readonly log: Logger; readonly logFile: LogFile; readonly pidFile: PidFile }> {
   const { run, logs } = host.layout.system;
   await prepareTemporaryFolder(host.layout);
-  const logFile = await openLogFile(logs.service);
+  const logFile = await openLogFile(logs.service, (cause) => {
+    new Logger('hub.service').exception('service.log_rotation_failed', cause, {
+      file: logs.service,
+    });
+  });
   Logger.configure({
     level: config.logLevel,
     sink: logFile.sink,
@@ -195,6 +208,7 @@ export async function runService(host: ServiceHost): Promise<RunningService> {
       log.error('service.stop_failed', stopCause);
     });
     await pidFile.remove();
+    lifecycle.blocks.stop();
     await logFile.close();
     watching();
     throw cause;

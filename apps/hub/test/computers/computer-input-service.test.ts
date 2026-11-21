@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { COMPUTER_SCOPE_OFF, type ClientRow, type HubFrame } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import { ComputerService } from '../../src/computers/computer-service';
@@ -93,7 +93,12 @@ describe('input through the computer service', () => {
     opened.store.computerScopes.update(deviceId, { input: true });
     const assistant: Caller = { kind: 'client', client: owner, via: 'assistant' };
     const done = service.ask({ caller: assistant, deviceId, request: CLICK }, z.unknown());
-    expect(asked(sent)).toHaveLength(1);
+    await vi.waitFor(
+      () => {
+        expect(asked(sent)).toHaveLength(1);
+      },
+      { timeout: 10_000 },
+    );
     reply();
     await expect(done).resolves.toBeNull();
   });

@@ -82,7 +82,7 @@ export class HubLocalBoundary {
       return;
     }
     if (selection.kind !== 'claude' && selection.kind !== 'codex') return;
-    if (selection.device_id === undefined || this.store.computerAi.isLocal(selection.device_id))
+    if (selection.device_id === undefined || this.store.live.computers.isLocal(selection.device_id))
       throw new ApiError(
         'forbidden',
         'Hub conversations cannot start Claude or Codex on the computer the hub itself runs on; pick another computer.',

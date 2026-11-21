@@ -45,9 +45,9 @@ function dataHex(speed100: number, incline10: number, steps: number): string {
   return `0820${word(speed100)}${word(incline10)}0000${word(steps)}`;
 }
 
-function feed(frames: readonly [string, string][]): void {
+async function feed(frames: readonly [string, string][]): Promise<void> {
   const at = rig.clock.now().toISOString();
-  rig.ingest.process(rig.row(), rig.owner.client, {
+  await rig.ingest.process(rig.row(), rig.owner.client, {
     frames: frames.map(([characteristic, hex]) => ({ at, characteristic, hex })),
     link: { phase: 'linked', rssi: -55, reconnects: 0, detail: null },
   });
@@ -61,23 +61,23 @@ function inclineFrames(target: number): [string, string][] {
   return behaviour === 'no_move' ? [] : [['2acd', dataHex(300, raw, 20)]];
 }
 
-function beltAnswers(step: TreadmillWriteStep): void {
+async function beltAnswers(step: TreadmillWriteStep): Promise<void> {
   const bytes = hexToBytes(step.hex);
   if (bytes[0] === 0x00) {
-    feed([['2ad9', behaviour === 'control_refused' ? '800005' : '800001']]);
+    await feed([['2ad9', behaviour === 'control_refused' ? '800005' : '800001']]);
   }
   if (bytes[0] === 0x03 && behaviour !== 'silent') {
     const target = (((bytes[2] ?? 0) << 8) | (bytes[1] ?? 0)) / 10;
     const codes: Partial<Record<Behaviour, string>> = { denied: '800305', unsupported: '800302' };
-    feed([['2ad9', codes[behaviour] ?? '800301']]);
+    await feed([['2ad9', codes[behaviour] ?? '800301']]);
     if (codes[behaviour] === undefined) {
-      feed(inclineFrames(target));
+      await feed(inclineFrames(target));
     }
   }
 }
 
-function belt(speed100: number, incline: number, steps: number): void {
-  feed([['2acd', dataHex(speed100, incline * 10, steps)]]);
+async function belt(speed100: number, incline: number, steps: number): Promise<void> {
+  await feed([['2acd', dataHex(speed100, incline * 10, steps)]]);
 }
 
 beforeEach(async () => {
@@ -90,20 +90,21 @@ beforeEach(async () => {
     store: rig.test.store,
     fleet: rig.fleet,
     broker: {
-      run: (_target, steps): Promise<TreadmillActionResult> => {
+      run: async (_target, steps): Promise<TreadmillActionResult> => {
         sent.push([...steps]);
-        steps.forEach(beltAnswers);
-        return Promise.resolve(answer);
+        for (const step of steps) {
+          await beltAnswers(step);
+        }
+        return answer;
       },
     },
     guard: new NoStepsGuard(),
     holderOf: (): string | null => rig.holder.clientId,
-    walkerOf: (): string => rig.owner.profile.id,
     holderName: (): string => 'Owner phone',
     now: rig.clock.now,
     log: testLogger('treadmill'),
   };
-  belt(0, 5, 0);
+  await belt(0, 5, 0);
 });
 
 afterEach(async () => {
@@ -145,6 +146,11 @@ function writes(): string[] {
 
 async function failsAfterTimeout(promise: Promise<unknown>, message: string): Promise<void> {
   const outcome = expect(promise).rejects.toThrow(message);
+  while (vi.getTimerCount() === 0) {
+    await new Promise((resolve) => {
+      setImmediate(resolve);
+    });
+  }
   await vi.advanceTimersByTimeAsync(10_000);
   await outcome;
 }
@@ -252,8 +258,14 @@ describe('changing the incline', () => {
           sent.push([...steps]);
           return new Promise((resolve) => {
             release = (value): void => {
-              steps.forEach(beltAnswers);
-              resolve(value);
+              resolve(
+                (async (): Promise<TreadmillActionResult> => {
+                  for (const step of steps) {
+                    await beltAnswers(step);
+                  }
+                  return value;
+                })(),
+              );
             };
           });
         },
@@ -273,7 +285,7 @@ describe('changing the incline', () => {
   });
 
   it('lets a person walking change it from the phone that holds the link', async () => {
-    belt(300, 5, 10);
+    await belt(300, 5, 10);
     await expect(run('belt_incline', 4, OWNER_APP())).resolves.toBe('The incline is now 4.');
     expect(writes()).toEqual(['00', '032800']);
   });
@@ -301,7 +313,7 @@ describe('a belt without an incline', () => {
       ),
     ).toBeUndefined();
     deps = { ...deps, store: rig.test.store, fleet: rig.fleet };
-    belt(0, 5, 0);
+    await belt(0, 5, 0);
     await expect(run('belt_incline', 6, OWNER_APP())).rejects.toThrow(
       'The belt did not report its incline range',
     );
@@ -318,12 +330,14 @@ describe('the light strip write', () => {
     return [...body, sum].map(hexOf).join('');
   }
 
-  function brokerReplying(reply: (() => void) | null): CommandDeps['broker'] {
+  function brokerReplying(reply: (() => Promise<void>) | null): CommandDeps['broker'] {
     return {
-      run: (_target, steps): Promise<TreadmillActionResult> => {
+      run: async (_target, steps): Promise<TreadmillActionResult> => {
         sent.push([...steps]);
-        reply?.();
-        return Promise.resolve(answer);
+        if (reply !== null) {
+          await reply();
+        }
+        return answer;
       },
     };
   }
@@ -331,9 +345,7 @@ describe('the light strip write', () => {
   it('asks for the settings again and confirms from the reply', async () => {
     deps = {
       ...deps,
-      broker: brokerReplying(() => {
-        feed([[SUPPLEMENT_NOTIFY, lightReply(true)]]);
-      }),
+      broker: brokerReplying(() => feed([[SUPPLEMENT_NOTIFY, lightReply(true)]])),
     };
     await run('belt_light', true, OWNER_APP());
     expect(sent[0]).toHaveLength(2);
@@ -343,9 +355,7 @@ describe('the light strip write', () => {
   it('fails when the next settings reply still shows the old state', async () => {
     deps = {
       ...deps,
-      broker: brokerReplying(() => {
-        feed([[SUPPLEMENT_NOTIFY, lightReply(false)]]);
-      }),
+      broker: brokerReplying(() => feed([[SUPPLEMENT_NOTIFY, lightReply(false)]])),
     };
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     await failsAfterTimeout(run('belt_light', true, OWNER_APP()), 'The light strip did not change');

@@ -52,9 +52,9 @@ export function sunHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
     'date.sun_times': (inputs): ReadResult => {
       const request = parseInputs('date.sun_times', SUN_TIMES, inputs);
-      const point = homeLocation(deps.store);
+      const point = homeLocation(deps.world);
       if (point === null) throw new ReadFailure('NotFound', 'The home has no location set');
-      const day = dayOf(request, deps.clock.now(), homeZone(deps.store));
+      const day = dayOf(request, deps.clock.now(), homeZone(deps.world));
       const at = (moment: Date | null): string | undefined => iso(moment, request.offset);
       return outputsOf({
         sunrise: at(eventAt('sunrise', day, point, OFFICIAL_ZENITH)),

@@ -7,8 +7,7 @@ import { TreadmillActionBroker } from './broker';
 import type { CommandDeps } from './commands';
 import { Fleet } from './fleet';
 import { NoStepsGuard } from './guard';
-import { TreadmillHealth } from './health';
-import { TreadmillIngest, walkerProfileOf, type IngestDeps, type LivePublisher } from './ingest';
+import { TreadmillIngest, type IngestDeps, type LivePublisher } from './ingest';
 import { Publisher } from './publisher';
 import type { ViewDeps } from './views';
 
@@ -40,7 +39,6 @@ export interface Wiring {
   readonly fleet: Fleet;
   readonly bridges: WatchBridges;
   readonly broker: TreadmillActionBroker;
-  readonly health: TreadmillHealth;
   readonly guard: NoStepsGuard;
   readonly ingest: TreadmillIngest;
   readonly holderOf: (device: DeviceRow) => string | null;
@@ -83,7 +81,6 @@ export function buildWiring(context: ExtensionContext, now: () => Date): Wiring 
     now,
     log,
   });
-  const health = new TreadmillHealth(store);
   const holderOf = (device: DeviceRow): string | null => bridges.holderOf(device)?.clientId ?? null;
   const ingestDeps: IngestDeps = {
     store,
@@ -91,7 +88,6 @@ export function buildWiring(context: ExtensionContext, now: () => Date): Wiring 
     publisher: new Publisher({ sink: () => slot.require(), metrics: hub.drivers.metrics }),
     sink: () => slot.require(),
     local: hub.local,
-    health,
     live: livePublisher(context),
     holderOf,
     now,
@@ -105,7 +101,6 @@ export function buildWiring(context: ExtensionContext, now: () => Date): Wiring 
     fleet,
     bridges,
     broker,
-    health,
     guard,
     ingest,
     holderOf,
@@ -115,12 +110,11 @@ export function buildWiring(context: ExtensionContext, now: () => Date): Wiring 
       broker,
       guard,
       holderOf,
-      walkerOf: (device) => walkerProfileOf(ingestDeps, device),
       holderName: (device) => bridges.holderOf(device)?.clientName ?? null,
       now,
       log,
     },
     views: viewDeps(context, { fleet, bridges, ingest }, now),
-    acts: { store, fleet, local: hub.local, bridges, health, broker, holderOf, now, log },
+    acts: { store, fleet, local: hub.local, bridges, broker, holderOf, now, log },
   };
 }

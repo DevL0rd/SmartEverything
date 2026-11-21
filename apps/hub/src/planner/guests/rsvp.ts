@@ -13,7 +13,7 @@ import {
 import type { Store } from '../../store/store';
 
 export interface RsvpOptions {
-  readonly store: Pick<Store, 'feed' | 'plannerItems'>;
+  readonly store: Pick<Store, 'feed' | 'host'>;
   readonly now: () => Date;
   readonly emit: (signal: SignalInput) => void;
 }
@@ -37,9 +37,9 @@ export function respondAsMember(
   });
 }
 
-function invited(options: RsvpOptions, guest: PlannerGuestRow): void {
+async function invited(options: RsvpOptions, guest: PlannerGuestRow): Promise<void> {
   if (guest.profile_id === null) return;
-  const item = options.store.plannerItems.findAny(guest.item_id);
+  const item = await options.store.host.call('plannerItems', 'findAny', guest.item_id);
   if (item === undefined || item.profile_id === guest.profile_id) return;
   options.store.feed.notice(
     PLANNER_INVITED_NOTICE.parse({
@@ -53,8 +53,8 @@ function invited(options: RsvpOptions, guest: PlannerGuestRow): void {
   );
 }
 
-function responded(options: RsvpOptions, guest: PlannerGuestRow): void {
-  const item = options.store.plannerItems.findAny(guest.item_id);
+async function responded(options: RsvpOptions, guest: PlannerGuestRow): Promise<void> {
+  const item = await options.store.host.call('plannerItems', 'findAny', guest.item_id);
   if (item === undefined || guest.response === 'needs_action') return;
   if (item.created_by !== 'booking' || guest.response !== 'yes') {
     options.store.feed.notice(
@@ -88,10 +88,10 @@ function responded(options: RsvpOptions, guest: PlannerGuestRow): void {
   );
 }
 
-export function followGuests(options: RsvpOptions, change: LiveChange): void {
+export async function followGuests(options: RsvpOptions, change: LiveChange): Promise<void> {
   if (change.table !== 'planner_guests' || change.record === null) return;
-  if (change.oldRecord === null) invited(options, change.record);
+  if (change.oldRecord === null) await invited(options, change.record);
   else if (change.oldRecord.response !== change.record.response) {
-    responded(options, change.record);
+    await responded(options, change.record);
   }
 }

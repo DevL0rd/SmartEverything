@@ -3,6 +3,7 @@ import { DriveWatchers, systemWatch } from '../../../src/drive/watcher';
 import { outsideOf } from '../../../src/drive/watch-reflect';
 import { testLogger } from '../../support/logs';
 import { attachTo, openMountRig, opKey, type Attached, type MountRig } from './mount-rig';
+import { hostScanPort } from '../../../src/drive/scan-port';
 
 const WRITTEN_NS = 1_763_100_000_123_456_789n;
 const SETTLE_MS = 40;
@@ -46,10 +47,10 @@ beforeEach(async () => {
   requests = [];
   const { store } = rig.posix.opened;
   watchers = new DriveWatchers({
-    roots: store.driveRoots,
-    index: { items: store.driveItems, inodes: store.driveInodes },
+    roots: hostScanPort(store),
+    index: reader(),
     activity: rig.activity,
-    mounted: (): boolean => true,
+    mounted: (): Promise<boolean> => Promise.resolve(true),
     onPlacementChange: (): (() => void) => (): undefined => undefined,
     enqueueScan: (): void => {
       asked('scan');
@@ -73,10 +74,10 @@ afterEach(async () => {
   await rig.close();
 });
 
-const reader = (): Parameters<typeof outsideOf>[0] => ({
-  items: rig.posix.opened.store.driveItems,
-  inodes: rig.posix.opened.store.driveInodes,
-});
+const reader =
+  (): Parameters<typeof outsideOf>[0] =>
+  (rootId, relPaths): ReturnType<Parameters<typeof outsideOf>[0]> =>
+    rig.posix.opened.store.host.read('driveScanIndexed', { rootId, relPaths });
 
 async function created(name: string): Promise<{ ino: number; rev: number }> {
   const entry = await mine.client.created(mine.root, name);

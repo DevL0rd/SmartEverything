@@ -1,6 +1,6 @@
 import type { ClassifiedRow } from '@smarteverything/ble';
 import { waterEntryOf, type EntrySpan } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import type { NoteLogger } from '../unit-notes';
 import type {
   BottleReadingsRepository,
   StoredDrink,
@@ -23,7 +23,7 @@ export interface DrinksDeps {
     'insertDrink' | 'attachEntry' | 'drink' | 'entryVersion' | 'setDrinkMl'
   >;
   readonly clock: HomeClock;
-  readonly log: Logger;
+  readonly log: NoteLogger;
 }
 
 interface DrinkTarget {

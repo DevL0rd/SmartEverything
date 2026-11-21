@@ -4,7 +4,6 @@ import {
   type PlannerOccurrenceRow,
   type PlannerRrule,
 } from '@smarteverything/domain';
-import type { Store } from '../store/store';
 import { occurrencesBetween, RecurrenceError, type RecurrenceSeries } from './recurrence';
 
 export type PlannerTiming = Pick<
@@ -87,27 +86,6 @@ export function instantsOf(timing: PlannerTiming): PlannerInstants {
     end: end === null ? null : isoOf(end),
     series_end: seriesEnd === null ? null : isoOf(seriesEnd),
   };
-}
-
-function differs(item: PlannerItemRow, instants: PlannerInstants): boolean {
-  return (
-    item.start !== instants.start ||
-    item.end !== instants.end ||
-    item.series_end !== instants.series_end
-  );
-}
-
-export function recomputeInstants(store: Pick<Store, 'profiles' | 'plannerItems'>): number {
-  let changed = 0;
-  for (const profile of store.profiles.list()) {
-    for (const item of store.plannerItems.list(profile.id)) {
-      const instants = instantsOf(item);
-      if (!differs(item, instants)) continue;
-      store.plannerItems.update(item.id, profile.id, instants);
-      changed += 1;
-    }
-  }
-  return changed;
 }
 
 export interface OccurrenceTiming {

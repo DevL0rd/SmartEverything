@@ -94,8 +94,8 @@ export class SocketEndpoint<Message> {
     this.heartbeat = new ConnectionHeartbeat(options.heartbeatMs, () => this.beat());
   }
 
-  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
-    const client = socketClient(
+  async upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+    const client = await socketClient(
       this.options.store,
       request,
       this.options.protocol,

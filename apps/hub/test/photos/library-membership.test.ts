@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { LibraryReader } from '../../src/photos/library';
 import { DuplicatesService } from '../../src/photos/duplicates';
+import { contextDuplicates } from './duplicate-store';
 import { accessFilter } from '../../src/drive/access';
 import {
   LIBRARY_VISIBLE,
@@ -95,17 +96,20 @@ describe('backup Photos membership', () => {
     expect(visible()).toEqual([photo]);
   });
 
-  it('includes verified backups in photo duplicates without admitting unrelated files', () => {
+  it('includes verified backups in photo duplicates without admitting unrelated files', async () => {
     const first = seed({ n: 1, takenAt: '2026-03-01T10:00:00.000Z', sha: 'a'.repeat(64) });
     const second = seed({ n: 2, takenAt: '2026-03-02T10:00:00.000Z', sha: 'a'.repeat(64) });
     seed({ n: 3, takenAt: '2026-03-03T10:00:00.000Z', sha: 'a'.repeat(64) });
     backup(first);
     backup(second);
-    const duplicates = new DuplicatesService(context, {
+    const duplicates = new DuplicatesService(contextDuplicates(context), {
       trash: (): Promise<void> => Promise.resolve(),
       star: (): Promise<void> => Promise.resolve(),
     });
-    expect(duplicates.stats(alice, { media: true })).toMatchObject({ groups: 1, extraCopies: 1 });
+    expect(await duplicates.stats(alice, { media: true })).toMatchObject({
+      groups: 1,
+      extraCopies: 1,
+    });
   });
 
   it('preserves membership through trash and restore', () => {

@@ -47,8 +47,10 @@ export function viewersOf(
   store: Store,
   services: DriverServices,
   track: (stop: Unsubscribe) => Unsubscribe,
+  publish: PluginViewers['publish'],
 ): PluginViewers {
   return {
+    publish,
     watchDevice: (externalId, onChange): Unsubscribe =>
       track(
         whenDeviceExists(store, services, externalId, (deviceId) => {

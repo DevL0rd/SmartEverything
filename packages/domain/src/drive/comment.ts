@@ -75,6 +75,9 @@ export type DriveCommentThread = z.infer<typeof DRIVE_COMMENT_THREAD>;
 
 export const DRIVE_COMMENT_ADD = z
   .strictObject({
+    id: ID.optional().describe(
+      'Id the client generated for the new comment; repeating the add with the same id returns the comment already made',
+    ),
     body: DRIVE_COMMENT_BODY,
     parentId: ID.nullable(),
     mentions: z.array(ID).readonly(),

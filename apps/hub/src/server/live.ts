@@ -17,7 +17,7 @@ import {
   type LiveMessage,
   type LiveStream,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import {
   SLOW_CLIENT_BYTES,
   logClosed,
@@ -25,8 +25,6 @@ import {
   logHeartbeatMissed,
   logSocketFailed,
   logSummary,
-  logTooSlow,
-  watchBacklog,
   type LoggedConnection,
 } from './live-log';
 import { LiveTally, SocketStats } from './live-stats';
@@ -37,15 +35,16 @@ import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import { z } from 'zod';
 import type { Store } from '../store/store';
 import { socketClient } from './socket-auth';
-import { issuesOf } from './errors';
-import { projected, seenBy, driveNoticeView, type LiveView } from './live-visibility';
+import { issuesOf } from './issues';
+import { viewedByStore } from './live-visibility';
+import { LiveOutbound, type OutboundKind } from './live-outbound';
+import type { LiveViewOf } from './live-views';
 import {
   applySubscription,
   type ClientPrimer,
   type LivePrimer,
   type LiveSubscription,
 } from './live-subscription';
-import { liveText } from './live-wire';
 import { ConnectionHeartbeat } from '../network/connection-heartbeat';
 import { pingWhenOpen } from '../network/guarded-socket';
 import { answering } from './live-reach';
@@ -86,8 +85,14 @@ export class LiveHub {
   private readonly subscription: LiveSubscription;
   private readonly heartbeat = new ConnectionHeartbeat(LIVE_HEARTBEAT_MS, () => this.beat());
   private readonly unsubscribe: readonly (() => void)[];
+  private readonly outbound: LiveOutbound<LiveConnection>;
 
   constructor(private readonly options: LiveOptions) {
+    this.outbound = new LiveOutbound({
+      views: (input): Promise<LiveViewOf[][]> => options.store.host.read('liveViews', input),
+      tally: (): LiveTally => this.tally,
+      log: options.log,
+    });
     this.subscription = {
       store: options.store,
       log: options.log,
@@ -111,7 +116,7 @@ export class LiveHub {
     );
     this.voice = new LiveVoice({
       send: this.send.bind(this),
-      profileOf: (clientId): string => options.store.profiles.activeOf(clientId).id,
+      profileOf: (clientId): Promise<string> => options.store.host.read('activeProfile', clientId),
       log: options.log,
     });
     this.unsubscribe = [
@@ -133,7 +138,7 @@ export class LiveHub {
     });
   }
 
-  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+  async upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
     const offered = mismatchedLiveProtocol(request);
     if (offered !== null) {
       this.options.log.warn('live.protocol_mismatch', { offered, expected: LIVE_PROTOCOL });
@@ -142,7 +147,7 @@ export class LiveHub {
       });
       return;
     }
-    const client = socketClient(this.options.store, request, LIVE_PROTOCOL, '/live');
+    const client = await socketClient(this.options.store, request, LIVE_PROTOCOL, '/live');
     this.options.log.debug('live.authenticated', () => ({
       clientId: client.id,
       role: client.role,
@@ -212,18 +217,17 @@ export class LiveHub {
   }
 
   announce(notice: LiveNotice, audience: LiveAudience): void {
-    for (const connection of this.connections) {
-      if (hears(connection, audience)) {
-        this.send(connection, notice);
-      }
-    }
+    this.outbound.enqueue(
+      [...this.connections].filter((connection) => hears(connection, audience)),
+      this.messageJob(notice),
+    );
   }
 
   private driveNotice(notice: LiveNotice): void {
-    const view = driveNoticeView();
-    for (const connection of this.connections) {
-      if (!this.backgrounds.has(connection)) this.send(connection, notice, view);
-    }
+    this.outbound.enqueue(
+      [...this.connections].filter((connection) => !this.backgrounds.has(connection)),
+      { kind: 'drive', message: notice },
+    );
   }
 
   toClient(clientId: string, notice: LiveNotice): void {
@@ -247,12 +251,10 @@ export class LiveHub {
   }
 
   profileNotice(notice: LiveNotice, profileId: string, audience: LiveAudience): void {
-    for (const connection of this.connections) {
-      const own = this.options.store.profiles.activeOf(connection.client.id).id === profileId;
-      if (own && hears(connection, audience)) {
-        this.send(connection, notice);
-      }
-    }
+    this.outbound.enqueue(
+      [...this.connections].filter((connection) => hears(connection, audience)),
+      { kind: 'profile', message: notice, profileId },
+    );
   }
 
   clientListening(clientId: string, stream: LiveStream): boolean {
@@ -348,7 +350,10 @@ export class LiveHub {
     }
     if (read.type === 'watch') this.watches.receive(connection, read);
     else if (read.type === 'watch_automations') this.watches.receiveTrace(connection, read);
-    else if (read.type === 'voice_levels_watch') this.voice.watch(connection, read.call_id);
+    else if (read.type === 'voice_levels_watch')
+      background(this.voice.watch(connection, read.call_id), 'live.voice_watch_failed', {
+        socketId: connection.id,
+      });
     else this.subscribe(connection, read);
   }
 
@@ -367,41 +372,36 @@ export class LiveHub {
       hub: this.options.status(),
       seq: this.options.store.feed.seq,
     });
-    this.voice.snapshot(connection);
+    background(this.voice.snapshot(connection), 'live.voice_snapshot_failed', {
+      socketId: connection.id,
+    });
   }
 
   private subscribe(connection: LiveConnection, message: LiveSubscribeMessage): void {
-    applySubscription(this.subscription, connection, message);
+    background(applySubscription(this.subscription, connection, message), 'live.subscribe_failed', {
+      socketId: connection.id,
+      clientId: connection.client.id,
+    });
   }
 
   private broadcast(change: LiveChange): void {
-    for (const connection of this.connections) {
-      const shown = projected(connection, change, this.options.store);
-      if (shown !== null) this.send(connection, shown);
-    }
+    const viewed = this.options.store.live.pluginStreams.viewersOf(change);
+    this.outbound.enqueue(
+      [...this.connections].filter(
+        (connection) =>
+          connection.tables.has(change.table) &&
+          (viewed === null || this.watches.watches(connection, viewed)),
+      ),
+      { kind: 'change', change },
+    );
   }
 
-  private send(connection: LiveConnection, message: LiveMessage, view: LiveView = seenBy): void {
-    if (connection.socket.readyState !== connection.socket.OPEN) return;
-    const buffered = connection.socket.bufferedAmount;
-    connection.stats.buffered(buffered);
-    if (buffered > SLOW_CLIENT_BYTES) {
-      connection.stats.closedBy('hub:client_too_slow');
-      logTooSlow(this.options.log, connection, buffered, message.type);
-      connection.socket.terminate();
-      return;
-    }
-    watchBacklog(this.options.log, connection, buffered, message.type);
-    const shown = view(connection, message, this.options.store);
-    const text = shown === null ? null : liveText(connection.client.role, shown);
-    if (text === null) {
-      connection.stats.skipped();
-      this.tally.skipped();
-      return;
-    }
-    connection.socket.send(text);
-    connection.stats.delivered(text.length);
-    this.tally.delivered(message.type, text.length);
+  private send(connection: LiveConnection, message: LiveMessage): void {
+    this.outbound.enqueue([connection], this.messageJob(message));
+  }
+
+  private messageJob(message: LiveMessage): OutboundKind {
+    return viewedByStore(message) ? { kind: 'seen', message } : { kind: 'direct', message };
   }
 
   private beat(): boolean {

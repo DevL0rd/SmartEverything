@@ -41,8 +41,8 @@ function unreadable(cause: unknown): never {
 export function handleRead(deps: DavDeps, exchange: DavExchange): Promise<void> {
   const { request, response } = exchange;
   return guarded(exchange, async () => {
-    const caller = authenticateDav(deps, request);
-    const { root, item, relPath, access } = targetOf(deps, caller, request);
+    const caller = await authenticateDav(deps, request);
+    const { root, item, relPath, access } = await targetOf(deps, caller, request);
     if (relPath !== '' && item === undefined) {
       throw new DavError(404, 'There is nothing at that address.');
     }

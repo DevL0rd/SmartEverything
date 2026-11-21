@@ -1,16 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import {
-  atHomePlace,
-  kindSpecOf,
-  programReferences,
-  type StoredAutomationRow,
-  type AutomationV3,
-  type FunctionV3,
-  type NodeKindLookup,
-  type Place,
-  type ReferenceContext,
-} from '@smarteverything/domain';
-import { failureLine, type Logger } from '@smarteverything/logging';
+import { atHomePlace, kindSpecOf, type Place } from '@smarteverything/domain';
+import { background, failureLine, type Logger } from '@smarteverything/logging';
 import type { Clock } from '../clock';
 import type { CommandExecutor } from '../commands/executor';
 import type { DeviceEffects } from '../commands/effects';
@@ -20,7 +10,6 @@ import type { SignalBus } from '../signals/bus';
 import { installedSignalSources } from '../signals/sources/installed';
 import type { EventRouter } from '../state/event-router';
 import type { StateWriter } from '../state/state-writer';
-import { flatAutomation, flatFunction } from '../store/repositories/automation-trees';
 import type { Store } from '../store/store';
 import { AutomationAiSlot } from './automation-ai';
 import { AutomationComputersSlot } from './automation-computers';
@@ -28,10 +17,14 @@ import { AutomationIntegrationSlot } from './automation-integration';
 import { AutomationTraceSlot } from './automation-trace';
 import { WebhookReplies } from './effects/webhook-replies';
 import { QuestionDesk } from './questions/desk';
-import { TimerWakes } from './timers/timer-wakes';
+import { hostTimerRows, TimerWakes } from './timers/timer-wakes';
 import { WebhookGateway } from './webhooks/gateway';
 import type { FinishedRun } from './driver/ports';
 import { assembleEngineV3 } from './engine-v3-assembly';
+import { hostRunLedger } from './run-ledger';
+import { AutomationMemory } from './automation-memory';
+import { secretUsers } from './secret-users';
+import { hostEngineStore, type EngineStore } from './engine-store';
 import type { EngineAssemblyPorts } from './engine-v3-assembly';
 import { AutomationRunCancelledError } from './effects/run-abort';
 import type { EngineV3 } from './engine-v3';
@@ -46,7 +39,7 @@ import { AutomationDriveSlot } from './effects/drive-nodes';
 import { AutomationImagesSlot } from './effects/image-nodes';
 import { CommandIssuer } from './issue-commands';
 import { automationSecrets } from './secrets-v3';
-import type { AutomationSecrets, SecretUsers } from './secrets-v3';
+import type { AutomationSecrets } from './secrets-v3';
 import { rehearsals } from './rehearsals';
 import type { Rehearsals } from '../server/handlers/automation-runs';
 import type { WorldReadDeps } from './world-v3/deps';
@@ -55,13 +48,16 @@ import {
   type KindCatalog,
   type PluginKindCatalog,
 } from './plugin-kinds/catalog';
-import { kindLedger, usedKindsOf } from './plugin-kinds/ledger';
+import { HostKindLedger } from './plugin-kinds/host-ledger';
 import { persistPluginKinds } from './plugin-kinds/store';
 import { nodeMemoryFromState } from './world-v3/node-memory';
 import type { PresenceSource } from './world-v3/presence';
 import { seededRandom } from './world-v3/random';
 import { persistentFromOwned, withKeptData } from './world-v3/variables';
 import { KeptData } from './world-v3/kept-data';
+import { WorldMirror, type WorldSource } from './world-v3/world-mirror';
+import { HostWatchState } from './watch-state';
+import { hostDecisionLog } from './driver/decisions';
 
 export interface HubEngineParts {
   readonly store: Store;
@@ -89,45 +85,14 @@ export interface HubEngine {
   readonly timers: TimerWakes;
   readonly questions: QuestionDesk;
   readonly kinds: PluginKindCatalog;
+  readonly world: WorldMirror;
 }
 
-function referenceContext(store: Store, kinds: NodeKindLookup): ReferenceContext {
-  return {
-    kinds: (id) => kinds.get(id),
-    functions: (id, pin): FunctionV3 | undefined => {
-      const { automationFunctions: functions } = store;
-      const row =
-        pin !== undefined
-          ? functions.findRevision(id, pin)
-          : functions.find(id) === undefined
-            ? undefined
-            : functions.latest(id);
-      return row === undefined ? undefined : flatFunction(row.definition);
-    },
-  };
-}
-
-function programsOf(row: StoredAutomationRow): readonly AutomationV3[] {
-  const programs = row.draft === null ? [row.definition] : [row.definition, row.draft.program];
-  return programs.map(flatAutomation);
-}
-
-function secretUsers(store: Store, kinds: NodeKindLookup): SecretUsers {
-  const context = referenceContext(store, kinds);
-  return (secretId) =>
-    store.automations
-      .list()
-      .filter((row) =>
-        programsOf(row).some((program) => programReferences(program, secretId, context)),
-      )
-      .map((row) => ({ automationId: row.id, name: row.name }));
-}
-
-function presenceOf(store: Store): PresenceSource {
+function presenceOf(world: WorldSource): PresenceSource {
   return {
     people: () =>
-      store.profiles.list().map((profile) => {
-        const context = store.phoneContexts.latestOf(profile.id);
+      world.profiles.list().map((profile) => {
+        const context = world.phoneContexts.latestOf(profile.id);
         return {
           id: profile.id,
           name: profile.name,
@@ -140,8 +105,8 @@ function presenceOf(store: Store): PresenceSource {
   };
 }
 
-function placeOf(store: Store): Place | null {
-  const home = store.settings.read();
+function placeOf(world: WorldSource): Place | null {
+  const home = world.settings.read();
   return {
     timeZone: home.time_zone,
     location:
@@ -156,9 +121,8 @@ function runRecorder(
   questions: Pick<QuestionDesk, 'closeRun'>,
 ): (finished: FinishedRun) => void {
   const { store, events, clock } = parts;
-  return (finished) => {
-    questions.closeRun(finished.runId);
-    const record = store.automationRunRecords.byId(finished.runId);
+  const recorded = async (finished: FinishedRun, lastRunAt: string): Promise<void> => {
+    const record = await store.host.call('automationRunRecords', 'byId', finished.runId);
     const cancelled = finished.outcome === 'cancelled';
     const error =
       finished.error ??
@@ -177,18 +141,24 @@ function runRecorder(
         },
       });
     }
-    if (store.automations.find(finished.automationId) !== undefined) {
-      store.automations.recordRun(finished.automationId, {
-        lastRunAt: clock.now().toISOString(),
-        lastError: finished.outcome === 'succeeded' ? null : error,
-      });
-    }
+    await store.host.write('noteAutomationRun', {
+      automationId: finished.automationId,
+      run: { lastRunAt, lastError: finished.outcome === 'succeeded' ? null : error },
+    });
+  };
+  return (finished) => {
+    background(questions.closeRun(finished.runId), 'automation.question_close_failed', {
+      runId: finished.runId,
+    });
+    background(recorded(finished, clock.now().toISOString()), 'automation.run_record_failed', {
+      runId: finished.runId,
+    });
   };
 }
 
-function keptDataOf(parts: HubEngineParts): KeptData {
+function keptDataOf(parts: HubEngineParts, memory: AutomationMemory): KeptData {
   return new KeptData({
-    rows: parts.store.automationNodeState,
+    rows: memory.state,
     reset: (reset): void => {
       parts.log.warn('automation.kept_data_reset', { ...reset });
       parts.events.record({
@@ -201,18 +171,27 @@ function keptDataOf(parts: HubEngineParts): KeptData {
   });
 }
 
-function worldOf(parts: HubEngineParts, kept: KeptData, kinds: KindCatalog): WorldReadDeps {
+interface WorldParts {
+  readonly memory: AutomationMemory;
+  readonly kept: KeptData;
+  readonly kinds: KindCatalog;
+  readonly world: WorldSource;
+}
+
+function worldOf(parts: HubEngineParts, { memory, kept, kinds, world }: WorldParts): WorldReadDeps {
   const { store } = parts;
   return {
     kinds,
     store,
+    world,
     executor: parts.executor,
     clock: parts.clock,
     observed: (deviceId, capability) => parts.state.valueOf(deviceId, capability),
-    presence: presenceOf(store),
-    persistent: withKeptData(persistentFromOwned(store.automationOwnedValues), kept),
+    presence: presenceOf(world),
+    persistent: withKeptData(persistentFromOwned(memory.owned), kept),
     random: seededRandom,
-    memory: nodeMemoryFromState(store.automationNodeState),
+    memory: nodeMemoryFromState(memory.state),
+    stateRows: memory.state,
     signals: { latest: (filter) => parts.signals.latest(filter) },
   };
 }
@@ -250,6 +229,11 @@ interface Slots {
 }
 
 interface Wiring {
+  readonly engineStore: EngineStore;
+  readonly source: WorldMirror;
+  readonly watchState: HostWatchState;
+  readonly ledger: HostKindLedger;
+  readonly memory: AutomationMemory;
   readonly slots: Slots;
   readonly secrets: AutomationSecrets;
   readonly world: WorldReadDeps;
@@ -302,17 +286,14 @@ function enginePorts(parts: HubEngineParts, wiring: Wiring): EngineAssemblyPorts
   const { store, clock, executor } = parts;
   return {
     store,
-    repositories: {
-      programs: store.automations,
-      plans: store.automationPlans,
-      records: store.automationRunRecords,
-      nodes: store.automationRunNodes,
-      owned: store.automationOwnedValues,
-      functions: store.automationFunctions,
-    },
+    repositories: { store: wiring.engineStore, runs: hostRunLedger(store.host) },
+    memory: wiring.memory,
     clock,
     signals: { subscribe: (listener) => parts.signals.subscribe(listener) },
-    watchState: store.signalWatchState,
+    watchState: wiring.watchState,
+    ready: async (): Promise<void> => {
+      await Promise.all([wiring.source.load(), wiring.watchState.prepare(), wiring.ledger.load()]);
+    },
     isPulse: (matcher) =>
       matcher.field === undefined || matcher.source !== 'weather'
         ? kindSpecOf(installedSignalSources(store), matcher)?.pulse === true
@@ -323,12 +304,16 @@ function enginePorts(parts: HubEngineParts, wiring: Wiring): EngineAssemblyPorts
     secrets,
     world,
     kept,
-    place: () => placeOf(store),
-    zone: () => store.settings.read().time_zone,
+    place: () => placeOf(world.world),
+    zone: () => world.world.settings.read().time_zone,
     retain: (runId, rows): void => {
-      store.automationRuns.retainCommands(runId, rows);
+      background(
+        store.host.call('automationRuns', 'retainCommands', runId, rows),
+        'automation.run_write_failed',
+        { runId },
+      );
     },
-    decisions: store.automationDecisions,
+    decisions: hostDecisionLog(store.host),
     recordRun: runRecorder(parts, questions),
     questions,
     ...notices(parts),
@@ -349,17 +334,50 @@ function newSlots(): Slots {
   };
 }
 
+function keptWorldOf(
+  parts: HubEngineParts,
+  kinds: KindCatalog,
+): Pick<Wiring, 'engineStore' | 'memory' | 'kept' | 'world' | 'source' | 'watchState'> {
+  const engineStore = hostEngineStore(parts.store.host);
+  const source = new WorldMirror(parts.store.feed, parts.store.host, parts.store.live.home);
+  const memory = new AutomationMemory({
+    writes: engineStore.writes,
+    now: (): Date => parts.clock.now(),
+  });
+  const kept = keptDataOf(parts, memory);
+  const world = worldOf(parts, { memory, kept, kinds, world: source });
+  const watchState = new HostWatchState(parts.store.host);
+  return { engineStore, memory, kept, source, world, watchState };
+}
+
+function kindsOf(store: Store): {
+  readonly ledger: HostKindLedger;
+  readonly kinds: PluginKindCatalog;
+} {
+  const ledger = new HostKindLedger(store.feed, store.host, () => kinds.kinds());
+  const kinds: PluginKindCatalog = createKindCatalog(undefined, ledger);
+  persistPluginKinds(kinds, ledger.writes);
+  return { ledger, kinds };
+}
+
+function wiringOf(parts: HubEngineParts): Wiring & { readonly kinds: PluginKindCatalog } {
+  const { store, clock } = parts;
+  const { ledger, kinds } = kindsOf(store);
+  return {
+    ...keptWorldOf(parts, kinds),
+    ledger,
+    kinds,
+    secrets: automationSecrets(parts.secrets, secretUsers(store.host, kinds), clock.now),
+    slots: newSlots(),
+    questions: new QuestionDesk({ host: store.host, clock }),
+    drivers: kinds.driverNodes,
+  };
+}
+
 export function assembleHubEngine(parts: HubEngineParts): HubEngine {
   const { store, clock } = parts;
-  const slots = newSlots();
-  const kinds: PluginKindCatalog = createKindCatalog(
-    undefined,
-    kindLedger(store, () => kinds),
-  );
-  persistPluginKinds(kinds, store.pluginKinds, () => usedKindsOf(store));
-  const secrets = automationSecrets(parts.secrets, secretUsers(store, kinds), clock.now);
-  const kept = keptDataOf(parts);
-  const world = worldOf(parts, kept, kinds);
+  const wiring = wiringOf(parts);
+  const { slots, world, source, secrets, questions, kinds } = wiring;
   const webhooks = new WebhookGateway({
     signals: parts.signals,
     replies: new WebhookReplies(),
@@ -367,13 +385,12 @@ export function assembleHubEngine(parts: HubEngineParts): HubEngine {
     token: randomUUID,
   });
   const timers = new TimerWakes({
-    rows: store.automationNodeState,
+    rows: hostTimerRows(store.host),
     clock,
     emit: parts.signals.emit,
   });
-  const questions = new QuestionDesk({ questions: store.automationQuestions, clock });
   const assembled = assembleEngineV3({
-    ...enginePorts(parts, { slots, secrets, world, kept, questions, drivers: kinds.driverNodes }),
+    ...enginePorts(parts, wiring),
     started: (start) => {
       webhooks.started(start);
     },
@@ -385,7 +402,8 @@ export function assembleHubEngine(parts: HubEngineParts): HubEngine {
     base: world,
     watch: assembled.waits.watch,
     subjectOf: (automationId) => assembled.engine.subjectOf(automationId),
-    zone: () => store.settings.read().time_zone,
+    heldSubject: (automationId) => assembled.engine.heldSubject(automationId),
+    zone: () => source.settings.read().time_zone,
   });
   return {
     engine: assembled.engine,
@@ -396,5 +414,6 @@ export function assembleHubEngine(parts: HubEngineParts): HubEngine {
     timers,
     questions,
     kinds,
+    world: source,
   };
 }

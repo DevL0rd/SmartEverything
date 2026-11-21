@@ -39,7 +39,7 @@ function userMessage(seq: number, text: string): DshSessionEvent {
 }
 
 function appendInput(
-  claim: ReturnType<typeof rig.service.prepare>['claim'],
+  claim: Awaited<ReturnType<typeof rig.service.prepare>>['claim'],
   events: readonly DshSessionEvent[],
 ): { claim: typeof claim; operation_id: string; events: DshSessionEvent[] } {
   return {
@@ -47,6 +47,16 @@ function appendInput(
     operation_id: randomUUID(),
     events: DSH_SESSION_EVENTS_WRITE.parse(events),
   };
+}
+
+function seededTo(claim: Awaited<ReturnType<typeof rig.service.prepare>>['claim']): number {
+  const metadata = rig.opened.store.dshSessions.stat(claim.session_id, rig.owner.profileId);
+  if (metadata === undefined) throw new Error(`Session ${claim.session_id} was not opened.`);
+  return metadata.next_seq;
+}
+
+function seqs(through: number): number[] {
+  return Array.from({ length: through + 1 }, (_, seq) => seq);
 }
 
 function hubPrincipal(): ReturnType<typeof rig.service.hostPrincipal> {
@@ -64,11 +74,15 @@ function deskPrincipal(): ReturnType<typeof rig.service.hostPrincipal> {
 }
 
 describe('attaching a native session to a machine', () => {
-  it('lets the next machine take the session over, fencing every write of the machine before it', () => {
+  it('lets the next machine take the session over, fencing every write of the machine before it', async () => {
     const chat = rig.newChat(rig.hub.target);
-    const first = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const first = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const base = seededTo(first.claim);
     const { dshSessions } = rig.opened.store;
-    dshSessions.append(appendInput(first.claim, [systemMessage(0)]), hubPrincipal());
+    await rig.opened.store.live.dshSessions.append(
+      appendInput(first.claim, [systemMessage(base)]),
+      hubPrincipal(),
+    );
 
     const second = dshSessions.acquire(
       {
@@ -82,20 +96,31 @@ describe('attaching a native session to a machine', () => {
     );
 
     expect(second.claim.epoch).toBe(first.claim.epoch + 1);
-    expect(() =>
-      dshSessions.append(appendInput(first.claim, [userMessage(1, 'late')]), hubPrincipal()),
-    ).toThrow(DshSessionStorageError);
+    await expect(
+      rig.opened.store.live.dshSessions.append(
+        appendInput(first.claim, [userMessage(base + 1, 'late')]),
+        hubPrincipal(),
+      ),
+    ).rejects.toThrow(DshSessionStorageError);
     expect(
-      dshSessions.append(appendInput(second.claim, [userMessage(1, 'now')]), deskPrincipal())
-        .next_seq,
-    ).toBe(2);
+      (
+        await rig.opened.store.live.dshSessions.append(
+          appendInput(second.claim, [userMessage(base + 1, 'now')]),
+          deskPrincipal(),
+        )
+      ).next_seq,
+    ).toBe(base + 2);
   });
 
-  it('takes a new machine without asking what plugins it runs or which events it will write', () => {
+  it('takes a new machine without asking what plugins it runs or which events it will write', async () => {
     const chat = rig.newChat(rig.hub.target);
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const base = seededTo(open.claim);
     const { dshSessions } = rig.opened.store;
-    dshSessions.append(appendInput(open.claim, [systemMessage(0)]), hubPrincipal());
+    await rig.opened.store.live.dshSessions.append(
+      appendInput(open.claim, [systemMessage(base)]),
+      hubPrincipal(),
+    );
     const host = rig.service.directory.get(rig.desk.target).host;
     const moved = dshSessions.acquire(
       {
@@ -108,66 +133,81 @@ describe('attaching a native session to a machine', () => {
     );
     const own: DshSessionEvent = {
       type: 'plugin:desk-only/note',
-      seq: 1,
+      seq: base + 1,
       time: 1_001,
       ignorable: true,
       data: { text: 'written only by a plugin this machine runs' },
     };
 
-    const written = dshSessions.append(appendInput(moved.claim, [own]), deskPrincipal());
+    const written = await rig.opened.store.live.dshSessions.append(
+      appendInput(moved.claim, [own]),
+      deskPrincipal(),
+    );
 
-    expect(written.next_seq).toBe(2);
+    expect(written.next_seq).toBe(base + 2);
   });
 
-  it('refuses a write from a machine that is not the one the claim names', () => {
+  it('refuses a write from a machine that is not the one the claim names', async () => {
     const chat = rig.newChat(rig.hub.target);
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const base = seededTo(open.claim);
 
-    expect(() =>
-      rig.opened.store.dshSessions.append(
-        appendInput(open.claim, [systemMessage(0)]),
+    await expect(
+      rig.opened.store.live.dshSessions.append(
+        appendInput(open.claim, [systemMessage(base)]),
         deskPrincipal(),
       ),
-    ).toThrow(/does not match the writer/u);
+    ).rejects.toThrow(/does not match the writer/u);
   });
 });
 
 describe('changing a native history on the hub', () => {
-  it('writes without any machine and detaches the session so no machine writes over the change', () => {
+  it('writes without any machine and detaches the session so no machine writes over the change', async () => {
     const chat = rig.newChat(rig.desk.target);
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const base = seededTo(open.claim);
     const { dshSessions } = rig.opened.store;
-    dshSessions.append(appendInput(open.claim, [systemMessage(0)]), deskPrincipal());
+    await rig.opened.store.live.dshSessions.append(
+      appendInput(open.claim, [systemMessage(base)]),
+      deskPrincipal(),
+    );
     const stale = deskPrincipal();
     rig.service.directory.offline(rig.desk.target);
     const seen: number[] = [];
-    dshSessions.onAppend((_id, events) => {
+    rig.opened.store.live.dshSessions.onAppend((_id, events) => {
       seen.push(...events.map((event) => event.seq));
     });
 
-    const written = dshSessions.rewrite(
+    const written = await rig.opened.store.live.dshSessions.rewrite(
       open.claim.session_id,
       rig.owner.profileId,
-      DSH_SESSION_EVENTS_WRITE.parse([userMessage(1, 'edited')]),
+      DSH_SESSION_EVENTS_WRITE.parse([userMessage(base + 1, 'edited')]),
     );
 
-    expect(written.next_seq).toBe(2);
-    expect(seen).toStrictEqual([1]);
+    expect(written.next_seq).toBe(base + 2);
+    expect(seen).toStrictEqual([base + 1]);
     expect(dshSessions.attached(open.claim.session_id, rig.owner.profileId)).toBeNull();
-    expect(() =>
-      dshSessions.append(appendInput(open.claim, [userMessage(2, 'stale')]), stale),
-    ).toThrow(/not attached/u);
+    await expect(
+      rig.opened.store.live.dshSessions.append(
+        appendInput(open.claim, [userMessage(base + 2, 'stale')]),
+        stale,
+      ),
+    ).rejects.toThrow(/not attached/u);
   });
 
-  it('lets the next attachment continue from the changed log at a newer epoch', () => {
+  it('lets the next attachment continue from the changed log at a newer epoch', async () => {
     const chat = rig.newChat(rig.hub.target);
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const base = seededTo(open.claim);
     const { dshSessions } = rig.opened.store;
-    dshSessions.append(appendInput(open.claim, [systemMessage(0)]), hubPrincipal());
-    dshSessions.rewrite(
+    await rig.opened.store.live.dshSessions.append(
+      appendInput(open.claim, [systemMessage(base)]),
+      hubPrincipal(),
+    );
+    await rig.opened.store.live.dshSessions.rewrite(
       open.claim.session_id,
       rig.owner.profileId,
-      DSH_SESSION_EVENTS_WRITE.parse([userMessage(1, 'edited')]),
+      DSH_SESSION_EVENTS_WRITE.parse([userMessage(base + 1, 'edited')]),
     );
     const host = rig.service.directory.get(rig.hub.target).host;
 
@@ -182,45 +222,51 @@ describe('changing a native history on the hub', () => {
     );
 
     expect(again.claim.epoch).toBeGreaterThan(open.claim.epoch + 1);
-    expect(again.metadata.next_seq).toBe(2);
+    expect(again.metadata.next_seq).toBe(base + 2);
   });
 });
 
 describe('reading a whole native log', () => {
-  it('returns every event in order and honours an offset and a length', () => {
+  it('returns every event in order and honours an offset and a length', async () => {
     const chat = rig.newChat(rig.hub.target);
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const base = seededTo(open.claim);
     const { dshSessions } = rig.opened.store;
     const events = [
-      systemMessage(0),
-      userMessage(1, 'a'),
-      userMessage(2, 'b'),
-      userMessage(3, 'c'),
+      systemMessage(base),
+      userMessage(base + 1, 'a'),
+      userMessage(base + 2, 'b'),
+      userMessage(base + 3, 'c'),
     ];
-    dshSessions.append(appendInput(open.claim, events), hubPrincipal());
+    await rig.opened.store.live.dshSessions.append(appendInput(open.claim, events), hubPrincipal());
 
     const all = dshSessions.readAll(open.claim.session_id, rig.owner.profileId);
     const slice = dshSessions.readAll(open.claim.session_id, rig.owner.profileId, {
-      offset: 1,
+      offset: base + 1,
       length: 2,
     });
 
-    expect(all.map((event) => event.seq)).toStrictEqual([0, 1, 2, 3]);
-    expect(slice.map((event) => event.seq)).toStrictEqual([1, 2]);
+    expect(all.map((event) => event.seq)).toStrictEqual(seqs(base + 3));
+    expect(slice.map((event) => event.seq)).toStrictEqual([base + 1, base + 2]);
   });
 
-  it('follows the byte budget of a page until the log ends', () => {
+  it('follows the byte budget of a page until the log ends', async () => {
     const chat = rig.newChat(rig.hub.target);
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const base = seededTo(open.claim);
     const { dshSessions } = rig.opened.store;
     const big = 'x'.repeat(7 * 1024 * 1024);
-    dshSessions.append(
-      appendInput(open.claim, [userMessage(0, big), userMessage(1, big), userMessage(2, big)]),
+    await rig.opened.store.live.dshSessions.append(
+      appendInput(open.claim, [
+        userMessage(base, big),
+        userMessage(base + 1, big),
+        userMessage(base + 2, big),
+      ]),
       hubPrincipal(),
     );
 
     const all = dshSessions.readAll(open.claim.session_id, rig.owner.profileId);
 
-    expect(all.map((event) => event.seq)).toStrictEqual([0, 1, 2]);
+    expect(all.map((event) => event.seq)).toStrictEqual(seqs(base + 2));
   });
 });

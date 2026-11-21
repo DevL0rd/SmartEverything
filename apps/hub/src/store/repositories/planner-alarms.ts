@@ -13,7 +13,9 @@ const COLUMNS = `id, profile_id, label, time, days, once_on, skip_on, enabled, s
   vibrate, snooze_minutes, snooze_limit, challenge, sunrise, smart_minutes, wake_automation_id, wake_lead_minutes, targets, watch, source,
   created_at, updated_at`;
 
-export type PlannerAlarmInput = Omit<PlannerAlarmRow, 'id' | 'created_at' | 'updated_at'>;
+export type PlannerAlarmInput = Omit<PlannerAlarmRow, 'id' | 'created_at' | 'updated_at'> & {
+  readonly id?: string | undefined;
+};
 
 export type PlannerAlarmPatch = Partial<
   Omit<PlannerAlarmRow, 'id' | 'profile_id' | 'created_at' | 'updated_at'>
@@ -44,6 +46,14 @@ export class PlannerAlarmsRepository {
     );
   }
 
+  findAny(id: string): PlannerAlarmRow | undefined {
+    return this.context.sql.get(
+      STORED_ALARM,
+      `select ${COLUMNS} from planner_alarms where id = $id`,
+      { id },
+    );
+  }
+
   byId(id: string, profileId: string): PlannerAlarmRow {
     return found(this.find(id, profileId), 'planner alarm', id);
   }
@@ -68,7 +78,7 @@ export class PlannerAlarmsRepository {
       const now = this.context.now();
       const row = PLANNER_ALARM_ROW.parse({
         ...input,
-        id: this.context.newId(),
+        id: input.id ?? this.context.newId(),
         created_at: now,
         updated_at: now,
       });

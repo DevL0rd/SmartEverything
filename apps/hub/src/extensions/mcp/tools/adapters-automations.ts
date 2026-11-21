@@ -18,8 +18,9 @@ function fieldOf(base: z.ZodObject, key: string): z.core.$ZodType {
   return field;
 }
 
-function programRevision(context: ToolContext, args: Args): number {
-  return context.store.automations.byId(textOf(args, 'automationId')).revision;
+async function programRevision(context: ToolContext, args: Args): Promise<number> {
+  return (await context.store.host.call('automations', 'byId', textOf(args, 'automationId')))
+    .revision;
 }
 
 async function switched(
@@ -70,8 +71,12 @@ const UPDATE: Adapter = {
     const steps: (() => Promise<ToolOutput>)[] = [];
     if (typeof name === 'string') steps.push(() => renamed(context, id, name));
     if (rest['definition'] !== undefined) {
-      steps.push(() =>
-        base.call(context, { ...rest, expectedRevision: programRevision(context, input) }),
+      steps.push(
+        async () =>
+          await base.call(context, {
+            ...rest,
+            expectedRevision: await programRevision(context, input),
+          }),
       );
     }
     if (typeof enabled === 'boolean') steps.push(() => switched(context, id, enabled));
@@ -88,7 +93,10 @@ const UPDATE: Adapter = {
 
 const AT_STORED_REVISION: Adapter = {
   input: (base) => base.omit({ expectedRevision: true }),
-  args: (context, input) => ({ ...input, expectedRevision: programRevision(context, input) }),
+  args: async (context, input) => ({
+    ...input,
+    expectedRevision: await programRevision(context, input),
+  }),
 };
 
 const STORED_REVISION = z.object({ definition: z.unknown(), layout: z.unknown() });
@@ -112,11 +120,11 @@ const RESTORE: Adapter = {
         {},
       ),
     );
-    return base.call(context, {
+    return await base.call(context, {
       automationId,
       definition: stored.definition,
       layout: stored.layout,
-      expectedRevision: programRevision(context, input),
+      expectedRevision: await programRevision(context, input),
     });
   },
 };
@@ -142,20 +150,22 @@ const CHECK: Adapter = {
             : input.automationId === undefined && input.ops === undefined,
         { message: 'give definition, or automationId with ops' },
       ),
-  args: (_context, input) => ({
-    body:
-      input['definition'] === undefined
-        ? { automationId: input['automationId'], ops: input['ops'] }
-        : { definition: input['definition'] },
-  }),
+  args: (_context, input) =>
+    Promise.resolve({
+      body:
+        input['definition'] === undefined
+          ? { automationId: input['automationId'], ops: input['ops'] }
+          : { definition: input['definition'] },
+    }),
 };
 
 const SAVE_NODE: Adapter = {
   input: (base) => base.omit({ expectedRevision: true, confirmBreaking: true }),
-  args: (context, input) => ({
+  args: async (context, input) => ({
     ...input,
-    expectedRevision: context.store.automationFunctions.byId(textOf(input, 'functionId'))
-      .latest_revision,
+    expectedRevision: (
+      await context.store.host.call('automationFunctions', 'byId', textOf(input, 'functionId'))
+    ).latest_revision,
     confirmBreaking: true,
   }),
 };
@@ -183,10 +193,10 @@ const VALUE_APPLY: Adapter = {
         .optional()
         .describe('For set: the new value (a choice by its id); for add or subtract: the amount'),
     }),
-  args: (context, input) => {
+  args: async (context, input) => {
     const valueId = textOf(input, 'valueId');
     const operation = textOf(input, 'operation');
-    const { kind } = context.store.automationValues.byId(valueId).content;
+    const { kind } = (await context.store.host.call('automationValues', 'byId', valueId)).content;
     const allowed = VALUE_OPERATIONS[kind] ?? [];
     if (!allowed.includes(operation)) {
       throw new ToolError(`A ${kind} Value takes the operations: ${allowed.join(', ')}`);
@@ -199,7 +209,11 @@ const VALUE_APPLY: Adapter = {
   },
 };
 
-function withCallingChat(context: ToolContext, raw: Args): Args {
+function withCallingChat(context: ToolContext, raw: Args): Promise<Args> {
+  return Promise.resolve(callingChatSteps(context, raw));
+}
+
+function callingChatSteps(context: ToolContext, raw: Args): Args {
   const chatId = context.actor?.chatId ?? null;
   if (!Array.isArray(raw['steps']) || chatId === null) return raw;
   return {

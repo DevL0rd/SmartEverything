@@ -397,7 +397,7 @@ function performer(tools: readonly PluginTool[]) {
         ? Promise.resolve(failure(`no tool ${tool.name}`))
         : found.run(args, caller);
     },
-    validate: (tool, args) => byName.get(tool.name)?.validate(args) ?? null,
+    validate: (tool, args) => Promise.resolve(byName.get(tool.name)?.validate(args) ?? null),
     changes: () => () => undefined,
   };
   const handlers = pluginNodeEffects({
@@ -651,8 +651,8 @@ describe('printer nodes against a fake printer', () => {
     const [session] = setup.registry.list();
     const key = session?.model?.supplies.find((row) => row.consumed)?.key;
     if (session === undefined || key === undefined) throw new Error('the printer has no supply');
-    session.ledger.recordSupply(key, 80, new Date('2026-10-18T08:00:00.000Z'));
-    session.ledger.recordSupply(key, 70, new Date('2026-10-18T09:30:00.000Z'));
+    session.ledger.recordSupply(key, 90, new Date('2026-10-18T08:00:00.000Z'));
+    session.ledger.recordSupply(key, 80, new Date('2026-10-18T09:30:00.000Z'));
     const result = await perform(
       pluginNodeKindId(OWNER_REF, 'stats'),
       { printer: uuid, period: 'day', metric: 'ink_used' },

@@ -28,7 +28,7 @@ import type { LocalWatches } from './watches';
 import { WATCH_DRIVER } from './watch-driver';
 
 export interface WatchToolPorts {
-  readonly store: { readonly devices: Pick<Store['devices'], 'find' | 'list'> };
+  readonly store: Pick<Store, 'host'>;
   readonly watches: Pick<LocalWatches, 'target'>;
   readonly actions: Pick<WatchActionBroker, 'attempt'>;
 }
@@ -77,13 +77,13 @@ async function perform(
   make: (device: DeviceRow) => WatchActionRequest,
   caller: ToolCaller,
 ): Promise<DriverToolReply> {
-  const device = ports.store.devices.find(deviceId);
+  const device = await ports.store.host.call('devices', 'find', deviceId);
   if (device === undefined) {
     return refusal('This watch is no longer added.', WATCH_ERROR_CODES.notFound);
   }
   try {
     const outcome = await ports.actions.attempt(
-      ports.watches.target(device),
+      await ports.watches.target(device),
       make(device),
       `automation:${caller.automationId ?? caller.via}`,
     );
@@ -176,9 +176,10 @@ export function watchAutomationRuntime(ports: WatchToolPorts): DriverRuntime {
   return {
     tools: [actionTool(ports), alarmTool(ports), faceTool(ports)],
     options: {
-      [WATCH_FACE_PICKER]: (query) =>
-        Promise.resolve(
-          optionPage(watchFaceOptions(watchFacesOf(ports.store.devices.list())), query),
+      [WATCH_FACE_PICKER]: async (query) =>
+        optionPage(
+          watchFaceOptions(watchFacesOf(await ports.store.host.call('devices', 'list'))),
+          query,
         ),
     },
   };

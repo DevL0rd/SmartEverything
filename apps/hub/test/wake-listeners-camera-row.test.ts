@@ -82,8 +82,8 @@ afterEach(async () => {
   await opened.close();
 });
 
-function started(): Promise<void> {
-  listeners.start();
+async function started(): Promise<void> {
+  await listeners.start();
   return until(() => handlers !== null || logs.events().includes('wake.start_failed'), 'the ear');
 }
 
@@ -156,7 +156,7 @@ describe('WakeListeners and the state of other devices', () => {
       clock: { now: (): Date => new Date(), at: (): Cancel => (): void => undefined },
       log: new Logger('hub.test'),
     });
-    listeners.start();
+    await listeners.start();
     const before = listed;
     for (let step = 0; step < 5; step += 1) {
       opened.store.state.write([

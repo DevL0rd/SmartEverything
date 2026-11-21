@@ -62,39 +62,37 @@ export function discoveryTools(served: () => readonly Tool[]): Tool[] {
   return [
     {
       name: 'tool_search',
-      listing: servedListing('tool_search', jsonSchemaOf(SEARCH_TOOLS_INPUT, 'input'), READS),
-      check: (_context, raw): string | null => {
+      listing: servedListing('tool_search', () => jsonSchemaOf(SEARCH_TOOLS_INPUT, 'input'), READS),
+      check: (_context, raw): Promise<string | null> => {
         const result = SEARCH_TOOLS_INPUT.safeParse(raw);
-        return result.success ? null : issuesOf(result.error);
+        return Promise.resolve(result.success ? null : issuesOf(result.error));
       },
       call: async (context, raw) =>
-        await scopedToolCall(context, 'tool_search', (scoped) => ({
-          structured: discovered(() =>
-            searchTools(
-              (scoped.visibleTools?.() ?? visibleTools(served(), scoped)).map(discoverable),
-              raw,
-              searchScope(scoped),
+        await scopedToolCall(context, 'tool_search', async (scoped) => {
+          const tools = await (scoped.visibleTools?.() ?? visibleTools(served(), scoped));
+          return {
+            structured: discovered(() =>
+              searchTools(tools.map(discoverable), raw, searchScope(scoped)),
             ),
-          ),
-        })),
+          };
+        }),
     },
     {
       name: 'tool_read',
-      listing: servedListing('tool_read', jsonSchemaOf(TOOL_DETAILS_INPUT, 'input'), READS),
-      check: (_context, raw): string | null => {
+      listing: servedListing('tool_read', () => jsonSchemaOf(TOOL_DETAILS_INPUT, 'input'), READS),
+      check: (_context, raw): Promise<string | null> => {
         const result = TOOL_DETAILS_INPUT.safeParse(raw);
-        return result.success ? null : issuesOf(result.error);
+        return Promise.resolve(result.success ? null : issuesOf(result.error));
       },
       call: async (context, raw) =>
-        await scopedToolCall(context, 'tool_read', (scoped) => ({
-          structured: discovered(() =>
-            toolDetails(
-              (scoped.visibleTools?.() ?? visibleTools(served(), scoped)).map(discoverable),
-              raw,
-              searchScope(scoped),
+        await scopedToolCall(context, 'tool_read', async (scoped) => {
+          const tools = await (scoped.visibleTools?.() ?? visibleTools(served(), scoped));
+          return {
+            structured: discovered(() =>
+              toolDetails(tools.map(discoverable), raw, searchScope(scoped)),
             ),
-          ),
-        })),
+          };
+        }),
     },
   ];
 }

@@ -13,8 +13,8 @@ export interface ConversationHooks {
   readonly listening?: HostedListening;
   readonly settings: () => AssistantVoiceSettings;
   readonly system: () => string;
-  readonly note: (known: ReadonlySet<string> | null, starting: boolean) => string;
-  readonly history: () => readonly string[];
+  readonly note: (known: ReadonlySet<string> | null, starting: boolean) => Promise<string>;
+  readonly history: () => Promise<readonly string[]>;
   readonly tools: () => readonly FunctionDeclaration[];
   readonly webSearch: () => boolean;
   readonly window: () => LiveWindow | null;

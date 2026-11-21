@@ -2,12 +2,6 @@ import type { CommandRow, Place, SignalMatcher } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import type { WatchStateStore } from '../signals/signal-watchers';
-import type { AutomationFunctionsRepository } from '../store/repositories/automation-functions';
-import type { AutomationRunNodesRepository } from '../store/repositories/automation-run-nodes';
-import type { AutomationOwnedValuesRepository } from '../store/repositories/automation-owned-values';
-import type { AutomationPlansRepository } from '../store/repositories/automation-plans';
-import type { AutomationProgramsRepository } from '../store/repositories/automation-programs';
-import type { AutomationRunRecordsRepository } from '../store/repositories/automation-run-records';
 import type { DecisionLog } from './driver/decisions';
 import type { LiveSinkParts } from './driver/live-sink';
 import type { DriverPorts, FinishedRun, RefusedStart } from './driver/ports';
@@ -17,17 +11,13 @@ import type { StartedRun } from './webhooks/gateway';
 import type { Performer } from './engine-v3-effects';
 import type { Subject } from './engine-v3-start';
 import type { CompiledTriggers } from './triggers-v3/armers';
+import type { RunLedger } from './run-ledger';
+import type { AutomationMemory } from './automation-memory';
+import type { EngineStore } from './engine-store';
 
 export interface EngineRepositories {
-  readonly programs: Pick<AutomationProgramsRepository, 'list' | 'find'>;
-  readonly plans: Pick<AutomationPlansRepository, 'put' | 'find' | 'has'>;
-  readonly records: Pick<
-    AutomationRunRecordsRepository,
-    'create' | 'update' | 'active' | 'waiting' | 'interruptUnfinished' | 'park' | 'resume'
-  >;
-  readonly nodes: Pick<AutomationRunNodesRepository, 'append' | 'settle' | 'closeOpen'>;
-  readonly owned: Pick<AutomationOwnedValuesRepository, 'list' | 'create'>;
-  readonly functions: Pick<AutomationFunctionsRepository, 'find' | 'latest' | 'findRevision'>;
+  readonly store: EngineStore;
+  readonly runs: RunLedger;
 }
 
 export interface EngineV3Ports {
@@ -35,7 +25,9 @@ export interface EngineV3Ports {
   readonly place: () => Place | null;
   readonly zone: () => string;
   readonly repositories: EngineRepositories;
+  readonly memory: AutomationMemory;
   readonly world: Pick<ContextPorts, 'reads' | 'persistent' | 'stateMemory'>;
+  readonly ready: () => Promise<void>;
   readonly kinds: KindCatalog;
   readonly effects: Performer;
   readonly retain: (runId: string, rows: readonly CommandRow[]) => void;

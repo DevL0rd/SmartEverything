@@ -84,9 +84,10 @@ it('lets a source notice wait out an old coalesced owner check before the app re
     const run = (): Promise<unknown> => source.routes.checkHubUpdateSource.run(caller, raw, log);
     const old = run();
     const joined = run();
+    await vi.waitFor(() => {
+      expect(inspect).toHaveBeenCalledOnce();
+    });
     const refresh = source.settleChecks().then(run);
-    await Promise.resolve();
-    expect(inspect).toHaveBeenCalledOnce();
     finishFirst(check);
     await expect(Promise.all([old, joined, refresh])).resolves.toEqual([check, check, latest]);
     expect(inspect).toHaveBeenCalledTimes(2);
@@ -154,10 +155,8 @@ it('only saves a named recovery branch for a direct authenticated owner app', as
     const result = { branch: request.branch, commit: 'a'.repeat(40) };
     const save = vi.fn().mockResolvedValue(result);
     const start = vi.fn();
-    const route = hubUpdateSourceRoutes(
-      { check: vi.fn(), start, save },
-      () => undefined,
-    ).routes.saveHubUpdateSource;
+    const route = hubUpdateSourceRoutes({ check: vi.fn(), start, save }, () => undefined).routes
+      .saveHubUpdateSource;
     const raw = { params: {}, query: {}, body: request, remote: 'test', headers: {} };
     await expect(
       route.run({ kind: 'client', client: owner, mcpOrigin: 'personal' }, raw, log),

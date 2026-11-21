@@ -89,7 +89,7 @@ beforeEach(() => {
         current.packets.push(mac);
         return Promise.resolve();
       },
-      settingsOf: () => current.settings,
+      settingsOf: () => Promise.resolve(current.settings),
       woke: (deviceId): void => {
         current.woke.push(deviceId);
       },

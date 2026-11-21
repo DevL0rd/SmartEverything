@@ -1,7 +1,7 @@
 import type { RouterSnapshot } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { PolledLoop, type Cadence } from '../polled-loop';
-import { WireGate } from '../wire-gate';
+import { WireGate, type WireAudience } from '../wire-gate';
 import { parseCollectOutput } from './collect-parse';
 import { buildFrame, type FrameParts, type FrameState } from './frame';
 import type { RouterShell } from './router-shell';
@@ -18,7 +18,7 @@ interface CollectorOptions {
   readonly pingTarget: string;
   readonly log: Logger;
   readonly record: (snapshot: RouterSnapshot) => void;
-  readonly publish: (snapshot: RouterSnapshot, full: boolean) => void;
+  readonly publish: (snapshot: RouterSnapshot, full: boolean, audience: WireAudience) => void;
 }
 
 const EMPTY_PARTS: FrameParts = {
@@ -97,8 +97,9 @@ export class RouterCollector {
   #emit(force: boolean, full: boolean): void {
     const snapshot = this.#snapshot();
     this.options.record(snapshot);
-    if (this.#wire.due(this.#loop.viewed, force)) {
-      this.options.publish(snapshot, force || full);
+    const audience = this.#wire.due(this.#loop.viewed, force);
+    if (audience !== null) {
+      this.options.publish(snapshot, force || full, audience);
     }
   }
 

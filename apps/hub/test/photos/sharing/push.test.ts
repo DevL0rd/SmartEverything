@@ -1,14 +1,30 @@
 import { CLIENT_PREFS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { albumAudience, albumPushes } from '../../../src/extensions/push/album-activity';
-import { ActivityTail } from '../../../src/photos/sharing/tail';
+import { albumAudience } from '../../../src/extensions/push/album-activity';
+import { albumPushes, pushClientOf } from '../../../src/extensions/push/push-units';
+import { drainActivity, type ActivityCursor } from '../../../src/photos/sharing/tail';
 import { testLogger } from '../../support/logs';
 import { openKit, type Kit } from './fixture';
 
 let kit: Kit;
-let tail: ActivityTail;
+let tail: Tail;
 let albumId = '';
 const taken = '2026-03-01T10:00:00.000Z';
+
+interface Tail {
+  drain(): ReturnType<typeof drainActivity>['rows'];
+}
+
+function startTail(): Tail {
+  let cursor: ActivityCursor = { at: kit.store.context.now(), handled: [] };
+  const drain = (): ReturnType<typeof drainActivity>['rows'] => {
+    const drained = drainActivity(kit.store, cursor);
+    cursor = drained.cursor;
+    return drained.rows;
+  };
+  drain();
+  return { drain };
+}
 
 beforeEach(async () => {
   kit = await openKit();
@@ -25,7 +41,7 @@ beforeEach(async () => {
   kit.store.clients.useProfile(kit.phone, kit.bob.profileId);
   kit.store.clients.useProfile(kit.tablet, kit.carol.profileId);
   kit.time.current = new Date('2026-10-08T11:00:00.000Z');
-  tail = new ActivityTail(kit.store);
+  tail = startTail();
 });
 afterEach(async () => {
   await kit.test.close();
@@ -49,7 +65,7 @@ describe('the activity tail', () => {
 
   it('skips what happened before it started', () => {
     kit.activity.add(kit.bob, albumId, { kind: 'comment', text: 'old' });
-    const started = new ActivityTail(kit.store);
+    const started = startTail();
     expect(started.drain()).toEqual([]);
     kit.activity.add(kit.bob, albumId, { kind: 'comment', text: 'new' });
     expect(started.drain().map((row) => row.text)).toEqual(['new']);
@@ -106,7 +122,8 @@ describe('album activity pushes', () => {
   it('reaches the phone of a member who has the setting on and not one who turned it off', () => {
     kit.activity.add(kit.alice, albumId, { kind: 'comment', text: 'Hello' });
     const [push] = next();
-    const audience = albumAudience(kit.store, push?.recipients ?? new Set(), testLogger('push'));
+    const accept = albumAudience(push?.recipients ?? new Set(), testLogger('push'));
+    const audience = (client: string): boolean => accept(pushClientOf(kit.store, client));
     expect(audience(kit.phone)).toBe(true);
     expect(audience(kit.tablet)).toBe(true);
     const defaults = CLIENT_PREFS.photos.defaultValue;
@@ -131,7 +148,10 @@ describe('album activity pushes', () => {
     kit.store.clients.useProfile(client, outsider);
     const [push] = next();
     expect(
-      albumAudience(kit.store, push?.recipients ?? new Set(), testLogger('push'))(client),
+      albumAudience(
+        push?.recipients ?? new Set(),
+        testLogger('push'),
+      )(pushClientOf(kit.store, client)),
     ).toBe(false);
   });
 });

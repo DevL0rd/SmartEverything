@@ -63,6 +63,9 @@ export async function startedHub(
     clock: new FakeClock('2026-10-08T10:00:00.000Z'),
     logFor: (area) => testLogger(area),
   });
+  await hub.providersStarted;
+  await hub.resumed;
+  await hub.settled();
   return { store, fake, hub };
 }
 

@@ -27,38 +27,47 @@ interface TrashTally {
   readonly failed: { itemId: string | null; reason: string }[];
 }
 
-function trashedByCaller(deps: TrashDeps, caller: DriveCaller, itemId: string): boolean {
-  const entry = deps.store.driveTrash.find(itemId);
+async function trashedByCaller(
+  deps: TrashDeps,
+  caller: DriveCaller,
+  itemId: string,
+): Promise<boolean> {
+  const entry = await deps.store.host.call('driveTrash', 'find', itemId);
   if (entry === undefined) return false;
   try {
-    return canWrite(driveAccess(caller, deps.read.rootFor(caller, entry.rootId)));
+    return canWrite(driveAccess(caller, await deps.read.rootFor(caller, entry.rootId)));
   } catch (cause) {
     if (cause instanceof ApiError) return false;
     throw cause;
   }
 }
 
-function refuseTrash(deps: TrashDeps, caller: DriveCaller, itemId: string, cause: unknown): string {
-  if (trashedByCaller(deps, caller, itemId)) return ALREADY_TRASHED;
+async function refuseTrash(
+  deps: TrashDeps,
+  caller: DriveCaller,
+  itemId: string,
+  cause: unknown,
+): Promise<string> {
+  if (await trashedByCaller(deps, caller, itemId)) return ALREADY_TRASHED;
   const reason = refusalReason(cause);
   if (reason === null) throw cause;
   return reason;
 }
 
-function currentItems(
+async function currentItems(
   deps: TrashDeps,
   caller: DriveCaller,
   ids: readonly string[],
   tally: TrashTally,
-): DriveItem[] {
+): Promise<DriveItem[]> {
   const items: DriveItem[] = [];
   for (const itemId of ids) {
     try {
-      const item = deps.read.readItem(caller, itemId);
-      writableItemRoot(deps.store, caller, item);
+      const item = await deps.read.readItem(caller, itemId);
+      await writableItemRoot(deps.store, caller, item);
       items.push(item);
     } catch (cause) {
-      tally.failed.push({ itemId, reason: refuseTrash(deps, caller, itemId, cause) });
+      tally.failed.push({ itemId, reason: await refuseTrash(deps, caller, itemId, cause) });
     }
   }
   return items;
@@ -70,7 +79,7 @@ async function trashGroup(
   group: { readonly root: DriveWriteRoot; readonly ids: readonly string[] },
   tally: TrashTally,
 ): Promise<void> {
-  const items = currentItems(deps, caller, group.ids, tally);
+  const items = await currentItems(deps, caller, group.ids, tally);
   const folders = items.filter((item) => item.kind === 'folder').map((item) => item.relPath);
   const nested = (item: DriveItem): boolean =>
     folders.some((folder) => item.relPath.startsWith(`${folder}/`));
@@ -99,12 +108,16 @@ export async function trashItems(
   const byRoot = new Map<string, { root: DriveWriteRoot; ids: string[] }>();
   for (const itemId of new Set(ids)) {
     try {
-      const root = writableItemRoot(deps.store, caller, deps.read.readItem(caller, itemId));
+      const root = await writableItemRoot(
+        deps.store,
+        caller,
+        await deps.read.readItem(caller, itemId),
+      );
       const group = byRoot.get(root.id);
       if (group === undefined) byRoot.set(root.id, { root, ids: [itemId] });
       else group.ids.push(itemId);
     } catch (cause) {
-      tally.failed.push({ itemId, reason: refuseTrash(deps, caller, itemId, cause) });
+      tally.failed.push({ itemId, reason: await refuseTrash(deps, caller, itemId, cause) });
     }
   }
   for (const group of byRoot.values()) {

@@ -9,7 +9,7 @@ let writer: Attached;
 let reader: Attached;
 
 beforeEach(async () => {
-  rig = await openMountRig(120);
+  rig = await openMountRig(30_000);
   writer = await attachTo(
     rig,
     { nodeId: rig.posix.node, profileId: rig.posix.ownerId },

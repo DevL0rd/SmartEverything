@@ -8,7 +8,7 @@ import { ChangeFeed } from '../../src/store/feed';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-14T09:00:00.000Z';
 const ROOT = '0d000000-0000-4000-8000-000000000071';
@@ -38,7 +38,7 @@ function addDrive(): void {
     new ChangeFeed(testLogger()),
     () => new Date(NOW),
   );
-  new DriveRootsRepository(context, drivePathOf).insert(sharedDriveRoot(ROOT));
+  new DriveRootsRepository(context, driveFolders).insert(sharedDriveRoot(ROOT));
 }
 
 function insert(id: string, op: string, versionPath: string | null): void {

@@ -342,6 +342,38 @@ describe('health ingest', () => {
     );
   });
 
+  it('says nothing on the feed when a recompute leaves the day figures as they were', () => {
+    const { store } = opened;
+    const profile = store.profiles.first().id;
+    store.health.ingest(
+      { ...batch, records: [STEPS_MORNING, HEART], deletions: [], grantedTypes: [] },
+      profile,
+    );
+    const stored = store.health.dailyRange(profile, '2026-10-08', '2026-10-08', [
+      'steps',
+      'heart_rate_average',
+    ]);
+    const seen: RowChange[] = [];
+    store.feed.subscribe((change) => seen.push(change));
+    store.health.recomputeDays(profile, ['2026-10-08']);
+    store.health.recomputeDays(profile, ['2026-10-08']);
+    expect(seen).toStrictEqual([]);
+    expect(
+      store.health.dailyRange(profile, '2026-10-08', '2026-10-08', ['steps', 'heart_rate_average']),
+    ).toStrictEqual(stored);
+    store.health.ingest(
+      { ...batch, records: [STEPS_EVENING], deletions: [], grantedTypes: [] },
+      profile,
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      table: 'health_daily',
+      operation: 'UPDATE',
+      record: { metric: 'steps', value: 1500 },
+      oldRecord: { metric: 'steps', value: 1000 },
+    });
+  });
+
   it('reads records overlapping a window and which apps wrote them', () => {
     const { store } = opened;
     const profile = store.profiles.first().id;

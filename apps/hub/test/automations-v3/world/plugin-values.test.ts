@@ -131,7 +131,7 @@ describe('plugin Values', () => {
   });
 
   it('read a live stream point that has not been saved yet', () => {
-    home.test.store.pluginData.publishLive(PLUGIN, {
+    home.test.store.live.pluginStreams.publish(PLUGIN, {
       stream: 'typing',
       value: { count: 2 },
       at: AT,

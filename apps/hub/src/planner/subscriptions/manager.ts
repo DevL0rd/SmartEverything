@@ -1,4 +1,5 @@
 import type { PlannerCollectionRow } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
 import {
   FeedSubscription,
   icsFeedOf,
@@ -9,6 +10,7 @@ import {
 export class FeedSubscriptions {
   private readonly active = new Map<string, FeedSubscription>();
   private stopListening: (() => void) | null = null;
+  private starting: Promise<void> = Promise.resolve();
 
   constructor(private readonly deps: SubscriptionDeps) {}
 
@@ -17,7 +19,7 @@ export class FeedSubscriptions {
   }
 
   start(): void {
-    for (const collection of this.store.plannerCollections.feeds('ics')) this.watch(collection);
+    background(this.watchStored(), 'planner.feed_start_failed');
     this.stopListening = this.store.feed.subscribe((change) => {
       if (change.table !== 'planner_collections') return;
       if (change.record === null) this.release(change.oldRecord?.id);
@@ -32,10 +34,22 @@ export class FeedSubscriptions {
     this.active.clear();
   }
 
-  refresh(collectionId: string): Promise<PlannerCollectionRow> {
-    const collection = this.store.plannerCollections.anyById(collectionId);
+  async settled(): Promise<void> {
+    await this.starting;
+  }
+
+  async refresh(collectionId: string): Promise<PlannerCollectionRow> {
+    const collection = await this.store.host.call('plannerCollections', 'anyById', collectionId);
     icsFeedOf(collection);
     return this.watch(collection, false).refresh();
+  }
+
+  private async watchStored(): Promise<void> {
+    this.starting = this.store.host.call('plannerCollections', 'feeds', 'ics').then((stored) => {
+      if (this.stopListening === null) return;
+      for (const collection of stored) this.watch(collection);
+    });
+    await this.starting;
   }
 
   private watch(collection: PlannerCollectionRow, arm = true): FeedSubscription {

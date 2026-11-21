@@ -8,7 +8,9 @@ import type { ChatOwner } from '../../assistant/chat-directory';
 import type { InboundTurn } from '../../assistant/requests';
 import type { TurnEnded } from '../../assistant/service-contract';
 import { meteredCatalogue, meteredEngine } from '../../openrouter/metered-engine';
-import type { Store } from '../../store/store';
+import type { AiModelsState } from '../../store/ai-models-state';
+import type { Ledger } from '../../ledger/ledger';
+import type { NewChat } from '../../store/repositories/ai-chat-input';
 import type { AgentHost, AgentLaunch, AgentMessage, AgentSession, AgentSpend } from './dsh-agent';
 import { IntegrationError } from './integration-error';
 import type { OneShotPicture } from './one-shot-model';
@@ -27,11 +29,9 @@ export interface AgentAssistant {
 
 export interface AgentHostPorts {
   readonly assistant: AgentAssistant;
-  readonly store: {
-    readonly aiChats: Pick<Store['aiChats'], 'create'>;
-    readonly aiModels: Pick<Store['aiModels'], 'row'>;
-    readonly ledger: Pick<Store['ledger'], 'on'>;
-  };
+  readonly chats: { readonly create: (input: NewChat) => Promise<AiChatRow> };
+  readonly ledger: Pick<Ledger, 'on'>;
+  readonly store: { readonly live: { readonly aiModels: Pick<AiModelsState, 'row'> } };
   readonly interactions: (listener: (chatId: string) => void) => () => void;
   readonly tmp: string;
 }
@@ -95,7 +95,7 @@ class HarnessAgentSession implements AgentSession {
       ports.assistant.onFinished((event, text, ok) => {
         if (event.chat_id === chat.id) this.pending?.settle({ text, ok });
       }),
-      ports.store.ledger.on((row) => {
+      ports.ledger.on((row) => {
         this.charged(row);
       }),
       ports.interactions((chatId) => {
@@ -183,10 +183,10 @@ class HarnessAgentSession implements AgentSession {
 export class HarnessAgentHost implements AgentHost {
   constructor(private readonly ports: AgentHostPorts) {}
 
-  open(launch: AgentLaunch): AgentSession {
-    const { store } = this.ports;
+  async open(launch: AgentLaunch): Promise<AgentSession> {
+    const { store, chats } = this.ports;
     const owner: ChatOwner = { profileId: launch.profileId, role: launch.role };
-    const chat = store.aiChats.create({
+    const chat = await chats.create({
       profileId: launch.profileId,
       kind: 'chat',
       title: CHAT_TITLE,

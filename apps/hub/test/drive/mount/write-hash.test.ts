@@ -4,11 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Staging } from '../../../src/drive/mount/staging';
-import { SettleGroup } from '../../../src/drive/mount/settle-group';
 import { HashPool, HashWorkerError } from '../../../src/drive/mount/workers';
 import { nodeFiles } from '../../../src/drive/versions';
-import type { Store } from '../../../src/store/store';
-import { testLogger } from '../../support/logs';
 import { bundleWorker } from '../drive-fixture';
 import { openPosixRig, type PosixRig } from '../posix/posix-rig';
 import { attachTo, openMountRig, opKey, type Attached, type MountRig } from './mount-rig';
@@ -153,55 +150,6 @@ describe('the hash worker pool', () => {
     const pool = new HashPool(script, 1);
     await pool.stop();
     await expect(pool.hash('/x')).rejects.toBeInstanceOf(HashWorkerError);
-  });
-});
-
-describe('the grouped settle', () => {
-  function stubStore(): { store: Pick<Store, 'write'>; transactions: () => number } {
-    let transactions = 0;
-    let open = false;
-    const write = <T>(work: () => T): T => {
-      if (open) return work();
-      open = true;
-      transactions += 1;
-      try {
-        return work();
-      } finally {
-        open = false;
-      }
-    };
-    return { store: { write }, transactions: () => transactions };
-  }
-
-  it('settles everything queued in one tick inside one transaction', async () => {
-    const { store, transactions } = stubStore();
-    const group = new SettleGroup(store, testLogger('drive'));
-    const results = await Promise.all([
-      group.run(() => 'a'),
-      group.run(() => 'b'),
-      group.run(() => 'c'),
-    ]);
-    expect(results).toEqual(['a', 'b', 'c']);
-    expect(transactions()).toBe(1);
-    await group.run(() => 'd');
-    expect(transactions()).toBe(2);
-  });
-
-  it('fails only the item that throws and settles the rest', async () => {
-    const { store } = stubStore();
-    const group = new SettleGroup(store, testLogger('drive'));
-    const outcomes = await Promise.allSettled([
-      group.run(() => 'a'),
-      group.run((): string => {
-        throw new Error('bad');
-      }),
-      group.run(() => 'c'),
-    ]);
-    expect(outcomes.map((outcome) => outcome.status)).toEqual([
-      'fulfilled',
-      'rejected',
-      'fulfilled',
-    ]);
   });
 });
 

@@ -87,9 +87,9 @@ describe('media commands (fake node)', () => {
       },
       deviceIdOf: () => 'device-1',
       scopesOf: () => ({ ...DEFAULT_COMPUTER_SCOPES, power: false }),
-      originOf: () => ({ source: 'assistant', client: null, clientId: null }),
-      visibleTo: () => true,
-      macsOf: () => [],
+      originOf: () => Promise.resolve({ source: 'assistant', client: null, clientId: null }),
+      visibleTo: () => Promise.resolve(true),
+      macsOf: () => Promise.resolve([]),
       wake: (): Promise<void> => Promise.resolve(),
       approve: (): Promise<void> => Promise.resolve(),
       sink: {

@@ -31,7 +31,11 @@ interface ReferenceSubmissionDeps extends Pick<RequestsDeps, 'files'> {
 }
 export class ReferenceSubmissions {
   constructor(private readonly deps: ReferenceSubmissionDeps) {}
-  plain(sender: Sender, body: AssistantNewMessage, chatId?: string): AssistantMessageRow {
+  async plain(
+    sender: Sender,
+    body: AssistantNewMessage,
+    chatId?: string,
+  ): Promise<AssistantMessageRow> {
     if (body.helper_target !== undefined)
       throw new ApiError('forbidden', 'Address a helper from its conversation in the app.');
     if ((body.references?.length ?? 0) > 0)
@@ -74,7 +78,7 @@ export class ReferenceSubmissions {
       throw new ApiError('invalid_request', 'Select the conversation containing this helper.');
     if (directClient(caller)?.id !== sender.clientId)
       throw new ApiError('forbidden', 'Address a helper from its conversation in the app.');
-    const owner = chatOwnerOf(this.deps.store, caller);
+    const owner = chatOwnerOf(caller);
     if (
       owner.profileId !== sender.profileId ||
       this.deps.store.profiles.activeOf(sender.clientId).id !== sender.profileId
@@ -95,7 +99,7 @@ export class ReferenceSubmissions {
       chatId === undefined
         ? this.deps.chats.defaultChat(sender.profileId)
         : this.deps.chats.own(owner, chatId);
-    this.deps.store.aiChats.assertWorkAllowed(chat.id);
+    this.deps.store.live.chatWork.assertWorkAllowed(chat.id);
     this.deps.engines.forMutation(chat, owner.role);
     return chat;
   }

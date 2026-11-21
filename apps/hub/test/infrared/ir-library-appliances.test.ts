@@ -86,12 +86,13 @@ function coolingOf(libraryId: string, model: LibraryClimate): CoolingFrame | und
   return { libraryId, goal: { on: true, mode: 'Cool', speed: 1, ...temp }, code, off: model.off };
 }
 
-function coolingFrame(): CoolingFrame {
-  const entries = library
-    .brands('Air conditioner')
-    .flatMap((brand) => library.entries('Air conditioner', brand.name));
+async function coolingFrame(): Promise<CoolingFrame> {
+  const brands = await library.brands('Air conditioner');
+  const entries = (
+    await Promise.all(brands.map((brand) => library.entries('Air conditioner', brand.name)))
+  ).flat();
   for (const entry of entries) {
-    const model = library.model(entry.id);
+    const model = await library.model(entry.id);
     const frame = model.kind === 'climate' ? coolingOf(entry.id, model) : undefined;
     if (frame !== undefined) return frame;
   }
@@ -157,14 +158,14 @@ describe('adding an appliance from the library', () => {
       capability: 'remote_key',
       value: 'Power',
     });
-    const code = library.model(model.id);
+    const code = await library.model(model.id);
     await expect
       .poll(sentCodes)
       .toStrictEqual([{ format: 'pulses', code: code.kind === 'keys' ? code.keys['Power'] : '' }]);
   });
 
   it('adds an air conditioner that sets mode, temperature and fan in one frame', async () => {
-    const wanted = coolingFrame();
+    const wanted = await coolingFrame();
     const appliance = await created(wanted.libraryId, 'Bedroom AC');
     expect(appliance).toMatchObject({
       encoder: `library:${wanted.libraryId}`,

@@ -281,10 +281,10 @@ describe('Photos editing and organising edits', () => {
     ]);
   });
 
-  it('keeps every Photos edit on the person asking', () => {
+  it('keeps every Photos edit on the person asking', async () => {
     const other = randomUUID();
-    expect(() =>
+    await expect(
       selected(DRIVE_EDIT, 'archive').run(context, { itemIds: [ITEM] }, { personId: other }),
-    ).toThrow(/only for the person asking/);
+    ).rejects.toThrow(/only for the person asking/);
   });
 });

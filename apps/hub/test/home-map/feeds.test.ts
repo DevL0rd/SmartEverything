@@ -10,7 +10,10 @@ import {
 import { pv11glCatalog } from '@smarteverything/xiaomi';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { HomeMapAutoCreate } from '../../src/home-map/auto-create';
-import { RobotMapFeeds, type FeedPorts } from '../../src/home-map/feeds';
+import { RobotMapFeeds } from '../../src/home-map/feeds';
+import { directHomeMapStore } from '../../src/home-map/map-store';
+import { HomeMapService } from '../../src/home-map/service';
+import type { HomeMapApplied, HomeMapsRepository } from '../../src/store/repositories/home-maps';
 import { MapSourceRegistry } from '../../src/home-map/sources/registry';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import {
@@ -52,65 +55,63 @@ const roomNames = (map: HomeMap, floorId: string): (string | null)[] =>
 const noticesOf = (map: HomeMap): string[] =>
   map.notices.filter((n) => n.kind === 'source_new_robot_map').map((n) => n.detail);
 
-const makeHome = (): void => {
-  harness.service.apply([floorOp('down', 'Downstairs'), floorOp('up', 'Upstairs')], ME);
+const makeHome = async (): Promise<void> => {
+  await harness.service.apply([floorOp('down', 'Downstairs'), floorOp('up', 'Upstairs')], ME);
 };
 
-const makeStudio = (): HomeMapId => {
-  const studio = harness.repo.create('Studio', ME);
-  harness.service.apply([floorOp('studio-0', 'Studio floor')], ME, {}, studio.id);
+const makeStudio = async (): Promise<HomeMapId> => {
+  const studio = await harness.service.exclusive((maps) => maps.create('Studio', ME));
+  await harness.service.apply([floorOp('studio-0', 'Studio floor')], ME, {}, studio.id);
   return studio.id;
 };
 
-const listBoth = (current: VacuumScene = downstairs, other: VacuumScene = upstairs): void => {
+const listBoth = async (
+  current: VacuumScene = downstairs,
+  other: VacuumScene = upstairs,
+): Promise<void> => {
   robot.list({ scene: current, isCurrent: true }, { scene: other, isCurrent: false });
+  await harness.service.settled();
 };
 
-const feed = (robotMapId: number, to: HomeMapFeedTarget | null): void => {
-  feeds.setFeed(DEVICE, robotMapId, to ?? { target: null }, ME);
+const feed = async (robotMapId: number, to: HomeMapFeedTarget | null): Promise<void> => {
+  await feeds.setFeed(DEVICE, robotMapId, to ?? { target: null }, ME);
 };
 
-const buildFeeds = (maps: FeedPorts['maps']): RobotMapFeeds =>
+const buildFeeds = (maps: HomeMapService): RobotMapFeeds =>
   new RobotMapFeeds({
     source: robot.source,
     maps,
-    sets: {
-      ids: (): HomeMapId[] => harness.repo.ids(),
-      defaultId: (): HomeMapId | null => harness.repo.defaultId(),
-      locations: (deviceId) => harness.repo.sourceLocations(deviceId),
-    },
     inventory: () => INVENTORY,
-    atomically: (work) => harness.context.write(work),
-    links: { list: () => [] },
-    syncLinks: (deviceId): number => {
+    links: { list: () => Promise.resolve([]) },
+    syncLinks: (_held, deviceId): Promise<number> => {
       synced.push(deviceId);
-      return 0;
+      return Promise.resolve(0);
     },
     newId: (): string => `feed-${String((counter += 1))}`,
     now: (): string => NOW,
     log: testLogger('home-map'),
   });
 
-beforeEach(() => {
+beforeEach(async () => {
   logs = captureLogs();
-  harness = mapHarness();
+  harness = await mapHarness();
   robot = new FakeRobot(DEVICE);
   synced = [];
   counter = 0;
   feeds = buildFeeds(harness.service);
-  feeds.watch(INVENTORY);
+  await feeds.watch(INVENTORY);
   robot.status(CHARGING);
 });
 
 describe('settled imports only', () => {
-  beforeEach(() => {
-    makeHome();
+  beforeEach(async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
   });
 
-  it('imports nothing for a push in the middle of a clean and one revision when it ends', () => {
+  it('imports nothing for a push in the middle of a clean and one revision when it ends', async () => {
     const before = mapOf().revision;
     robot.status(CLEANING);
     robot.publishCurrent(widened(downstairs, 8));
@@ -124,35 +125,38 @@ describe('settled imports only', () => {
     robot.source.cycleFinished(DEVICE);
     robot.source.cycleFinished(DEVICE);
     robot.source.statusChanged(DEVICE);
+    await harness.service.settled();
     expect(mapOf().revision).toBe(before + 1);
     expect(mapOf().notices.filter((notice) => notice.kind === 'source_moved')).toEqual([]);
     const hall = mapOf().floors.find((floor) => floor.id === 'down')?.rooms[0];
     expect(hall?.polygon.outer.some((point) => point.y > 3.7)).toBe(true);
   });
 
-  it('makes no revision for a re-push that only jitters by millimetres', () => {
+  it('makes no revision for a re-push that only jitters by millimetres', async () => {
     const before = mapOf().revision;
     robot.publishCurrent(jittered(downstairs, 8));
     robot.publishCurrent(jittered(downstairs, 9));
+    await harness.service.settled();
     expect(mapOf().revision).toBe(before);
     expect(logs.events()).not.toContain('home_map.feed_import_failed');
   });
 
-  it('imports one version once', () => {
+  it('imports one version once', async () => {
     robot.publishCurrent(widened(downstairs, 8));
+    await harness.service.settled();
     const after = mapOf().revision;
-    expect(feeds.follow(DEVICE, 1)).toBe('duplicate');
+    expect(await feeds.follow(DEVICE, 1)).toBe('duplicate');
     expect(mapOf().revision).toBe(after);
   });
 });
 
 describe('each robot map lands on its own floor', () => {
-  it('feeds the floors independently and a change of one robot map touches only its floor', () => {
-    makeHome();
+  it('feeds the floors independently and a change of one robot map touches only its floor', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
-    feed(2, target(HOME, 'up'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
+    await feed(2, target(HOME, 'up'));
     const map = mapOf();
     expect(roomNames(map, 'down')).toEqual(['Hall', 'Den']);
     expect(roomNames(map, 'up')).toEqual(['Bedroom', 'Bath']);
@@ -166,7 +170,7 @@ describe('each robot map lands on its own floor', () => {
     );
     const downRooms = map.floors.find((floor) => floor.id === 'down')?.rooms ?? [];
     const before = map.revision;
-    listBoth(downstairs, widened(upstairs, 10));
+    await listBoth(downstairs, widened(upstairs, 10));
     const after = mapOf();
     expect(after.revision).toBe(before + 1);
     expect(after.floors.find((floor) => floor.id === 'down')?.rooms).toEqual(downRooms);
@@ -176,82 +180,79 @@ describe('each robot map lands on its own floor', () => {
     expect(bedroom?.polygon).not.toEqual(was?.polygon);
   });
 
-  it('places the robot once even when two robot maps both carry a dock', () => {
-    makeHome();
+  it('places the robot once even when two robot maps both carry a dock', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
+    await harness.service.settled();
     const dockUp: VacuumScene = { ...upstairs, dock: { x: 1, y: 1, yaw: 0 } };
-    listBoth(downstairs, dockUp);
-    feed(1, target(HOME, 'down'));
-    feed(2, target(HOME, 'up'));
+    await listBoth(downstairs, dockUp);
+    await feed(1, target(HOME, 'down'));
+    await feed(2, target(HOME, 'up'));
     const placements = mapOf().floors.flatMap((floor) => floor.placements);
     expect(placements.map((placement) => placement.deviceId)).toEqual([DEVICE]);
   });
 
-  it('refuses a floor another map of the same robot already feeds and writes nothing', () => {
-    makeHome();
+  it('refuses a floor another map of the same robot already feeds and writes nothing', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
     const before = mapOf().revision;
-    expect(() => {
-      feed(2, target(HOME, 'down'));
-    }).toThrow(/already feeds/u);
+    await expect(feed(2, target(HOME, 'down'))).rejects.toThrow(/already feeds/u);
     expect(mapOf().revision).toBe(before);
   });
 
-  it('refuses the current robot map while the robot is cleaning and writes nothing', () => {
-    makeHome();
+  it('refuses the current robot map while the robot is cleaning and writes nothing', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
+    await listBoth();
     robot.status(CLEANING);
-    expect(() => {
-      feed(1, target(HOME, 'down'));
-    }).toThrow(/not finished/u);
+    await expect(feed(1, target(HOME, 'down'))).rejects.toThrow(/not finished/u);
     expect(mapOf().sources).toEqual([]);
-    feed(2, target(HOME, 'up'));
+    await feed(2, target(HOME, 'up'));
     expect(roomNames(mapOf(), 'up')).toEqual(['Bedroom', 'Bath']);
   });
 });
 
 describe('a new robot map', () => {
-  it('makes one notice on the default map per robot map however often it changes', () => {
-    makeHome();
+  it('makes one notice on the default map per robot map however often it changes', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
+    await listBoth();
     expect(noticesOf(mapOf())).toEqual(['Downstairs', 'Upstairs']);
-    listBoth(downstairs, widened(upstairs, 10));
-    listBoth(widened(downstairs, 11), widened(upstairs, 12));
+    await listBoth(downstairs, widened(upstairs, 10));
+    await listBoth(widened(downstairs, 11), widened(upstairs, 12));
     expect(noticesOf(mapOf())).toEqual(['Downstairs', 'Upstairs']);
     expect(logs.events().filter((event) => event === 'home_map.new_robot_map')).toHaveLength(2);
   });
 
-  it('clears its notice when the robot map is given a floor', () => {
-    makeHome();
+  it('clears its notice when the robot map is given a floor', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(2, target(HOME, 'up'));
+    await listBoth();
+    await feed(2, target(HOME, 'up'));
     expect(noticesOf(mapOf())).toEqual(['Downstairs']);
   });
 
-  it('leaves the first map to auto create when no map exists at all', () => {
+  it('leaves the first map to auto create when no map exists at all', async () => {
     robot.publishCurrent(downstairs);
-    listBoth();
-    expect(feeds.follow(DEVICE, 1)).toBe('no_map');
+    await listBoth();
+    expect(await feeds.follow(DEVICE, 1)).toBe('no_map');
     expect(harness.repo.ids()).toEqual([]);
   });
 });
 
 describe('moving a feed', () => {
-  it('leaves the old floor rooms behind as hand rooms and fills the new floor', () => {
-    makeHome();
-    const studio = makeStudio();
+  it('leaves the old floor rooms behind as hand rooms and fills the new floor', async () => {
+    await makeHome();
+    const studio = await makeStudio();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
     const old = mapOf().floors.find((floor) => floor.id === 'down');
     const homeRevision = mapOf().revision;
     const studioRevision = mapOf(studio).revision;
-    feed(1, target(studio, 'studio-0'));
+    await feed(1, target(studio, 'studio-0'));
     const left = mapOf().floors.find((floor) => floor.id === 'down');
     expect(left?.rooms.map((room) => [room.name, room.polygon, room.origin.kind])).toEqual(
       old?.rooms.map((room) => [room.name, room.polygon, 'hand']),
@@ -264,13 +265,13 @@ describe('moving a feed', () => {
     expect(mapOf(studio).revision).toBe(studioRevision + 1);
   });
 
-  it('moves a feed between floors of the same map in one revision', () => {
-    makeHome();
+  it('moves a feed between floors of the same map in one revision', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
     const before = mapOf().revision;
-    feed(1, target(HOME, 'up'));
+    await feed(1, target(HOME, 'up'));
     expect(mapOf().revision).toBe(before + 1);
     expect(mapOf().sources.map((entry) => entry.floorId)).toEqual(['up']);
     expect(roomNames(mapOf(), 'up')).toEqual(['Hall', 'Den']);
@@ -281,54 +282,65 @@ describe('moving a feed', () => {
     ).toBe(true);
   });
 
-  it('writes nothing when the feed is set to where it already is', () => {
-    makeHome();
+  it('writes nothing when the feed is set to where it already is', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
     const before = mapOf().revision;
-    feed(1, target(HOME, 'down'));
+    await feed(1, target(HOME, 'down'));
     expect(mapOf().revision).toBe(before);
   });
 
-  it('rolls everything back when the new floor cannot be fed', () => {
-    makeHome();
+  it('rolls everything back when the new floor cannot be fed', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
     const before = mapOf();
-    expect(() => {
-      feed(1, target(HOME, 'missing-floor'));
-    }).toThrow(/no floor/u);
+    await expect(feed(1, target(HOME, 'missing-floor'))).rejects.toThrow(/no floor/u);
     expect(mapOf()).toEqual(before);
   });
 
-  it('rolls the old floor back when the write to the new map fails', () => {
-    makeHome();
-    const studio = makeStudio();
+  it('rolls the old floor back when the write to the new map fails', async () => {
+    await makeHome();
+    const studio = await makeStudio();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
     const before = mapOf();
-    const failing = buildFeeds({
-      get: (mapId) => harness.service.get(mapId),
-      apply: (ops, actor, mark, mapId) => {
-        if (mapId === studio) throw new Error('disk full');
-        return harness.service.apply(ops, actor, mark, mapId);
+    const real = harness.repo;
+    const breaking = new Proxy(real, {
+      get: (target, key): unknown => {
+        if (key !== 'apply') return Reflect.get(target, key, target);
+        return (...args: Parameters<HomeMapsRepository['apply']>): HomeMapApplied => {
+          if (args[3] === studio) throw new Error('disk full');
+          return target.apply(...args);
+        };
       },
     });
-    expect(() => {
-      failing.setFeed(DEVICE, 1, target(studio, 'studio-0'), ME);
-    }).toThrow(/disk full/u);
+    const broken = new HomeMapService({
+      store: directHomeMapStore(breaking, (work) => harness.context.write(work)),
+      knownModel: (): boolean => true,
+      applied: (): undefined => undefined,
+      now: (): string => NOW,
+      log: testLogger('home-map'),
+    });
+    await broken.load();
+    const failing = buildFeeds(broken);
+    await expect(failing.setFeed(DEVICE, 1, target(studio, 'studio-0'), ME)).rejects.toThrow(
+      /disk full/u,
+    );
+    expect(harness.repo.read(HOME)).toEqual(before);
     expect(mapOf()).toEqual(before);
   });
 
-  it('is Not used when the target is null: the rooms stay as hand rooms and the feed is listed unused', () => {
-    makeHome();
+  it('is Not used when the target is null: the rooms stay as hand rooms and the feed is listed unused', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
-    feed(1, null);
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
+    await feed(1, null);
     expect(mapOf().sources).toEqual([]);
     expect(roomNames(mapOf(), 'down')).toEqual(['Hall', 'Den']);
     expect(feeds.list().map((entry) => [entry.robotMapId, entry.target])).toEqual([
@@ -363,18 +375,18 @@ describe('a floor that already has rooms', () => {
     return { op: 'add', kind: 'room', floorId: 'up', element };
   };
 
-  beforeEach(() => {
-    makeHome();
+  beforeEach(async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
   });
 
-  it('adopts the hand rooms an earlier detach left behind instead of drawing them twice', () => {
-    feed(1, target(HOME, 'up'));
+  it('adopts the hand rooms an earlier detach left behind instead of drawing them twice', async () => {
+    await feed(1, target(HOME, 'up'));
     const left = floorOf(mapOf(), 'down')?.rooms ?? [];
     expect(left.every((room) => room.origin.kind === 'hand')).toBe(true);
-    feed(1, target(HOME, 'down'));
+    await feed(1, target(HOME, 'down'));
     const map = mapOf();
     const back = floorOf(map, 'down');
     const [source] = map.sources.filter((entry) => entry.floorId === 'down');
@@ -389,8 +401,8 @@ describe('a floor that already has rooms', () => {
     expect(map.notices.filter((notice) => notice.kind === 'source_moved')).toEqual([]);
   });
 
-  it('keeps a hand shape the user changed and follows the robot for the rest', () => {
-    feed(1, target(HOME, 'up'));
+  it('keeps a hand shape the user changed and follows the robot for the rest', async () => {
+    await feed(1, target(HOME, 'up'));
     const hall = floorOf(mapOf(), 'down')?.rooms[0];
     if (hall === undefined) throw new Error('no hall');
     const inset = {
@@ -402,20 +414,20 @@ describe('a floor that already has rooms', () => {
       ],
       holes: [],
     };
-    harness.service.apply(
+    await harness.service.apply(
       [{ op: 'update', kind: 'room', floorId: 'down', id: hall.id, patch: { polygon: inset } }],
       ME,
     );
-    feed(1, target(HOME, 'down'));
+    await feed(1, target(HOME, 'down'));
     const back = floorOf(mapOf(), 'down')?.rooms.find((room) => room.id === hall.id);
     expect(back?.polygon).toEqual(inset);
     expect(back?.origin.kind === 'source' ? back.origin.overridden : []).toEqual(['polygon']);
     expect(floorOf(mapOf(), 'down')?.rooms).toHaveLength(2);
   });
 
-  it('writes the align notice and overlays nothing when the robot map does not fit', () => {
-    harness.service.apply([handRoomFar(mapOf())], ME);
-    feed(1, target(HOME, 'up'));
+  it('writes the align notice and overlays nothing when the robot map does not fit', async () => {
+    await harness.service.apply([handRoomFar(mapOf())], ME);
+    await feed(1, target(HOME, 'up'));
     const map = mapOf();
     const up = floorOf(map, 'up');
     expect(up?.rooms.map((room) => room.name)).toEqual(['Far room']);
@@ -429,6 +441,7 @@ describe('a floor that already has rooms', () => {
     const before = map.revision;
     robot.publishCurrent(widened(downstairs, 8));
     robot.publishCurrent(widened(downstairs, 9));
+    await harness.service.settled();
     expect(mapOf().revision).toBe(before);
     expect(floorOf(mapOf(), 'up')?.rooms).toHaveLength(1);
   });
@@ -453,15 +466,15 @@ describe('a hand drawn floor the robot map is offset from', () => {
     },
   });
 
-  it('fits the robot walls to the drawn rooms and writes the realign notice', () => {
-    makeHome();
+  it('fits the robot walls to the drawn rooms and writes the realign notice', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
     const drawn = mapOf().floors.find((floor) => floor.id === 'down')?.rooms ?? [];
-    harness.service.apply(drawn.map(shifted), ME);
+    await harness.service.apply(drawn.map(shifted), ME);
     const wallsBefore = mapOf().floors.find((floor) => floor.id === 'down')?.walls ?? [];
-    feed(1, target(HOME, 'up'));
+    await feed(1, target(HOME, 'up'));
     const map = mapOf();
     const up = map.floors.find((floor) => floor.id === 'up');
     const source = map.sources.find((entry) => entry.floorId === 'up');
@@ -486,13 +499,14 @@ describe('a hand drawn floor the robot map is offset from', () => {
 });
 
 describe('listing the feeds', () => {
-  it('lists every robot map with its floor and a map the robot no longer has', () => {
-    makeHome();
+  it('lists every robot map with its floor and a map the robot no longer has', async () => {
+    await makeHome();
     robot.publishCurrent(downstairs);
-    listBoth();
-    feed(1, target(HOME, 'down'));
-    feed(2, target(HOME, 'up'));
+    await listBoth();
+    await feed(1, target(HOME, 'down'));
+    await feed(2, target(HOME, 'up'));
     robot.list({ scene: downstairs, isCurrent: true });
+    await harness.service.settled();
     expect(
       feeds.list().map((entry) => [entry.robotMapId, entry.isCurrent, entry.target?.floorId]),
     ).toEqual([
@@ -501,41 +515,41 @@ describe('listing the feeds', () => {
     ]);
   });
 
-  it('refuses a robot map the robot never had and a device that is not a vacuum', () => {
-    makeHome();
-    expect(() => {
-      feed(99, null);
-    }).toThrow(/no such map/u);
-    expect(() => {
-      feeds.setFeed('00000000-0000-4000-8000-000000000000', 1, { target: null }, ME);
-    }).toThrow(/no robot maps/u);
+  it('refuses a robot map the robot never had and a device that is not a vacuum', async () => {
+    await makeHome();
+    await expect(feed(99, null)).rejects.toThrow(/no such map/u);
+    await expect(
+      feeds.setFeed('00000000-0000-4000-8000-000000000000', 1, { target: null }, ME),
+    ).rejects.toThrow(/no robot maps/u);
   });
 });
 
 describe('the source made before robot map ids existed', () => {
-  it('binds to the current robot map on its first settled scene, once, and keeps feeding it', () => {
+  it('binds to the current robot map on its first settled scene, once, and keeps feeding it', async () => {
     const registry = new MapSourceRegistry([robot.source]);
     const auto = new HomeMapAutoCreate({
       registry,
       maps: harness.service,
-      sets: { ids: (): HomeMapId[] => harness.repo.ids() },
       currentMap: (): null => null,
-      links: { list: (): [] => [] },
+      links: { list: (): Promise<[]> => Promise.resolve([]) },
       newId: (): string => `auto-${String((counter += 1))}`,
       now: (): string => NOW,
       log: testLogger('home-map'),
     });
     robot.publishCurrent(downstairs);
-    expect(auto.consider({ source: robot.source, deviceId: DEVICE })).toBe('created');
+    await harness.service.settled();
+    expect(await auto.consider({ source: robot.source, deviceId: DEVICE })).toBe('created');
     expect(mapOf().sources.map((entry) => entry.robotMapId)).toEqual([undefined]);
     const before = mapOf().revision;
     robot.publishCurrent(widened(downstairs, 8));
+    await harness.service.settled();
     expect(mapOf().sources.map((entry) => [entry.robotMapId, entry.robotMapName])).toEqual([
       [1, 'Downstairs'],
     ]);
     expect(mapOf().revision).toBe(before + 1);
     robot.publishCurrent(widened(downstairs, 9));
     robot.publishCurrent(widened(downstairs, 10));
+    await harness.service.settled();
     expect(logs.events().filter((event) => event === 'home_map.source_bound')).toHaveLength(1);
     expect(noticesOf(mapOf())).toEqual([]);
   });

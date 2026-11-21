@@ -1,186 +1,38 @@
-import {
-  COMPOSITION_FORMULA,
-  attributeReading,
-  bmiOf,
-  bodyComposition,
-  bodyFactsOf,
-  fitnessReady,
-  impedancePair,
-  type Attribution,
-  type BodyReadingRow,
-} from '@smarteverything/domain';
+import type { BodyReadingRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { ReadingOwner, ScaleMeasurement } from '../store/repositories/body-readings';
+import type { ScaleMeasurement } from '../store/repositories/body-readings';
 import type { Store } from '../store/store';
-import { healthRecordsOf, recordIdsOf } from './reading-records';
-
-function measuredChange(before: BodyReadingRow, after: BodyReadingRow): boolean {
-  return (
-    before.weight_kg !== after.weight_kg ||
-    before.heart_rate !== after.heart_rate ||
-    before.impedance_low !== after.impedance_low ||
-    before.impedance_high !== after.impedance_high
-  );
-}
-
-function stale(reading: BodyReadingRow, ready: boolean): boolean {
-  if (reading.composition !== null) {
-    return reading.composition.formula !== COMPOSITION_FORMULA;
-  }
-  return ready && reading.weight_kg !== null && reading.impedance_low !== null;
-}
+import type { ScaleOutcome } from './scale-units';
 
 export interface ScaleReadingsOptions {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host'>;
   readonly log: Logger;
 }
 
 export class ScaleReadings {
   constructor(private readonly options: ScaleReadingsOptions) {}
 
-  record(measurement: ScaleMeasurement): BodyReadingRow {
-    const { store } = this.options;
-    return store.write(() => {
-      const { before, after } = store.bodyReadings.merge(measurement);
-      const weight = after.weight_kg;
-      if (weight === null) {
-        return after;
-      }
-      if (before?.weight_kg === null || before === undefined) {
-        return this.attribute(after, weight);
-      }
-      if (after.profile_id === null || !measuredChange(before, after)) {
-        return after;
-      }
-      return this.own(after, after.profile_id, after.attribution);
-    });
+  async record(measurement: ScaleMeasurement): Promise<BodyReadingRow> {
+    return this.noted(await this.options.store.host.write('scaleRecord', measurement));
   }
 
-  assign(readingId: string, profileId: string | null): BodyReadingRow {
-    const { store } = this.options;
-    return store.write(() => {
-      const reading = store.bodyReadings.byId(readingId);
-      if (profileId === null) {
-        return this.own(reading, null, 'ignored');
-      }
-      store.profiles.byId(profileId);
-      if (reading.scale_user !== null) {
-        store.profiles.learnScaleUser(profileId, reading.scale_user);
-      }
-      return this.own(reading, profileId, 'person');
-    });
+  async assign(readingId: string, profileId: string | null): Promise<BodyReadingRow> {
+    return this.noted(await this.options.store.host.write('scaleAssign', { readingId, profileId }));
   }
 
-  recomputeOutdated(): number {
-    const outdated = new Set(
-      this.options.store.profiles
-        .list()
-        .filter((profile) =>
-          this.options.store.bodyReadings
-            .ofProfile(profile.id)
-            .some((reading) => stale(reading, fitnessReady(profile))),
-        )
-        .map((profile) => profile.id),
-    );
-    return [...outdated].reduce((total, profileId) => total + this.recomputeFor(profileId), 0);
+  async recomputeOutdated(): Promise<number> {
+    const outdated = await this.options.store.host.read('scaleOutdated', null);
+    let total = 0;
+    for (const profileId of outdated) total += await this.recomputeFor(profileId);
+    return total;
   }
 
-  recomputeFor(profileId: string): number {
-    const { store } = this.options;
-    return store.write(() => {
-      const readings = store.bodyReadings.ofProfile(profileId);
-      for (const reading of readings) {
-        this.own(reading, profileId, reading.attribution);
-      }
-      this.options.log.info('scale.recomputed', { profileId, readings: readings.length });
-      return readings.length;
-    });
+  async recomputeFor(profileId: string): Promise<number> {
+    return this.noted(await this.options.store.host.write('scaleRecompute', profileId));
   }
 
-  private attribute(reading: BodyReadingRow, weightKg: number): BodyReadingRow {
-    const { store } = this.options;
-    const candidates = store.profiles.list().map((profile) => ({
-      profileId: profile.id,
-      scaleUser: profile.scale_user,
-      weighIns: store.bodyReadings
-        .ofProfile(profile.id)
-        .flatMap((owned) =>
-          owned.weight_kg === null
-            ? []
-            : [{ weightKg: owned.weight_kg, confirmed: owned.attribution === 'person' }],
-        ),
-    }));
-    const result = attributeReading({ scaleUser: reading.scale_user, weightKg }, candidates);
-    this.options.log.info('scale.attributed', {
-      readingId: reading.id,
-      attribution: result.attribution,
-      candidates: candidates.length,
-    });
-    if (result.profileId !== null) {
-      this.linkFreeSlot(result.profileId, reading.scale_user);
-    }
-    return this.own(reading, result.profileId, result.attribution);
-  }
-
-  private linkFreeSlot(profileId: string, scaleUser: number | null): void {
-    const profiles = this.options.store.profiles;
-    if (scaleUser === null || profiles.byId(profileId).scale_user !== null) {
-      return;
-    }
-    if (profiles.list().every((profile) => profile.scale_user !== scaleUser)) {
-      profiles.learnScaleUser(profileId, scaleUser);
-      this.options.log.info('scale.slot_learned', { profileId, scaleUser });
-    }
-  }
-
-  private ownerOf(
-    reading: BodyReadingRow,
-    profileId: string | null,
-    attribution: Attribution,
-  ): ReadingOwner {
-    const profile = profileId === null ? null : this.options.store.profiles.byId(profileId);
-    const facts = profile === null ? null : bodyFactsOf(profile, new Date(reading.measured_at));
-    const weight = reading.weight_kg;
-    const impedance = impedancePair([reading.impedance_low, reading.impedance_high]);
-    return {
-      profileId,
-      attribution,
-      bmi: facts === null || weight === null ? null : bmiOf(weight, facts.heightCm),
-      composition:
-        facts === null || weight === null || impedance === null
-          ? null
-          : bodyComposition({
-              ...facts,
-              weightKg: weight,
-              impedanceLow: impedance.low,
-              impedanceHigh: impedance.high,
-            }),
-    };
-  }
-
-  private own(
-    reading: BodyReadingRow,
-    profileId: string | null,
-    attribution: Attribution,
-  ): BodyReadingRow {
-    const { store } = this.options;
-    const { after } = store.bodyReadings.own(
-      reading.id,
-      this.ownerOf(reading, profileId, attribution),
-    );
-    const counted = attribution !== 'pending' && attribution !== 'ignored';
-    store.health.replaceOwn({
-      profileId: counted ? profileId : null,
-      previous: reading.profile_id,
-      records:
-        counted && profileId !== null
-          ? healthRecordsOf(after, {
-              timeZone: store.settings.read().time_zone,
-              heightCm: store.profiles.byId(profileId).height_cm,
-            })
-          : [],
-      removed: recordIdsOf(reading.id),
-    });
-    return after;
+  private noted<T>(outcome: ScaleOutcome<T>): T {
+    for (const note of outcome.notes) this.options.log.info(note.event, note.fields);
+    return outcome.value;
   }
 }

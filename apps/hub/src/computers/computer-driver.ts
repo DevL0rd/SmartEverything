@@ -38,7 +38,7 @@ export interface ComputerDriverOptions {
   readonly personOf: (deviceId: string) => string | null;
   readonly hub: HubMachine;
   readonly createLocal: LocalComputerFactory;
-  readonly bindHubDevice: (deviceId: string) => void;
+  readonly bindHubDevice: (deviceId: string) => Promise<void>;
   readonly ears?: SessionEars;
   readonly earHosts?: SessionEarHosts;
   readonly placements: SessionPlacementSource;
@@ -57,7 +57,7 @@ async function registerHub(
   await publish([describeHub(options.hub)]);
   const deviceId = options.deviceIdOf(HUB_EXTERNAL_ID);
   if (deviceId === undefined) throw new Error('The hub device was not registered.');
-  options.bindHubDevice(deviceId);
+  await options.bindHubDevice(deviceId);
   options.log.info('computer.hub_device_bound', { deviceId });
 }
 

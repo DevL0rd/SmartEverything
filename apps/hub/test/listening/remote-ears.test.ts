@@ -109,6 +109,7 @@ function claimOf(snippetDbfs: number): {
 beforeEach(async () => {
   logs = captureLogs();
   opened = await testStore();
+  await opened.store.live.home.load();
   clock = new FakeClock(START);
   hosts = new EarHosts({ store: opened.store, log: testLogger('listening') });
   hosts.start();

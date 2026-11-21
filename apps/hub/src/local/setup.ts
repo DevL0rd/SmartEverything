@@ -16,23 +16,24 @@ import { homeClock } from './bottle/clock';
 import { bottleSetup } from './bottle/setup';
 import { brushSetupFor } from './toothbrush/brands';
 
-function scaleOf(store: Store, deviceId: string): DeviceRow {
-  const device = store.devices.byId(deviceId);
+async function scaleOf(store: Pick<Store, 'host'>, deviceId: string): Promise<DeviceRow> {
+  const device = await store.host.call('devices', 'byId', deviceId);
   if (device.provider !== 'xiaomi' || !device.external_id.startsWith('blt.') || !isScale(device)) {
     throw new ApiError('invalid_request', `${device.name} is not a Xiaomi Bluetooth scale.`);
   }
   return device;
 }
 
-function roomNameOf(store: Store, device: DeviceRow): string | null {
-  return store.rooms.list().find((room) => room.id === device.room_id)?.name ?? null;
+async function roomNameOf(store: Pick<Store, 'host'>, device: DeviceRow): Promise<string | null> {
+  const rooms = await store.host.call('rooms', 'list');
+  return rooms.find((room) => room.id === device.room_id)?.name ?? null;
 }
 
 async function fromXiaomi(
   setup: Extract<LocalDeviceSetup, { driver: 'xiaomi_scale'; source: 'xiaomi' }>,
   context: SetupContext,
 ): Promise<ResolvedSetup> {
-  const device = scaleOf(context.store, setup.xiaomiDeviceId);
+  const device = await scaleOf(context.store, setup.xiaomiDeviceId);
   const identity = await context.identities(device.external_id);
   const address = BLUETOOTH_ADDRESS.parse(identity.mac);
   return {
@@ -41,7 +42,11 @@ async function fromXiaomi(
       driver: 'xiaomi_scale',
       address,
       name: device.display_name ?? device.name,
-      config: { model: device.model, replaces: device.id, room: roomNameOf(context.store, device) },
+      config: {
+        model: device.model,
+        replaces: device.id,
+        room: await roomNameOf(context.store, device),
+      },
     },
     key: BIND_KEY.parse(identity.bindKey),
     replaces: device.id,

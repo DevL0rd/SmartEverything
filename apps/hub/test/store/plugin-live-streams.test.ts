@@ -26,11 +26,13 @@ function point(index: number): PluginDataPoint {
 }
 
 describe('live plugin streams', () => {
-  it('keeps router frames in memory and writes the newest one only once a minute and on stop', () => {
+  it('keeps router frames in memory and writes the newest one only once a minute and on stop', async () => {
     const { store } = opened;
     const manifest = PLUGIN_MANIFEST.parse(routerPlugin.manifest);
     store.plugins.create({ manifest, source: 'builtin', location: 'builtin', trusted: true });
-    const run = vi.spyOn(store.pluginData, 'publish');
+    const run = vi.spyOn(store.host, 'call');
+    const history = (): Promise<PluginDataPoint[]> =>
+      store.host.call('pluginData', 'history', manifest.id, SNAPSHOT_STREAM, 10);
     const contributions = contributionsOf(
       {
         store,
@@ -43,11 +45,11 @@ describe('live plugin streams', () => {
     );
     for (let index = 0; index < 30; index += 1) contributions.sinks.data(point(index));
     expect(run).not.toHaveBeenCalled();
-    expect(store.pluginData.history(manifest.id, SNAPSHOT_STREAM, 10)).toEqual([]);
+    expect(await history()).toEqual([]);
     vi.advanceTimersByTime(60_000);
-    expect(store.pluginData.history(manifest.id, SNAPSHOT_STREAM, 10)).toEqual([point(29)]);
+    expect(await history()).toEqual([point(29)]);
     contributions.sinks.data(point(30));
     contributions.stop();
-    expect(store.pluginData.history(manifest.id, SNAPSHOT_STREAM, 10)).toEqual([point(30)]);
+    expect(await history()).toEqual([point(30)]);
   });
 });

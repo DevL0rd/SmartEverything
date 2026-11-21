@@ -10,6 +10,7 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ShownPrompt } from '../src/adapters/contract';
+import { ProviderNotRunningError } from '../src/commands/command-errors';
 import { ProviderManager, type ProviderManagerOptions } from '../src/providers/manager';
 import { linkAccount } from '../src/providers/registry-types';
 import { SecretStore } from '../src/secrets/store';
@@ -150,7 +151,7 @@ describe('ProviderManager', () => {
     const { db, fake, manager, secrets } = await setup();
     fake.askDuringLink = true;
     const linking = manager.link(CREDENTIALS);
-    await until(() => linkOf(db, 'xiaomi')?.prompt !== null);
+    await until(() => (linkOf(db, 'xiaomi')?.prompt ?? null) !== null);
     expect(linkOf(db, 'xiaomi')?.prompt).toStrictEqual({
       kind: 'verification_code',
       destination: 'p***@example.com',
@@ -212,9 +213,10 @@ describe('ProviderManager', () => {
     const { db, fake, manager, secrets } = await setup();
     fake.askDuringLink = true;
     const linking = manager.link(CREDENTIALS);
-    await until(() => linkOf(db, 'xiaomi')?.prompt !== null);
+    await until(() => (linkOf(db, 'xiaomi')?.prompt ?? null) !== null);
+    const stopped = expect(linking).rejects.toThrow('was withdrawn');
     await manager.cancelLink('xiaomi');
-    await expect(linking).rejects.toThrow('was withdrawn');
+    await stopped;
     expect(linkOf(db, 'xiaomi')).toMatchObject({
       status: 'unlinked',
       prompt: null,
@@ -231,8 +233,9 @@ describe('ProviderManager', () => {
     const relinking = manager.link({ ...CREDENTIALS, password: 'new' });
     await until(() => linkOf(db, 'xiaomi')?.prompt !== null);
     expect(linkOf(db, 'xiaomi')?.status).toBe('linking');
+    const stopped = expect(relinking).rejects.toThrow('was withdrawn');
     await manager.cancelLink('xiaomi');
-    await expect(relinking).rejects.toThrow('was withdrawn');
+    await stopped;
     expect(linkOf(db, 'xiaomi')).toMatchObject({ status: 'linked', prompt: null, phase: null });
     expect(secrets.read().accounts.xiaomi?.secrets).toStrictEqual({ token: 'token-none' });
     expect(manager.adapterFor('xiaomi')).toBe(fake.adapter);
@@ -303,6 +306,12 @@ describe('ProviderManager', () => {
     expect(db.store.events.list({ limit: 10 }).map((event) => event.kind)).toStrictEqual([
       'button',
     ]);
+    await until(
+      () =>
+        inventory.devicesOf('xiaomi').length === 2 &&
+        linkOf(db, 'xiaomi')?.device_count === 2 &&
+        linkOf(db, 'xiaomi')?.last_error === 'poll: Error: timeout',
+    );
     expect(inventory.devicesOf('xiaomi')).toHaveLength(2);
     expect(linkOf(db, 'xiaomi')).toMatchObject({
       device_count: 2,
@@ -349,6 +358,43 @@ describe('ProviderManager', () => {
       last_error: 'Error: cloud down',
     });
     expect(fake.adapter.unsubscribed).toBe(1);
+  });
+
+  it('lets a caller wait for one provider that is still starting and names a start that fails', async () => {
+    const first = await setup();
+    await first.manager.link(CREDENTIALS);
+    const { manager, fake } = await setup();
+    await expect(manager.started('xiaomi')).rejects.toThrow(new ProviderNotRunningError('xiaomi'));
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const devices = fake.adapter.devices;
+    fake.adapter.discover = async (): Promise<typeof devices> => {
+      await gate;
+      return devices;
+    };
+    const announced: Provider[] = [];
+    manager.onStarted((provider) => {
+      announced.push(provider);
+    });
+    const booting = manager.startLinked();
+    const waiting = manager.started('xiaomi');
+    expect(manager.adapterFor('xiaomi')).toBeUndefined();
+    release();
+    expect(await waiting).toBe(fake.adapter);
+    await booting;
+    expect(announced).toStrictEqual(['xiaomi']);
+    expect(await manager.started('xiaomi')).toBe(fake.adapter);
+    fake.adapter.discover = (): Promise<never> => Promise.reject(new Error('cloud down'));
+    const restarting = manager.startLinked();
+    const failing = expect(manager.started('xiaomi')).rejects.toThrow(
+      'The xiaomi provider failed to start: Error: cloud down',
+    );
+    await restarting;
+    await failing;
+    expect(announced).toStrictEqual(['xiaomi']);
+    await manager.stopAll();
   });
 
   it('starts a provider before its first state read finishes and drops a read of a stopped adapter', async () => {
@@ -439,8 +485,9 @@ describe('ProviderManager', () => {
   it('releases a prepared adapter when its provider stops and when its start fails', async () => {
     const calls: string[] = [];
     const { fake, manager } = await setup({
-      prepareAdapter: (): void => {
+      prepareAdapter: (): Promise<void> => {
         calls.push('prepare');
+        return Promise.resolve();
       },
       releaseAdapter: (): void => {
         calls.push('release');

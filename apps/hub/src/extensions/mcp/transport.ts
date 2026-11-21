@@ -8,6 +8,7 @@ import { withRequestSignal } from '../../server/request-signal';
 import type { Store } from '../../store/store';
 import { callerFor, challenge, type AcceptedCaller, type McpCaller } from './bearer';
 import { replyJson } from './respond';
+import { enabledTools } from './dispatch';
 import { createMcpServer } from './server';
 import { siteOf } from './site';
 import type { ToolListFeed } from './tool-list-feed';
@@ -30,12 +31,12 @@ function loopback(request: IncomingMessage): boolean {
   return LOOPBACK_HOSTS.has(host) && LOOPBACK_ADDRESSES.has(request.socket.remoteAddress ?? '');
 }
 
-function callerOf(options: TransportOptions, request: IncomingMessage): McpCaller {
+async function callerOf(options: TransportOptions, request: IncomingMessage): Promise<McpCaller> {
   const token = bearerOf(request);
   if (token === null) {
     return { kind: 'refused', reason: 'Connect this assistant to SmartEverything first' };
   }
-  const caller = callerFor(
+  const caller = await callerFor(
     { store: options.store, site: siteOf(options.store), now: options.clock.now() },
     token,
   );
@@ -45,12 +46,12 @@ function callerOf(options: TransportOptions, request: IncomingMessage): McpCalle
   return caller;
 }
 
-function authorized(
+async function authorized(
   options: TransportOptions,
   request: IncomingMessage,
   response: ServerResponse,
-): AcceptedCaller | null {
-  const caller = callerOf(options, request);
+): Promise<AcceptedCaller | null> {
+  const caller = await callerOf(options, request);
   if (caller.kind === 'accepted') {
     options.log.trace('caller.accepted', {
       via: caller.via,
@@ -93,13 +94,15 @@ export async function handleMcp(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
-  const caller = authorized(options, request, response);
+  const caller = await authorized(options, request, response);
   if (caller === null) {
     return;
   }
   const userAgent = request.headers['user-agent'] ?? '';
+  const context = { ...options.tools, caller };
+  const enabled = await enabledTools(context);
   const handler = createMcpHandler(
-    () => createMcpServer({ ...options.tools, caller }, options.log, userAgent),
+    () => createMcpServer(context, options.log, userAgent, enabled),
     {
       bus: feed.bus,
       onerror: (cause): void => {
@@ -138,7 +141,7 @@ export async function streamMcp(
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
-  if (authorized(options, request, response) !== null) {
+  if ((await authorized(options, request, response)) !== null) {
     await feed.attach(request, response);
   }
 }

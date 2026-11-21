@@ -6,6 +6,7 @@ import {
   type AutomationValueRow,
   type JsonValue,
 } from '@smarteverything/domain';
+import { storeUnit } from '../../store/host/unit';
 import type { Store } from '../../store/store';
 
 export interface ValueChange {
@@ -40,3 +41,15 @@ export function applyValueChange(
   const { content } = store.automationValues.byId(change.valueId);
   return store.automationValues.apply(change.valueId, operationOf(content, change));
 }
+
+export interface AppliedValueChange {
+  readonly before: JsonValue;
+  readonly row: AutomationValueRow;
+}
+
+export const APPLY_HOME_VALUE_UNIT = storeUnit<ValueChange, AppliedValueChange>(
+  (store, change: ValueChange): AppliedValueChange => ({
+    before: store.automationValues.byId(change.valueId).content.value,
+    row: applyValueChange(store, change),
+  }),
+);

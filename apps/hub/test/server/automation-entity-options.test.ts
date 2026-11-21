@@ -29,6 +29,7 @@ import { testLogStore } from '../support/log-worker';
 import { testStore, type TestStore } from '../support/store';
 import { writeFakeListsPlugin } from '../plugins/fake-lists-plugin';
 import { hubLayout } from '../../src/data-layout';
+import { storePluginHome } from '../support/plugin-home';
 
 function nothing(): void {
   return undefined;
@@ -135,13 +136,14 @@ async function rigged(store: TestStore['store'], directory: string): Promise<Plu
           setModel: unused,
         }),
       },
-      attachments: (): string[] => [],
+      attachments: (): Promise<string[]> => Promise.resolve([]),
       machineFile: (): Promise<null> => Promise.resolve(null),
       uploadFile: (): Promise<null> => Promise.resolve(null),
       pictureFile: (): Promise<null> => Promise.resolve(null),
       layout: hubLayout(directory, {}),
       submit: (): [] => [],
       signals: { emit: nothing },
+      home: storePluginHome(store),
       now,
     },
     contributions: {

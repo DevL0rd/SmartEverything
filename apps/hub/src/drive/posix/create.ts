@@ -2,9 +2,10 @@ import { symlink, unlink } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { INODE_TYPES, type RequestMeta } from '@smarteverything/domain/drive-mount';
 import type { DriveItem } from '@smarteverything/domain';
-import type { DriveInode } from '../../store/repositories/drive-inodes';
 import type { SpecialInodeType } from '../../store/repositories/drive-item-inodes';
-import { folderDraft, identityOf, isoOf, prepareContent, type NewItem } from '../changes';
+import { folderDraft, prepareContent } from '../changes';
+import { resultOf, writeDriveOps, type DriveOp, type DriveOpResult } from '../units/ops';
+import { identityOf, isoOf, type NewItem } from '../change-rows';
 import { abandonIntent, diskModeOf, locate, orphanRelPath, type FileStamp } from '../intents';
 import { stageContent } from '../stage-empty';
 import type { StagedBytes } from '../versions';
@@ -13,10 +14,11 @@ import { attrOf, sizeOf } from './attr';
 import { linkDraft, NO_IDENTITY, specialDraft } from './drafts';
 import { posix } from './errors';
 import { checkName, checkNewPath } from './names';
-import { actorOf, recordNew, touchDirectory } from './records';
+import { actorOf, createOp, touchDirectory, type NewRecord } from './records';
 import { nowNs, stampDiskTimes } from './times';
 import type { PosixEnv, PosixScope } from './env';
-import type { PosixChild, PosixNode, PosixNodes } from './nodes';
+import type { PosixChild, PosixNode } from '../units/posix';
+import type { PosixNodes } from './nodes';
 import type { Entry, PosixReads } from './reads';
 
 const PERMISSION_BITS = 0o777;
@@ -55,40 +57,35 @@ export class PosixCreate {
     this.batches = new NameBatches({
       lanes: env.lanes,
       files: env.change.files,
-      write: <R>(work: () => R): R => env.change.store.write(work),
+      write: (ops): Promise<DriveOpResult[]> => writeDriveOps(env.change.store, ops),
       settled: (): void => {
         env.change.purge.rearm();
       },
-      claim: (claim): void => {
-        env.change.store.driveSyncOps.claim(claim);
-      },
-      touch: (folders): void => {
-        for (const folder of folders) touchDirectory(env.change, folder);
-      },
+      touch: (folders): DriveOp[] =>
+        [...folders].map((folder) => touchDirectory(env.change, folder)),
       log: env.change.log,
     });
   }
 
-  private prepare(scope: PosixScope, parentIno: number, name: string): Prepared {
-    checkName(name);
-    const parent = this.nodes.directory(scope, parentIno);
+  private async prepare(scope: PosixScope, parentIno: number, name: string): Promise<Prepared> {
+    const { parent, child } = await this.nodes.childIn(scope, parentIno, name);
     this.nodes.writable(parent);
     const relPath = this.nodes.relPathOf(parent, name);
     checkNewPath(relPath);
-    return { parent, relPath, existing: this.nodes.childOf(scope, parent, name) };
+    return { parent, relPath, existing: child };
   }
 
   private async prepareFree(scope: PosixScope, parentIno: number, name: string): Promise<Prepared> {
-    const prepared = this.prepare(scope, parentIno, name);
+    const prepared = await this.prepare(scope, parentIno, name);
     if (prepared.existing !== undefined) throw posix('EEXIST', `${name} already exists.`);
-    const path = await locate(this.nodes.root(scope), prepared.relPath);
+    const path = await locate(await this.nodes.root(scope), prepared.relPath);
     if ((await this.env.change.files.stamp(path)) !== null) {
       throw posix('EEXIST', `${name} is already on disk.`);
     }
     return prepared;
   }
 
-  private folderIn(scope: PosixScope, parentIno: number, slot: BatchSlot): PosixNode {
+  private folderIn(scope: PosixScope, parentIno: number, slot: BatchSlot): Promise<PosixNode> {
     let known = slot.folders.get(scope);
     if (known === undefined) {
       known = new Map();
@@ -107,14 +104,16 @@ export class PosixCreate {
     slot: BatchSlot,
   ): Promise<Prepared> {
     checkName(target.name);
-    const parent = this.folderIn(scope, target.parent, slot);
+    const parent = await this.folderIn(scope, target.parent, slot);
     this.nodes.writable(parent);
     const relPath = this.nodes.relPathOf(parent, target.name);
     checkNewPath(relPath);
-    if (this.env.change.store.driveItems.lookups.placed(scope.drive.id, relPath) !== undefined) {
-      throw posix('EEXIST', `${target.name} already exists.`);
-    }
-    const path = await locate(this.nodes.root(scope), relPath);
+    const taken = await this.env.change.store.host.read('driveContentPlace', {
+      rootId: scope.drive.id,
+      relPath,
+    });
+    if (taken.target !== undefined) throw posix('EEXIST', `${target.name} already exists.`);
+    const path = await locate(await this.nodes.root(scope), relPath);
     if ((await this.env.change.files.stamp(path)) !== null) {
       throw posix('EEXIST', `${target.name} is already on disk.`);
     }
@@ -133,13 +132,20 @@ export class PosixCreate {
     };
   }
 
-  private entryOf(item: DriveItem, parent: PosixNode): Entry {
-    touchDirectory(this.env.change, parent);
-    return this.settledEntry(item);
+  private async made(scope: PosixScope, record: NewRecord, parent: PosixNode): Promise<Entry> {
+    const results = await writeDriveOps(this.env.change.store, [
+      createOp(scope.caller, record),
+      touchDirectory(this.env.change, parent),
+    ]);
+    const { item } = resultOf(results, 0, 'item');
+    const inode = await this.env.change.store.host.call('driveInodes', 'ofItem', item.id);
+    if (inode === undefined) throw posix('EIO', `The item ${item.id} has no inode.`);
+    const nlink = await this.env.change.store.host.call('driveInodes', 'linkCount', inode.id);
+    return { ino: inode.id, attr: attrOf({ inode, item, nlink, size: sizeOf(inode, item) }) };
   }
 
-  private unused(ino: number): void {
-    if (this.env.change.store.driveInodes.find(ino) !== undefined) {
+  private async unused(ino: number): Promise<void> {
+    if ((await this.env.change.store.host.call('driveInodes', 'find', ino)) !== undefined) {
       throw posix('EINVAL', `The inode ${String(ino)} is already in use.`);
     }
   }
@@ -154,10 +160,10 @@ export class PosixCreate {
     slot: BatchSlot,
   ): Promise<Landed<Entry>> {
     const prepared = await this.prepareIn(scope, request, slot);
-    this.unused(request.ino);
+    await this.unused(request.ino);
     reserve(slot, prepared.relPath, `ino:${String(request.ino)}`);
     const { files } = this.env.change;
-    const path = await locate(this.nodes.root(scope), prepared.relPath);
+    const path = await locate(await this.nodes.root(scope), prepared.relPath);
     await files.mkdir(path);
     let stamp: FileStamp | null;
     try {
@@ -170,13 +176,12 @@ export class PosixCreate {
       throw cause;
     }
     slot.barrier.paths.add(path).add(dirname(path));
-    const made = stamp;
-    let entry: Entry | null = null;
+    slot.touched.set(prepared.parent.inode.id, prepared.parent);
     return {
-      settle: (): void => {
-        const item = recordNew(this.env.change, scope.caller, {
-          draft: folderDraft(this.newItem(scope, prepared, made.mtimeNs), 0),
-          identity: identityOf(made),
+      ops: [
+        createOp(scope.caller, {
+          draft: folderDraft(this.newItem(scope, prepared, stamp.mtimeNs), 0),
+          identity: identityOf(stamp),
           inode: {
             id: request.ino,
             mode: request.mode,
@@ -185,31 +190,13 @@ export class PosixCreate {
             atimeNs: request.mtimeNs,
             mtimeNs: request.mtimeNs,
           },
-        });
-        slot.touched.set(prepared.parent.inode.id, prepared.parent);
-        entry = this.settledEntry(item, request.ino);
-      },
+        }),
+        { kind: 'entry', rootId: scope.drive.id, relPath: prepared.relPath },
+      ],
       abandon: (): Promise<void> => files.remove(path),
-      reply: (): Promise<Entry> => this.recorded(request.name, entry),
+      reply: (results): Promise<Entry> =>
+        Promise.resolve(freshEntry(resultOf(results, 0, 'item').item, results, request.ino)),
     };
-  }
-
-  private settledEntry(item: DriveItem, fresh?: number): Entry {
-    const inodes = this.env.change.store.driveInodes;
-    const inode = inodes.ofItem(item.id);
-    if (inode === undefined) throw posix('EIO', `The item ${item.id} has no inode.`);
-    const nlink =
-      inode.id === fresh && inode.type !== 'dir'
-        ? 1
-        : inode.id === fresh
-          ? FRESH_FOLDER_LINKS
-          : inodes.linkCount(inode.id);
-    return { ino: inode.id, attr: attrOf({ inode, item, nlink, size: sizeOf(inode, item) }) };
-  }
-
-  private recorded(name: string, entry: Entry | null): Promise<Entry> {
-    if (entry === null) return Promise.reject(posix('EIO', `${name} was never recorded.`));
-    return Promise.resolve(entry);
   }
 
   async create(
@@ -218,7 +205,7 @@ export class PosixCreate {
     content: Uint8Array,
   ): Promise<Entry> {
     checkName(request.name);
-    const root = this.nodes.root(scope);
+    const root = await this.nodes.root(scope);
     const staged = await stageContent(this.env.change, root, content);
     const atimeNs = request.atimeNs ?? request.mtimeNs;
     try {
@@ -239,9 +226,9 @@ export class PosixCreate {
   ): Promise<Landed<Entry>> {
     const { request, staged, atimeNs } = made;
     const prepared = await this.prepareIn(scope, request, slot);
-    this.unused(request.ino);
+    await this.unused(request.ino);
     reserve(slot, prepared.relPath, `ino:${String(request.ino)}`);
-    const root = this.nodes.root(scope);
+    const root = await this.nodes.root(scope);
     const content = await prepareContent(
       this.env.change,
       {
@@ -261,60 +248,68 @@ export class PosixCreate {
       },
       slot.barrier.paths,
     );
-    let entry: Entry | null = null;
+    slot.touched.set(prepared.parent.inode.id, prepared.parent);
     return {
-      settle: (): void => {
-        const { item } = content.settle();
-        slot.touched.set(prepared.parent.inode.id, prepared.parent);
-        entry = this.settledEntry(item, request.ino);
-      },
+      ops: [
+        { kind: 'content', input: content.input },
+        { kind: 'entry', rootId: scope.drive.id, relPath: prepared.relPath },
+      ],
       abandon: (): Promise<void> => abandonIntent(this.env.change, root, content.committed.intent),
-      reply: (): Promise<Entry> => this.recorded(request.name, entry),
+      reply: (results): Promise<Entry> =>
+        Promise.resolve(
+          freshEntry(resultOf(results, 0, 'content').settled.item, results, request.ino),
+        ),
     };
   }
 
-  mknod(scope: PosixScope, request: RequestMeta<'MKNOD'>): Entry {
-    const prepared = this.prepare(scope, request.parent, request.name);
+  async mknod(scope: PosixScope, request: RequestMeta<'MKNOD'>): Promise<Entry> {
+    const prepared = await this.prepare(scope, request.parent, request.name);
     if (prepared.existing !== undefined) throw posix('EEXIST', `${request.name} already exists.`);
     const specialType = SPECIAL_TYPES[request.type];
     if (specialType === undefined) throw posix('EINVAL', 'Only special files are made here.');
-    this.unused(request.ino);
+    await this.unused(request.ino);
     const device = specialType === 'char' || specialType === 'block';
-    const item = recordNew(this.env.change, scope.caller, {
-      draft: specialDraft(this.newItem(scope, prepared, nowNs(this.env.change))),
-      identity: NO_IDENTITY,
-      inode: {
-        id: request.ino,
-        specialType,
-        rdev: device ? request.rdev : undefined,
-        mode: request.mode,
-        uid: request.uid,
-        gid: request.gid,
+    return this.made(
+      scope,
+      {
+        draft: specialDraft(this.newItem(scope, prepared, nowNs(this.env.change))),
+        identity: NO_IDENTITY,
+        inode: {
+          id: request.ino,
+          specialType,
+          rdev: device ? request.rdev : undefined,
+          mode: request.mode,
+          uid: request.uid,
+          gid: request.gid,
+        },
       },
-    });
-    return this.entryOf(item, prepared.parent);
+      prepared.parent,
+    );
   }
 
   async symlink(scope: PosixScope, request: RequestMeta<'SYMLINK'>): Promise<Entry> {
     const prepared = await this.prepareFree(scope, request.parent, request.name);
-    this.unused(request.ino);
-    const path = await locate(this.nodes.root(scope), prepared.relPath);
+    await this.unused(request.ino);
+    const path = await locate(await this.nodes.root(scope), prepared.relPath);
     await symlink(request.target, path);
     try {
       const stamp = await this.env.change.files.stamp(path);
       if (stamp === null) throw posix('EIO', 'The new link is missing after it was made.');
-      const item = recordNew(this.env.change, scope.caller, {
-        draft: linkDraft(this.newItem(scope, prepared, stamp.mtimeNs), request.target),
-        identity: identityOf(stamp),
-        inode: {
-          id: request.ino,
-          mode: SYMLINK_MODE,
-          uid: request.uid,
-          gid: request.gid,
-          mtimeNs: stamp.mtimeNs,
+      return await this.made(
+        scope,
+        {
+          draft: linkDraft(this.newItem(scope, prepared, stamp.mtimeNs), request.target),
+          identity: identityOf(stamp),
+          inode: {
+            id: request.ino,
+            mode: SYMLINK_MODE,
+            uid: request.uid,
+            gid: request.gid,
+            mtimeNs: stamp.mtimeNs,
+          },
         },
-      });
-      return this.entryOf(item, prepared.parent);
+        prepared.parent,
+      );
     } catch (cause) {
       await unlink(path);
       throw cause;
@@ -322,23 +317,33 @@ export class PosixCreate {
   }
 
   async tmpfile(scope: PosixScope, request: RequestMeta<'TMPFILE'>): Promise<Entry> {
-    const parent = this.nodes.directory(scope, request.parent);
+    const parent = await this.nodes.directory(scope, request.parent);
     this.nodes.writable(parent);
-    const inodes = this.env.change.store.driveInodes;
-    const inode = this.env.change.store.write((): DriveInode => {
-      const created = inodes.create({
-        rootId: scope.drive.id,
-        type: 'file',
-        mode: request.mode,
-        uid: request.uid,
-        gid: request.gid,
-      });
-      inodes.setOrphan(created.id, true);
-      return created;
-    });
-    const path = await locate(this.nodes.root(scope), orphanRelPath(inode.id));
+    const results = await writeDriveOps(this.env.change.store, [
+      {
+        kind: 'orphanInode',
+        draft: {
+          rootId: scope.drive.id,
+          type: 'file',
+          mode: request.mode,
+          uid: request.uid,
+          gid: request.gid,
+        },
+      },
+    ]);
+    const { inode } = resultOf(results, 0, 'inode');
+    const path = await locate(await this.nodes.root(scope), orphanRelPath(inode.id));
     await this.env.change.files.mkdir(dirname(path));
     await this.env.change.files.stageEmpty(path);
-    return { ino: inode.id, attr: await this.reads.attr(scope, this.nodes.node(scope, inode.id)) };
+    return {
+      ino: inode.id,
+      attr: await this.reads.attr(scope, await this.nodes.node(scope, inode.id)),
+    };
   }
+}
+
+function freshEntry(item: DriveItem, results: readonly DriveOpResult[], fresh: number): Entry {
+  const { inode, nlink } = resultOf(results, 1, 'entry');
+  const links = inode.id !== fresh ? nlink : inode.type === 'dir' ? FRESH_FOLDER_LINKS : 1;
+  return { ino: inode.id, attr: attrOf({ inode, item, nlink: links, size: sizeOf(inode, item) }) };
 }

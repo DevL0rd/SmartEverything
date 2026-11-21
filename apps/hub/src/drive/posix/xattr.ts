@@ -9,9 +9,11 @@ import {
   type XattrRefusal,
 } from '../../store/repositories/drive-xattrs';
 import { posix } from './errors';
-import { recordOp, touchChange } from './records';
+import { resultOf, writeDriveOps, type XattrChange } from '../units/ops';
+import { actorOf, changeTimes } from './records';
 import type { PosixEnv, PosixScope } from './env';
-import type { PosixNode, PosixNodes } from './nodes';
+import type { PosixNode } from '../units/posix';
+import type { PosixNodes } from './nodes';
 
 const USER_PREFIX = 'user.';
 
@@ -41,64 +43,67 @@ export class PosixXattrs {
     private readonly nodes: PosixNodes,
   ) {}
 
-  private get xattrs(): PosixEnv['change']['store']['driveXattrs'] {
-    return this.env.change.store.driveXattrs;
-  }
-
   private userForbidden(node: PosixNode, name: string): boolean {
     return name.startsWith(USER_PREFIX) && node.inode.type !== 'file' && node.inode.type !== 'dir';
   }
 
-  get(scope: PosixScope, request: RequestMeta<'GETXATTR'>): Uint8Array {
-    const node = this.nodes.node(scope, request.ino);
+  async get(scope: PosixScope, request: RequestMeta<'GETXATTR'>): Promise<Uint8Array> {
+    const node = await this.nodes.node(scope, request.ino);
     const nameRefusal = xattrNameRefusal(request.name);
     if (nameRefusal !== null) refuse(nameRefusal);
-    const value = this.xattrs.get(node.inode.id, request.name);
+    const value = await this.env.change.store.host.call(
+      'driveXattrs',
+      'get',
+      node.inode.id,
+      request.name,
+    );
     if (value === undefined) refuse('missing');
     return value;
   }
 
-  list(scope: PosixScope, ino: number): readonly string[] {
-    return this.xattrs.names(this.nodes.node(scope, ino).inode.id);
+  async list(scope: PosixScope, ino: number): Promise<string[]> {
+    const node = await this.nodes.node(scope, ino);
+    return this.env.change.store.host.call('driveXattrs', 'names', node.inode.id);
   }
 
-  set(scope: PosixScope, request: RequestMeta<'SETXATTR'>, value: Uint8Array): void {
-    const node = this.nodes.node(scope, request.ino);
+  private change(scope: PosixScope, node: PosixNode, name: string): XattrChange {
+    return {
+      inodeId: node.inode.id,
+      name,
+      times: changeTimes(this.env.change, node),
+      actor: actorOf(scope.caller),
+    };
+  }
+
+  async set(scope: PosixScope, request: RequestMeta<'SETXATTR'>, value: Uint8Array): Promise<void> {
+    const node = await this.nodes.node(scope, request.ino);
     this.nodes.writable(node);
     if (this.userForbidden(node, request.name)) {
       throw posix('EPERM', 'User extended attributes are only kept on files and folders.');
     }
-    const { change } = this.env;
-    const result = change.store.write(() => {
-      const stored = this.xattrs.set(node.inode.id, request.name, value, flagOf(request.flags));
-      if (stored.stored) this.recordChange(scope, node);
-      return stored;
-    });
-    if (!result.stored) refuse(result.refusal);
+    const results = await writeDriveOps(this.env.change.store, [
+      {
+        kind: 'xattrSet',
+        xattr: this.change(scope, node, request.name),
+        value,
+        flag: flagOf(request.flags),
+      },
+    ]);
+    const { set } = resultOf(results, 0, 'xattr');
+    if (!set.stored) refuse(set.refusal);
   }
 
-  private recordChange(scope: PosixScope, node: PosixNode): void {
-    const { change } = this.env;
-    touchChange(change, node);
-    for (const id of change.store.driveInodes.names(node.inode.id)) {
-      const item = change.store.driveItems.find(id, null);
-      if (item !== undefined) recordOp(change, scope.caller, item, 'update');
-    }
-  }
-
-  remove(scope: PosixScope, request: RequestMeta<'REMOVEXATTR'>): void {
-    const node = this.nodes.node(scope, request.ino);
+  async remove(scope: PosixScope, request: RequestMeta<'REMOVEXATTR'>): Promise<void> {
+    const node = await this.nodes.node(scope, request.ino);
     this.nodes.writable(node);
     const nameRefusal = xattrNameRefusal(request.name);
     if (nameRefusal !== null) refuse(nameRefusal);
     if (this.userForbidden(node, request.name)) {
       throw posix('EPERM', 'User extended attributes are only kept on files and folders.');
     }
-    const removed = this.env.change.store.write(() => {
-      const done = this.xattrs.remove(node.inode.id, request.name);
-      if (done) this.recordChange(scope, node);
-      return done;
-    });
-    if (!removed) refuse('missing');
+    const results = await writeDriveOps(this.env.change.store, [
+      { kind: 'xattrRemove', xattr: this.change(scope, node, request.name) },
+    ]);
+    if (results[0]?.kind === 'missing') refuse('missing');
   }
 }

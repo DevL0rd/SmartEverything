@@ -7,6 +7,7 @@ import {
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
+import { PendingWork } from './pending-work';
 import {
   DevicePass,
   IMPORTED_SMART_MINUTES,
@@ -18,19 +19,18 @@ import {
   sameLink,
   synced,
   watchHash,
-  withLink,
   type PassInput,
   type Settled,
   type WatchChannel,
 } from './watch-projection';
 
-export type WatchSyncStore = Pick<Store, 'plannerAlarms' | 'devices' | 'feed'>;
+export type WatchSyncStore = Pick<Store, 'host' | 'feed'>;
 
 export interface WatchSyncOptions {
   readonly store: WatchSyncStore;
   readonly channel: WatchChannel;
-  readonly profileOf: (deviceId: string) => string | null;
-  readonly preferences: (profileId: string) => PlannerPreferences;
+  readonly profileOf: (deviceId: string) => Promise<string | null>;
+  readonly preferences: (profileId: string) => Promise<PlannerPreferences>;
   readonly log: Logger;
 }
 
@@ -49,6 +49,7 @@ export class WatchSync {
   private readonly tails = new Map<string, Promise<void>>();
   private readonly gone = new Map<string, Set<number>>();
   private unsubscribe: (() => void) | null = null;
+  private readonly work = new PendingWork('planner.watch_sync_failed');
 
   constructor(private readonly options: WatchSyncOptions) {}
 
@@ -67,13 +68,22 @@ export class WatchSync {
     this.unsubscribe = null;
   }
 
+  async settled(): Promise<void> {
+    await this.work.settled();
+    await Promise.all([...this.tails.values()]);
+  }
+
   connected(deviceId: string): void {
     this.run(deviceId, { kind: 'connected' });
   }
 
   preferencesChanged(profileId: string): void {
-    for (const device of this.options.store.devices.list()) {
-      if (isWatchDevice(device) && this.options.profileOf(device.id) === profileId) {
+    this.work.run(this.resyncProfile(profileId), { profileId });
+  }
+
+  private async resyncProfile(profileId: string): Promise<void> {
+    for (const device of await this.options.store.host.call('devices', 'list')) {
+      if (isWatchDevice(device) && (await this.options.profileOf(device.id)) === profileId) {
         this.run(device.id, { kind: 'connected' });
       }
     }
@@ -87,12 +97,19 @@ export class WatchSync {
     if (before !== null && !contentChanged(record, before)) {
       return;
     }
-    for (const deviceId of this.devicesOf(record, before)) {
+    this.work.run(this.runFor(record, before), { alarmId: record.id });
+  }
+
+  private async runFor(record: PlannerAlarmRow, before: PlannerAlarmRow | null): Promise<void> {
+    for (const deviceId of await this.devicesOf(record, before)) {
       this.run(deviceId, { kind: 'alarm', alarmId: record.id });
     }
   }
 
-  private devicesOf(record: PlannerAlarmRow, before: PlannerAlarmRow | null): Set<string> {
+  private async devicesOf(
+    record: PlannerAlarmRow,
+    before: PlannerAlarmRow | null,
+  ): Promise<Set<string>> {
     const ids = new Set<string>();
     for (const alarm of before === null ? [record] : [record, before]) {
       for (const link of alarm.watch) ids.add(link.deviceId);
@@ -100,11 +117,13 @@ export class WatchSync {
         if (target.kind === 'device') ids.add(target.deviceId);
       }
     }
+    const devices = await Promise.all(
+      [...ids].map((id) => this.options.store.host.call('devices', 'find', id)),
+    );
     return new Set(
-      [...ids].filter((id) => {
-        const device = this.options.store.devices.find(id);
-        return device !== undefined && isWatchDevice(device);
-      }),
+      devices.flatMap((device) =>
+        device !== undefined && isWatchDevice(device) ? [device.id] : [],
+      ),
     );
   }
 
@@ -127,8 +146,9 @@ export class WatchSync {
   }
 
   private async deleteFromWatch(deviceId: string, alarmId: number): Promise<void> {
-    const profileId = this.options.profileOf(deviceId);
-    if (profileId === null || !this.options.preferences(profileId).watch.watch_alarm_sync) return;
+    const profileId = await this.options.profileOf(deviceId);
+    if (profileId === null || !(await this.options.preferences(profileId)).watch.watch_alarm_sync)
+      return;
     const goneIds = this.gone.get(deviceId) ?? new Set<number>();
     goneIds.add(alarmId);
     this.gone.set(deviceId, goneIds);
@@ -160,17 +180,18 @@ export class WatchSync {
   }
 
   private async reconcile(deviceId: string, trigger: Trigger): Promise<void> {
-    const device = this.options.store.devices.find(deviceId);
-    const profileId = this.options.profileOf(deviceId);
+    const { host } = this.options.store;
+    const device = await host.call('devices', 'find', deviceId);
+    const profileId = await this.options.profileOf(deviceId);
     if (device === undefined || !isWatchDevice(device) || profileId === null) return;
-    const preferences = this.options.preferences(profileId);
+    const preferences = await this.options.preferences(profileId);
     if (!preferences.watch.watch_alarm_sync) return;
-    const related = this.options.store.plannerAlarms
-      .list(profileId)
-      .filter((alarm) => aimsAt(alarm, deviceId) || linkOf(alarm.watch, deviceId) !== undefined);
+    const related = (await host.call('plannerAlarms', 'list', profileId)).filter(
+      (alarm) => aimsAt(alarm, deviceId) || linkOf(alarm.watch, deviceId) !== undefined,
+    );
     const watchAlarms = alarmsOnWatch(device);
     if (watchAlarms === null) {
-      this.waiting(deviceId, profileId, related);
+      await this.waiting(deviceId, profileId, related);
       return;
     }
     const pass = new DevicePass(
@@ -179,9 +200,9 @@ export class WatchSync {
     );
     for (const alarm of related) {
       const settled = await pass.settle(alarm, linkOf(alarm.watch, deviceId));
-      if (settled !== null) this.apply(alarm, deviceId, settled);
+      if (settled !== null) await this.apply(alarm, deviceId, settled);
     }
-    this.importRest(pass.leftOnWatch(), deviceId, profileId, preferences);
+    await this.importRest(pass.leftOnWatch(), deviceId, profileId, preferences);
   }
 
   private inputOf(
@@ -210,7 +231,11 @@ export class WatchSync {
     };
   }
 
-  private waiting(deviceId: string, profileId: string, related: readonly PlannerAlarmRow[]): void {
+  private async waiting(
+    deviceId: string,
+    profileId: string,
+    related: readonly PlannerAlarmRow[],
+  ): Promise<void> {
     for (const alarm of related.filter((candidate) => aimsAt(candidate, deviceId))) {
       const link = linkOf(alarm.watch, deviceId);
       const next: PlannerWatchLink = {
@@ -221,20 +246,20 @@ export class WatchSync {
         detail: 'Waiting for the watch to report its alarms.',
       };
       if (link === undefined || !sameLink(link, next)) {
-        this.apply(alarm, deviceId, { link: next, fields: {} });
+        await this.apply(alarm, deviceId, { link: next, fields: {} });
       }
     }
     this.options.log.info('planner.watch_sync_waiting', { deviceId, profileId });
   }
 
-  private apply(alarm: PlannerAlarmRow, deviceId: string, settled: Settled): void {
-    const { store } = this.options;
-    const fresh = store.plannerAlarms.find(alarm.id, alarm.profile_id);
-    if (fresh === undefined) return;
-    store.plannerAlarms.update(fresh.id, fresh.profile_id, {
-      ...settled.fields,
-      watch: withLink(fresh.watch, deviceId, settled.link),
+  private async apply(alarm: PlannerAlarmRow, deviceId: string, settled: Settled): Promise<void> {
+    const applied = await this.options.store.host.write('plannerWatchLinkApply', {
+      alarmId: alarm.id,
+      profileId: alarm.profile_id,
+      deviceId,
+      settled,
     });
+    if (applied === null) return;
     this.options.log.info('planner.watch_alarm_settled', {
       alarmId: alarm.id,
       deviceId,
@@ -242,16 +267,16 @@ export class WatchSync {
     });
   }
 
-  private importRest(
+  private async importRest(
     left: readonly WatchAlarm[],
     deviceId: string,
     profileId: string,
     preferences: PlannerPreferences,
-  ): void {
+  ): Promise<void> {
     const { clock } = preferences;
     for (const watched of left) {
       if (watched.id === null) continue;
-      this.options.store.plannerAlarms.insert({
+      await this.options.store.host.call('plannerAlarms', 'insert', {
         profile_id: profileId,
         label: null,
         time: watched.time,

@@ -13,7 +13,7 @@ import { liveSink, traceWaitOf, traceWatchSource } from '../../src/automations/d
 import type { RunSink } from '../../src/automations/driver/ports';
 import { Viewers, type DeviceDetail } from '../../src/metrics/viewers';
 import { LiveWatch, type WatchNotice } from '../../src/server/live-watch';
-import type { TraceOwners } from '../../src/server/live-visibility';
+import type { TraceOwners } from '../../src/server/live-trace';
 import { testLogger } from '../support/logs';
 
 const AUTOMATION = '11111111-1111-4111-8111-111111111111';

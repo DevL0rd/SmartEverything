@@ -22,6 +22,7 @@ import { sealVacuumMap } from '../support/fake-vacuum-cloud';
 import { captureLogs, testLogger } from '../support/logs';
 import { FakeRouteTimer, flush } from '../support/route-timer';
 import { testStore, type TestStore } from '../support/store';
+import { INLINE_MAP_DECODER } from './inline-decoder';
 
 const IDENTITY: VacuumIdentity = { did: '5550001', uid: '4440002' };
 const NOW = '2026-10-24T10:00:00.000Z';
@@ -196,6 +197,7 @@ beforeEach(async () => {
     },
     viewers,
     timer,
+    decoder: INLINE_MAP_DECODER,
     video: {
       client: {
         putStream: (name): Promise<void> => {

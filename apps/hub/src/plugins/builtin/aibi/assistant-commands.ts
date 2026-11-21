@@ -26,8 +26,8 @@ function usageLine(
   return `${label} ${dollars(span.costMicros)} in ${String(span.calls)} calls`;
 }
 
-function statusOf(assistant: PluginAssistant): string {
-  const conversation = assistant.conversation(ROBOT_CONVERSATION);
+async function statusOf(assistant: PluginAssistant): Promise<string> {
+  const conversation = await assistant.conversation(ROBOT_CONVERSATION);
   if (conversation === null) {
     return 'Nothing has been asked yet.';
   }
@@ -35,8 +35,8 @@ function statusOf(assistant: PluginAssistant): string {
   return `${conversation.state}${reason}; model ${conversation.model ?? DEFAULT_MODEL}; ${dollars(conversation.costMicros)} spent on this conversation`;
 }
 
-function usageOf(assistant: PluginAssistant): string {
-  const { today, week, month } = assistant.usage();
+async function usageOf(assistant: PluginAssistant): Promise<string> {
+  const { today, week, month } = await assistant.usage();
   return [
     usageLine('Today', today),
     usageLine('this week', week),
@@ -71,8 +71,8 @@ async function switched(assistant: PluginAssistant, value: string): Promise<stri
 }
 
 const HANDLERS: Readonly<Record<(typeof ASSISTANT_COMMANDS)[number], Handler>> = {
-  status: (assistant) => Promise.resolve(statusOf(assistant)),
-  usage: (assistant) => Promise.resolve(usageOf(assistant)),
+  status: statusOf,
+  usage: usageOf,
   compact: compacted,
   new: restarted,
   stop: stopped,

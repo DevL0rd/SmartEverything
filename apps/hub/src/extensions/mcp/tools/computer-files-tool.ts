@@ -24,7 +24,7 @@ async function uploaded(
   deviceId: string,
   change: Upload,
 ): Promise<FileUploadResult> {
-  const file = readableAttachment(context, change.attachmentId);
+  const file = await readableAttachment(context, change.attachmentId);
   const content = await readFile(
     context.layout.person(file.profile_id).attachment(file.id, file.name),
   );
@@ -65,7 +65,7 @@ export async function changeFiles(
   context: FilesContext,
   { deviceId: wanted, change }: Chosen<FileToolChange>,
 ): Promise<Record<string, unknown>> {
-  const deviceId = computerIdOf(context, wanted);
+  const deviceId = await computerIdOf(context, wanted);
   if (change.action === 'upload') {
     const result = await uploaded(context, deviceId, change);
     return { ok: true, summary: `Saved ${result.path} (${String(result.size)} bytes)`, ...result };

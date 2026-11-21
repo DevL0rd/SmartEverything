@@ -1,11 +1,11 @@
 import type { BottleSyncUpload } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import type { NoteLogger } from '../unit-notes';
 import type { BottleEntryConfig } from './config';
 import type { Decoded } from './decode';
 import { currentQuiet, currentReminder, mergedQuiet, mergedReminder, type PlanDeps } from './plan';
 
 export interface WriteContext {
-  readonly deps: Pick<PlanDeps, 'snapshots'> & { readonly log: Logger };
+  readonly deps: Pick<PlanDeps, 'snapshots'> & { readonly log: NoteLogger };
   readonly deviceId: string;
   readonly config: BottleEntryConfig;
   readonly upload: BottleSyncUpload;

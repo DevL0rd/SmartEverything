@@ -12,6 +12,7 @@ import { Inventory } from '../../src/state/inventory';
 import { testDatabase, type TestDatabase } from './database';
 import { FakeAdapter, LAMP } from './fake-provider';
 import { testLogger } from './logs';
+import { adapterDirectory } from './adapter-directory';
 
 export const NOW = new Date('2026-10-08T12:00:00.000Z');
 
@@ -86,6 +87,7 @@ const BUTTON_LAMP: DiscoveredDevice = {
 class GatedAdapter extends FakeAdapter {
   gating = false;
   private readonly gates: (() => void)[] = [];
+  private releases = 0;
 
   constructor() {
     super();
@@ -94,15 +96,23 @@ class GatedAdapter extends FakeAdapter {
       if (!this.gating) return immediate(command);
       this.executed.push(command);
       return new Promise((resolve) => {
-        this.gates.push(() => {
+        const open = (): void => {
           resolve(null);
-        });
+        };
+        if (this.releases > 0) {
+          this.releases -= 1;
+          open();
+        } else {
+          this.gates.push(open);
+        }
       });
     };
   }
 
   release(): void {
-    this.gates.shift()?.();
+    const gate = this.gates.shift();
+    if (gate === undefined) this.releases += 1;
+    else gate();
   }
 }
 
@@ -126,7 +136,9 @@ export async function setup(
     store: db.database,
     inventory,
     drivers: new DeviceDriverRegistry(),
-    adapters: { adapterFor: (): GatedAdapter | undefined => (running.value ? adapter : undefined) },
+    adapters: adapterDirectory((): GatedAdapter | undefined =>
+      running.value ? adapter : undefined,
+    ),
     hubCommand: (command): Promise<JsonValue> => {
       hubCommands.push(command);
       return hubReply();

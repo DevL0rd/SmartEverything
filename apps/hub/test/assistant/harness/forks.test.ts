@@ -53,8 +53,8 @@ function seedOf(seeded: SeededConversation, child: AiChatRow): readonly string[]
 }
 
 describe('branching a native conversation', () => {
-  it('starts the branch after the chosen answer and leaves later messages behind', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('starts the branch after the chosen answer and leaves later messages behind', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const child = branchOf(seeded.chat);
     const answer = rowOf(seeded, 1);
 
@@ -63,8 +63,8 @@ describe('branching a native conversation', () => {
     expect(seedOf(seeded, child)).toStrictEqual(['first question', 'first answer']);
   });
 
-  it('starts the branch at the chosen question when branching from a person message', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('starts the branch at the chosen question when branching from a person message', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const child = branchOf(seeded.chat);
     const question = rowOf(seeded, 2);
 
@@ -86,8 +86,8 @@ describe('branching a native conversation', () => {
     expect(nativeForkSeed(rig.opened.store, child)).toBeUndefined();
   });
 
-  it('branches from the latest native message when the chosen one came after the import', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('branches from the latest native message when the chosen one came after the import', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const child = branchOf(seeded.chat);
     const later = addMessage(rig, seeded.chat.id, LATE_LINE);
 
@@ -96,8 +96,8 @@ describe('branching a native conversation', () => {
     expect(seedOf(seeded, child)).toHaveLength(4);
   });
 
-  it('refuses a branch point with no native message before it', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
+  it('refuses a branch point with no native message before it', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
     const child = branchOf(seeded.chat);
     const earlier = addMessage(rig, seeded.chat.id, LATE_LINE, '2000-01-01T00:00:00.000Z');
 
@@ -108,11 +108,16 @@ describe('branching a native conversation', () => {
 });
 
 describe('the history a branch inherits', () => {
-  it('marks where the inherited history ends and closes a turn still running in the parent', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
-    const reopened = rig.service.prepare(rig.owner, seeded.chat.id, rig.authority, rig.clientId);
+  it('marks where the inherited history ends and closes a turn still running in the parent', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
+    const reopened = await rig.service.prepare(
+      rig.owner,
+      seeded.chat.id,
+      rig.authority,
+      rig.clientId,
+    );
     const next = storedHistory(rig, seeded.sessionId).length;
-    rig.opened.store.dshSessions.append(
+    await rig.opened.store.live.dshSessions.append(
       {
         claim: reopened.claim,
         operation_id: randomUUID(),
@@ -147,9 +152,9 @@ describe('the history a branch inherits', () => {
     ).toBe(true);
   });
 
-  it('branches from a conversation whose images were offloaded', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
-    appendOffloadedImage(rig, seeded);
+  it('branches from a conversation whose images were offloaded', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
+    await appendOffloadedImage(rig, seeded);
     const child = branchOf(seeded.chat);
 
     nativeForkIntent(rig.opened.store, seeded.chat, child, rowOf(seeded, 3).id);
@@ -158,9 +163,9 @@ describe('the history a branch inherits', () => {
     expect(seed?.events.some((event) => event.type === 'image/offload')).toBe(true);
   });
 
-  it('keeps an earlier edit applied inside the branch', () => {
-    const seeded = seedConversation(rig, TWO_EXCHANGES);
-    rewriteNativeHistory(rig.service, seeded.chat, [rowOf(seeded, 0)]);
+  it('keeps an earlier edit applied inside the branch', async () => {
+    const seeded = await seedConversation(rig, TWO_EXCHANGES);
+    await rewriteNativeHistory(rig.service, seeded.chat, [rowOf(seeded, 0)]);
     const child = branchOf(seeded.chat);
 
     nativeForkIntent(rig.opened.store, seeded.chat, child, rowOf(seeded, 3).id);
@@ -179,8 +184,8 @@ describe('branching a conversation held on a machine', () => {
     { question: 'second question', answer: 'second answer' },
   ];
 
-  it('ends the branch after the answer it was started from', () => {
-    const held = nativeConversation(rig, EXCHANGES);
+  it('ends the branch after the answer it was started from', async () => {
+    const held = await nativeConversation(rig, EXCHANGES);
     const child = branchOf(held.chat);
 
     nativeForkIntent(rig.opened.store, held.chat, child, rowOf(held, 1).id);
@@ -188,8 +193,8 @@ describe('branching a conversation held on a machine', () => {
     expect(seedOf(held, child)).toStrictEqual(['first question', 'first answer']);
   });
 
-  it('ends the branch at the question it was started from', () => {
-    const held = nativeConversation(rig, EXCHANGES);
+  it('ends the branch at the question it was started from', async () => {
+    const held = await nativeConversation(rig, EXCHANGES);
     const child = branchOf(held.chat);
 
     nativeForkIntent(rig.opened.store, held.chat, child, rowOf(held, 2).id);

@@ -1,6 +1,6 @@
 import type { DriveItem, DriveVersion } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
-import { DRIVE_PAGE_SIZE } from '../service-read';
+import { DRIVE_PAGE_SIZE } from '../page-size';
 
 export interface Tree {
   readonly items: readonly DriveItem[];

@@ -1,3 +1,4 @@
+import { inlineMetrics } from '../../src/node/metrics/node-metrics';
 import {
   DEFAULT_COMPUTER_SCOPES,
   type AudioState,
@@ -114,7 +115,7 @@ function rig(over: Partial<ComputerControls> = {}): Rig {
     stop: () => undefined,
   };
   const node = new ComputerNode({
-    collector,
+    metrics: inlineMetrics(collector),
     controls: { ...controls(watched), ...over },
     link: links.node,
     now: (): Date => new Date(),

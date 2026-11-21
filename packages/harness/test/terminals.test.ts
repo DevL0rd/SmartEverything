@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import type { HarnessAuthority } from '../src/host/server-policy';
+import type { HarnessAuthority } from '../src/host/authority';
 import { TERMINAL_TOOL_NAMES } from '../src/plugins/terminals';
 import { bootRuntime, spoken, statuses } from './support/runtime';
 import type { RuntimeFixture } from './support/runtime';

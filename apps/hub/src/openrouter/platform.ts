@@ -4,10 +4,10 @@ import type { SecretStore } from '../secrets/store';
 import { Catalogue } from './catalogue';
 import { OpenRouterClient } from './client';
 import { OpenRouterKeys } from './keys';
-import type { AiModelsRepository } from './models-repository';
+import type { AiModelsState } from '../store/ai-models-state';
 
 export interface OpenRouterPlatformOptions {
-  readonly models: AiModelsRepository;
+  readonly models: AiModelsState;
   readonly secrets: SecretStore;
   readonly clock: Clock;
   readonly log: Logger;
@@ -19,7 +19,7 @@ export interface OpenRouterPlatform {
   readonly keys: OpenRouterKeys;
   readonly catalogue: Catalogue;
   readonly clock: Clock;
-  readonly start: () => void;
+  readonly start: () => Promise<void>;
   readonly stop: () => void;
 }
 
@@ -42,9 +42,7 @@ export function createOpenRouter(options: OpenRouterPlatformOptions): OpenRouter
     keys,
     catalogue,
     clock: options.clock,
-    start: (): void => {
-      catalogue.start();
-    },
+    start: (): Promise<void> => catalogue.start(),
     stop: (): void => {
       shutdown.abort(new Error('The service is stopping.'));
       catalogue.stop();

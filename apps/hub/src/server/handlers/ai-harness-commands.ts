@@ -14,7 +14,7 @@ export const harnessCommandRoutes = (service: HarnessService) =>
         const client = humanClient(caller);
         return listHarnessCommands(
           service,
-          { owner: ownerOf(service, caller), chatId: params.chatId, clientId: client.id },
+          { owner: ownerOf(caller), chatId: params.chatId, clientId: client.id },
           body,
         );
       },
@@ -25,7 +25,7 @@ export const harnessCommandRoutes = (service: HarnessService) =>
         const client = humanClient(caller);
         return executeHarnessCommand(
           service,
-          { owner: ownerOf(service, caller), chatId: params.chatId, clientId: client.id },
+          { owner: ownerOf(caller), chatId: params.chatId, clientId: client.id },
           body,
         );
       },
@@ -42,6 +42,6 @@ function humanClient(caller: Caller): ClientRow {
   return client;
 }
 
-function ownerOf(service: HarnessService, caller: Caller): ChatOwner {
-  return chatOwnerOf(service.store, caller);
+function ownerOf(caller: Caller): ChatOwner {
+  return chatOwnerOf(caller);
 }

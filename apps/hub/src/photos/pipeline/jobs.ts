@@ -6,8 +6,8 @@ import type {
   DriveMediaJob,
   DriveMediaJobKind,
   DriveMediaJobRequest,
-  DriveMediaJobsRepository,
 } from '../../store/repositories/drive-media-jobs';
+import type { JobStore } from './job-units';
 
 export type PipelineResource = 'image' | 'video' | 'io' | 'cloud' | 'accelerator';
 
@@ -16,9 +16,9 @@ type LimitedResource = Exclude<PipelineResource, 'accelerator'>;
 export interface JobHandler {
   readonly resource: PipelineResource;
   readonly run: (job: DriveMediaJob, signal: AbortSignal) => Promise<void>;
-  readonly fail: (job: DriveMediaJob, cause: unknown) => void;
+  readonly fail: (job: DriveMediaJob, cause: unknown) => Promise<void>;
   readonly capacity?: () => number;
-  readonly settled?: (job: DriveMediaJob) => void;
+  readonly settled?: (job: DriveMediaJob) => Promise<void>;
 }
 
 export const PROGRESS_KINDS = ['preview', 'poster', 'playable'] as const;
@@ -35,17 +35,6 @@ export interface PipelineProgress {
 export type ProgressEmitter = (progress: PipelineProgress) => void;
 
 export type ResourceLimits = Readonly<Record<LimitedResource, number>>;
-
-export type JobStore = Pick<
-  DriveMediaJobsRepository,
-  | 'claim'
-  | 'complete'
-  | 'fail'
-  | 'enqueue'
-  | 'makeVisible'
-  | 'requeueRunning'
-  | 'removeOlderRevisions'
->;
 
 export interface RunnerEnvironment {
   readonly jobs: JobStore;
@@ -116,6 +105,8 @@ class ProgressTally {
   }
 }
 
+const RESOURCES = ['image', 'video', 'io', 'cloud', 'accelerator'] as const;
+
 export class MediaJobRunner {
   private readonly handlers = new Map<DriveMediaJobKind, JobHandler>();
   private readonly running: Record<PipelineResource, number> = {
@@ -130,6 +121,8 @@ export class MediaJobRunner {
   private readonly touchListeners = new Set<(itemId: string) => void>();
   private readonly abort = new AbortController();
   private started = false;
+  private claiming = false;
+  private again = false;
 
   constructor(private readonly env: RunnerEnvironment) {
     configureSharp();
@@ -143,17 +136,22 @@ export class MediaJobRunner {
     this.handlers.set(kind, handler);
   }
 
-  start(): void {
+  async start(): Promise<void> {
+    await this.env.jobs.requeueRunning();
     this.started = true;
-    this.env.jobs.requeueRunning();
     this.pump();
   }
 
-  request(request: DriveMediaJobRequest): DriveMediaJob {
-    const job = this.env.jobs.enqueue(request);
+  async request(request: DriveMediaJobRequest): Promise<DriveMediaJob> {
+    const job = await this.env.jobs.enqueue(request);
     this.tallyOf(job.kind)?.add(job);
     this.pump();
     return job;
+  }
+
+  adopt(jobs: readonly DriveMediaJob[]): void {
+    for (const job of jobs) this.tallyOf(job.kind)?.add(job);
+    this.pump();
   }
 
   onTouched(listener: (itemId: string) => void): () => void {
@@ -167,12 +165,12 @@ export class MediaJobRunner {
     for (const listener of this.touchListeners) listener(itemId);
   }
 
-  itemChanged(itemId: string, rev: number): void {
-    this.env.jobs.removeOlderRevisions(itemId, rev);
+  async itemChanged(itemId: string, rev: number): Promise<void> {
+    await this.env.jobs.removeOlderRevisions(itemId, rev);
   }
 
-  prioritise(itemId: string): void {
-    this.env.jobs.makeVisible(itemId);
+  async prioritise(itemId: string): Promise<void> {
+    await this.env.jobs.makeVisible(itemId);
     this.pump();
   }
 
@@ -194,6 +192,7 @@ export class MediaJobRunner {
 
   private busy(): number {
     return (
+      (this.claiming ? 1 : 0) +
       this.running.image +
       this.running.video +
       this.running.io +
@@ -230,11 +229,43 @@ export class MediaJobRunner {
 
   private pump(): void {
     if (!this.started || this.abort.signal.aborted) return;
-    for (const resource of ['image', 'video', 'io', 'cloud', 'accelerator'] as const) {
-      const kinds = this.kindsOf(resource);
-      const free = this.limitOf(resource) - this.running[resource];
-      for (const job of this.env.jobs.claim(kinds, free)) this.launch(resource, job);
+    if (this.claiming) {
+      this.again = true;
+      return;
     }
+    this.claiming = true;
+    background(this.claimFree(), 'photos.job_claim_failed');
+  }
+
+  private async claimFree(): Promise<void> {
+    this.again = true;
+    try {
+      while (this.takeAgain() && !this.abort.signal.aborted) {
+        const resources = RESOURCES.map((resource) => ({
+          resource,
+          kinds: this.kindsOf(resource),
+          count: this.limitOf(resource) - this.running[resource],
+        })).filter(({ kinds, count }) => kinds.length > 0 && count > 0);
+        if (resources.length === 0) continue;
+        const claimed = await this.env.jobs.claim(
+          resources.map(({ kinds, count }) => ({ kinds, count })),
+        );
+        resources.forEach(({ resource }, index) => {
+          const jobs = claimed.at(index);
+          if (jobs === undefined) throw new Error(`the ${resource} job claim has no answer`);
+          for (const job of jobs) this.launch(resource, job);
+        });
+      }
+    } finally {
+      this.claiming = false;
+      this.release();
+    }
+  }
+
+  private takeAgain(): boolean {
+    const again = this.again;
+    this.again = false;
+    return again;
   }
 
   private launch(resource: PipelineResource, job: DriveMediaJob): void {
@@ -255,20 +286,23 @@ export class MediaJobRunner {
   ): Promise<void> {
     try {
       await handler.run(job, this.abort.signal);
-      this.env.jobs.complete(job.id);
+      await this.env.jobs.complete(job.id);
     } catch (cause) {
-      this.failed(handler, job, cause);
+      await this.failed(handler, job, cause);
     } finally {
-      this.running[resource] -= 1;
       this.tallyOf(job.kind)?.finish(job);
-      handler.settled?.(job);
-      this.pump();
-      this.release();
-      this.touched(job.item_id);
+      try {
+        await handler.settled?.(job);
+      } finally {
+        this.running[resource] -= 1;
+        this.pump();
+        this.release();
+        this.touched(job.item_id);
+      }
     }
   }
 
-  private failed(handler: JobHandler, job: DriveMediaJob, cause: unknown): void {
+  private async failed(handler: JobHandler, job: DriveMediaJob, cause: unknown): Promise<void> {
     if (this.abort.signal.aborted) return;
     const reason = messageOf(cause);
     this.env.log.warn('photos.job_failed', {
@@ -277,8 +311,8 @@ export class MediaJobRunner {
       itemId: job.item_id,
       reason,
     });
-    this.env.jobs.fail(job.id, reason);
-    handler.fail(job, cause);
+    await this.env.jobs.fail(job.id, reason);
+    await handler.fail(job, cause);
   }
 
   private release(): void {

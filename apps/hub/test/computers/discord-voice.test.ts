@@ -39,25 +39,28 @@ function call(key: string, pluginId = 'discord'): string {
 }
 
 describe('the Discord bot in a voice channel', () => {
-  it('is in a voice channel while a Discord call transcript is open', () => {
+  it('is in a voice channel while a Discord call transcript is open', async () => {
     const voice = discordVoiceOf(test.store);
     const stop = voice.start();
     const changes: boolean[] = [];
     voice.changes(() => changes.push(voice.inVoice()));
     expect(voice.inVoice()).toBe(false);
     const id = call('discord:111111111111111111:222222222222222222:1700000000000');
+    await voice.settled();
     expect(voice.inVoice()).toBe(true);
     test.store.transcripts.close(id, new Date().toISOString());
+    await voice.settled();
     expect(voice.inVoice()).toBe(false);
     expect(changes).toEqual([true, false]);
     stop();
   });
 
-  it('ignores other plugins and other kinds of Discord transcripts', () => {
+  it('ignores other plugins and other kinds of Discord transcripts', async () => {
     const voice = discordVoiceOf(test.store);
     const stop = voice.start();
     call('discord:111111111111111111:222222222222222222:1700000000000', 'other');
     call('discord:channel-log');
+    await voice.settled();
     expect(voice.inVoice()).toBe(false);
     stop();
   });

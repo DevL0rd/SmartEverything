@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { LibraryScope } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
-import { PhotoFolderService } from '../../src/photos/folder-routes';
+import { PhotoFolderService } from '../../src/photos/folder-service';
 import { PhotoFolderStore } from '../../src/photos/folder-store';
 import { LibraryReader } from '../../src/photos/library';
 import { StoreContext } from '../../src/store/context';

@@ -6,6 +6,7 @@ import {
 } from '@smarteverything/domain';
 import { ownerProfileOf } from '../transcripts/owner';
 import { refusal, standingRefusal, type Refusal } from '../server/person-access';
+import { storeUnit } from '../store/host/unit';
 import type { Store } from '../store/store';
 
 export interface PluginIdentity {
@@ -15,19 +16,15 @@ export interface PluginIdentity {
   readonly refusal: Refusal | null;
 }
 
-export type PluginIdentityStore = Pick<
-  Store,
-  'pluginPeople' | 'personAccess' | 'now' | 'settings' | 'accessAudit'
->;
+type IdentityStore = Pick<Store, 'personAccess' | 'now' | 'settings' | 'pluginPeople'>;
+
+export type PluginIdentityStore = Pick<Store, 'host'>;
 
 const UNKNOWN_SENDER = 'unknown';
 
 const CHAT_ROUTE = { home: false, statusOnly: false } as const;
 
-function strangerOf(
-  store: PluginIdentityStore,
-  externalId: string | null | undefined,
-): PluginIdentity {
+function strangerOf(store: IdentityStore, externalId: string | null | undefined): PluginIdentity {
   return {
     requester: 'unlisted',
     profileId: ownerProfileOf(store),
@@ -37,7 +34,7 @@ function strangerOf(
 }
 
 function personOf(
-  store: PluginIdentityStore,
+  store: IdentityStore,
   pluginId: string,
   externalId: string | null | undefined,
 ): PluginPerson | undefined {
@@ -47,7 +44,7 @@ function personOf(
 }
 
 function linkedIdentity(
-  store: PluginIdentityStore,
+  store: IdentityStore,
   person: PluginPerson | undefined,
 ): PluginIdentity | null {
   if (person?.profile_id === undefined || person.profile_id === null) return null;
@@ -63,8 +60,8 @@ function linkedIdentity(
   };
 }
 
-export function pluginIdentityOf(
-  store: PluginIdentityStore,
+function identityOf(
+  store: IdentityStore,
   pluginId: string,
   externalId: string | null | undefined,
 ): PluginIdentity {
@@ -73,18 +70,33 @@ export function pluginIdentityOf(
   );
 }
 
+export const PLUGIN_IDENTITY_UNIT = storeUnit(
+  (
+    store,
+    input: { readonly pluginId: string; readonly externalId: string | null },
+  ): PluginIdentity => identityOf(store, input.pluginId, input.externalId),
+);
+
+export function pluginIdentityOf(
+  store: PluginIdentityStore,
+  pluginId: string,
+  externalId: string | null | undefined,
+): Promise<PluginIdentity> {
+  return store.host.read('pluginIdentity', { pluginId, externalId: externalId ?? null });
+}
+
 export function refusedAs(store: PluginIdentityStore, identity: PluginIdentity): ApiError | null {
   return identity.refusal === null
     ? null
     : refusal(store, { id: null, profile_id: identity.profileId }, identity.refusal);
 }
 
-export function admittedIdentityOf(
+export async function admittedIdentityOf(
   store: PluginIdentityStore,
   pluginId: string,
   externalId: string | null | undefined,
-): PluginIdentity {
-  const identity = pluginIdentityOf(store, pluginId, externalId);
+): Promise<PluginIdentity> {
+  const identity = await pluginIdentityOf(store, pluginId, externalId);
   const refused = refusedAs(store, identity);
   if (refused !== null) throw refused;
   return identity;

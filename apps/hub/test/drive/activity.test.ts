@@ -1,7 +1,8 @@
 import { API_ENDPOINTS, DRIVE_FEED_OPS } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
-import { DRIVE_PAGE_SIZE, DriveReadService } from '../../src/drive/service-read';
+import { DriveReadService } from '../../src/drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../../src/drive/page-size';
 import { captureLogs } from '../support/logs';
 import type { TestStore } from '../support/store';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
@@ -110,7 +111,7 @@ describe('global Drive activity', () => {
     });
   }
 
-  it('returns all operation kinds with file metadata through the strict endpoint contract', () => {
+  it('returns all operation kinds with file metadata through the strict endpoint contract', async () => {
     for (const [index, op] of DRIVE_FEED_OPS.entries()) {
       opened.store.driveFeed.append({
         rootId: HOME_ROOT,
@@ -122,7 +123,7 @@ describe('global Drive activity', () => {
         deviceId: null,
       });
     }
-    const page = service.readActivity(asMember(), { from: '2026-10-01T00:00:00Z' });
+    const page = await service.readActivity(asMember(), { from: '2026-10-01T00:00:00Z' });
     expect(API_ENDPOINTS.listDriveActivity.response.parse(page)).toEqual(page);
     expect(page.items.map((entry) => entry.row.op)).toEqual([...DRIVE_FEED_OPS].reverse());
     expect(page.items[0]?.item).toEqual({
@@ -140,16 +141,16 @@ describe('global Drive activity', () => {
     ).toBe(false);
   });
 
-  it('filters visibility before pagination and pages without repeating or losing rows', () => {
+  it('filters visibility before pagination and pages without repeating or losing rows', async () => {
     for (let rev = 1; rev <= DRIVE_PAGE_SIZE + 2; rev += 1) {
       append(FILE, HOME_ROOT, rev);
       append(OTHER_FILE, OTHER_ROOT, rev);
     }
-    const first = service.readActivity(asMember(), { from: '2026-10-01T00:00:00Z' });
+    const first = await service.readActivity(asMember(), { from: '2026-10-01T00:00:00Z' });
     expect(first.items).toHaveLength(DRIVE_PAGE_SIZE);
     expect(first.items.every((entry) => entry.row.rootId === HOME_ROOT)).toBe(true);
     if (first.next === null) throw new Error('The first activity page must have a cursor.');
-    const second = service.readActivity(asMember(), {
+    const second = await service.readActivity(asMember(), {
       from: '2026-10-01T00:00:00Z',
       cursor: first.next,
     });
@@ -159,30 +160,32 @@ describe('global Drive activity', () => {
       DRIVE_PAGE_SIZE + 2,
     );
     expect(
-      service
-        .readActivity(asOwner(), { from: '2026-10-01T00:00:00Z' })
-        .items.some((entry) => entry.row.rootId === OTHER_ROOT),
+      (await service.readActivity(asOwner(), { from: '2026-10-01T00:00:00Z' })).items.some(
+        (entry) => entry.row.rootId === OTHER_ROOT,
+      ),
     ).toBe(false);
   });
 
-  it('preserves records after their file metadata is removed', () => {
+  it('preserves records after their file metadata is removed', async () => {
     append(FILE, HOME_ROOT, 1);
     opened.store.driveItems.remove(FILE);
-    const page = service.readActivity(asMember(), { from: '2026-10-01T00:00:00Z' });
+    const page = await service.readActivity(asMember(), { from: '2026-10-01T00:00:00Z' });
     expect(page.items).toHaveLength(1);
     expect(page.items[0]?.row.itemId).toBe(FILE);
     expect(page.items[0]?.item).toBeNull();
     expect(API_ENDPOINTS.listDriveActivity.response.parse(page)).toEqual(page);
   });
 
-  it('filters the requested date and rejects a malformed cursor', () => {
+  it('filters the requested date and rejects a malformed cursor', async () => {
     append(FILE, HOME_ROOT, 1);
-    expect(service.readActivity(asMember(), { from: '2026-11-08T00:00:00Z' }).items).toEqual([]);
     expect(
-      service.readActivity(asMember(), { from: '2026-11-07T01:00:00+02:00' }).items,
+      (await service.readActivity(asMember(), { from: '2026-11-08T00:00:00Z' })).items,
+    ).toEqual([]);
+    expect(
+      (await service.readActivity(asMember(), { from: '2026-11-07T01:00:00+02:00' })).items,
     ).toHaveLength(1);
-    expect(() =>
+    await expect(
       service.readActivity(asMember(), { from: '2026-10-01T00:00:00Z', cursor: 'abc' }),
-    ).toThrow(/cursor/);
+    ).rejects.toThrow(/cursor/);
   });
 });

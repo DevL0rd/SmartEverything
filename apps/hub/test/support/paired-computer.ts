@@ -1,3 +1,4 @@
+import { inlineMetrics } from '../../src/node/metrics/node-metrics';
 import { readFile } from 'node:fs/promises';
 import {
   API_ENDPOINTS,
@@ -202,7 +203,7 @@ function startComputer(
     ...(extras.hosts === undefined ? {} : { runtimes: extras.hosts.map((host) => host.runtime) }),
     createComputer: (link): ComputerNode =>
       new ComputerNode({
-        collector: {
+        metrics: inlineMetrics({
           hello: (): NodeHello => paired.hello,
           readers: {
             summary: (): ComputerSummary => SUMMARY,
@@ -216,7 +217,7 @@ function startComputer(
           },
           track: (): undefined => undefined,
           stop: (): undefined => undefined,
-        },
+        }),
         controls,
         link,
         now: (): Date => new Date(READ_AT),

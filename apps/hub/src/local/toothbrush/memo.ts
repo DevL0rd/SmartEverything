@@ -1,17 +1,22 @@
 export class Memo<T> {
   private readonly values = new Map<string, T>();
+  private generation = 0;
 
   clear(): void {
     this.values.clear();
+    this.generation += 1;
   }
 
-  get(key: string, build: () => T): T {
+  async get(key: string, build: () => Promise<T>): Promise<T> {
     const known = this.values.get(key);
     if (known !== undefined) {
       return known;
     }
-    const made = build();
-    this.values.set(key, made);
+    const started = this.generation;
+    const made = await build();
+    if (started === this.generation) {
+      this.values.set(key, made);
+    }
     return made;
   }
 }

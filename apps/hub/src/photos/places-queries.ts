@@ -2,6 +2,7 @@ import { appendTo } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { DriveActor } from '../drive/access';
 import { found, type StoreContext } from '../store/context';
+import { storeUnit } from '../store/host/unit';
 import { DrivePlacesRepository, type DrivePlaceRow } from '../store/repositories/drive-places';
 import { starredBy } from '../store/repositories/drive-stars';
 import type { SqlParameters } from '../store/sql';
@@ -326,3 +327,17 @@ export class PlaceQueries {
     );
   }
 }
+
+export const PHOTO_PLACE_CLUSTERS_UNIT = storeUnit(
+  (store, input: { readonly actor: DriveActor; readonly query: PhotoMapQuery }) =>
+    new PlaceQueries(store.context).clusters(input.actor, input.query),
+);
+
+export const PHOTO_PLACE_LIST_UNIT = storeUnit((store, input: { readonly actor: DriveActor }) =>
+  new PlaceQueries(store.context).list(input.actor),
+);
+
+export const PHOTO_PLACE_DETAIL_UNIT = storeUnit(
+  (store, input: { readonly actor: DriveActor; readonly placeId: string }) =>
+    new PlaceQueries(store.context).detail(input.actor, input.placeId),
+);

@@ -11,7 +11,7 @@ import {
 } from './read-port';
 import { VALUE_REF } from './refs';
 import { notFound } from './targets';
-import type { AutomationOwnedValuesRepository } from '../../store/repositories/automation-owned-values';
+import type { OwnedValues } from '../automation-memory';
 import type { WorldReadDeps } from './deps';
 import type { KeptData } from './kept-data';
 
@@ -40,9 +40,7 @@ export function withKeptData(
   };
 }
 
-export function persistentFromOwned(
-  owned: Pick<AutomationOwnedValuesRepository, 'list'>,
-): PersistentVariables {
+export function persistentFromOwned(owned: Pick<OwnedValues, 'list'>): PersistentVariables {
   return {
     read: (automationId, name): PersistentVariable | undefined => {
       const row = owned.list(automationId).find((entry) => entry.content.name === name);
@@ -60,7 +58,7 @@ const VAR_GET = z.discriminatedUnion('source', [
 type VarGet = z.output<typeof VAR_GET>;
 
 function homeValue(deps: WorldReadDeps, id: string, asLabel: boolean): PersistentVariable {
-  const row = notFound(() => deps.store.automationValues.byId(id));
+  const row = notFound(() => deps.world.automationValues.byId(id));
   const { content } = row;
   if (content.kind !== 'choice' || !asLabel) {
     return { value: content.value, revision: row.revision };

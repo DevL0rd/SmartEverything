@@ -9,7 +9,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
-import { unusedDrivePath } from '../support/store';
+import { testStoreHost } from '../support/store-host';
 
 const NOW = '2026-10-17T09:00:00.000Z';
 const COMMIT = 'b'.repeat(40);
@@ -84,11 +84,12 @@ describe('migrating a schema-88 database to the skill and plugin store', () => {
     seedBefore();
 
     openStore({
+      host: testStoreHost(),
       path,
       log: testLogger(),
       now: () => new Date(NOW),
       systemTimeZone: 'UTC',
-      drivePathOf: unusedDrivePath,
+      driveFolders: null,
     }).close();
 
     const migrated = new DatabaseSync(path);

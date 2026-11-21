@@ -5,6 +5,7 @@ import {
   type BottleView,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readBottle } from '../../../src/local/bottle/reads';
 import { readView } from '../../../src/local/bottle/views';
 import { captureLogs } from '../../support/logs';
 import { bottleRig, tofRow, type BottleRig, type Person } from '../../support/bottle-rig';
@@ -174,8 +175,22 @@ describe('the other views', () => {
     expect(week.sizes.count).toBe(4);
   });
 
-  it('serves the stats from a cache until the water changes', () => {
-    const first = only(read({ view: 'stats', range: 'week' }), 'stats');
+  it('serves the stats from a cache until the water changes', async () => {
+    const viewer = {
+      clientId: rig.owner.client.id,
+      role: rig.owner.client.role,
+      profileId: rig.owner.profile.id,
+    };
+    const cached = async (): Promise<BottleView> =>
+      readBottle(
+        rig.reads,
+        { device: rig.row(), entry: rig.entry(), viewer },
+        {
+          view: 'stats',
+          range: 'week',
+        },
+      );
+    const first = only(await cached(), 'stats');
     rig.test.store.healthEntries.create(
       rig.owner.profile.id,
       waterEntryOf(500, {
@@ -184,11 +199,9 @@ describe('the other views', () => {
         zoneOffsetSeconds: 0,
       }),
     );
-    expect(only(read({ view: 'stats', range: 'week' }), 'stats').chips.total.value).toBe(
-      first.chips.total.value,
-    );
+    expect(only(await cached(), 'stats').chips.total.value).toBe(first.chips.total.value);
     rig.stats.invalidate();
-    expect(only(read({ view: 'stats', range: 'week' }), 'stats').chips.total.value).toBe(754);
+    expect(only(await cached(), 'stats').chips.total.value).toBe(754);
   });
 
   it('shows the care page: cleaning days, battery, faults and the filter', async () => {

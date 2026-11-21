@@ -11,7 +11,8 @@ import {
 import { z } from 'zod';
 import { fsCode } from '../fs-code';
 import type { ChangeActor } from './changes';
-import { DriveWriteError, TMP_DIRECTORY, type DriveWriteFailure } from './intents';
+import { TMP_DIRECTORY } from './intents';
+import { DriveWriteError, type DriveWriteFailure } from './write-error';
 import { DriveFreeSpaceError, DriveQuotaExceededError } from './quotas';
 import type { DriveActor } from './access';
 

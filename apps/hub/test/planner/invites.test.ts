@@ -29,6 +29,7 @@ let invites: InviteService;
 let rsvp: PublicRsvp;
 let notices: CommittedNotice[];
 let stops: (() => void)[];
+let desk: CollaborationDesk;
 
 async function configure(): Promise<void> {
   await settings.write({
@@ -59,7 +60,7 @@ beforeEach(async () => {
   });
   rsvp = new PublicRsvp({ store: test.store, now: (): Date => NOW });
   notices = [];
-  const desk = new CollaborationDesk({
+  desk = new CollaborationDesk({
     store: test.store,
     clock: { now: (): Date => NOW },
     emit: (): void => undefined,
@@ -112,7 +113,7 @@ describe('email invitations', () => {
     ]);
     const [guest] = test.store.plannerGuests.forItem(item.id);
     expect(guest).toMatchObject({ delivery: 'sent', delivery_detail: null });
-    expect(mail.recent(3).map((row) => row.kind)).toEqual(['invite']);
+    expect((await mail.recent(3)).map((row) => row.kind)).toEqual(['invite']);
   });
 
   it('marks link only without a mail server and shows no error', async () => {
@@ -122,7 +123,7 @@ describe('email invitations', () => {
     expect(smtp.mails).toEqual([]);
     expect(test.store.plannerGuests.forItem(item.id)[0]?.delivery).toBe('link_only');
     const token = inviteToken(KEY, test.store.plannerGuests.forItem(item.id)[0]?.id ?? '');
-    expect(rsvp.pageOf(token).title).toBe('Dinner');
+    expect((await rsvp.pageOf(token)).title).toBe('Dinner');
   });
 
   it('records a failed delivery with its reason and lets the owner resend it', async () => {
@@ -216,7 +217,7 @@ describe('the answer page', () => {
 
   it('shows the event to the holder of the link and nothing about anyone else', async () => {
     const { token } = await invited();
-    const page = rsvp.pageOf(token);
+    const page = await rsvp.pageOf(token);
     expect(PLANNER_RSVP_PAGE.parse(page)).toMatchObject({
       title: 'Dinner',
       organiser: 'Ann',
@@ -230,7 +231,8 @@ describe('the answer page', () => {
 
   it('records an answer with a note and tells the organiser', async () => {
     const { item, token } = await invited();
-    const receipt = rsvp.respond(token, { response: 'maybe', note: 'Running late' });
+    const receipt = await rsvp.respond(token, { response: 'maybe', note: 'Running late' });
+    await desk.settled();
     expect(receipt).toEqual({ response: 'maybe', responded_at: NOW.toISOString() });
     expect(test.store.plannerGuests.forItem(item.id)[0]).toMatchObject({
       response: 'maybe',
@@ -240,16 +242,16 @@ describe('the answer page', () => {
       personId: ann.profileId,
       response: 'maybe',
     });
-    expect(rsvp.respond(token, { response: 'yes', note: null }).response).toBe('yes');
+    expect((await rsvp.respond(token, { response: 'yes', note: null })).response).toBe('yes');
   });
 
   it('refuses unknown, malformed and cancelled links', async () => {
     const { item, token } = await invited();
-    expect(() => rsvp.pageOf('x'.repeat(43))).toThrow(/no longer available/);
-    expect(() => rsvp.pageOf('short')).toThrow(/no longer available/);
+    await expect(rsvp.pageOf('x'.repeat(43))).rejects.toThrow(/no longer available/);
+    await expect(rsvp.pageOf('short')).rejects.toThrow(/no longer available/);
     test.store.plannerItems.update(item.id, ann.profileId, { status: 'cancelled' });
-    expect(rsvp.pageOf(token).cancelled).toBe(true);
-    expect(() => rsvp.respond(token, { response: 'yes', note: null })).toThrow(/cancelled/);
+    expect((await rsvp.pageOf(token)).cancelled).toBe(true);
+    await expect(rsvp.respond(token, { response: 'yes', note: null })).rejects.toThrow(/cancelled/);
   });
 
   it('stores only a hash of the link token', async () => {

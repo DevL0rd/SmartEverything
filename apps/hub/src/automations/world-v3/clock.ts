@@ -34,7 +34,7 @@ export function clockHandlers(deps: WorldReadDeps): ReadHandlers {
     'date.now': (): ReadResult => outputsOf({ at: deps.clock.now().toISOString() }),
     'date.today_at': (inputs): ReadResult => {
       const request = parseInputs('date.today_at', TODAY_AT, inputs);
-      const at = todayAt(deps.clock.now(), homeZone(deps.store), request.clock, request.day);
+      const at = todayAt(deps.clock.now(), homeZone(deps.world), request.clock, request.day);
       return outputsOf({ at: at.toISOString() });
     },
     'date.since': (inputs): ReadResult => {

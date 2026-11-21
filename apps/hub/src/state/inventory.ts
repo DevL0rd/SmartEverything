@@ -108,6 +108,7 @@ export class Inventory {
   private readonly byId = new Map<string, DeviceRecord>();
   private readonly byKey = new Map<string, DeviceRecord>();
   private readonly identities = new Map<string, DeviceIdentity>();
+  private readonly removing = new Set<string>();
 
   constructor(
     private readonly store: InventoryStore,
@@ -122,6 +123,7 @@ export class Inventory {
   }
 
   deviceById(id: string): DeviceRecord | undefined {
+    if (this.removing.has(id)) return undefined;
     return this.byId.get(id);
   }
 
@@ -183,7 +185,12 @@ export class Inventory {
       found: devices.length,
     });
     const removed = devices.map((device) => removalOf(this.knownOf(device)));
-    await this.store.removeDevices(devices.map((device) => device.id));
+    for (const device of devices) this.removing.add(device.id);
+    try {
+      await this.store.removeDevices(devices.map((device) => device.id));
+    } finally {
+      for (const device of devices) this.removing.delete(device.id);
+    }
     for (const device of devices) {
       this.byId.delete(device.id);
       this.byKey.delete(keyOf(provider, device.externalId));

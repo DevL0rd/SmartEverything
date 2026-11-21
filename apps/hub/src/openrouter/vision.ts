@@ -1,6 +1,7 @@
+import { setImmediate } from 'node:timers/promises';
 import { z } from 'zod';
 import type { PhotoBox } from '@smarteverything/domain';
-import type { OpenRouterClient } from './client';
+import { EncodedJson, type OpenRouterClient } from './client';
 import { openRouterError, OpenRouterError, readJson } from './errors';
 import { REQUEST_BYTES_MAX, requestTimeoutMs, shrinkMedia } from './media-shrink';
 import { PHOTOS_PROVIDER, photosUsageEntry, type PhotosMeter } from './photos-usage';
@@ -116,14 +117,24 @@ const RESPONSE_FORMAT = {
 
 const SCALE = 1000;
 
-function mediaPart(media: {
-  readonly mime: string;
-  readonly data: Buffer;
-}): Record<string, unknown> {
-  const url = `data:${media.mime};base64,${media.data.toString('base64')}`;
-  if (media.mime.startsWith('image/')) return { type: 'image_url', image_url: { url } };
-  if (media.mime.startsWith('video/')) return { type: 'video_url', video_url: { url } };
-  throw openRouterError('bad_request', `unsupported photo media type ${media.mime}`);
+const MEDIA_MARK = 'smarteverything-media-bytes';
+
+const BASE64_SLICE = 3 * 256 * 1024;
+
+function mediaPart(mime: string): Record<string, unknown> {
+  const url = `data:${mime};base64,${MEDIA_MARK}`;
+  if (mime.startsWith('image/')) return { type: 'image_url', image_url: { url } };
+  if (mime.startsWith('video/')) return { type: 'video_url', video_url: { url } };
+  throw openRouterError('bad_request', `unsupported photo media type ${mime}`);
+}
+
+async function base64Slices(data: Buffer): Promise<string[]> {
+  const slices: string[] = [];
+  for (let at = 0; at < data.byteLength; at += BASE64_SLICE) {
+    slices.push(data.subarray(at, at + BASE64_SLICE).toString('base64'));
+    await setImmediate();
+  }
+  return slices;
 }
 
 function boxOf([top, left, bottom, right]: readonly [number, number, number, number]): PhotoBox {
@@ -157,15 +168,10 @@ export function readVisionAnswer(content: string | null): VisionAnalysis {
   };
 }
 
-function requestBody(
-  model: string,
-  media: { readonly mime: string; readonly data: Buffer },
-): Record<string, unknown> {
+function bodyShape(model: string, mime: string): Record<string, unknown> {
   return {
     model,
-    messages: [
-      { role: 'user', content: [{ type: 'text', text: VISION_PROMPT }, mediaPart(media)] },
-    ],
+    messages: [{ role: 'user', content: [{ type: 'text', text: VISION_PROMPT }, mediaPart(mime)] }],
     stream: false,
     usage: { include: true },
     temperature: 0,
@@ -174,6 +180,19 @@ function requestBody(
     response_format: RESPONSE_FORMAT,
     provider: PHOTOS_PROVIDER,
   };
+}
+
+export async function visionBody(
+  model: string,
+  media: { readonly mime: string; readonly data: Buffer },
+): Promise<EncodedJson> {
+  const pieces = JSON.stringify(bodyShape(model, media.mime)).split(MEDIA_MARK);
+  const [before, after] = pieces;
+  if (pieces.length !== 2 || before === undefined || after === undefined) {
+    throw openRouterError('bad_request', 'the photo analysis request names the media marker');
+  }
+  const encoded = await base64Slices(media.data);
+  return new EncodedJson(new Blob([before, ...encoded, after], { type: 'application/json' }));
 }
 
 export function needsKey(cause: unknown): boolean {
@@ -209,6 +228,7 @@ export class OpenRouterVision {
 
   private async run(request: VisionRequest): Promise<VisionOutcome> {
     const media = await this.media(request);
+    const body = await visionBody(request.model, media);
     const answer = await this.client.retrying(
       (signal) =>
         this.client.json(
@@ -220,7 +240,7 @@ export class OpenRouterVision {
               AbortSignal.timeout(requestTimeoutMs(media.data.byteLength)),
             ]),
             responseBytesMax: RESPONSE_BYTES_MAX,
-            body: requestBody(request.model, media),
+            body,
           },
           ANSWER,
           'photo analysis',
@@ -230,7 +250,7 @@ export class OpenRouterVision {
     const [choice] = answer.choices;
     if (choice === undefined) throw openRouterError('unreadable', 'photo analysis has no choice');
     const usage = answer.usage ?? null;
-    this.meter(
+    await this.meter(
       photosUsageEntry({
         profileId: request.profileId,
         model: request.model,

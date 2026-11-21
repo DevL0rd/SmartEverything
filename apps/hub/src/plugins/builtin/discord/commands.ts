@@ -74,13 +74,13 @@ function option(
   };
 }
 
-function status(
+async function status(
   assistant: PluginAssistant,
   visibility: ActivityVisibility,
   asked: Asked,
-): CommandReply {
+): Promise<CommandReply> {
   const settings = assistant.settings();
-  const chat = assistant.conversation(asked.key, asked.actor);
+  const chat = await assistant.conversation(asked.key, asked.actor);
   const lines =
     chat === null
       ? ['**State** ready · no conversation here yet']
@@ -101,8 +101,8 @@ function status(
   };
 }
 
-function usage(assistant: PluginAssistant, actor: string): CommandReply {
-  const view = assistant.usage(actor);
+async function usage(assistant: PluginAssistant, actor: string): Promise<CommandReply> {
+  const view = await assistant.usage(actor);
   return {
     title: 'AI spending',
     tone: 'info',
@@ -193,12 +193,12 @@ export function builtInCommands(
     {
       name: 'status',
       definition: define('status', 'Show the assistant’s state, model and spending here'),
-      run: (call) => Promise.resolve(status(assistant, visibility, askedBy(call))),
+      run: (call) => status(assistant, visibility, askedBy(call)),
     },
     {
       name: 'usage',
       definition: define('usage', 'Show what the AI cost recently'),
-      run: ({ actorId }) => Promise.resolve().then(() => usage(assistant, actorId)),
+      run: ({ actorId }) => usage(assistant, actorId),
     },
     {
       name: 'compact',

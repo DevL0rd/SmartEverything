@@ -48,8 +48,11 @@ function spotKey(spot: WeatherSpot | null): string {
 
 export class WeatherService {
   private readonly fetches: ScheduledFetch<WeatherRow>;
-  private spot: string;
+  private spot: string | null = null;
+  private place: WeatherSpot | null = null;
   private unsubscribe: (() => void) | null = null;
+
+  private resuming: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: WeatherServiceOptions) {
     this.fetches = new ScheduledFetch({
@@ -58,7 +61,6 @@ export class WeatherService {
       retrySeconds: RETRY_SECONDS,
       minGapMs: FRESH_MS,
     });
-    this.spot = spotKey(spotOf(options.store.settings.read()));
   }
 
   start(): void {
@@ -66,11 +68,12 @@ export class WeatherService {
       const settings = change.table === 'settings' ? change.record : null;
       if (settings !== null) {
         queueMicrotask(() => {
-          this.settingsChanged(settings);
+          background(this.settingsChanged(settings), 'weather.location_change_failed');
         });
       }
     });
-    this.resume();
+    this.resuming = this.resume();
+    background(this.resuming, 'weather.resume_failed');
   }
 
   stop(): void {
@@ -79,27 +82,43 @@ export class WeatherService {
     this.fetches.cancel();
   }
 
-  current(): WeatherRow {
-    return this.options.store.weather.read();
+  current(): Promise<WeatherRow> {
+    return this.options.store.host.call('weather', 'read');
   }
 
-  refresh(): Promise<WeatherRow> {
-    const row = this.current();
+  async refresh(): Promise<WeatherRow> {
+    const row = await this.current();
     return this.fetches.refresh(row, {
       fetchedAt: row.fetched_at,
       healthy: row.error === null && row.air_error === null,
     });
   }
 
-  settled(): Promise<WeatherRow> | null {
+  async settled(): Promise<WeatherRow | null> {
+    await this.resuming;
     return this.fetches.settled();
   }
 
-  private resume(): void {
-    const spot = spotOf(this.options.store.settings.read());
-    const row = this.current();
+  private async location(): Promise<WeatherSpot | null> {
+    if (this.spot === null) this.adopt(await this.options.store.host.read('settingsRow', null));
+    return this.place;
+  }
+
+  private adopt(settings: SettingsRow): void {
+    if (this.spot === null) this.locate(settings);
+  }
+
+  private locate(settings: SettingsRow): string {
+    this.place = spotOf(settings);
+    this.spot = spotKey(this.place);
+    return this.spot;
+  }
+
+  private async resume(): Promise<void> {
+    const spot = await this.location();
+    const row = await this.current();
     if (spot === null) {
-      this.clearIfNeeded(row);
+      await this.clearIfNeeded(row);
       return;
     }
     const matches =
@@ -115,28 +134,28 @@ export class WeatherService {
     background(this.fetches.run(), 'fetches.run_failed');
   }
 
-  private settingsChanged(settings: SettingsRow): void {
-    const key = spotKey(spotOf(settings));
-    if (key === this.spot) {
+  private async settingsChanged(settings: SettingsRow): Promise<void> {
+    const before = this.spot;
+    const key = this.locate(settings);
+    if (before === null || key === before) {
       return;
     }
-    this.spot = key;
     this.fetches.reset();
     this.fetches.cancel();
-    this.options.store.weather.cleared();
+    await this.options.store.host.call('weather', 'cleared');
     this.options.log.info('weather.location_changed', { located: key !== 'none' });
-    this.resume();
+    await this.resume();
   }
 
-  private clearIfNeeded(row: WeatherRow): void {
+  private async clearIfNeeded(row: WeatherRow): Promise<void> {
     this.fetches.cancel();
     if (row.forecast !== null || row.error !== null || row.next_fetch_at !== null) {
-      this.options.store.weather.cleared();
+      await this.options.store.host.call('weather', 'cleared');
     }
   }
 
   private async fetchOnce(): Promise<WeatherRow> {
-    const spot = spotOf(this.options.store.settings.read());
+    const spot = await this.location();
     if (spot === null) {
       this.options.log.debug('weather.fetch_skipped', { reason: 'no_location' });
       return this.current();
@@ -167,16 +186,16 @@ export class WeatherService {
     );
   }
 
-  private fetched(
+  private async fetched(
     parts: Omit<NonNullable<WeatherRow['forecast']>, 'air'>,
     air: WeatherAir | null,
     airError: string | null,
-  ): WeatherRow {
+  ): Promise<WeatherRow> {
     if (airError === null) {
       this.fetches.reset();
     }
     const next = airError === null ? nextSlot(this.options.clock.now()) : this.fetches.retryAt();
-    const row = this.options.store.weather.fetched({
+    const row = await this.options.store.host.call('weather', 'fetched', {
       forecast: { ...parts, air },
       airError,
       nextFetchAt: next.toISOString(),
@@ -192,10 +211,10 @@ export class WeatherService {
     return row;
   }
 
-  private failed(reason: string): WeatherRow {
+  private async failed(reason: string): Promise<WeatherRow> {
     const next = this.fetches.retryAt();
     this.options.log.warn('weather.fetch_failed', { reason, retryAt: next.toISOString() });
-    const row = this.options.store.weather.failed({
+    const row = await this.options.store.host.call('weather', 'failed', {
       error: reason,
       nextFetchAt: next.toISOString(),
     });

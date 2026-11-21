@@ -16,8 +16,8 @@ import {
   type ClientRow,
   type HubConnectionMetadata,
   type Pairing,
-  PROFILE_NAME_MAX,
   type Role,
+  type SettingsRow,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { remoteKind } from './request-trace';
@@ -79,8 +79,8 @@ export class AccessService {
       now: options.now,
       clientRemoved: options.clientWithdrawn,
       clientPaused: options.clientPaused,
-      lapseGrants: (): void => {
-        this.requests.lapse();
+      lapseGrants: async (): Promise<void> => {
+        await this.requests.lapse();
       },
     });
     this.requests = new AccessRequests({
@@ -99,18 +99,21 @@ export class AccessService {
   }
 
   async ensureOwner(): Promise<string> {
-    const owner = this.options.store.clients.owner();
+    const { host } = this.options.store;
+    const owner = await host.call('clients', 'owner');
     const written = await this.writtenToken();
     if (owner === undefined) {
       const token = createClientToken();
       await this.writeToken(token);
-      const created = this.options.store.clients.create(
+      const created = await host.call(
+        'clients',
+        'create',
         {
           name: OWNER_CLIENT_NAME,
           platform: 'desktop',
           role: 'owner',
           tokenHash: hashClientToken(token),
-          profileId: this.ownerPerson(),
+          profileId: await host.call('personAccess', 'homeOwner'),
         },
         true,
       );
@@ -119,7 +122,7 @@ export class AccessService {
     }
     if (
       written !== null &&
-      this.options.store.clients.byTokenHash(hashClientToken(written))?.id === owner.id
+      (await host.call('clients', 'byTokenHash', hashClientToken(written)))?.id === owner.id
     ) {
       log.debug('owner.token_confirmed', { clientId: owner.id });
       return written;
@@ -132,40 +135,39 @@ export class AccessService {
   }
 
   async rotateOwner(): Promise<string> {
-    const owner = this.options.store.clients.owner();
+    const { host } = this.options.store;
+    const owner = await host.call('clients', 'owner');
     if (owner === undefined) {
       throw new ApiError('conflict', 'There is no desktop owner to rotate the token of.');
     }
     const token = createClientToken();
     await this.writeToken(token);
-    this.options.store.clients.replaceToken(owner.id, hashClientToken(token));
+    await host.call('clients', 'replaceToken', owner.id, hashClientToken(token));
     this.options.clientWithdrawn(owner.id);
     log.info('owner.token_rotated', { clientId: owner.id });
     return token;
   }
 
-  private ownerPerson(): string {
-    return this.options.store.personAccess.homeOwner();
-  }
-
-  private standing(profileId: string): KnownStanding {
-    const standing = this.options.store.personAccess.standing(profileId);
+  private async standing(profileId: string): Promise<KnownStanding> {
+    const standing = await this.options.store.host.call('personAccess', 'standing', profileId);
     if (!standing.known) {
       throw new ApiError('conflict', 'This person’s access cannot be read; check it first.');
     }
     return standing;
   }
 
-  private pairingPerson(
+  private async pairingPerson(
     role: Role,
     createdBy: string,
     profileId: string | undefined,
-  ): string | null {
+  ): Promise<string | null> {
     const store = this.options.store;
-    const person = profileId ?? (role === 'owner' ? store.profiles.activeOf(createdBy).id : null);
+    const person =
+      profileId ??
+      (role === 'owner' ? (await store.host.call('profiles', 'activeOf', createdBy)).id : null);
     if (person === null) return null;
-    const access = this.standing(person);
-    const creator = store.clients.byId(createdBy);
+    const access = await this.standing(person);
+    const creator = await store.host.call('clients', 'byId', createdBy);
     if (role === 'owner' && access.role !== 'owner') {
       throw refusal(store, creator, {
         kind: 'refused_scope',
@@ -173,39 +175,32 @@ export class AccessService {
         message: 'An owner device must belong to an owner person.',
       });
     }
-    assertMemberPerson(store, creator, role, person);
+    await assertMemberPerson(store, creator, role, person);
     if (isExpired(access, this.options.now().toISOString())) {
       throw new ApiError('conflict', 'This person’s access has ended; extend it before pairing.');
     }
     return person;
   }
 
-  startPairing(role: Role, createdBy: string, profileId?: string): Pairing {
-    const person = this.pairingPerson(role, createdBy, profileId);
+  async startPairing(role: Role, createdBy: string, profileId?: string): Promise<Pairing> {
+    const person = await this.pairingPerson(role, createdBy, profileId);
     const metadata = this.connections().metadata();
-    const url = this.pairingUrl(metadata);
+    const settings = await this.options.store.host.read('hubSettings', null);
+    const url = this.pairingUrl(metadata, settings);
     const now = this.options.now();
-    this.options.store.clients.forgetPairingsBefore(now.toISOString());
     const code = createPairingCode();
     const expiresAt = new Date(now.getTime() + PAIRING_LIFETIME_MS).toISOString();
-    this.options.store.clients.addPairing(hashPairingCode(code), {
-      role,
-      createdBy,
-      expiresAt,
-      profileId: person ?? undefined,
-    });
-    this.options.store.accessAudit.record({
-      profile_id: person,
-      client_id: createdBy,
-      kind: 'pairing_started',
-      detail: `${role} pairing started`,
+    await this.options.store.host.write('pairingStart', {
+      now: now.toISOString(),
+      codeHash: hashPairingCode(code),
+      pairing: { role, createdBy, expiresAt, profileId: person ?? undefined },
     });
     log.info('pairing.started', {
       role,
       createdBy,
       expiresAt,
       endpointKind: metadata.endpoints.find((endpoint) => endpoint.url === url)?.kind ?? 'unknown',
-      remoteVerified: this.options.store.settings.read().public_url_verified_at !== null,
+      remoteVerified: settings.public_url_verified_at !== null,
       endpoints: metadata.endpoints.map((endpoint) => endpoint.kind),
     });
     return {
@@ -221,8 +216,7 @@ export class AccessService {
     return this.options.connections;
   }
 
-  private pairingUrl(metadata: HubConnectionMetadata): string {
-    const settings = this.options.store.settings.read();
+  private pairingUrl(metadata: HubConnectionMetadata, settings: SettingsRow): string {
     const publicUrl = settings.public_url_verified_at === null ? null : settings.public_url;
     const lan = metadata.endpoints.find(
       (endpoint) =>
@@ -238,14 +232,16 @@ export class AccessService {
     return url;
   }
 
-  prove(request: { readonly nonce: string; readonly proof: string; readonly remote: string }): {
+  async prove(request: {
+    readonly nonce: string;
     readonly proof: string;
-  } {
+    readonly remote: string;
+  }): Promise<{ readonly proof: string }> {
     this.limit(request.remote);
     const certificate = this.connections().publicIdentity().identity.tls.certificateSha256;
-    const hash = this.options.store.clients
-      .openPairingHashes()
-      .find((open) => pairingProof(open, 'client', certificate, request.nonce) === request.proof);
+    const hash = (await this.options.store.host.call('clients', 'openPairingHashes')).find(
+      (open) => pairingProof(open, 'client', certificate, request.nonce) === request.proof,
+    );
     if (hash === undefined) {
       log.warn('pairing.proof_rejected', {
         reason: 'no_open_pairing_matches',
@@ -258,10 +254,14 @@ export class AccessService {
     return { proof: pairingProof(hash, 'hub', certificate, request.nonce) };
   }
 
-  claim(claim: Claim): { token: string; client: ClientRow } {
+  async claim(claim: Claim): Promise<{ token: string; client: ClientRow }> {
     this.limit(claim.remote);
     const kind = kindOfClaim(claim);
-    const outcome = this.options.store.clients.claimPairing(hashPairingCode(claim.code));
+    const outcome = await this.options.store.host.call(
+      'clients',
+      'claimPairing',
+      hashPairingCode(claim.code),
+    );
     if (!outcome.claimed) {
       log.warn('pairing.claim_rejected', {
         reason: outcome.reason,
@@ -277,17 +277,17 @@ export class AccessService {
       );
     }
     const token = createClientToken();
-    this.assertClaimable(outcome.role, outcome.profileId);
-    const client = this.options.store.write(() =>
-      this.options.store.clients.create({
+    await this.assertClaimable(outcome.role, outcome.profileId);
+    const client = await this.options.store.host.write('pairingClaimClient', {
+      client: {
         name: claim.name,
         platform: claim.platform,
         kind,
         role: outcome.role,
         tokenHash: hashClientToken(token),
-        profileId: this.personOfClaim(outcome.role, outcome.profileId, claim.name),
-      }),
-    );
+      },
+      profileId: outcome.profileId,
+    });
     log.info('pairing.claimed', {
       clientId: client.id,
       role: outcome.role,
@@ -297,34 +297,25 @@ export class AccessService {
     return { token, client };
   }
 
-  private personOfClaim(role: Role, profileId: string | null, deviceName: string): string {
-    if (profileId !== null) return profileId;
-    return role === 'owner'
-      ? this.ownerPerson()
-      : this.options.store.profiles.create({
-          name: deviceName.slice(0, PROFILE_NAME_MAX).trim(),
-        }).id;
-  }
-
-  private assertClaimable(role: Role, profileId: string | null): void {
+  private async assertClaimable(role: Role, profileId: string | null): Promise<void> {
     if (profileId === null) return;
-    const access = this.standing(profileId);
+    const access = await this.standing(profileId);
     if (role === 'member' && access.role === 'owner') {
-      throw this.claimRefused(
+      throw await this.claimRefused(
         profileId,
         'a member code met an owner person',
         'That person became an owner; make a new pairing code.',
       );
     }
     if (role === 'owner' && access.role !== 'owner') {
-      throw this.claimRefused(
+      throw await this.claimRefused(
         profileId,
         'an owner code met a person who is not an owner',
         'That person is no longer an owner; make a new pairing code.',
       );
     }
     if (isExpired(access, this.options.now().toISOString())) {
-      throw this.claimRefused(
+      throw await this.claimRefused(
         profileId,
         'a code met a person whose access has ended',
         'That person’s access has ended; make a new pairing code.',
@@ -332,8 +323,12 @@ export class AccessService {
     }
   }
 
-  private claimRefused(profileId: string, detail: string, message: string): ApiError {
-    this.options.store.accessAudit.record({
+  private async claimRefused(
+    profileId: string,
+    detail: string,
+    message: string,
+  ): Promise<ApiError> {
+    await this.options.store.host.call('accessAudit', 'record', {
       profile_id: profileId,
       client_id: null,
       kind: 'refused_scope',

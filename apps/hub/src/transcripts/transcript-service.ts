@@ -22,7 +22,7 @@ import { collapseHeard } from './merged-read';
 import { TranscriptSettingsStore } from './transcript-settings';
 
 export interface TranscriptsOptions {
-  readonly store: Pick<Store, 'transcripts' | 'settingsKv' | 'speech'>;
+  readonly store: Pick<Store, 'transcripts' | 'settingsKv' | 'speech' | 'live'>;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
 }
@@ -90,7 +90,7 @@ export class Transcripts {
   }
 
   speechReader(pluginId: string, reader: PluginSpeechReader): () => void {
-    return this.options.store.speech.register(pluginId, reader);
+    return this.options.store.live.speechReaders.register(pluginId, reader);
   }
 
   add(sessionId: string, line: TranscriptLineInput, levelDbfs?: number): TranscriptLine {

@@ -1,5 +1,5 @@
 import { MeteredUsageStream } from './metered-usage';
-import { ledgerChange, supplierTokens } from './metered-change';
+import { supplierTokens } from './metered-change';
 import { ApiError } from '@smarteverything/domain';
 import type { UsageEntry, UsageWork } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
@@ -37,19 +37,17 @@ export function meteredAccountingFetch(
       profileId: entry.profile_id,
       ...(grant.authority.kind === 'trigger' ? { background: true as const } : {}),
     });
-    const row = service.store.ledger.record(entry, true);
+    const row = await service.store.host.write('ledgerRecordDurable', entry);
     const tokensFromDsh = options.ordinary_request === true;
-    const observation = new MeteredUsageStream((snapshot): void => {
-      service.store.durableWrite(() => {
-        service.store.ledger.amend(
-          row.id,
-          ledgerChange(snapshot, service.store.ledger.get(row.id), tokensFromDsh),
-        );
-        if (snapshot.usage === null) return;
-        if (tokensFromDsh)
-          service.dshUsage.expect(sessionId, row.id, supplierTokens(snapshot.usage));
-        else log.debug('harness.supplier_tokens', { sessionId, rowId: row.id });
+    const observation = new MeteredUsageStream(async (snapshot): Promise<void> => {
+      await service.store.host.write('ledgerMeteredAmend', {
+        id: row.id,
+        snapshot,
+        tokensFromDsh,
       });
+      if (snapshot.usage === null) return;
+      if (tokensFromDsh) service.dshUsage.expect(sessionId, row.id, supplierTokens(snapshot.usage));
+      else log.debug('harness.supplier_tokens', { sessionId, rowId: row.id });
     });
     return observation.response(await fetcher(input, init));
   };

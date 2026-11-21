@@ -1,90 +1,69 @@
-import type { CommittedNotice, DriveFeedOp, DriveFeedRow } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import type { CommittedNotice } from '@smarteverything/domain';
+import { background, type Logger } from '@smarteverything/logging';
+import { Coalesced } from '../../store/reader';
 import type { Store } from '../../store/store';
-import { peopleWithAccess, type AudienceStore } from './audience';
 
-const EDIT_OPS: ReadonlySet<DriveFeedOp> = new Set(['update', 'rename', 'move']);
+export type EditNoticeStore = Pick<Store, 'host' | 'feed'>;
 
-const FEED_BATCH = 500;
+export class DriveEditNoticesNotStartedError extends Error {
+  override readonly name = 'DriveEditNoticesNotStartedError';
 
-export type EditNoticeStore = AudienceStore &
-  Pick<Store, 'driveFeed' | 'driveNotifications' | 'feed'>;
+  constructor() {
+    super('The drive edit notices caught up before they started.');
+  }
+}
 
 export class DriveEditNotices {
-  private seen: number;
-  private busy = false;
-  private again = false;
+  private seen: number | null = null;
+  private baseline: Promise<number> | undefined;
+  private readonly pass: Coalesced;
 
   constructor(
     private readonly store: EditNoticeStore,
-    private readonly log: Logger,
+    log: Logger,
   ) {
-    this.seen = store.driveFeed.latestSeq();
+    this.pass = new Coalesced(
+      () => this.catchUp(),
+      (cause) => {
+        log.error('drive.edit_notices_catch_up_failed', cause);
+      },
+    );
+  }
+
+  async ready(): Promise<void> {
+    if (this.baseline === undefined) throw new DriveEditNoticesNotStartedError();
+    await this.baseline;
   }
 
   start(): () => void {
-    return this.store.feed.subscribeNotices((notice) => {
+    this.baseline = this.store.host.call('driveFeed', 'latestSeq');
+    const stop = this.store.feed.subscribeNotices((notice) => {
       this.noticed(notice);
     });
+    return (): void => {
+      stop();
+      background(this.pass.stop(), 'drive.edit_notices_stop_failed');
+    };
   }
 
   noticed(notice: CommittedNotice): void {
-    if (notice.type !== 'drive_changed' || notice.cursor <= this.seen) return;
-    if (this.busy) {
-      this.again = true;
-      return;
-    }
-    this.busy = true;
-    try {
-      do {
-        this.catchUp();
-      } while (this.repeat());
-    } finally {
-      this.busy = false;
-    }
+    if (notice.type !== 'drive_changed') return;
+    if (this.seen !== null && notice.cursor <= this.seen) return;
+    this.pass.trigger();
   }
 
-  private repeat(): boolean {
-    const repeat = this.again;
-    this.again = false;
-    return repeat;
+  idle(): Promise<void> {
+    return this.pass.idle();
   }
 
-  private catchUp(): void {
+  private async catchUp(): Promise<void> {
+    if (this.baseline === undefined) throw new DriveEditNoticesNotStartedError();
+    let seen = this.seen ?? (await this.baseline);
     for (;;) {
-      const window = this.store.driveFeed.since(this.seen, FEED_BATCH);
-      for (const row of window.rows) {
-        this.seen = row.seq;
-        this.rowWritten(row);
-      }
-      if (window.next === null) return;
-    }
-  }
-
-  private rowWritten(row: DriveFeedRow): void {
-    if (!EDIT_OPS.has(row.op) || row.actorProfileId === null) return;
-    try {
-      this.tell(row, row.actorProfileId);
-    } catch (cause) {
-      this.log.error('drive.edit_notice_failed', cause, { itemId: row.itemId, seq: row.seq });
-    }
-  }
-
-  private tell(row: DriveFeedRow, editor: string): void {
-    const item = this.store.driveItems.find(row.itemId, null);
-    if (item === undefined) return;
-    for (const person of peopleWithAccess(this.store, item)) {
-      const watching =
-        person.access === 'own' || person.access === 'edit' || person.access === 'view';
-      if (!watching || person.profileId === editor) continue;
-      this.store.driveNotifications.add({
-        profileId: person.profileId,
-        kind: 'edited',
-        itemId: item.id,
-        actorProfileId: editor,
-        actorName: null,
-        refId: null,
-      });
+      const page = await this.store.host.write('driveEditNotices', { after: seen });
+      if (page.last !== null) seen = page.last;
+      this.seen = seen;
+      if (!page.more) return;
     }
   }
 }

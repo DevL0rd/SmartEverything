@@ -13,7 +13,7 @@ import { blockHashAt, packBlockHashes } from '../../src/store/repositories/drive
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql, StoreConflictError } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const ROOT = '0d000000-0000-4000-8000-000000000001';
@@ -64,7 +64,7 @@ beforeEach(() => {
   const log = testLogger();
   context = new StoreContext(new Sql(database), new ChangeFeed(log), () => new Date(clock));
   migrate(new Sql(database), MIGRATIONS, NOW, log);
-  repositories = driveRepositories(context, drivePathOf);
+  repositories = driveRepositories(context, driveFolders);
   robin = new ProfilesRepository(context).create({ name: 'Robin' }).id;
   database
     .prepare(

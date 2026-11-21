@@ -47,6 +47,7 @@ describe('listing cache', () => {
     const sizes: number[] = [];
     const pump = vi.spyOn(rig.mount.services.push, 'pump').mockImplementation(() => {
       sizes.push(rig.mount.services.listings.size);
+      return Promise.resolve();
     });
     await reader.client.created(reader.root, 'theirs.txt');
     await until(() => sizes.length > 0, 'a push pass');
@@ -74,7 +75,7 @@ describe('listing cache expiry', () => {
   it('drops an unused entry after the configured seconds and keeps a used one', async () => {
     vi.useFakeTimers();
     try {
-      const cache = new ListingCache(10, () => 1);
+      const cache = new ListingCache(10);
       const load = vi.fn(() => Promise.resolve(page));
       await ask(cache, load);
       await vi.advanceTimersByTimeAsync(6000);
@@ -90,7 +91,7 @@ describe('listing cache expiry', () => {
   });
 
   it('does not cache at zero seconds and clears when set to zero', async () => {
-    const cache = new ListingCache(0, () => 1);
+    const cache = new ListingCache(0);
     const load = vi.fn(() => Promise.resolve(page));
     await ask(cache, load);
     await ask(cache, load);
@@ -103,11 +104,22 @@ describe('listing cache expiry', () => {
   });
 
   it('treats an entry as stale when the root moved on', async () => {
-    let seq = 1;
-    const cache = new ListingCache(60, () => seq);
+    const cache = new ListingCache(60);
     const load = vi.fn(() => Promise.resolve(page));
     await ask(cache, load);
-    seq = 2;
+    cache.invalidateRoot(rig.posix.scope.drive.id);
+    await ask(cache, load);
+    expect(load).toHaveBeenCalledTimes(2);
+    cache.clear();
+  });
+
+  it('keeps a listing loaded across a change as stale', async () => {
+    const cache = new ListingCache(60);
+    const load = vi.fn(() => {
+      cache.invalidateRoot(rig.posix.scope.drive.id);
+      return Promise.resolve(page);
+    });
+    await ask(cache, load);
     await ask(cache, load);
     expect(load).toHaveBeenCalledTimes(2);
     cache.clear();

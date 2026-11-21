@@ -32,7 +32,7 @@ export function pluginToolSource(host: PluginHost): ToolSource {
       const name = tool.name.slice(pluginToolName(tool.origin.pluginId, '').length);
       return host.call(tool.origin.pluginId, name, args, caller);
     },
-    validate: () => null,
+    validate: () => Promise.resolve(null),
     changes: (listener) => host.changes(listener),
   };
 }

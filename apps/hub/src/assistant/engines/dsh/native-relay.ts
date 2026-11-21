@@ -8,7 +8,7 @@ import type {
   HelperDialogue,
 } from '@smarteverything/domain';
 import type { Store } from '../../../store/store';
-import type { ConversationLog } from '../../conversation-log';
+import { ConversationLog } from '../../conversation-log';
 
 const TEXT = z.object({ type: z.literal('text'), text: z.string() });
 const RELAY = z.object({
@@ -151,16 +151,19 @@ function project(
   });
 }
 
-export function watchNativeRelay(store: Store, conversation: ConversationLog): void {
-  store.dshSessions.admitAppend((id, events) => {
-    const session = store.dshSessions.ownerOf(id);
-    if (session === undefined) return;
-    for (const event of events) {
-      if (event.seq < session.next_seq || event.seq < session.inherited_event_count) continue;
-      for (const candidate of candidates(event)) {
-        const message = nativeRelay(candidate);
-        if (message !== undefined) project(store, conversation, session, message);
-      }
+export function projectNativeRelays(
+  store: Store,
+  sessionId: string,
+  events: readonly DshSessionEvent[],
+): void {
+  const session = store.dshSessions.ownerOf(sessionId);
+  if (session === undefined) return;
+  const conversation = new ConversationLog(store);
+  for (const event of events) {
+    if (event.seq < session.next_seq || event.seq < session.inherited_event_count) continue;
+    for (const candidate of candidates(event)) {
+      const message = nativeRelay(candidate);
+      if (message !== undefined) project(store, conversation, session, message);
     }
-  });
+  }
 }

@@ -17,8 +17,7 @@ import {
 } from '@smarteverything/flow/functions/compat';
 import { interfaceHash, interfaceOf } from '@smarteverything/flow/functions/interface-hash';
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
-import type { AutomationFunctionsRepository } from '../store/repositories/automation-functions';
-import type { Built, ProgramEnv } from './service-programs-analysis';
+import type { AnalysisEnv, Built } from './service-programs-analysis';
 import {
   requireKnownSignals,
   requireOwnerForManifest,
@@ -26,12 +25,12 @@ import {
   requireVisibleComputers,
 } from './service-reach';
 
-export interface FunctionsEnv extends ProgramEnv {
-  readonly functions: AutomationFunctionsRepository;
-}
-
-export function requireFreeName(env: FunctionsEnv, name: string, ownId?: string): void {
-  const taken = env.functions.findByName(name);
+export function requireFreeName(
+  env: Pick<AnalysisEnv, 'store'>,
+  name: string,
+  ownId?: string,
+): void {
+  const taken = env.store.automationFunctions.findByName(name);
   if (taken !== undefined && taken.id !== ownId) {
     throw new ApiError(
       'conflict',
@@ -40,9 +39,9 @@ export function requireFreeName(env: FunctionsEnv, name: string, ownId?: string)
   }
 }
 
-export function requireEditable(env: FunctionsEnv, caller: Caller, row: FunctionRow): void {
+export function requireEditable(caller: Caller, row: FunctionRow): void {
   if (roleOfCaller(caller) === 'owner') return;
-  if (row.created_by !== null && row.created_by === profileIdOf(env.store, caller)) return;
+  if (row.created_by !== null && row.created_by === profileIdOf(caller)) return;
   throw new ApiError(
     'forbidden',
     'Only the person who made this Custom Node or an owner can change it.',
@@ -79,8 +78,8 @@ export function changesOf(classification: InterfaceClassification): AutomationFu
   return classification.changes.map((change) => ({ ...change }));
 }
 
-export function usersOf(env: FunctionsEnv, id: string): AutomationFunctionUser[] {
-  const { automations, functions } = env.functions.users(id);
+export function usersOf(env: Pick<AnalysisEnv, 'store'>, id: string): AutomationFunctionUser[] {
+  const { automations, functions } = env.store.automationFunctions.users(id);
   return [
     ...automations.map((user) => ({ kind: 'automation' as const, ...user })),
     ...functions.map((user) => ({ kind: 'function' as const, ...user })),
@@ -88,13 +87,13 @@ export function usersOf(env: FunctionsEnv, id: string): AutomationFunctionUser[]
 }
 
 export function summaryOf(
-  env: FunctionsEnv,
+  env: Pick<AnalysisEnv, 'store'>,
   caller: Caller,
   row: FunctionRow,
   latest: FunctionRevisionRow,
 ): AutomationFunctionSummary {
   const owner = roleOfCaller(caller) === 'owner';
-  const own = row.created_by !== null && row.created_by === profileIdOf(env.store, caller);
+  const own = row.created_by !== null && row.created_by === profileIdOf(caller);
   return {
     id: row.id,
     name: row.name,
@@ -112,7 +111,7 @@ export function summaryOf(
 }
 
 export function authorise(
-  env: FunctionsEnv,
+  env: AnalysisEnv,
   caller: Caller,
   program: ProgramV4,
   built: Built,

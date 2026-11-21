@@ -221,4 +221,31 @@ describe('saveWatchUpload', () => {
       { metric: 'vitality', value: 80, unit: HEALTH_METRIC_UNITS.vitality },
     ]);
   });
+
+  it('says nothing about the day figures when a sync leaves the day totals as they were', () => {
+    const records = Array.from({ length: 12 }, (_, hour) =>
+      steps(
+        `watch:${owner.deviceId}:steps:${String(hour)}`,
+        `2026-10-08T${String(hour + 6).padStart(2, '0')}:00:00.000Z`,
+      ),
+    );
+    const batches: WatchSampleBatch[] = [
+      {
+        kind: 'stress',
+        zoneOffsetSeconds: 0,
+        samples: [{ time: '2026-10-08T07:00:00.000Z', value: 30 }],
+      },
+      {
+        kind: 'vitality',
+        zoneOffsetSeconds: 0,
+        samples: [{ time: '2026-10-08T08:00:00.000Z', value: 80 }],
+      },
+    ];
+    saveWatchUpload(test.store, owner, upload(records, batches));
+    const tables: string[] = [];
+    test.store.feed.subscribe((change) => tables.push(change.table));
+    saveWatchUpload(test.store, owner, upload(records, batches));
+    saveWatchUpload(test.store, owner, upload(records, batches));
+    expect(tables.filter((table) => table === 'health_daily')).toStrictEqual([]);
+  });
 });

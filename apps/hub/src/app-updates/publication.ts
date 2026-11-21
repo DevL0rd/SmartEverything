@@ -167,7 +167,7 @@ export function appUpdateUploadRoute(store: Store, publisher: AppUpdatePublisher
     method: 'PUT',
     path: APP_UPDATE_BLOB_UPLOAD_PATH,
     handle: async (request, response, params): Promise<void> => {
-      const caller = authenticate(store, request, 'owner', false);
+      const caller = await authenticate(store, request, 'owner', false);
       assertOwnerRoute(store, caller, {
         access: 'owner',
         method: 'PUT',

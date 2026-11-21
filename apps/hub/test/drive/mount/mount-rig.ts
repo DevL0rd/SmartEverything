@@ -33,6 +33,7 @@ import { testLogger } from '../../support/logs';
 import { bundleWorker } from '../drive-fixture';
 import { insertMount } from '../placement-fixture';
 import { openPosixRig, type PosixRig } from '../posix/posix-rig';
+import { loadDriveSettings } from '../../../src/drive/settings';
 
 const WRITE_SLOTS = 8;
 
@@ -250,10 +251,10 @@ function tokensOf(): Tokens {
       return token;
     },
     access: {
-      authenticate: (token): ComputerNodeRow => {
+      authenticate: (token): Promise<ComputerNodeRow> => {
         const node = token === null ? undefined : tokens.get(token);
         if (node === undefined) throw new Error('unknown token');
-        return node;
+        return Promise.resolve(node);
       },
     },
   };
@@ -264,13 +265,11 @@ async function listen(socket: DriveMountSocket): Promise<{ server: Server; port:
     response.writeHead(404).end();
   });
   server.on('upgrade', (request, connection: Duplex, head) => {
-    try {
-      socket.upgrade(request, connection, head);
-    } catch (cause) {
+    socket.upgrade(request, connection, head).catch((cause: unknown) => {
       connection.write('HTTP/1.1 401 Unauthorized\r\nconnection: close\r\n\r\n');
       connection.destroy();
       if (!(cause instanceof Error)) throw cause;
-    }
+    });
   });
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve);
@@ -302,14 +301,12 @@ function placerOf(posix: PosixRig): MountRig['placementOf'] {
   };
 }
 
-export async function openMountRig(leaseMs = 90_000, history = false): Promise<MountRig> {
-  const posix = await openPosixRig(history);
-  const { access, tokenOf } = tokensOf();
-  const workers = await mkdtemp(join(tmpdir(), 'mount-hash-'));
-  const hashWorker = join(workers, 'mount-hash-worker.mjs');
-  await bundleWorker('mount/hash-worker.ts', hashWorker);
-  const activity = new DriveActivity();
-  const mount = new DriveMount({
+async function mountEnvOf(
+  posix: PosixRig,
+  activity: DriveActivity,
+  tuning: { readonly leaseMs: number; readonly hashWorker: string },
+): Promise<ConstructorParameters<typeof DriveMount>[0]> {
+  return {
     store: posix.opened.store,
     change: posix.env.change,
     guard: posix.env.guard,
@@ -317,9 +314,19 @@ export async function openMountRig(leaseMs = 90_000, history = false): Promise<M
     activity,
     lanes: posix.env.lanes,
     log: testLogger('drive'),
-    leaseMs,
-    hashWorker,
-  });
+    settings: await loadDriveSettings(posix.opened.store),
+    ...tuning,
+  };
+}
+
+export async function openMountRig(leaseMs = 90_000, history = false): Promise<MountRig> {
+  const posix = await openPosixRig(history);
+  const { access, tokenOf } = tokensOf();
+  const workers = await mkdtemp(join(tmpdir(), 'mount-hash-'));
+  const hashWorker = join(workers, 'mount-hash-worker.mjs');
+  await bundleWorker('mount/hash-worker.ts', hashWorker);
+  const activity = new DriveActivity();
+  const mount = new DriveMount(await mountEnvOf(posix, activity, { leaseMs, hashWorker }));
   const socket = new DriveMountSocket(posix.opened.store, access, mount, {
     log: testLogger('drive'),
     writeSlots: (): number => WRITE_SLOTS,

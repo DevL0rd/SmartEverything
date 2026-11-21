@@ -96,7 +96,7 @@ const DAILY = [
 beforeEach(async () => {
   test = await testStore(() => NOW);
   ann = addPerson(test, 'Ann', 'member');
-  items = plannerItemRoutes({ store: test.store }, () => NOW);
+  items = plannerItemRoutes({ store: test.store });
   const collections = plannerCollectionRoutes({ store: test.store });
   collectionId = PLANNER_COLLECTION_ROW.parse(
     await call(collections.createPlannerCollection, {

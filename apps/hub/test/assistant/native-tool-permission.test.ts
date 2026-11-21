@@ -20,6 +20,7 @@ let directory: ComputerAiDirectory;
 beforeEach(async () => {
   opened = await testStore();
   directory = new ComputerAiDirectory(opened.store, testLogger('computer'));
+  await directory.load();
 });
 
 afterEach(async () => {
@@ -48,13 +49,13 @@ function computer(): string {
   return row.id;
 }
 
-function running(sandbox: NonNullable<CodexProviderOptions['sandbox_policy']>): {
+async function running(sandbox: NonNullable<CodexProviderOptions['sandbox_policy']>): Promise<{
   readonly store: TestStore['store'];
   readonly chat: AiChatRow;
   readonly engine: Extract<AiChatRow['engine'], { kind: 'codex' }>;
   readonly state: ProviderState;
   readonly validate: (write: boolean) => void;
-} {
+}> {
   const { store } = opened;
   const owner = store.clients.create(
     { name: 'Owner computer', platform: 'desktop', role: 'owner', tokenHash: 'test' },
@@ -63,7 +64,7 @@ function running(sandbox: NonNullable<CodexProviderOptions['sandbox_policy']>): 
   const profileId = store.profiles.activeOf(owner.id).id;
   const target = { device_id: computer(), runtime: 'codex' } as const;
   const options = { cwd: CWD, approval_policy: 'on-request', sandbox_policy: sandbox } as const;
-  store.computerRuntimes.saveSettings(target, {
+  await store.live.computers.saveRuntimeSettings(target, {
     runtime: 'codex',
     settings: { ...DEFAULT_CODEX_AI_SETTINGS, provider: { enabled: true, options } },
   });
@@ -109,8 +110,8 @@ function running(sandbox: NonNullable<CodexProviderOptions['sandbox_policy']>): 
   return { store, chat, engine, state, validate };
 }
 
-it('keeps the current Codex tool grant usable after a next-turn permission change', () => {
-  const { store, chat, engine, validate } = running(FULL);
+it('keeps the current Codex tool grant usable after a next-turn permission change', async () => {
+  const { store, chat, engine, validate } = await running(FULL);
   store.aiChats.update(chat.id, {
     engine: { ...engine, settings: { cwd: CWD, sandbox_policy: FULL, approval_policy: 'never' } },
   });
@@ -127,8 +128,8 @@ it.each([
   [FULL, READ_ONLY],
 ] as const)(
   'keeps project writes within both the admitted and current sandbox',
-  (admitted, next) => {
-    const { store, chat, engine, validate } = running(admitted);
+  async (admitted, next) => {
+    const { store, chat, engine, validate } = await running(admitted);
     store.aiChats.update(chat.id, {
       engine: { ...engine, settings: { sandbox_policy: next, approval_policy: 'never' } },
     });
@@ -141,8 +142,8 @@ it.each([
   },
 );
 
-it('rejects a different native execution folder and an unowned provider session', () => {
-  const { store, chat, engine, state, validate } = running(FULL);
+it('rejects a different native execution folder and an unowned provider session', async () => {
+  const { store, chat, engine, state, validate } = await running(FULL);
   store.aiChats.update(chat.id, { engine: { ...engine, settings: { cwd: '/different/folder' } } });
   expect((): void => {
     validate(false);

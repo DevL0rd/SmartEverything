@@ -34,7 +34,10 @@ export interface Engine {
   readonly deliver: (event: StoredEvent, chat: AiChatRow) => Promise<void>;
   readonly preflightHelperInput?: (input: HelperProviderInput) => Promise<void>;
   readonly steer?: (event: StoredEvent, chat: AiChatRow) => Promise<boolean>;
-  readonly historyRemoved?: (chat: AiChatRow, rows: readonly AssistantMessageRow[]) => void;
+  readonly historyRemoved?: (
+    chat: AiChatRow,
+    rows: readonly AssistantMessageRow[],
+  ) => Promise<void>;
   readonly historyChanged: (chat: AiChatRow, owner: ChatOwner) => Promise<void>;
   readonly compact: (chat: AiChatRow, clientId?: string) => Promise<boolean>;
   readonly interrupt: (chat: AiChatRow) => Promise<void>;

@@ -15,7 +15,6 @@ import type { Viewer } from './access';
 import type { HomeClock } from './clock';
 import { isoOfSeconds } from './summary';
 import type { Snapshots } from './snapshots';
-import type { StatsCache } from './views-stats';
 
 export interface ViewDeps {
   readonly store: Store;
@@ -26,7 +25,6 @@ export interface ViewDeps {
   readonly now: () => Date;
   readonly holder: (device: DeviceRow) => WatchBridge | null;
   readonly syncing: (deviceId: string) => boolean;
-  readonly stats: StatsCache;
 }
 
 export interface ViewContext {

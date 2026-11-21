@@ -34,7 +34,15 @@ export const DRIVE_TRANSFER = z
 
 export type DriveTransfer = z.infer<typeof DRIVE_TRANSFER>;
 
-export const DRIVE_TRANSFER_OFFER = z.strictObject({ itemId: ID, toProfileId: ID }).readonly();
+export const DRIVE_TRANSFER_OFFER = z
+  .strictObject({
+    id: ID.optional().describe(
+      'Id the client generated for the new offer; repeating the offer with the same id returns the offer already made',
+    ),
+    itemId: ID,
+    toProfileId: ID,
+  })
+  .readonly();
 
 export type DriveTransferOffer = z.infer<typeof DRIVE_TRANSFER_OFFER>;
 

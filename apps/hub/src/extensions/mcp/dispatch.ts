@@ -34,8 +34,8 @@ function reachable(context: ToolContext, name: string): boolean {
   return context.caller?.via === 'plugin' || !PLUGIN_ONLY_TOOLS.has(name);
 }
 
-export function enabledTools(context: ToolContext): readonly Tool[] {
-  return visibleTools(TOOLS, context).filter((tool) => reachable(context, tool.name));
+export async function enabledTools(context: ToolContext): Promise<readonly Tool[]> {
+  return (await visibleTools(TOOLS, context)).filter((tool) => reachable(context, tool.name));
 }
 
 function refusalOf(error: ToolError): Refusal {
@@ -121,7 +121,7 @@ async function invoke(context: ToolContext, call: Invocation, log: Logger): Prom
   log.debug('tool.called', fields);
   try {
     const output = await tool.call(
-      { ...context, visibleTools: (): readonly Tool[] => enabledTools(context) },
+      { ...context, visibleTools: (): Promise<readonly Tool[]> => enabledTools(context) },
       args,
     );
     const shown = shownOutput(tool.name, args, output);

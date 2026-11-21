@@ -17,7 +17,7 @@ import { DriveTrashRepository } from '../../src/store/repositories/drive-trash';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql, StoreConflictError } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const ROOT = '0d000000-0000-4000-8000-000000000001';
@@ -94,7 +94,7 @@ beforeEach(() => {
   clock = new Date(NOW);
   context = new StoreContext(new Sql(database), changeFeed, () => clock);
   migrate(new Sql(database), MIGRATIONS, NOW, log);
-  const roots = new DriveRootsRepository(context, drivePathOf);
+  const roots = new DriveRootsRepository(context, driveFolders);
   items = new DriveItemsRepository(context);
   albums = new DriveAlbumsRepository(context);
   trash = new DriveTrashRepository(context);

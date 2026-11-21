@@ -40,7 +40,7 @@ function device(
   return row?.id ?? '';
 }
 
-function open(): void {
+async function open(): Promise<void> {
   const clock = new FakeClock('2026-10-18T10:00:00.000Z');
   const rules = new ReachRules(opened.store, clock.now);
   registry = new ListeningRegistry({
@@ -53,7 +53,7 @@ function open(): void {
     sendLevel: (): void => undefined,
     log: testLogger('listening'),
   });
-  registry.start();
+  await registry.start();
   const bus = new SignalBus({ log: testLogger('signals'), now: clock.now });
   bus.subscribe((signal) => {
     if (signal.source === 'listening') heard.push(signal);
@@ -75,6 +75,7 @@ function values(): unknown[] {
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   owner = { owner: true, profileId: opened.store.profiles.first().id };
   heard = [];
 });
@@ -86,14 +87,14 @@ afterEach(async () => {
 });
 
 describe('listening state signals', () => {
-  it('stay quiet for the sources that exist when the hub starts', () => {
+  it('stay quiet for the sources that exist when the hub starts', async () => {
     device('computer', 'Desk');
-    open();
+    await open();
     expect(heard).toHaveLength(0);
   });
 
   it('announce a new computer as listening and a switched-off one as off', async () => {
-    open();
+    await open();
     const desk = device('computer', 'Desk');
     expect(heard).toHaveLength(1);
     expect(heard[0]).toMatchObject({
@@ -107,9 +108,9 @@ describe('listening state signals', () => {
     expect(heard[1]).toMatchObject({ value: 'off', previous: 'on' });
   });
 
-  it('name the pause reason when a conversation or a Discord call takes the microphone', () => {
+  it('name the pause reason when a conversation or a Discord call takes the microphone', async () => {
     const desk = device('computer', 'Desk');
-    open();
+    await open();
     registry.setState(desk, 'in_conversation');
     registry.setState(desk, 'discord_call');
     registry.setState(desk, null);
@@ -120,9 +121,9 @@ describe('listening state signals', () => {
     });
   });
 
-  it('report a lost microphone permission and a missing host', () => {
+  it('report a lost microphone permission and a missing host', async () => {
     const desk = device('computer', 'Desk');
-    open();
+    await open();
     registry.setState(desk, 'needs_permission');
     registry.setState(desk, 'no_host');
     expect(values()).toStrictEqual(['mic_permission_lost', 'no_host']);
@@ -130,7 +131,7 @@ describe('listening state signals', () => {
 
   it('report a used-up transcript budget while the ear keeps listening', async () => {
     const desk = device('computer', 'Desk');
-    open();
+    await open();
     await registry.change(owner, desk, { transcribe: true });
     registry.setPaused(desk, 'cap_reached');
     registry.setPaused(desk, null);
@@ -139,22 +140,22 @@ describe('listening state signals', () => {
 
   it('say nothing when only a switch that does not move the state changes', async () => {
     const desk = device('computer', 'Desk');
-    open();
+    await open();
     await registry.change(owner, desk, { sensitivity: 'high' });
     expect(heard).toHaveLength(0);
   });
 
   it('carry the person of a phone so a member sees only their own', async () => {
     const phone = device('phone', 'Pixel', { profileId: PERSON });
-    open();
+    await open();
     await registry.change(owner, phone, { wake: true });
     expect(heard).toHaveLength(1);
     expect(heard[0]).toMatchObject({ subject: phone, value: 'on', profileId: PERSON });
   });
 
-  it('never carry what was said', () => {
+  it('never carry what was said', async () => {
     const desk = device('computer', 'Desk');
-    open();
+    await open();
     registry.setState(desk, 'in_conversation');
     expect(Object.keys(heard[0]?.data ?? {}).sort()).toStrictEqual([
       'name',

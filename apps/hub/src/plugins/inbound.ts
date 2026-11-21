@@ -106,8 +106,8 @@ export class PluginInbox {
 
   private async deliver(pluginId: string, message: InboundMessage): Promise<void> {
     const { store } = this.options;
-    const plugin = store.plugins.byId(pluginId);
-    const identity = pluginIdentityOf(store, pluginId, message.from.id);
+    const plugin = await store.host.call('plugins', 'byId', pluginId);
+    const identity = await pluginIdentityOf(store, pluginId, message.from.id);
     const refused = refusedAs(store, identity);
     if (refused !== null) {
       this.refuse(plugin, message, identity, refused.message);
@@ -213,9 +213,15 @@ export class PluginInbox {
     }
   }
 
-  private answerFiles(waiting: Waiting): PluginReplyFile[] {
+  private async answerFiles(waiting: Waiting): Promise<PluginReplyFile[]> {
     const { store, assistant } = this.options;
-    return store.assistantChat.answerFiles(waiting.chatId, waiting.personMessageId).map((file) => ({
+    const files = await store.host.call(
+      'assistantChat',
+      'answerFiles',
+      waiting.chatId,
+      waiting.personMessageId,
+    );
+    return files.map((file) => ({
       path: assistant.files.pathOf(file),
       name: file.name,
       mime: file.mime,
@@ -229,11 +235,19 @@ export class PluginInbox {
     }
     this.waiting.delete(event.id);
     waiting.feed?.stop();
+    this.replied(waiting, text, ok).catch((cause: unknown) => {
+      this.note(waiting.pluginId, `The reply was not delivered: ${failureLine(cause)}`);
+    });
+  }
+
+  private async replied(waiting: Waiting, text: string, ok: boolean): Promise<void> {
     const { reply } = waiting.message;
     this.deliverReply(waiting, {
       [reply.eventIdArg]: waiting.message.eventId,
       [reply.textArg]: ok ? text : `Assistant unavailable: ${text}`,
-      ...(reply.filesArg === null || !ok ? {} : { [reply.filesArg]: this.answerFiles(waiting) }),
+      ...(reply.filesArg === null || !ok
+        ? {}
+        : { [reply.filesArg]: await this.answerFiles(waiting) }),
     });
   }
 

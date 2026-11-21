@@ -41,6 +41,7 @@ function join(channelId: string, client: TestClient, listening: boolean): void {
 beforeEach(async () => {
   captureLogs();
   test = await testStore();
+  await test.store.live.home.load();
   presence = { floors: [], online: [] };
   alice = addClient(test, 'Alice', 'owner');
   bob = addClient(test, 'Bob', 'member');
@@ -66,9 +67,9 @@ beforeEach(async () => {
     log: testLogger('talk'),
   });
   await service.start();
-  bench = await serveSockets(TALK_PROTOCOL, (request, socket, head) => {
-    service.upgrade(request, socket, head);
-  });
+  bench = await serveSockets(TALK_PROTOCOL, (request, socket, head) =>
+    service.upgrade(request, socket, head),
+  );
 });
 
 afterEach(async () => {
@@ -161,6 +162,7 @@ describe('talk sockets', () => {
     });
     test.store.clients.remove(bob.id);
     expect(await closed).toBe(4001);
+    await test.store.host.call('hubMarks', 'read', 'forgotten');
     expect(test.store.talk.members().some((member) => member.member_id === bob.id)).toBe(false);
   });
 });

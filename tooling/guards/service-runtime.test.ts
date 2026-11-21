@@ -19,8 +19,8 @@ import {
   missingFromOutput,
   publishStage,
   runtimePackageNames,
-  SERVICE_EXTERNALS,
 } from '../build-service.ts';
+import { SERVICE_EXTERNALS } from '../service-bundles.ts';
 import {
   copyRuntimePackages,
   matchesPattern,

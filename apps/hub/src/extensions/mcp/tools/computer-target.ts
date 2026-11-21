@@ -12,15 +12,16 @@ export const COMPUTER_ID = z
 
 type Reach = Pick<ToolContext, 'store' | 'actor' | 'caller'>;
 
-function computersOf(context: Reach): Placed[] {
-  return placedDevices(context.store, deviceScopeOfActor(context)).filter(
+async function computersOf(context: Reach): Promise<Placed[]> {
+  return (await placedDevices(context.store, deviceScopeOfActor(context))).filter(
     ({ device }) => device.kind === 'computer',
   );
 }
 
-function chatComputerId(context: Reach): string | null {
+async function chatComputerId(context: Reach): Promise<string | null> {
   const chatId = context.actor?.chatId ?? null;
-  const chat = chatId === null ? undefined : context.store.aiChats.find(chatId);
+  const chat =
+    chatId === null ? undefined : await context.store.host.call('aiChats', 'find', chatId);
   const engine = chat?.engine;
   if (engine === undefined) return null;
   if (engine.kind === 'claude') return engine.device_id;
@@ -34,8 +35,8 @@ function listed(computers: readonly Placed[]): string {
   return computers.map(({ name, device }) => `${name} (deviceId ${device.id})`).join(', ');
 }
 
-export function computerIdOf(context: Reach, wanted: string | undefined): string {
-  const computers = computersOf(context);
+export async function computerIdOf(context: Reach, wanted: string | undefined): Promise<string> {
+  const computers = await computersOf(context);
   if (wanted !== undefined) {
     if (computers.some(({ device }) => device.id === wanted)) return wanted;
     throw new ToolError(
@@ -43,7 +44,8 @@ export function computerIdOf(context: Reach, wanted: string | undefined): string
       'not_found',
     );
   }
-  const own = context.caller?.via === 'computer' ? context.caller.id : chatComputerId(context);
+  const own =
+    context.caller?.via === 'computer' ? context.caller.id : await chatComputerId(context);
   if (own !== null && computers.some(({ device }) => device.id === own)) return own;
   const [only, second] = computers;
   if (only === undefined) throw new ToolError('This home has no computer', 'not_found');

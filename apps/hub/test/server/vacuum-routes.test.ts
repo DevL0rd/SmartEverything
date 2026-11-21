@@ -70,6 +70,7 @@ class Rig {
   readonly sent: Sent[] = [];
   readonly ensured: string[] = [];
   readonly scenes = new Map<string, VacuumScene>();
+  readonly fetches = new Map<string, VacuumScene>();
   readonly cleans = new Map<string, VacuumClean>();
   readonly listed: unknown[] = [];
   readonly published = new Map<string, JsonValue>();
@@ -93,7 +94,10 @@ class Rig {
       },
       maps: {
         ensure: (deviceId: string, slot: VacuumSlot): Promise<void> => {
-          this.ensured.push(`${deviceId}|${slot}`);
+          const key = `${deviceId}|${slot}`;
+          this.ensured.push(key);
+          const fetched = this.fetches.get(key);
+          if (fetched !== undefined) this.scenes.set(key, fetched);
           return Promise.resolve();
         },
       },
@@ -209,7 +213,7 @@ describe('the scene route', () => {
       params: { deviceId: robotId },
       query: { slot: 'saved' },
     });
-    rig.scenes.set(`${robotId}|saved`, { ...sceneOf(7), slot: 'saved' });
+    rig.fetches.set(`${robotId}|saved`, { ...sceneOf(7), slot: 'saved' });
     await expect(answer).resolves.toMatchObject({ index: 7, slot: 'saved' });
     expect(rig.ensured).toStrictEqual([`${robotId}|saved`]);
   });

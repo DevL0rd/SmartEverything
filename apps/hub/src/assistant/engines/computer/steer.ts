@@ -1,3 +1,4 @@
+import { background, messageOf } from '@smarteverything/logging';
 import { z } from 'zod';
 import { ApiError, type AiChatRow, type AssistantReasonCode } from '@smarteverything/domain';
 import type { StoredEvent } from '../../../store/repositories/assistant-events';
@@ -38,7 +39,7 @@ export async function steerTurn(
     throw new ApiError('conflict', 'The reply finished before the message could be added to it.');
   turn.steered.push(event);
   turn.stream.steer(event.message_id);
-  deps.conversation.stateOf(event.message_id, 'delivered');
+  await deps.conversation.stateOf(event.message_id, 'delivered');
   deps.log.info('computer.steered', { chatId: chat.id, eventId: event.id, jobId: turn.jobId });
   return true;
 }
@@ -51,12 +52,41 @@ export function settleSteered(
     | { readonly ok: false; readonly reason: string; readonly code: AssistantReasonCode },
 ): void {
   for (const steered of turn.steered) {
-    if (outcome.ok) {
-      deps.conversation.stateOf(steered.message_id, 'answered');
-      deps.finished(steered, outcome.text, true);
-    } else {
-      deps.conversation.failedMessage(steered.message_id, outcome.reason, outcome.code);
-      deps.finished(steered, outcome.reason, false);
-    }
+    const written = outcome.ok
+      ? deps.conversation.stateOf(steered.message_id, 'answered')
+      : deps.conversation.failedMessage(steered.message_id, outcome.reason, outcome.code);
+    const finished = (): void => {
+      if (outcome.ok) deps.finished(steered, outcome.text, true);
+      else deps.finished(steered, outcome.reason, false);
+    };
+    background(
+      written.then(finished, (cause: unknown) => {
+        finished();
+        throw cause;
+      }),
+      'computer.steered_state_failed',
+      { eventId: steered.id },
+    );
   }
+}
+
+export function afterTurnWrites(
+  deps: Pick<ComputerRunnerDeps, 'log'>,
+  turn: Turn,
+  written: Promise<unknown>,
+  after: () => void,
+): void {
+  const settled = written
+    .then(after, (cause: unknown) => {
+      deps.log.warn('computer.turn_write_failed', {
+        chatId: turn.chat.id,
+        eventId: turn.event.id,
+        failure: messageOf(cause),
+      });
+      after();
+    })
+    .finally(() => {
+      turn.finish();
+    });
+  background(settled, 'computer.turn_settle_failed', { eventId: turn.event.id });
 }

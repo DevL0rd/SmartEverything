@@ -38,7 +38,7 @@ import { stopBelt, type StopIo } from './stop';
 
 const RUNNING_WAIT_MS = 15_000;
 
-const STOPS_IN_FLIGHT = new WeakMap<DeviceState, Promise<string>>();
+const STOPS_IN_FLIGHT = new Map<string, Promise<JsonValue>>();
 
 const SUPPLEMENT_QUERY_TARGET = {
   service: SUPPLEMENT_SERVICE,
@@ -53,7 +53,7 @@ class TreadmillCommandFailedError extends Error {
 }
 
 export interface CommandDeps extends AccessDeps {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host'>;
   readonly fleet: Fleet;
   readonly broker: Pick<TreadmillActionBroker, 'run'>;
   readonly guard: NoStepsGuard;
@@ -261,17 +261,38 @@ async function send(
   return result.detail;
 }
 
-export async function runTreadmillCommand(
-  deps: CommandDeps,
-  command: DeviceCommand,
-): Promise<JsonValue> {
-  const device = deps.store.devices.byExternal('local', command.externalId);
+function isStop(command: DeviceCommand): boolean {
+  return command.capability === 'belt_command' && command.value === 'stop';
+}
+
+export function runTreadmillCommand(deps: CommandDeps, command: DeviceCommand): Promise<JsonValue> {
+  if (!isStop(command)) {
+    return commandOf(deps, command);
+  }
+  const key = command.externalId;
+  const pending = STOPS_IN_FLIGHT.get(key);
+  if (pending !== undefined) {
+    return pending;
+  }
+  const work = commandOf(deps, command);
+  STOPS_IN_FLIGHT.set(key, work);
+  const clear = (): void => {
+    if (STOPS_IN_FLIGHT.get(key) === work) {
+      STOPS_IN_FLIGHT.delete(key);
+    }
+  };
+  work.then(clear, clear);
+  return work;
+}
+
+async function commandOf(deps: CommandDeps, command: DeviceCommand): Promise<JsonValue> {
+  const device = await deps.fleet.roster.deviceForEntry(command.externalId);
   if (device === undefined) {
     throw refuse(command, 'this treadmill is no longer known to the hub');
   }
-  const state = deps.fleet.of(device);
+  const state = await deps.fleet.ensure(device);
   const intent = intentOf(command, state);
-  const starter = starterOf(deps, device, command.commandId);
+  const starter = await starterOf(deps, device, command.commandId);
   if (intent.kind === 'incline') {
     return deliverIncline(deps, command, { device, state, starter }, intent.target);
   }
@@ -285,20 +306,7 @@ export async function runTreadmillCommand(
       await readyForSpeed(command, state);
     }
   }
-  const stopping = intent.kind === 'belt' && intent.action.kind === 'stop';
-  const pending = stopping ? STOPS_IN_FLIGHT.get(state) : undefined;
-  if (pending !== undefined) {
-    return pending;
-  }
-  const work = deliver(deps, command, { device, state, intent, starter });
-  if (stopping) {
-    STOPS_IN_FLIGHT.set(state, work);
-    const clear = (): void => {
-      STOPS_IN_FLIGHT.delete(state);
-    };
-    work.then(clear, clear);
-  }
-  return work;
+  return deliver(deps, command, { device, state, intent, starter });
 }
 
 interface Delivery {

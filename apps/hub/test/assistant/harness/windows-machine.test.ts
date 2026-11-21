@@ -26,7 +26,7 @@ function windowsHost(sandbox?: AiHarnessHost['sandbox']): AiHarnessHost {
 
 async function openChat(): Promise<AiChatRow> {
   const chat = rig.newChat(rig.hub.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
   return rig.opened.store.aiChats.chat(chat.id);
 }

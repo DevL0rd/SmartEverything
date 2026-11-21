@@ -50,10 +50,10 @@ function tierOf(profileId: string | undefined): PhoneTier {
 }
 
 function phoneRead(deps: WorldReadDeps, deviceId: string): ReadResult {
-  if (deps.store.devices.find(deviceId) === undefined) {
+  if (deps.world.devices.find(deviceId) === undefined) {
     throw new ReadFailure('NotFound', `There is no device ${deviceId}`);
   }
-  const context = deps.store.phoneContexts.byDevice(deviceId);
+  const context = deps.world.phoneContexts.byDevice(deviceId);
   const tier = tierOf(context?.profileId);
   const readings: Record<string, JsonValue | undefined> = {};
   for (const [output, capability] of Object.entries(READINGS)) {

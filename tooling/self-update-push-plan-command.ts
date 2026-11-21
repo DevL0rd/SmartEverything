@@ -11,5 +11,5 @@ const PLAN_DATA = z.string().refine(isAbsolute, { message: 'must be an absolute 
 const data = PLAN_DATA.parse(process.argv[2]);
 requireAnyHubSource(dataLayoutOf(data), ['hub', 'app', 'ui', 'desktop']);
 const request = PLAN_REQUEST.parse(JSON.parse(z.string().parse(process.argv[3])));
-const result = await planPush(configuredHubSource(data), request);
+const result = await planPush(await configuredHubSource(data), request);
 process.stdout.write(`${JSON.stringify(result)}\n`);

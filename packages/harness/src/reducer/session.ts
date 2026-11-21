@@ -1,10 +1,12 @@
 import {
   AI_HARNESS_EVENT,
+  AI_HARNESS_FAILURE,
   AI_HARNESS_SESSION,
   harnessContextPercent,
 } from '@smarteverything/domain';
 import type {
   AiHarnessEvent,
+  AiHarnessFailure,
   AiHarnessInteraction,
   AiHarnessSession,
   DshSessionMetadata,
@@ -41,6 +43,7 @@ export class SessionReducer {
   private readonly correlation = new TurnCorrelation();
   private readonly plan = new PlanTracker();
   private readonly tools = new Map<string, string>();
+  private failedTurn: AiHarnessFailure | null = null;
   private readonly handlers: Handlers = {
     input: (frame) => this.input(frame),
     discarded: (frame) => this.discarded(frame),
@@ -121,6 +124,7 @@ export class SessionReducer {
         kind: 'completed',
         delivery_id: frame.message_id,
         input_discarded: true,
+        ...(this.failedTurn === null ? {} : { failure: this.failedTurn }),
         interrupted: true,
         durable_seq: this.ports.metadata().durable_seq,
       }),
@@ -219,6 +223,7 @@ export class SessionReducer {
     if (event.surface === 'replace') return [];
     const body = event.body;
     this.correlation.record(body);
+    if (body.type === 'turn/start') this.failedTurn = null;
     if (body.type === 'turn/end') return this.ended(body.data, event.seq);
     if (body.type === 'llm/retry') return [this.reconnecting(true)];
     if (body.type === 'llm/retry-started') return [this.reconnecting(false)];
@@ -232,8 +237,10 @@ export class SessionReducer {
     data: Extract<NativeBody, { type: 'turn/end' }>['data'],
     seq: number,
   ): readonly AiHarnessEvent[] {
+    const body = turnEndBody(data, seq, this.ports.metadata().durable_seq);
+    this.failedTurn = body['kind'] === 'failed' ? AI_HARNESS_FAILURE.parse(body['failure']) : null;
     if (this.correlation.ended(data.turn) === undefined) return [];
-    const completion = this.send(turnEndBody(data, seq, this.ports.metadata().durable_seq));
+    const completion = this.send(body);
     this.correlation.finish();
     return [completion];
   }

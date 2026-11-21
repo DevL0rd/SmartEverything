@@ -1,3 +1,4 @@
+import type { AiHarnessFailure } from '@smarteverything/domain';
 import type { NativeBody } from './event';
 import { nativeToolOutput, nativeToolText, toolSummary } from '../process/tool-result-output';
 
@@ -13,6 +14,23 @@ function turnFailureMessage(reason: TurnEnd['reason']): string {
   return reason.kind === 'blocked' ? 'The turn was blocked.' : 'The turn failed.';
 }
 
+const PROVIDER_FAILURES: ReadonlyMap<string, AiHarnessFailure['code']> = new Map<
+  string,
+  AiHarnessFailure['code']
+>([
+  ['AUTH', 'route_unavailable'],
+  ['MISSING_CREDENTIAL', 'route_unavailable'],
+  ['INVALID_CREDENTIAL', 'route_unavailable'],
+  ['QUOTA', 'quota_exhausted'],
+  ['ACCOUNT_QUOTA', 'quota_exhausted'],
+]);
+
+function turnFailureCode(reason: TurnEnd['reason']): AiHarnessFailure['code'] {
+  const code = reason.kind === 'error' ? reason.error?.['code'] : undefined;
+  if (typeof code !== 'string') return 'operation_failed';
+  return PROVIDER_FAILURES.get(code) ?? 'operation_failed';
+}
+
 export function turnEndBody(
   data: TurnEnd,
   seq: number,
@@ -22,7 +40,11 @@ export function turnEndBody(
   if (reason.kind === 'blocked' || reason.kind === 'error')
     return {
       kind: 'failed',
-      failure: { code: 'operation_failed', message: turnFailureMessage(reason), retry_at: null },
+      failure: {
+        code: turnFailureCode(reason),
+        message: turnFailureMessage(reason),
+        retry_at: null,
+      },
     };
   return {
     kind: 'completed',

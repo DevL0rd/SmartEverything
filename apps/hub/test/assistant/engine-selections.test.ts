@@ -50,6 +50,7 @@ beforeEach(async () => {
   opened = await testStore();
   const { store } = opened;
   store.aiModels.replace([ROW], 'openrouter');
+  await store.live.aiModels.load();
   selections = new EngineSelections(
     store,
     new ComputerAiDirectory(store, testLogger('computers')),
@@ -132,8 +133,8 @@ describe('the default engine in the catalogue', () => {
     });
   });
 
-  it('is the member’s own metered route, never the owner’s choice', () => {
-    opened.store.aiEngineDefaults.update({
+  it('is the member’s own metered route, never the owner’s choice', async () => {
+    await opened.store.live.engineDefaults.update({
       kind: 'dsh',
       execution_target: { kind: 'server' },
       session_id: null,

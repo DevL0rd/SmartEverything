@@ -1,3 +1,4 @@
+import { inlineMetrics } from '../../src/node/metrics/node-metrics';
 import {
   DEFAULT_COMPUTER_SCOPES,
   NODE_FRAME,
@@ -115,7 +116,7 @@ function rig(): Rig {
     },
   };
   const node = new ComputerNode({
-    collector,
+    metrics: inlineMetrics(collector),
     controls,
     link: links.node,
     now: (): Date => new Date('2026-10-08T10:00:00.000Z'),

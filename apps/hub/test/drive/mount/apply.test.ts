@@ -1,6 +1,6 @@
 import { DRIVE_FEED_ROW, type DriveFeedOp, type DriveFeedRow } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
-import { changedElsewhere } from '../../../src/drive/mount/apply';
+import { changedElsewhereIn } from '../../../src/drive/units/mount';
 
 const NODE = '0e000000-0000-4000-8000-00000000000a';
 const OTHER = '0e000000-0000-4000-8000-00000000000b';
@@ -25,7 +25,7 @@ function changed(rows: readonly DriveFeedRow[], rev: number, baseRev: number): b
   const newestFirst = [...rows].sort((left, right) => right.rev - left.rev);
   const window = { rows: newestFirst, next: null };
   const store = { driveFeed: { recentOfItem: (): typeof window => window } };
-  return changedElsewhere({ store }, { id: ITEM, rev }, NODE, baseRev);
+  return changedElsewhereIn(store, { itemId: ITEM, rev, nodeId: NODE, baseRev });
 }
 
 describe('a change made elsewhere', () => {

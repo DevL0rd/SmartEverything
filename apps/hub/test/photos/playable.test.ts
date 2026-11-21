@@ -33,6 +33,7 @@ import {
   type DriveMediaJob,
   type DriveMediaJobRequest,
 } from '../../src/store/repositories/drive-media-jobs';
+import { repositoryDerived, repositoryJobs } from './pipeline-stores';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
 import { insertDriveRow, insertInode } from './photo-rows';
@@ -97,14 +98,18 @@ function enqueue(id: string, kind: DriveMediaJobRequest['kind'] = 'playable'): D
   return jobs.enqueue({ kind, itemId: id, rev: 1 });
 }
 
+function noThumb(itemId: string): void {
+  throw new Error(`A playable copy never writes the thumbnail of ${itemId}.`);
+}
+
 function handler(variant: PlayableVariant = 'primary'): PlayableHandler {
   return new PlayableHandler(
     {
-      store: { write: (work) => context.write(work), driveItems: items, driveMedia: media },
-      jobs,
-      request: (request): DriveMediaJob => {
+      derived: repositoryDerived({ context, items, media, writeThumb: noThumb }),
+      jobs: repositoryJobs(jobs),
+      request: (request): Promise<DriveMediaJob> => {
         requests.push(request);
-        return enqueue(request.itemId);
+        return Promise.resolve(enqueue(request.itemId));
       },
       locate: (item) => Promise.resolve(join(directory, item.name)),
       layout,
@@ -479,7 +484,7 @@ describe('playable copies', () => {
     failing.abort();
 
     await expect(handler().run(job, failing.signal)).rejects.toThrow();
-    handler().fail(job, new Error('ffmpeg stopped'));
+    await handler().fail(job, new Error('ffmpeg stopped'));
 
     expect(media.byId(id)).toMatchObject({
       playable_state: 'failed',

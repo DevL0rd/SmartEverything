@@ -17,7 +17,7 @@ import {
   plannerItemRoutes,
 } from '../../src/server/handlers/planner-items';
 import { plannerSharingRoutes } from '../../src/server/handlers/planner-sharing';
-import { plannerTablesOf } from '../../src/server/handlers/snapshot';
+import { plannerTablesOf } from '../../src/server/snapshot-tables';
 import { visible, type Hearing } from '../../src/server/live-visibility';
 import type { Bound } from '../../src/server/router';
 import { testLogger } from '../support/logs';
@@ -105,7 +105,7 @@ beforeEach(async () => {
   ann = addPerson(test, 'Ann', 'member');
   bob = addPerson(test, 'Bob', 'member');
   const context = { store: test.store };
-  items = plannerItemRoutes(context, () => NOW);
+  items = plannerItemRoutes(context);
   collections = plannerCollectionRoutes(context);
   sharing = plannerSharingRoutes(context, () => NOW);
 });

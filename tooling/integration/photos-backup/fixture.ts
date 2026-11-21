@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import type { DriveItem, DriveRoot } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { folderDraft, recordItem, type ChangeEnv } from '../../../apps/hub/src/drive/changes';
+import { DriveActivity } from '../../../apps/hub/src/drive/activity';
+import { ContentHasher } from '../../../apps/hub/src/drive/hasher';
 import { TusUploads } from '../../../apps/hub/src/drive/uploads-tus';
 import { nodeFiles } from '../../../apps/hub/src/drive/versions';
 import type { VolumeSpace } from '../../../apps/hub/src/drive/volumes';
@@ -20,6 +22,7 @@ import type {
   TransportRequest,
   UploadRequest,
 } from '../../../apps/app/src/features/drive/upload/transport/types';
+import { bundleHashWorker } from '../../../apps/hub/test/drive/drive-fixture';
 
 const NOW = new Date('2026-11-07T00:00:00.000Z');
 
@@ -39,7 +42,7 @@ export function hash(text: string): string {
   return createHash('sha256').update(text).digest('hex');
 }
 
-function backupPhone(opened: TestStore, service: BackupService, profileId: string): string {
+async function backupPhone(opened: TestStore, profileId: string): Promise<string> {
   const [phone] = opened.store.devices.upsert([
     {
       provider: 'local',
@@ -57,16 +60,19 @@ function backupPhone(opened: TestStore, service: BackupService, profileId: strin
     },
   ]);
   if (phone === undefined) throw new Error('Missing isolated phone');
-  service.registerDevice(profileId, {
-    deviceId: phone.id,
-    name: 'Phone',
-    platform: 'android',
-    settings: {
-      enabled: true,
-      folders: ['Camera'],
-      wifiOnly: true,
-      chargingOnly: false,
-      includeVideos: true,
+  await opened.store.host.write('photoBackupRegister', {
+    profileId,
+    request: {
+      deviceId: phone.id,
+      name: 'Phone',
+      platform: 'android',
+      settings: {
+        enabled: true,
+        folders: ['Camera'],
+        wifiOnly: true,
+        chargingOnly: false,
+        includeVideos: true,
+      },
     },
   });
   return phone.id;
@@ -90,8 +96,8 @@ type StorageFixture = Omit<ProtocolFixture, 'origin' | 'close'> & {
   readonly clientId: string;
 };
 
-function folderOf(env: ChangeEnv, root: DriveRoot, profileId: string): string {
-  return recordItem(env, {
+async function folderOf(env: ChangeEnv, root: DriveRoot, profileId: string): Promise<string> {
+  const folder = await recordItem(env, {
     draft: folderDraft(
       {
         rootId: root.id,
@@ -107,7 +113,8 @@ function folderOf(env: ChangeEnv, root: DriveRoot, profileId: string): string {
     identity: { dev: '1', ino: '1' },
     op: 'create',
     actor: { actorProfileId: profileId, via: 'app', deviceId: null },
-  }).id;
+  });
+  return folder.id;
 }
 
 async function storageFixture(): Promise<StorageFixture> {
@@ -125,13 +132,13 @@ async function storageFixture(): Promise<StorageFixture> {
     now: () => NOW,
     purge: { rearm: (): void => undefined },
   };
-  const folderId = folderOf(env, root, profileId);
+  const folderId = await folderOf(env, root, profileId);
   const service = new BackupService({
     ...env,
     store: { ...opened.store, driveBackup: new DriveBackupRepository(opened.store.context) },
     sql: opened.store.context.sql,
   });
-  const phoneId = backupPhone(opened, service, profileId);
+  const phoneId = await backupPhone(opened, profileId);
   const client = opened.store.clients.create({
     name: 'Isolated phone',
     platform: 'android',
@@ -163,26 +170,40 @@ async function closeServer(server: http.Server, opened: TestStore): Promise<void
 }
 
 export async function protocolFixture(
-  completed: (item: DriveItem, service: BackupService) => void = (item, service): void => {
-    service.settleItem(item);
+  completed: (item: DriveItem, service: BackupService) => Promise<void> = async (
+    item,
+    service,
+  ): Promise<void> => {
+    await service.settle(item);
   },
 ): Promise<ProtocolFixture> {
   const storage = await storageFixture();
   const { env, opened, profileId, clientId, service } = storage;
+  const hashWorker = await bundleHashWorker();
+  const hasher = new ContentHasher(hashWorker.script);
   const uploads = new TusUploads({
     ...env,
     store: opened.store,
     space: (): Promise<VolumeSpace> => Promise.resolve({ totalBytes: 1e12, freeBytes: 1e12 }),
-    authenticate: (request): TusCaller | null =>
-      request.headers.authorization === 'Bearer isolated-client'
-        ? { profileId, owner: false, clientId, nodeId: null }
-        : null,
-    completed: (item: DriveItem): void => {
-      completed(item, service);
-    },
+    authenticate: (request): Promise<TusCaller | null> =>
+      Promise.resolve(
+        request.headers.authorization === 'Bearer isolated-client'
+          ? { profileId, owner: false, clientId, nodeId: null }
+          : null,
+      ),
+    completed: (item: DriveItem): Promise<void> => completed(item, service),
+    activity: new DriveActivity(),
+    hasher,
   });
   const { origin, server } = await listen(uploads);
-  return { ...storage, origin, close: () => closeServer(server, opened) };
+  return {
+    ...storage,
+    origin,
+    close: async (): Promise<void> => {
+      await closeServer(server, opened);
+      hashWorker.dispose();
+    },
+  };
 }
 
 export function resumeStorage(): PersistedUrlStorage {

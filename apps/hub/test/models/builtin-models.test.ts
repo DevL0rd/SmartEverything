@@ -54,8 +54,8 @@ function modelFor(subject: ModelDevice): string | null {
 }
 
 describe('built-in models in the hub catalogue', () => {
-  it('admits every registry model and every built-in plugin model', () => {
-    const results = seed();
+  it('admits every registry model and every built-in plugin model', async () => {
+    const results = await seed();
     expect(results.flatMap((result) => result.rejections)).toStrictEqual([]);
     const pluginModels = BUILTIN_PLUGINS.reduce(
       (sum, plugin) => sum + (plugin.models ?? []).length,
@@ -64,16 +64,16 @@ describe('built-in models in the hub catalogue', () => {
     expect(catalog.all()).toHaveLength(MODEL_REGISTRY.length + pluginModels);
   });
 
-  it('leaves the catalogue unchanged when seeded again', () => {
-    seed();
-    const again = seed();
+  it('leaves the catalogue unchanged when seeded again', async () => {
+    await seed();
+    const again = await seed();
     expect(again.map((result) => result.inserted + result.updated + result.deleted)).toStrictEqual(
       again.map(() => 0),
     );
   });
 
-  it('gives the devices of the home their own models', () => {
-    seed();
+  it('gives the devices of the home their own models', async () => {
+    await seed();
     expect(modelFor(device('kingsmith.treadmill.ksg15', 'kingsmith', 'treadmill'))).toBe(
       'dev.treadmill.kingsmith-g15',
     );
@@ -98,8 +98,8 @@ describe('built-in models in the hub catalogue', () => {
     expect(modelFor(device('Brother DCP-T430W', 'Brother', 'printer'))).not.toBeNull();
   });
 
-  it('falls back to the family default model for an unknown device', () => {
-    seed();
+  it('falls back to the family default model for an unknown device', async () => {
+    await seed();
     expect(modelFor(device('acme.treadmill.x1', 'Acme', 'treadmill'))).toBe(
       'dev.treadmill.generic',
     );

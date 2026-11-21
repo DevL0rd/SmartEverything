@@ -46,6 +46,7 @@ function signalOf(overrides: Partial<SignalInput>): SignalInput {
 
 async function bench(): Promise<Bench> {
   const opened = await testStore();
+  await opened.store.live.home.load();
   const clock = new FakeClock(START);
   const profileId = opened.store.profiles.first().id;
   const chat = opened.store.aiChats.create({
@@ -96,6 +97,11 @@ async function bench(): Promise<Bench> {
 
 let current: Bench;
 
+async function gathered(): Promise<void> {
+  await current.opened.store.host.read('homeMirror', null);
+  await current.opened.store.host.call('aiWakes', 'recent', current.profileId, 1);
+}
+
 beforeEach(async () => {
   current = await bench();
 });
@@ -122,11 +128,14 @@ function wakeAction(chatId: string | null): {
 describe('WakeRunner', () => {
   it('gathers wakes for one chat inside the gather window into one turn', async () => {
     const first = current.runner.wake(wakeAction(current.chatId), current.origin);
+    await gathered();
     current.clock.advanceTo(afterStart(WAKE_GATHER_MS / 2));
     const second = current.runner.wake(wakeAction(current.chatId), current.origin);
+    await gathered();
     expect(current.turns).toHaveLength(0);
     current.clock.advanceTo(afterStart(WAKE_GATHER_MS));
     await Promise.all([first, second]);
+    await gathered();
     expect(current.turns).toHaveLength(1);
     expect(current.turns[0]?.text.match(/\[Wake\]/g)).toHaveLength(2);
     expect(current.turns[0]?.text).toContain('Do this: Check on the baby');
@@ -136,6 +145,7 @@ describe('WakeRunner', () => {
 
   it('starts a new chat when none is named', async () => {
     const woke = current.runner.wake(wakeAction(null), current.origin);
+    await gathered();
     current.clock.advanceTo(afterStart(WAKE_GATHER_MS));
     await woke;
     expect(current.turns[0]?.chatId).toBeNull();
@@ -150,6 +160,7 @@ describe('WakeRunner', () => {
     await expect(current.runner.wake(wakeAction(current.chatId), origin)).rejects.toThrow(
       'repeat forever',
     );
+    await gathered();
     expect(current.opened.store.aiWakes.recent(current.profileId, 10)[0]?.state).toBe('refused');
   });
 
@@ -162,8 +173,10 @@ describe('WakeRunner', () => {
   it('records a failed turn and rejects the automation step', async () => {
     current.failNext = true;
     const woke = current.runner.wake(wakeAction(current.chatId), current.origin);
+    await gathered();
     current.clock.advanceTo(afterStart(WAKE_GATHER_MS));
     await expect(woke).rejects.toThrow('not set up');
+    await gathered();
     const row = current.opened.store.aiWakes.recent(current.profileId, 10)[0];
     expect(row?.state).toBe('failed');
     expect(row?.reason).toContain('not set up');

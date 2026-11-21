@@ -67,3 +67,11 @@ export function plannerPreferencesOf(
 ): PlannerPreferences {
   return store.plannerPreferences.find(profileId)?.preferences ?? DEFAULT_PREFERENCES;
 }
+
+export async function loadPlannerPreferences(
+  store: Pick<Store, 'host'>,
+  profileId: string,
+): Promise<PlannerPreferences> {
+  const stored = await store.host.call('plannerPreferences', 'find', profileId);
+  return stored?.preferences ?? DEFAULT_PREFERENCES;
+}

@@ -4,7 +4,7 @@ import {
   AI_HARNESS_TARGET,
   AI_HARNESS_PERMISSION,
 } from '@smarteverything/domain';
-import { HARNESS_AUTHORITY } from '@smarteverything/harness';
+import { HARNESS_AUTHORITY } from '@smarteverything/harness/authority';
 export const HARNESS_GRANT = z.strictObject({
   client_id: z.uuid().nullable(),
   event_id: z.uuid().nullable().default(null),

@@ -12,7 +12,7 @@ import {
   type HomeMapScanStored,
   type LiveChange,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import { ScanReach } from '../../home-map/scan-reach';
 import type { ReceivedScan, ScanStore } from '../../home-map/scan-store';
 import type { HomeMapService } from '../../home-map/service';
@@ -20,7 +20,7 @@ import type { Store } from '../../store/store';
 import { authenticate, type Caller } from '../auth';
 import type { BuildOptions } from '../build';
 import type { ServerContext } from '../context';
-import { invalid } from '../errors';
+import { invalid } from '../invalid';
 import { sendJson } from '../http';
 import { LINK_LIFETIME_SECONDS, type MediaLinks } from '../media-links';
 import type { RawRoute } from '../http-server';
@@ -30,11 +30,11 @@ import { serveBytes } from '../file-serve';
 import { homeMapActorOf } from './home-map';
 
 export interface HomeMapScanServices {
-  readonly authorize: (request: IncomingMessage, endpoint: EndpointShape) => Caller;
+  readonly authorize: (request: IncomingMessage, endpoint: EndpointShape) => Promise<Caller>;
   readonly actorOf: (caller: Caller) => HomeMapActor;
   readonly scans: ScanStore;
   readonly reach: ScanReach;
-  readonly maps: Pick<HomeMapService, 'get' | 'apply'>;
+  readonly maps: Pick<HomeMapService, 'get' | 'exclusive'>;
   readonly links: Pick<MediaLinks, 'homeMapScan' | 'verify'>;
   readonly now: () => string;
   readonly log: Logger;
@@ -104,9 +104,16 @@ export function settleScans(
   services: Pick<HomeMapScanServices, 'scans' | 'reach' | 'maps'>,
   mapId: HomeMapId,
 ): void {
-  const held = services.reach.reachable(mapId);
-  if (held === null) return;
-  services.scans.reconcile(mapId, services.maps.get(mapId).scan, held);
+  background(
+    services.scans.exclusive(async () => {
+      const held = await services.reach.reachable(mapId);
+      if (held === null) return;
+      const scan = await services.maps.exclusive((maps) => maps.get(mapId).scan);
+      await services.scans.reconcile(mapId, scan, held);
+    }),
+    'home_map.scan_reconcile_failed',
+    { mapId },
+  );
 }
 
 export function followScans(
@@ -122,7 +129,11 @@ export function followScans(
     return;
   }
   services.reach.forget(mapId.data);
-  services.scans.removeAll(mapId.data);
+  background(
+    services.scans.exclusive(() => services.scans.removeAll(mapId.data)),
+    'home_map.scan_remove_failed',
+    { mapId: mapId.data },
+  );
 }
 
 interface Publication {
@@ -149,7 +160,9 @@ async function publish(
   };
   await services.scans.commit(received, mapId, format);
   try {
-    const applied = services.maps.apply([{ op: 'setScan', scan }], actor, {}, mapId);
+    const applied = await services.maps.exclusive((maps) =>
+      maps.apply([{ op: 'setScan', scan }], actor, {}, mapId),
+    );
     const stored = applied.map.scan;
     if (applied.applied.length === 0 || stored === undefined) {
       throw new ApiError('conflict', 'The map did not accept the scan.');
@@ -167,7 +180,7 @@ async function upload(
   response: ServerResponse,
   params: Readonly<Record<string, string>>,
 ): Promise<void> {
-  const caller = services.authorize(request, E.uploadHomeMapScan);
+  const caller = await services.authorize(request, E.uploadHomeMapScan);
   const mapId = mapIdOf(params);
   const query = E.uploadHomeMapScan.query.safeParse(queryOf(request));
   if (!query.success) throw invalid('query', query.error);
@@ -192,18 +205,18 @@ async function upload(
     });
     sendJson(response, 200, E.uploadHomeMapScan.response.parse(stored));
   } catch (error) {
-    services.scans.discard(received);
+    await services.scans.discard(received);
     throw error;
   }
 }
 
-function scanLink(
+async function scanLink(
   services: HomeMapScanServices,
   request: IncomingMessage,
   response: ServerResponse,
   params: Readonly<Record<string, string>>,
-): void {
-  services.authorize(request, E.homeMapScanLink);
+): Promise<void> {
+  await services.authorize(request, E.homeMapScanLink);
   const mapId = mapIdOf(params);
   const query = E.homeMapScanLink.query.safeParse(queryOf(request));
   if (!query.success) throw invalid('query', query.error);
@@ -244,15 +257,12 @@ async function removeScan(
   response: ServerResponse,
   params: Readonly<Record<string, string>>,
 ): Promise<void> {
-  const caller = services.authorize(request, E.removeHomeMapScan);
+  const caller = await services.authorize(request, E.removeHomeMapScan);
   const mapId = mapIdOf(params);
   scanOf(services, mapId);
-  const revision = await services.scans.exclusive(() => {
-    const applied = services.maps.apply(
-      [{ op: 'removeScan' }],
-      services.actorOf(caller),
-      {},
-      mapId,
+  const revision = await services.scans.exclusive(async () => {
+    const applied = await services.maps.exclusive((maps) =>
+      maps.apply([{ op: 'removeScan' }], services.actorOf(caller), {}, mapId),
     );
     if (applied.applied.length === 0)
       throw new ApiError('conflict', 'The scan was already removed.');
@@ -272,11 +282,7 @@ export function homeMapScanRoutes(services: HomeMapScanServices): readonly RawRo
     {
       method: 'GET',
       path: E.homeMapScanLink.path,
-      handle: (request, response, params) =>
-        new Promise<void>((resolve) => {
-          scanLink(services, request, response, params);
-          resolve();
-        }),
+      handle: (request, response, params) => scanLink(services, request, response, params),
     },
     {
       method: 'GET',
@@ -292,10 +298,10 @@ export function homeMapScanRoutes(services: HomeMapScanServices): readonly RawRo
 }
 
 function authorizer(store: Store): HomeMapScanServices['authorize'] {
-  return (request, endpoint) => {
-    const caller = authenticate(store, request, endpoint.access, false);
+  return async (request, endpoint) => {
+    const caller = await authenticate(store, request, endpoint.access, false);
     assertOwnerRoute(store, caller, endpoint);
-    assertScopeRoute(store, caller, endpoint, {});
+    await assertScopeRoute(store, caller, endpoint, {});
     return caller;
   };
 }
@@ -305,11 +311,11 @@ export function homeMapScanServices(
   context: Pick<ServerContext, 'homeMap' | 'store' | 'links'>,
 ): HomeMapScanServices {
   const { scans } = context.homeMap;
-  scans.sweepTemp();
+  background(scans.sweepTemp(), 'home_map.scan_sweep_failed');
   const maps = context.homeMap.service;
   const services: HomeMapScanServices = {
     authorize: authorizer(context.store),
-    actorOf: (caller) => homeMapActorOf(context.store, caller),
+    actorOf: (caller) => homeMapActorOf(caller),
     scans,
     reach: new ScanReach((mapId, after) => maps.revisions({ mapId, after }), options.log),
     maps,

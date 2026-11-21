@@ -61,12 +61,12 @@ function pathReasons(path: string, folder: Folder | null, writing: boolean): str
   return reasons;
 }
 
-function fileRisk(
+async function fileRisk(
   fields: readonly string[],
   input: Readonly<Record<string, unknown>>,
   cwd: string | null,
   writing: boolean,
-): Risk {
+): Promise<Risk> {
   const paths = fields.flatMap((field) => {
     const value = stringOf(input[field]);
     return value === null ? [] : [value];
@@ -74,7 +74,7 @@ function fileRisk(
   if (writing && paths.length === 0) {
     return risky('names no file to write');
   }
-  const folder = folderOf(cwd);
+  const folder = await folderOf(cwd, paths);
   if (paths.length > 0 && folder === null) {
     return risky('the session folder is unknown or too broad to judge the path');
   }
@@ -82,7 +82,12 @@ function fileRisk(
   return reasons.length === 0 ? SAFE : risky(...reasons);
 }
 
-function bashRisk(command: string, cwd: string | null): Risk {
+function flagValue(word: string): readonly string[] {
+  const equals = word.indexOf('=');
+  return equals === -1 ? [word] : [word, word.slice(equals + 1)];
+}
+
+async function bashRisk(command: string, cwd: string | null): Promise<Risk> {
   const scan = scanShell(command);
   if (scan.unsafe !== null) {
     return risky(scan.unsafe);
@@ -90,20 +95,20 @@ function bashRisk(command: string, cwd: string | null): Risk {
   if (scan.commands.length === 0) {
     return risky('has no command');
   }
-  const folder = folderOf(cwd);
+  const folder = await folderOf(cwd, scan.commands.flat().flatMap(flagValue));
   const reasons = scan.commands.flatMap((words) => commandReasons(words, folder));
   return reasons.length === 0 ? SAFE : risky(...new Set(reasons));
 }
 
-function toolRisk(request: RiskInput): Risk {
+async function toolRisk(request: RiskInput): Promise<Risk> {
   const { toolName, input, cwd } = request;
   const reading = Object.hasOwn(READ_TOOLS, toolName) ? READ_TOOLS[toolName] : undefined;
   const writing = Object.hasOwn(WRITE_TOOLS, toolName) ? WRITE_TOOLS[toolName] : undefined;
   if (reading !== undefined) {
-    return fileRisk(reading, input, cwd, false);
+    return await fileRisk(reading, input, cwd, false);
   }
   if (writing !== undefined) {
-    return fileRisk(writing, input, cwd, true);
+    return await fileRisk(writing, input, cwd, true);
   }
   if (NO_PATH_TOOLS.has(toolName)) {
     return SAFE;
@@ -117,7 +122,7 @@ function toolRisk(request: RiskInput): Risk {
   return risky(`${toolName} is not a tool this check knows`);
 }
 
-export function classifyPrompt(request: RiskInput): Risk {
+export async function classifyPrompt(request: RiskInput): Promise<Risk> {
   const { toolName, input, cwd } = request;
   if (toolName === 'AskUserQuestion') {
     return SAFE;
@@ -127,7 +132,7 @@ export function classifyPrompt(request: RiskInput): Risk {
   }
   if (toolName === 'Bash') {
     const command = stringOf(input['command']);
-    return command === null ? risky('has no command') : bashRisk(command, cwd);
+    return command === null ? risky('has no command') : await bashRisk(command, cwd);
   }
-  return toolRisk(request);
+  return await toolRisk(request);
 }

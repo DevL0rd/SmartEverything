@@ -1,5 +1,6 @@
 import { readdir, rename as nodeRename, mkdir } from 'node:fs/promises';
 import { dirname, posix } from 'node:path';
+import { personDriveName } from '../drive-folders';
 import { V1_NAMES } from '../layout';
 import { LEGACY_NAMES } from '../legacy';
 import { databaseSteps, groupDatabaseEntries, isDatabaseEntry } from './database-groups';
@@ -96,7 +97,7 @@ const NAMED_MOVES: readonly (readonly [string, string])[] = [
   [L.backups.releases, V.backups.releases],
 ];
 
-const MEMBERS_DIRECTORY = parentOf(L.person.drive);
+const MEMBERS_DIRECTORY = L.person.drive.parent;
 const EMPTIED_DIRECTORIES: readonly string[] = [
   posix.dirname(L.run.go2rtcConfig),
   MEMBERS_DIRECTORY,
@@ -144,7 +145,9 @@ function cursorMoves(names: readonly string[]): readonly (readonly [string, stri
 
 async function memberMoves(root: string): Promise<readonly (readonly [string, string])[]> {
   const members = await listDirectory(absoluteIn(root, MEMBERS_DIRECTORY));
-  return members.map((id) => [`${MEMBERS_DIRECTORY}/${id}`, V.person.drive(id)] as const);
+  return members.map(
+    (id) => [`${MEMBERS_DIRECTORY}/${id}`, personDriveName(V.person.drive, id)] as const,
+  );
 }
 
 function strayMoves(

@@ -16,7 +16,7 @@ import { trivial } from './trivial';
 const log = new Logger('hub.memory');
 
 export interface LearnerPorts {
-  readonly store: Pick<Store, 'aiChats' | 'assistantChat' | 'aiMemories' | 'personAccess'>;
+  readonly store: Pick<Store, 'aiChats' | 'assistantChat' | 'aiMemories' | 'personAccess' | 'host'>;
   readonly memory: Pick<MemoryService, 'offered'>;
   readonly manager: Pick<MemoryManager, 'exchange'>;
 }
@@ -99,7 +99,7 @@ export class MemoryLearner {
   }
 
   private async learnTurn(event: StoredEvent, messageId: string, reply: string): Promise<void> {
-    const person = this.ports.store.assistantChat.message(messageId);
+    const person = await this.ports.store.host.call('assistantChat', 'message', messageId);
     const who = isPersonText(person)
       ? this.principal(event.profile_id, event.chat_id, person.id)
       : null;
@@ -135,7 +135,7 @@ export class MemoryLearner {
   }
 
   private async learnCall(chatId: string, messageId: string): Promise<void> {
-    const call = this.ports.store.assistantChat.find(messageId);
+    const call = await this.ports.store.host.call('assistantChat', 'find', messageId);
     if (call?.chat_id !== chatId || call.kind !== 'call') return;
     const who = this.principal(call.profile_id, chatId, call.id);
     if (who === null) return;

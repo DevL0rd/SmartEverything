@@ -1,5 +1,5 @@
+import { settleWithHost } from './support/host-settle';
 import { randomUUID } from 'node:crypto';
-import { setImmediate as nextTurn } from 'node:timers/promises';
 import type { JsonValue } from '@smarteverything/domain';
 import { afterEach, describe, expect, it } from 'vitest';
 import { finishAutomationCommands } from '../src/automations/command-submission';
@@ -14,6 +14,7 @@ import { closeSetups, NOW, setup } from './support/executor-setup';
 import { FakeClock } from './support/fake-clock';
 import { LAMP } from './support/fake-provider';
 import { captureLogs, testLogger } from './support/logs';
+import { adapterDirectory } from './support/adapter-directory';
 
 const SECOND = 1_000;
 const open: TestDatabase[] = [];
@@ -60,7 +61,7 @@ async function rig(): Promise<Rig> {
     store: db.database,
     inventory,
     drivers,
-    adapters: { adapterFor: (): undefined => undefined },
+    adapters: adapterDirectory((): undefined => undefined),
     hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
     log: testLogger(),
     now: clock.now,
@@ -106,6 +107,7 @@ describe('a sent command is confirmed by the device state, never by waiting', ()
     await send(home, 40);
     brightness(home, 10, 100);
     home.clock.advanceTo(at(COMMAND_WAIT_MS));
+    await home.confirmations.settled();
     const missed = logs.records.filter((record) => record.event === 'command.not_confirmed');
     expect(missed).toHaveLength(1);
     expect(missed[0]?.level).toBe('warn');
@@ -131,6 +133,7 @@ describe('a sent command is confirmed by the device state, never by waiting', ()
     const home = await rig();
     brightness(home, 40, -SECOND);
     await send(home, 40);
+    await home.confirmations.settled();
     expect(home.clock.pending()).toStrictEqual([]);
   });
 });
@@ -183,6 +186,7 @@ describe('a robot cleaning command is confirmed by the reading it causes', () =>
     expectCleaning(home, 'pause');
     cleaning(home, 'cleaning', 500);
     home.clock.advanceTo(at(COMMAND_WAIT_MS));
+    await home.confirmations.settled();
     const missed = logs.records.filter((record) => record.event === 'command.not_confirmed');
     expect(missed).toHaveLength(1);
     expect(missed[0]?.payload).toMatchObject({ sent: 'pause', reported: 'cleaning' });
@@ -236,9 +240,9 @@ describe('long commands get their own budget', () => {
     }).finally(() => {
       settled = true;
     });
-    await nextTurn();
+    await settleWithHost();
     clock.advanceTo(at(COMMAND_WAIT_MS + SECOND));
-    await nextTurn();
+    await settleWithHost();
     expect(settled).toBe(false);
     finish({ clip: true });
     await expect(finishing).resolves.toBeUndefined();

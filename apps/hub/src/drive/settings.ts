@@ -47,6 +47,14 @@ export function readDriveSettings(store: Pick<Store, 'settingsKv'>): DriveSettin
   return parsed;
 }
 
+export async function loadDriveSettings(store: Pick<Store, 'host'>): Promise<DriveSettings> {
+  const saved = await store.host.call('settingsKv', 'read', DRIVE_SETTINGS_KEY);
+  if (saved === null) {
+    throw new DriveSettingsMissingError();
+  }
+  return DRIVE_SETTINGS.parse(saved);
+}
+
 export function updateDriveSettings(
   store: SettingsStore,
   update: DriveSettingsUpdate,

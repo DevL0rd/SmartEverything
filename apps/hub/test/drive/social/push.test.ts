@@ -21,7 +21,7 @@ beforeEach(async () => {
   social = await openSocial();
   share(social, TRIP, social.robin, 'view');
   share(social, TRIP, social.kim, 'edit');
-  comments = new DriveComments({ store: social.opened.store, read: social.read });
+  comments = new DriveComments({ store: social.opened.store });
   created = [];
   stop = social.opened.store.feed.subscribe((change) => {
     const row = newDriveNotification(change);
@@ -35,15 +35,15 @@ afterEach(async () => {
 });
 
 describe('Drive push', () => {
-  it('sees one new row per notification and none for a coalesced one', () => {
-    comments.add(social.kim, TRIP_FILE, { body: 'a', parentId: null, mentions: [] });
-    comments.add(social.kim, TRIP_FILE, { body: 'b', parentId: null, mentions: [] });
+  it('sees one new row per notification and none for a coalesced one', async () => {
+    await comments.add(social.kim, TRIP_FILE, { body: 'a', parentId: null, mentions: [] });
+    await comments.add(social.kim, TRIP_FILE, { body: 'b', parentId: null, mentions: [] });
     expect(created).toHaveLength(1);
     expect(created[0]).toMatchObject({ kind: 'commented', profileId: social.sam.profileId });
   });
 
-  it('words the push with the person and the file and points at the item', () => {
-    comments.add(social.kim, TRIP_FILE, { body: 'a', parentId: null, mentions: [] });
+  it('words the push with the person and the file and points at the item', async () => {
+    await comments.add(social.kim, TRIP_FILE, { body: 'a', parentId: null, mentions: [] });
     const [row] = created;
     if (row === undefined) throw new Error('no notification was written');
     const push = drivePush(row, driveNotificationNames(social.opened.store, row));
@@ -67,8 +67,8 @@ describe('Drive push', () => {
     }
   });
 
-  it('reaches only the recipient’s clients whose pushKinds include the kind', () => {
-    comments.add(social.kim, TRIP_FILE, { body: 'a', parentId: null, mentions: [] });
+  it('reaches only the recipient’s clients whose pushKinds include the kind', async () => {
+    await comments.add(social.kim, TRIP_FILE, { body: 'a', parentId: null, mentions: [] });
     const [row] = created;
     if (row === undefined) throw new Error('no notification was written');
     const prefs = new Map<string, ClientPrefRead<PushKindsPref>>([

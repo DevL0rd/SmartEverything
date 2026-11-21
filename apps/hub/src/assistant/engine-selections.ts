@@ -56,7 +56,7 @@ export class EngineSelections {
     return engine;
   }
   private assertKnownModel(model: string): void {
-    const row = this.store.aiModels.row(model);
+    const row = this.store.live.aiModels.row(model);
     if (row?.gone_at !== null)
       throw new ApiError('not_found', `The hub doesn’t know a model called ${model}.`);
   }
@@ -66,8 +66,8 @@ export class EngineSelections {
       .some(
         (device) =>
           device.kind === 'computer' &&
-          this.store.computerRuntimes.settings({ device_id: device.id, runtime }).settings.provider
-            .enabled,
+          this.store.live.computers.runtimeSettings({ device_id: device.id, runtime }).settings
+            .provider.enabled,
       );
   }
   validate(engine: Engine, user: EngineUser): void {
@@ -103,7 +103,7 @@ export class EngineSelections {
       enabled: status.settings.settings.provider.enabled,
       reason,
       capabilities: status.capabilities,
-      models: this.store.computerRuntimes.models({ device_id: device.id, runtime }),
+      models: this.store.live.computers.runtimeModels({ device_id: device.id, runtime }),
     };
     return status.settings.runtime === 'claude'
       ? {

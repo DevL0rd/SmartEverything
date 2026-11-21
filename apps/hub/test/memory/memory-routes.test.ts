@@ -30,7 +30,6 @@ beforeEach(async () => {
   captureLogs();
   opened = await testStore();
   routes = memoryRoutes(
-    opened.store,
     new MemoryService(opened.store.aiMemories, opened.store.aiChats, new FakeMemoryEmbedder()),
   );
   owner = paired('owner', 'owner');

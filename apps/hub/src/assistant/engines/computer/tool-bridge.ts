@@ -122,7 +122,7 @@ async function toolResult(
   }
   const skill = readProductSkill(event.name, event.input);
   if (skill !== undefined) return skill;
-  const checked = grant.hub.check(event.name, event.input, caller);
+  const checked = await grant.hub.check(event.name, event.input, caller);
   if (!checked.ok) {
     invalidArguments(event, caller, checked.reason);
     return { response: { error: checked.reason }, line: '', pictures: [] };

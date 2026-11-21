@@ -31,7 +31,7 @@ export interface AgentSession {
 }
 
 export interface AgentHost {
-  readonly open: (launch: AgentLaunch) => AgentSession;
+  readonly open: (launch: AgentLaunch) => Promise<AgentSession>;
 }
 
 export class AgentCancelledError extends Error {

@@ -13,11 +13,11 @@ import { pluginCallAuthority } from '../../../plugins/call-authority';
 import type { ToolActor, ToolContext, ToolOutput } from './registry';
 type Scoped = Pick<ToolContext, 'store' | 'actor' | 'caller' | 'servedTool'>;
 
-export function scopedToolCall<C extends Scoped>(
+export async function scopedToolCall<C extends Scoped>(
   context: C,
   name: string,
   work: (context: C) => Promise<ToolOutput> | ToolOutput,
-): Promise<ToolOutput> | ToolOutput {
+): Promise<ToolOutput> {
   const callback =
     context.caller?.via === 'plugin'
       ? pluginCallAuthority(context.store, context.caller.id)
@@ -26,11 +26,15 @@ export function scopedToolCall<C extends Scoped>(
   if (authority === undefined) return work(context);
   const actor =
     context.actor?.authority === undefined
-      ? admitted(context, context.servedTool ?? name, authority)
+      ? await admitted(context, context.servedTool ?? name, authority)
       : context.actor;
   return withExecutionAuthority(authority, () => work({ ...context, actor }));
 }
-function admitted(context: Scoped, name: string, authority: ConversationAuthority): ToolActor {
+function admitted(
+  context: Scoped,
+  name: string,
+  authority: ConversationAuthority,
+): Promise<ToolActor> {
   if (!MCP_DISCOVERY_TOOLS.has(name)) {
     admitExecutionTool(context.store, name, authority);
     if (hubOriginated(authority) && reachesNativeBridge(name))
@@ -38,7 +42,7 @@ function admitted(context: Scoped, name: string, authority: ConversationAuthorit
   }
   return actorOf(context, authority);
 }
-function actorOf(context: Scoped, authority: ConversationAuthority): ToolActor {
+async function actorOf(context: Scoped, authority: ConversationAuthority): Promise<ToolActor> {
   const origin = inheritedOrigin([
     authority,
     {
@@ -52,7 +56,7 @@ function actorOf(context: Scoped, authority: ConversationAuthority): ToolActor {
     clientId: authority.client_id,
     profileId: authority.profile_id,
     role: executionRole(authority),
-    chatId: context.store.assistantEvents.event(authority.event_id).chat_id,
+    chatId: (await context.store.host.call('assistantEvents', 'event', authority.event_id)).chat_id,
     ...(origin.plugin_id === null ? {} : { pluginId: origin.plugin_id }),
     ...(origin.requester === null ? {} : { pluginRequester: origin.requester }),
   };

@@ -45,15 +45,15 @@ export function homeMapTag(response: unknown): string {
   return maps === undefined && feeds === undefined ? base : `${base}-${digestOf(maps, feeds)}`;
 }
 
-export function homeMapActorOf(store: Store, caller: Caller): HomeMapActor {
-  const profileId = profileIdOf(store, caller);
+export function homeMapActorOf(caller: Caller): HomeMapActor {
+  const profileId = profileIdOf(caller);
   const byAi =
     caller.kind === 'service' ||
     (caller.kind === 'client' && (caller.via === 'assistant' || caller.mcpOrigin !== undefined));
   return byAi ? `ai:${profileId}` : `profile:${profileId}`;
 }
 
-const mapRoutes = ({ homeMap, store }: HomeMapServices) =>
+const mapRoutes = ({ homeMap }: HomeMapServices) =>
   ({
     getHomeMap: tagged(
       bound(E.getHomeMap, ({ query }) => {
@@ -70,13 +70,13 @@ const mapRoutes = ({ homeMap, store }: HomeMapServices) =>
       homeMapTag,
     ),
     editHomeMap: bound(E.editHomeMap, ({ body, query, caller }) =>
-      homeMap.service.edit(body, homeMapActorOf(store, caller), query.mapId),
+      homeMap.service.edit(body, homeMapActorOf(caller), query.mapId),
     ),
     undoHomeMap: bound(E.undoHomeMap, ({ query, caller }) =>
-      homeMap.service.undo(homeMapActorOf(store, caller), query.mapId),
+      homeMap.service.undo(homeMapActorOf(caller), query.mapId),
     ),
     redoHomeMap: bound(E.redoHomeMap, ({ query, caller }) =>
-      homeMap.service.redo(homeMapActorOf(store, caller), query.mapId),
+      homeMap.service.redo(homeMapActorOf(caller), query.mapId),
     ),
     listHomeMapRevisions: bound(E.listHomeMapRevisions, ({ query }) =>
       homeMap.service.revisions({
@@ -87,33 +87,33 @@ const mapRoutes = ({ homeMap, store }: HomeMapServices) =>
     ),
   }) as const;
 
-const sourceRoutes = ({ homeMap, store }: HomeMapServices) =>
+const sourceRoutes = ({ homeMap }: HomeMapServices) =>
   ({
     importHomeMapSource: bound(E.importHomeMapSource, ({ body, query }) =>
       homeMap.imports.importSource(body, query.mapId),
     ),
-    alignHomeMapSource: bound(E.alignHomeMapSource, ({ params, body, query, caller }) => {
+    alignHomeMapSource: bound(E.alignHomeMapSource, async ({ params, body, query, caller }) => {
       return {
-        revision: homeMap.imports.align(
+        revision: await homeMap.imports.align(
           params.sourceId,
           body,
-          homeMapActorOf(store, caller),
+          homeMapActorOf(caller),
           query.mapId,
         ),
       };
     }),
-    resolveHomeMapNotice: bound(E.resolveHomeMapNotice, ({ params, body, query, caller }) => {
+    resolveHomeMapNotice: bound(E.resolveHomeMapNotice, async ({ params, body, query, caller }) => {
       return {
-        revision: homeMap.imports.resolveNotice(
+        revision: await homeMap.imports.resolveNotice(
           params.noticeId,
           body.action,
-          homeMapActorOf(store, caller),
+          homeMapActorOf(caller),
           query.mapId,
         ),
       };
     }),
     placeHomeMapDevices: bound(E.placeHomeMapDevices, ({ body, query, caller }) =>
-      homeMap.devices.place(body, homeMapActorOf(store, caller), query.mapId),
+      homeMap.devices.place(body, homeMapActorOf(caller), query.mapId),
     ),
   }) as const;
 

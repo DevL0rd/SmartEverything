@@ -98,7 +98,7 @@ function cameraHandlers(home: Home): ReturnType<typeof coreNodeEffects> {
     ai: new AutomationAiSlot(),
     computers: new AutomationComputersSlot(),
     questions: new QuestionDesk({
-      questions: home.test.store.automationQuestions,
+      host: home.test.store.host,
       clock: { now: (): Date => new Date(home.clock.current) },
     }),
     integration,
@@ -127,7 +127,7 @@ describe('core node registration points', () => {
       ai: new AutomationAiSlot(),
       computers: new AutomationComputersSlot(),
       questions: new QuestionDesk({
-        questions: home.test.store.automationQuestions,
+        host: home.test.store.host,
         clock: { now: (): Date => new Date(home.clock.current) },
       }),
       issuer: NO_CLIPS,

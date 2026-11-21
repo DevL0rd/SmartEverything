@@ -226,11 +226,11 @@ describe('startTreadmill', () => {
   });
 });
 
-function walkFor(seconds: number, from = 0): void {
-  rig.batch(from, [statusHex({ state: IDLE })]);
-  rig.batch(from + 1, [statusHex({ state: COUNTDOWN })]);
+async function walkFor(seconds: number, from = 0): Promise<void> {
+  await rig.batch(from, [statusHex({ state: IDLE })]);
+  await rig.batch(from + 1, [statusHex({ state: COUNTDOWN })]);
   for (let second = 2; second <= seconds; second += 1) {
-    rig.batch(from + second, [
+    await rig.batch(from + second, [
       statusHex({
         state: RUNNING,
         speed10: 30,
@@ -260,14 +260,14 @@ function detail(event: DeviceEvent, key: string): JsonValue {
 describe('the treadmill triggers fed by the events a walk really emits', () => {
   const WALK = `${TRIGGER_OWNER}.walk_finished`;
 
-  function finishedWalk(): DeviceEvent {
-    walkFor(62);
-    rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 51, steps: 122 })]);
+  async function finishedWalk(): Promise<DeviceEvent> {
+    await walkFor(62);
+    await rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 51, steps: 122 })]);
     return emitted('activity', 'finished');
   }
 
-  it('fires when a walk ends for the walker and hands on what was walked', () => {
-    const event = finishedWalk();
+  it('fires when a walk ends for the walker and hands on what was walked', async () => {
+    const event = await finishedWalk();
     const person = rig.owner.profile.id;
     const fired = fireOf(WALK, { treadmill: rig.device.id, walker: person }, signalOf(event));
     expect(fired.matched).toBe(true);
@@ -281,8 +281,8 @@ describe('the treadmill triggers fed by the events a walk really emits', () => {
     });
   });
 
-  it('ignores other walkers, other treadmills and the other stages of a walk', () => {
-    const event = finishedWalk();
+  it('ignores other walkers, other treadmills and the other stages of a walk', async () => {
+    const event = await finishedWalk();
     const ports = { treadmill: rig.device.id, walker: rig.owner.profile.id };
     expect(fireOf(WALK, { ...ports, walker: rig.member.profile.id }, signalOf(event)).matched).toBe(
       false,
@@ -291,8 +291,8 @@ describe('the treadmill triggers fed by the events a walk really emits', () => {
     expect(fireOf(WALK, ports, signalOf(emitted('activity', 'started'))).matched).toBe(false);
   });
 
-  it('fires on a fault the pad reports with its code', () => {
-    rig.batch(1, [statusHex({ state: 4 })]);
+  it('fires on a fault the pad reports with its code', async () => {
+    await rig.batch(1, [statusHex({ state: 4 })]);
     const event = emitted('fault');
     const fired = fireOf(`${TRIGGER_OWNER}.fault`, { treadmill: rig.device.id }, signalOf(event));
     expect(fired.matched).toBe(true);
@@ -303,10 +303,10 @@ describe('the treadmill triggers fed by the events a walk really emits', () => {
     ).toBe(false);
   });
 
-  it('fires on maintenance after a walk once the belt is due, with the reason', () => {
+  it('fires on maintenance after a walk once the belt is due, with the reason', async () => {
     const afterNinetyDays = 91 * 86_400;
-    walkFor(62, afterNinetyDays);
-    rig.batch(afterNinetyDays + 63, [
+    await walkFor(62, afterNinetyDays);
+    await rig.batch(afterNinetyDays + 63, [
       statusHex({ state: STOPPED, time: 61, distance10m: 51, steps: 122 }),
     ]);
     const event = emitted('maintenance');

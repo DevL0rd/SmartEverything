@@ -5,17 +5,17 @@ import { chatOwnerOf, clientOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
 import { bound } from '../router';
 
-function senderOf(context: ServerContext, caller: Caller): AskSender {
+function senderOf(caller: Caller): AskSender {
   if (caller.kind === 'service')
     return {
-      owner: { ...chatOwnerOf(context.store, caller), role: 'member' },
+      owner: { ...chatOwnerOf(caller), role: 'member' },
       clientId: null,
       chatId: caller.chatId,
       plugin: pluginOriginOf(caller),
     };
   const client = clientOf(caller);
   return {
-    owner: chatOwnerOf(context.store, caller),
+    owner: chatOwnerOf(caller),
     clientId: client.id,
     chatId: caller.kind === 'client' ? (caller.chatId ?? null) : null,
     plugin: caller.kind === 'client' ? pluginOriginOf(caller) : null,
@@ -25,9 +25,9 @@ function senderOf(context: ServerContext, caller: Caller): AskSender {
 export const aiCoordinationRoutes = (context: ServerContext) =>
   ({
     askAiChat: bound(E.askAiChat, ({ params, body, caller }) =>
-      context.assistant.delegation.ask(senderOf(context, caller), params.chatId, body),
+      context.assistant.delegation.ask(senderOf(caller), params.chatId, body),
     ),
     runAiSubagent: bound(E.runAiSubagent, ({ params, body, caller }) =>
-      context.assistant.delegation.subagent(senderOf(context, caller), params.chatId, body),
+      context.assistant.delegation.subagent(senderOf(caller), params.chatId, body),
     ),
   }) as const;

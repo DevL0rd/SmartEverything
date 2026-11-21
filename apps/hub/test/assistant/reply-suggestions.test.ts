@@ -59,7 +59,12 @@ beforeEach(async () => {
   const now = (): Date => new Date(MOMENT);
   chats = new ChatDirectory(
     store,
-    new AssistantFiles({ layout: hubLayout(opened.directory, {}), chat: store.assistantChat, now }),
+    new AssistantFiles({
+      layout: hubLayout(opened.directory, {}),
+      chat: store.assistantChat,
+      attachments: store.live.attachments,
+      now,
+    }),
   );
   suggestions = new ReplySuggestions({
     store,
@@ -124,8 +129,9 @@ function embedKinds(replyId: string): string[] {
 describe('reply suggestions', () => {
   it('attaches suggestions to the latest reply of an app message on any engine', async () => {
     const { event, replyId } = exchange();
-    opened.store.assistantChat.saveSettings({
-      ...opened.store.assistantChat.settings(),
+    await opened.store.live.home.load();
+    await opened.store.live.home.assistant.save({
+      ...opened.store.live.home.assistant.read(),
       reply_suggestions: true,
     });
     suggestions.afterReply(event, 'They are on.', true);
@@ -139,8 +145,9 @@ describe('reply suggestions', () => {
 
   it('requests nothing when the setting is off', async () => {
     const { event, replyId } = exchange();
-    opened.store.assistantChat.saveSettings({
-      ...opened.store.assistantChat.settings(),
+    await opened.store.live.home.load();
+    await opened.store.live.home.assistant.save({
+      ...opened.store.live.home.assistant.read(),
       reply_suggestions: false,
     });
     suggestions.afterReply(event, 'They are on.', true);
@@ -151,8 +158,9 @@ describe('reply suggestions', () => {
 
   it('requests nothing for a failed turn', async () => {
     const { event } = exchange();
-    opened.store.assistantChat.saveSettings({
-      ...opened.store.assistantChat.settings(),
+    await opened.store.live.home.load();
+    await opened.store.live.home.assistant.save({
+      ...opened.store.live.home.assistant.read(),
       reply_suggestions: true,
     });
     suggestions.afterReply(event, 'They are on.', false);

@@ -151,7 +151,7 @@ export class NativeCommands {
     this.admit(chat, input.scope);
     const before = this.state.bound(chat);
     const configuration = nativeCommandConfiguration(this.deps, chat, input);
-    this.register(chat, input, command);
+    await this.register(chat, input, command);
     const receipt = await submitNativeCommand(this.deps, this.state, input, configuration);
     this.assertReceipt(chat, receipt, input.scope.client_id);
     const saved = this.deps.store.nativeCommandOperations.save(receipt);
@@ -178,14 +178,14 @@ export class NativeCommands {
       this.compactions.add(input.operation_id);
     return command;
   }
-  private register(
+  private async register(
     chat: AiChatRow,
     input: AiNativeCommandWrite,
     command: AiNativeCommandDescriptor | null,
-  ): void {
+  ): Promise<void> {
     if (command === null)
       this.deps.store.nativeCommandOperations.reserve(input, pendingCommand(input));
-    else retainManualCommand(this.deps, chat, { input, command });
+    else await retainManualCommand(this.deps, chat, { input, command });
     if (command !== null)
       this.outputs.set(
         input.operation_id,

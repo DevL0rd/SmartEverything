@@ -82,7 +82,7 @@ function addTelevision(
 
 async function startHubWithoutAccounts(): Promise<RunningHub> {
   const hub = await bootHubWithoutAccounts();
-  await hub.providersStarted;
+  await Promise.all([hub.providersStarted, hub.resumed]);
   return hub;
 }
 

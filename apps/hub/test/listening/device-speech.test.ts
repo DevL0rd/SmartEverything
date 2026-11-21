@@ -43,6 +43,7 @@ async function say(startMs: number, seconds: number): Promise<void> {
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   clock = new FakeClock(START);
   key = true;
   capped = false;

@@ -20,13 +20,13 @@ async function sendToWatch(
   deviceId: string,
   action: Parameters<ServerContext['watchActions']['attempt']>[1],
 ): Promise<WatchOutcome> {
-  const device = context.store.devices.find(deviceId);
+  const device = await context.store.host.call('devices', 'find', deviceId);
   if (device === undefined) {
     return { ok: false, reason: 'refused', detail: 'That watch is no longer added.' };
   }
   try {
     return await context.watchActions.attempt(
-      context.hub.watches.target(device),
+      await context.hub.watches.target(device),
       action,
       'planner',
     );
@@ -35,11 +35,11 @@ async function sendToWatch(
   }
 }
 
-function profileOfWatch(context: ServerContext, deviceId: string): string | null {
-  const device = context.store.devices.find(deviceId);
+async function profileOfWatch(context: ServerContext, deviceId: string): Promise<string | null> {
+  const device = await context.store.host.call('devices', 'find', deviceId);
   if (device === undefined || !isWatchDevice(device)) return null;
   try {
-    return context.hub.watches.target(device).profileId;
+    return (await context.hub.watches.target(device)).profileId;
   } catch (cause) {
     if (cause instanceof ApiError) return null;
     throw cause;

@@ -141,10 +141,12 @@ describe('the sunrise ramp', () => {
     expect(clock.pending()).toEqual(['2026-11-07T06:21:00.000Z']);
   });
 
-  it('turns the light on at the lowest brightness and reaches full at the ring time', () => {
+  it('turns the light on at the lowest brightness and reaches full at the ring time', async () => {
     ramp.arm(alarmWith([lamp.id], 99, false), RING);
     clock.advanceTo('2026-11-07T06:21:00.000Z');
+    await ramp.settled();
     clock.advanceTo(RING.toISOString());
+    await ramp.settled();
     const levels = valuesOf('brightness');
     expect(levels).toHaveLength(100);
     expect(levels[0]).toBe(1);
@@ -154,47 +156,53 @@ describe('the sunrise ramp', () => {
     expect(valuesOf('color_temperature')).toEqual([]);
   });
 
-  it('cools the colour temperature along the way when colour is on', () => {
+  it('cools the colour temperature along the way when colour is on', async () => {
     ramp.arm(alarmWith([lamp.id], 99, true), RING);
     clock.advanceTo(RING.toISOString());
+    await ramp.settled();
     const warmth = valuesOf('color_temperature');
     expect(warmth).toHaveLength(100);
     expect(warmth[0]).toBe(2000);
     expect(warmth.at(-1)).toBe(6500);
   });
 
-  it('ignores a light without a colour temperature control when colour is on', () => {
+  it('ignores a light without a colour temperature control when colour is on', async () => {
     const plain = light('lamp-2', [POWER, BRIGHTNESS]);
     ramp.arm(alarmWith([plain.id], 99, true), RING);
     clock.advanceTo(RING.toISOString());
+    await ramp.settled();
     expect(valuesOf('brightness')).toHaveLength(100);
     expect(valuesOf('color_temperature')).toEqual([]);
   });
 
-  it('only switches a light that cannot dim on and leaves it on', () => {
+  it('only switches a light that cannot dim on and leaves it on', async () => {
     const plain = light('lamp-3', [POWER]);
     ramp.arm(alarmWith([plain.id], 99, false), RING);
     clock.advanceTo(RING.toISOString());
+    await ramp.settled();
     expect(sent).toHaveLength(1);
     expect(valuesOf('power')).toEqual([true]);
   });
 
-  it('drives every chosen light on each step', () => {
+  it('drives every chosen light on each step', async () => {
     const second = light('lamp-4', [POWER, BRIGHTNESS]);
     ramp.arm(alarmWith([lamp.id, second.id], 99, false), RING);
     clock.advanceTo('2026-11-07T06:21:00.000Z');
+    await ramp.settled();
     expect(new Set(sent.flat().map((command) => command.deviceId))).toEqual(
       new Set([lamp.id, second.id]),
     );
   });
 
-  it('stops the remaining steps when it is cancelled', () => {
+  it('stops the remaining steps when it is cancelled', async () => {
     const alarm = alarmWith([lamp.id], 30, false);
     ramp.arm(alarm, RING);
     clock.advanceTo('2026-11-07T07:45:00.000Z');
+    await ramp.settled();
     const done = valuesOf('brightness').length;
     ramp.cancel(alarm.id);
     clock.advanceTo(RING.toISOString());
+    await ramp.settled();
     expect(valuesOf('brightness')).toHaveLength(done);
     expect(clock.pending()).toEqual([]);
   });
@@ -207,10 +215,11 @@ describe('the sunrise ramp', () => {
     expect(clock.pending()).toHaveLength(1);
   });
 
-  it('joins a ramp already under way at the step that belongs to now', () => {
+  it('joins a ramp already under way at the step that belongs to now', async () => {
     clock.jumpTo('2026-11-07T07:45:00.000Z');
     ramp.arm(alarmWith([lamp.id], 30, false), RING);
     clock.advanceTo(RING.toISOString());
+    await ramp.settled();
     const levels = valuesOf('brightness');
     expect(levels[0]).toBeGreaterThan(40);
     expect(levels.at(-1)).toBe(100);
@@ -226,7 +235,7 @@ describe('the sunrise ramp', () => {
     expect(clock.pending()).toEqual([]);
   });
 
-  it('logs a light that is gone and keeps ramping the others', () => {
+  it('logs a light that is gone and keeps ramping the others', async () => {
     const logs = captureLogs();
     const quiet = new SunriseRamp({
       store: test.store,
@@ -236,6 +245,7 @@ describe('the sunrise ramp', () => {
     });
     quiet.arm(alarmWith(['0e000000-0000-4000-8000-000000000009'], 10, false), RING);
     clock.advanceTo('2026-11-07T07:50:00.000Z');
+    await quiet.settled();
     expect(logs.events()).toContain('planner.sunrise_light_missing');
     quiet.cancelAll();
   });

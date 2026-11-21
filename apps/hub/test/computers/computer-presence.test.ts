@@ -82,21 +82,21 @@ describe('computer presence', () => {
     expect(opened.store.computerNodes.activeDeviceIds()).toEqual([]);
   });
 
-  it('reports a persisted online PC as offline without a live computer session', () => {
+  it('reports a persisted online PC as offline without a live computer session', async () => {
     const { pc } = records();
     expect(
-      service(new ComputerDirectory()).detail(pc, { owner: true, profileId: null }),
+      await service(new ComputerDirectory()).detail(pc, { owner: true, profileId: null }),
     ).toMatchObject({ online: false, at: null, parts: {} });
   });
 
-  it('keeps the running hub online without pretending it has a telemetry session', () => {
+  it('keeps the running hub online without pretending it has a telemetry session', async () => {
     const { hub } = records();
     expect(
-      service(new ComputerDirectory()).detail(hub, { owner: true, profileId: null }),
+      await service(new ComputerDirectory()).detail(hub, { owner: true, profileId: null }),
     ).toMatchObject({ online: true, at: null, parts: {}, features: [] });
   });
 
-  it('uses the PC session when connected and becomes offline when it leaves', () => {
+  it('uses the PC session when connected and becomes offline when it leaves', async () => {
     const { pc } = records();
     opened.store.devices.setOnline([pc], false);
     const directory = new ComputerDirectory();
@@ -104,9 +104,9 @@ describe('computer presence', () => {
     const leave = directory.add(session);
     const computers = service(directory);
     const viewer = { owner: true, profileId: null };
-    expect(computers.detail(pc, viewer).online).toBe(true);
+    expect((await computers.detail(pc, viewer)).online).toBe(true);
     leave();
     session.stop();
-    expect(computers.detail(pc, viewer).online).toBe(false);
+    expect((await computers.detail(pc, viewer)).online).toBe(false);
   });
 });

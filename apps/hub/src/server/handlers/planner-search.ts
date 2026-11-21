@@ -1,10 +1,8 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import type { FeedService } from '../../planner/feeds';
 import { isoOf } from '../../planner/instants';
-import { searchPlanner } from '../../planner/search';
-import { visibleCollections } from '../../planner/sharing/visibility';
 import { bound } from '../router';
-import { plannerProfileOf, type PlannerContext } from './planner-items';
+import { plannerProfileOf, type PlannerContext } from './planner-profile';
 
 export interface PlannerSearchDependencies {
   readonly now: () => Date;
@@ -15,17 +13,21 @@ const YEAR_HOURS = 24 * 366;
 
 export const plannerSearchRoutes = (context: PlannerContext, deps: PlannerSearchDependencies) =>
   ({
-    readPlannerSearch: bound(E.readPlannerSearch, ({ query, caller }) => {
+    readPlannerSearch: bound(E.readPlannerSearch, async ({ query, caller }) => {
       const profileId = plannerProfileOf(context, caller, query.personId);
       const now = Temporal.Instant.fromEpochMilliseconds(deps.now().getTime());
-      deps.feeds.registry.prepare(visibleCollections(context.store, profileId), {
-        from: isoOf(now.subtract({ hours: YEAR_HOURS })),
-        to: isoOf(now.add({ hours: YEAR_HOURS })),
-      });
-      return searchPlanner(context.store, {
+      const { host } = context.store;
+      await deps.feeds.registry.prepare(
+        await host.read('plannerVisibleCollections', { profileId }),
+        {
+          from: isoOf(now.subtract({ hours: YEAR_HOURS })),
+          to: isoOf(now.add({ hours: YEAR_HOURS })),
+        },
+      );
+      return host.read('plannerSearchView', {
         profileId,
         text: query.text,
-        now,
+        nowMs: now.epochMilliseconds,
         timeZone: context.store.settings.read().time_zone,
         when: query.when,
         collectionIds: query.collections,

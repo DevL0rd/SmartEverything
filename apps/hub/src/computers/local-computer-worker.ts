@@ -4,6 +4,7 @@ import type { HubFrame } from '@smarteverything/domain';
 import { ComputerNode } from '../node/computer-node';
 import { collectorFor } from '../node/collectors/collector';
 import { controlsFor } from '../node/controls/controls';
+import { inlineMetrics } from '../node/metrics/node-metrics';
 import { pipeLink } from '../node/link';
 import {
   LOCAL_COMPUTER_DATA,
@@ -32,11 +33,13 @@ const pipe = pipeLink<unknown, HubFrame>((frame) => {
   post({ type: 'frame', frame });
 });
 const node = new ComputerNode({
-  collector: collectorFor(process.platform, {
-    log,
-    machineId: data.machineId,
-    now: () => Date.now(),
-  }),
+  metrics: inlineMetrics(
+    collectorFor(process.platform, {
+      log,
+      machineId: data.machineId,
+      now: () => Date.now(),
+    }),
+  ),
   controls: controlsFor(process.platform, { now, log, role: 'hub' }),
   link: pipe.link,
   now,

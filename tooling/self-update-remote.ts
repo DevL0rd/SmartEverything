@@ -94,10 +94,13 @@ function installedRemoteTip(tools: RemoteTools): string | undefined {
   return releaseOf(readLedger(tools.ledger), runId)?.remoteTip;
 }
 
-export function admitRemoteSnapshot(tools: RemoteTools, input: RemoteUpdate): HubUpdateAcceptance {
+export async function admitRemoteSnapshot(
+  tools: RemoteTools,
+  input: RemoteUpdate,
+): Promise<HubUpdateAcceptance> {
   let reviewed: z.infer<typeof REVIEWED_OFFER>;
   try {
-    reviewed = reviewedHubSourceOffer(tools.data, input.ownerClient, input.offerId);
+    reviewed = await reviewedHubSourceOffer(tools.data, input.ownerClient, input.offerId);
     if (reviewed.offer.tip === installedRemoteTip(tools))
       return {
         status: 'refused',

@@ -90,7 +90,7 @@ beforeEach(async () => {
   bob = addPerson(test, 'Bob', 'member');
   cat = addPerson(test, 'Cat', 'member');
   const context = { store: test.store };
-  items = plannerItemRoutes(context, () => NOW);
+  items = plannerItemRoutes(context);
   collections = plannerCollectionRoutes(context);
   notices = [];
   signals = [];

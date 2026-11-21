@@ -4,6 +4,7 @@ import {
   isPrivate,
   privacySwitchOf,
   type AiOutreachRow,
+  type LiveChange,
   type WakeSensitivity,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
@@ -26,7 +27,7 @@ interface WakeRules {
 }
 
 export interface WakeListenersOptions {
-  readonly store: Pick<Store, 'aiOutreach' | 'cameras' | 'devices' | 'feed' | 'state'>;
+  readonly store: Pick<Store, 'live' | 'host' | 'feed'>;
   readonly rules: WakeRules;
   readonly health: Pick<CameraHealth, 'onChange'>;
   readonly microphones: Pick<CameraMicrophones, 'open'>;
@@ -69,24 +70,24 @@ export class WakeListeners {
 
   constructor(private readonly options: WakeListenersOptions) {}
 
-  start(): void {
-    this.options.store.aiOutreach.open().forEach((row) => {
+  async start(): Promise<void> {
+    const { store } = this.options;
+    await store.live.home.load();
+    const pending: AiOutreachRow[] = [];
+    let tracking = false;
+    this.unsubscribe = store.feed.subscribe((change) => {
+      if (change.table !== 'ai_outreach') this.homeChanged(change);
+      else if (tracking) this.track(change.record, change.oldRecord);
+      else if (change.record !== null) pending.push(change.record);
+    });
+    const open = await store.host.call('aiOutreach', 'open');
+    open.forEach((row) => {
       this.track(row, null);
     });
-    this.unsubscribe = this.options.store.feed.subscribe((change) => {
-      if (change.table === 'ai_outreach') {
-        this.track(change.record, change.oldRecord);
-      } else if (
-        change.table === 'cameras' ||
-        (change.table === 'devices' && change.operation !== 'UPDATE')
-      ) {
-        this.sync();
-      } else if (change.table === 'devices') {
-        this.syncIfConcerning(change.record?.id);
-      } else if (change.table === 'device_state') {
-        this.syncIfConcerning(change.record?.device_id);
-      }
+    pending.forEach((row) => {
+      this.track(row, null);
     });
+    tracking = true;
     this.unwatchTest = this.options.test.onActive(() => {
       this.sync();
     });
@@ -115,6 +116,19 @@ export class WakeListeners {
       });
   }
 
+  private homeChanged(change: LiveChange): void {
+    if (
+      change.table === 'cameras' ||
+      (change.table === 'devices' && change.operation !== 'UPDATE')
+    ) {
+      this.sync();
+    } else if (change.table === 'devices') {
+      this.syncIfConcerning(change.record?.id);
+    } else if (change.table === 'device_state') {
+      this.syncIfConcerning(change.record?.device_id);
+    }
+  }
+
   cameraAvailable(cameraId: string): void {
     this.ears.get(cameraId)?.ear.resume();
   }
@@ -138,7 +152,7 @@ export class WakeListeners {
       this.options.rules.cameras().filter((id) => !off.has(id) && this.known(id)),
     );
     const speech = new Set([
-      ...this.options.store.cameras
+      ...this.options.store.live.home.cameras
         .list()
         .filter((camera) => camera.transcribe && this.known(camera.device_id))
         .map((camera) => camera.device_id),
@@ -157,13 +171,14 @@ export class WakeListeners {
   }
 
   private known(cameraId: string): boolean {
-    const device = this.options.store.devices.find(cameraId);
+    const device = this.options.store.live.home.devices.find(cameraId);
     if (device?.online !== true) {
       return false;
     }
     const privacy = privacySwitchOf(device);
     return (
-      privacy === null || !isPrivate(privacy, this.options.store.state.value(cameraId, privacy.key))
+      privacy === null ||
+      !isPrivate(privacy, this.options.store.live.home.state.value(cameraId, privacy.key))
     );
   }
 
@@ -174,10 +189,13 @@ export class WakeListeners {
   }
 
   private concerns(deviceId: string): boolean {
-    if (this.ears.has(deviceId) || this.options.store.cameras.find(deviceId) !== undefined) {
+    if (
+      this.ears.has(deviceId) ||
+      this.options.store.live.home.cameras.find(deviceId) !== undefined
+    ) {
       return true;
     }
-    const device = this.options.store.devices.find(deviceId);
+    const device = this.options.store.live.home.devices.find(deviceId);
     return (
       device !== undefined && isCamera(device) && this.options.rules.cameras().includes(deviceId)
     );
@@ -218,7 +236,7 @@ export class WakeListeners {
   }
 
   private sensitivity(cameraId: string): WakeSensitivity {
-    return this.options.store.cameras.byDevice(cameraId).wake_sensitivity;
+    return this.options.store.live.home.cameras.byDevice(cameraId).wake_sensitivity;
   }
 
   private heard(

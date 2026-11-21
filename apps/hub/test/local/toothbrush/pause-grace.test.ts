@@ -189,24 +189,25 @@ describe('the deadline on the hub clock', () => {
   it('closes a session whose stop was never followed by a frame', async () => {
     const brushed = await sonicareRig(identityOf(), {}, 'owner', GRACE_BRAND);
     rig = brushed;
-    brushed.batch(0, [
+    await brushed.batch(0, [
       brushed.frame('4022', '00010204', 0),
       brushed.frame('4080', '01', 0),
       brushed.frame('4091', word(120), 0),
     ]);
-    brushed.batch(10, [
+    await brushed.batch(10, [
       brushed.frame('4010', '02', 10),
       brushed.frame('4082', '01', 10),
       brushed.frame('4090', word(0), 10),
     ]);
     for (let second = 11; second <= 40; second += 1) {
-      brushed.batch(second, [brushed.frame('4090', word(second - 10), second)]);
+      await brushed.batch(second, [brushed.frame('4090', word(second - 10), second)]);
     }
-    brushed.batch(41, [brushed.frame('4082', '00', 41)]);
+    await brushed.batch(41, [brushed.frame('4082', '00', 41)]);
     expect(lastState(brushed, 'brush_session')).toBe('paused');
     expect(brushed.clock.pending()).toStrictEqual([brushed.at(61)]);
     expect(brushed.test.store.brushingSessions.all(brushed.device.id, undefined)).toHaveLength(0);
     brushed.clock.advanceTo(brushed.at(70));
+    await brushed.ingest.idle();
     expect(lastState(brushed, 'brush_session')).toBe('stopped_early');
     expect(brushed.clock.pending()).toStrictEqual([]);
     const [session] = brushed.test.store.brushingSessions.all(brushed.device.id, undefined);
@@ -216,20 +217,20 @@ describe('the deadline on the hub clock', () => {
   it('cancels the deadline when brushing goes on', async () => {
     const brushed = await sonicareRig(identityOf(), {}, 'owner', GRACE_BRAND);
     rig = brushed;
-    brushed.batch(0, [
+    await brushed.batch(0, [
       brushed.frame('4022', '00010204', 0),
       brushed.frame('4080', '01', 0),
       brushed.frame('4091', word(120), 0),
     ]);
-    brushed.batch(10, [
+    await brushed.batch(10, [
       brushed.frame('4010', '02', 10),
       brushed.frame('4082', '01', 10),
       brushed.frame('4090', word(0), 10),
     ]);
-    brushed.batch(30, [brushed.frame('4090', word(20), 30)]);
-    brushed.batch(41, [brushed.frame('4090', word(31), 41), brushed.frame('4082', '00', 41)]);
+    await brushed.batch(30, [brushed.frame('4090', word(20), 30)]);
+    await brushed.batch(41, [brushed.frame('4090', word(31), 41), brushed.frame('4082', '00', 41)]);
     expect(brushed.clock.pending()).toStrictEqual([brushed.at(61)]);
-    brushed.batch(50, [brushed.frame('4082', '01', 50), brushed.frame('4090', word(32), 50)]);
+    await brushed.batch(50, [brushed.frame('4082', '01', 50), brushed.frame('4090', word(32), 50)]);
     expect(brushed.clock.pending()).toStrictEqual([brushed.at(80)]);
     expect(lastState(brushed, 'brush_session')).toBe('running');
   });

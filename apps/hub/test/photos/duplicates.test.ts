@@ -2,7 +2,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { ApiError, DUPLICATE_GROUP } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
-import { DuplicatesService, bestFirst, type DuplicateChanges } from '../../src/photos/duplicates';
+import { bestFirst } from '../../src/photos/duplicate-queries';
+import { DuplicatesService, type DuplicateChanges } from '../../src/photos/duplicates';
+import { contextDuplicates } from './duplicate-store';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
@@ -71,7 +73,7 @@ beforeEach(() => {
       return Promise.resolve();
     },
   };
-  service = new DuplicatesService(context, changes);
+  service = new DuplicatesService(contextDuplicates(context), changes);
   albums = new DriveAlbumsRepository(context);
   albums.insert({
     id: ALBUM,
@@ -176,12 +178,12 @@ describe('the suggested keeper', () => {
 });
 
 describe('the groups', () => {
-  it('lists exact copies with the keeper, the reclaimable bytes and groups the schema accepts', () => {
+  it('lists exact copies with the keeper, the reclaimable bytes and groups the schema accepts', async () => {
     seed({ n: 1, sha: sha('a'), bytes: 50, width: 10, height: 10 });
     seed({ n: 2, sha: sha('a'), bytes: 50, width: 200, height: 200 });
     seed({ n: 3, sha: sha('a'), root: ALICE_ROOT, bytes: 50, width: 10, height: 10 });
     seed({ n: 4, sha: sha('b'), bytes: 30 });
-    const page = service.groups(alice, { media: true }, undefined);
+    const page = await service.groups(alice, { media: true }, undefined);
     expect(page.groups).toHaveLength(1);
     const [group] = page.groups;
     expect(group?.keeperItemId).toBe(itemId(2));
@@ -191,84 +193,82 @@ describe('the groups', () => {
     expect(page.next).toBeNull();
   });
 
-  it('finds duplicates for every person only among the photos they can open', () => {
+  it('finds duplicates for every person only among the photos they can open', async () => {
     seed({ n: 1, sha: sha('a'), root: ALICE_ROOT });
     seed({ n: 2, sha: sha('a'), root: ALICE_ROOT });
     seed({ n: 3, sha: sha('b'), root: BOB_ROOT });
     seed({ n: 4, sha: sha('b'), root: HOME_ROOT });
     seed({ n: 5, sha: sha('b'), root: HOME_ROOT });
-    expect(service.groups(alice, { media: true }, undefined).groups.map((g) => g.sha256)).toEqual([
-      sha('a'),
-      sha('b'),
-    ]);
-    expect(service.groups(bob, { media: true }, undefined).groups.map((g) => g.sha256)).toEqual([
-      sha('b'),
-    ]);
-    expect(service.stats(bob, { media: true })).toMatchObject({ groups: 1, extraCopies: 2 });
+    expect(
+      (await service.groups(alice, { media: true }, undefined)).groups.map((g) => g.sha256),
+    ).toEqual([sha('a'), sha('b')]);
+    expect(
+      (await service.groups(bob, { media: true }, undefined)).groups.map((g) => g.sha256),
+    ).toEqual([sha('b')]);
+    expect(await service.stats(bob, { media: true })).toMatchObject({ groups: 1, extraCopies: 2 });
   });
 
-  it('puts the group that wins back most first and pages by that order', () => {
+  it('puts the group that wins back most first and pages by that order', async () => {
     seed({ n: 1, sha: sha('a'), bytes: 10 });
     seed({ n: 2, sha: sha('a'), bytes: 10 });
     seed({ n: 3, sha: sha('b'), bytes: 900 });
     seed({ n: 4, sha: sha('b'), bytes: 900 });
-    expect(service.groups(alice, { media: true }, undefined).groups.map((g) => g.sha256)).toEqual([
-      sha('b'),
-      sha('a'),
-    ]);
-    expect(() => service.groups(alice, { media: true }, 'garbage')).toThrow(ApiError);
+    expect(
+      (await service.groups(alice, { media: true }, undefined)).groups.map((g) => g.sha256),
+    ).toEqual([sha('b'), sha('a')]);
+    await expect(service.groups(alice, { media: true }, 'garbage')).rejects.toThrow(ApiError);
   });
 
-  it('counts only what the viewer may see and what the photos library shows', () => {
+  it('counts only what the viewer may see and what the photos library shows', async () => {
     seed({ n: 1, sha: sha('a'), root: ALICE_ROOT });
     seed({ n: 2, sha: sha('a'), root: ALICE_ROOT });
     seed({ n: 3, sha: sha('b'), library: false });
     seed({ n: 4, sha: sha('b'), library: false });
     seed({ n: 5, sha: sha('c'), kind: 'document' });
     seed({ n: 6, sha: sha('c'), kind: 'document' });
-    expect(service.groups(alice, { media: true }, undefined).groups).toHaveLength(1);
-    expect(service.groups(bob, { media: true }, undefined).groups).toHaveLength(0);
-    expect(service.groups(alice, { media: true }, undefined).groups).toHaveLength(1);
+    expect((await service.groups(alice, { media: true }, undefined)).groups).toHaveLength(1);
+    expect((await service.groups(bob, { media: true }, undefined)).groups).toHaveLength(0);
+    expect((await service.groups(alice, { media: true }, undefined)).groups).toHaveLength(1);
   });
 
-  it('serves the Drive view over every file kind and folder, optionally in one root', () => {
+  it('serves the Drive view over every file kind and folder, optionally in one root', async () => {
     seed({ n: 1, sha: sha('c'), kind: 'document', root: ALICE_ROOT });
     seed({ n: 2, sha: sha('c'), kind: 'document', root: ALICE_ROOT });
     seed({ n: 3, sha: sha('d'), root: HOME_ROOT });
     seed({ n: 4, sha: sha('d'), root: ALICE_ROOT });
-    expect(service.groups(alice, { media: false }, undefined).groups).toHaveLength(2);
+    expect((await service.groups(alice, { media: false }, undefined)).groups).toHaveLength(2);
     expect(
-      service.groups(alice, { media: false, rootId: ALICE_ROOT }, undefined).groups,
+      (await service.groups(alice, { media: false, rootId: ALICE_ROOT }, undefined)).groups,
     ).toHaveLength(1);
   });
 });
 
 describe('not duplicates', () => {
-  it('hides the group for that person for good and leaves others alone', () => {
+  it('hides the group for that person for good and leaves others alone', async () => {
     seed({ n: 1, sha: sha('a') });
     seed({ n: 2, sha: sha('a') });
-    service.markNotDuplicates(alice, [sha('a')]);
-    service.markNotDuplicates(alice, [sha('b')]);
-    expect(service.groups(alice, { media: true }, undefined).groups).toHaveLength(0);
-    expect(service.stats(alice, { media: true }).groups).toBe(0);
-    expect(service.groups(bob, { media: true }, undefined).groups).toHaveLength(1);
-    const again = new DuplicatesService(context, {
+    await service.markNotDuplicates(alice, [sha('a')]);
+    await service.markNotDuplicates(alice, [sha('b')]);
+    expect((await service.groups(alice, { media: true }, undefined)).groups).toHaveLength(0);
+    expect((await service.stats(alice, { media: true })).groups).toBe(0);
+    expect((await service.groups(bob, { media: true }, undefined)).groups).toHaveLength(1);
+    const again = new DuplicatesService(contextDuplicates(context), {
       trash: (): Promise<void> => Promise.resolve(),
       star: (): Promise<void> => Promise.resolve(),
     });
-    expect(again.groups(alice, { media: true }, undefined).groups).toHaveLength(0);
+    expect((await again.groups(alice, { media: true }, undefined)).groups).toHaveLength(0);
   });
 });
 
 describe('the stats', () => {
-  it('counts groups, extra copies, the bytes to win back and the sources', () => {
+  it('counts groups, extra copies, the bytes to win back and the sources', async () => {
     seed({ n: 1, sha: sha('a'), bytes: 100 });
     seed({ n: 2, sha: sha('a'), bytes: 100, root: ALICE_ROOT });
     seed({ n: 3, sha: sha('a'), bytes: 100, root: ALICE_ROOT });
     seed({ n: 4, sha: sha('b'), bytes: 40 });
     seed({ n: 5, sha: sha('b'), bytes: 40 });
     seed({ n: 6, sha: sha('c'), bytes: 7 });
-    const stats = service.stats(alice, { media: true });
+    const stats = await service.stats(alice, { media: true });
     expect(stats.groups).toBe(2);
     expect(stats.extraCopies).toBe(3);
     expect(stats.bytesBack).toBe(240);
@@ -278,8 +278,8 @@ describe('the stats', () => {
     ]);
   });
 
-  it('is empty without duplicates', () => {
-    expect(service.stats(alice, { media: true })).toEqual({
+  it('is empty without duplicates', async () => {
+    expect(await service.stats(alice, { media: true })).toEqual({
       groups: 0,
       extraCopies: 0,
       bytesBack: 0,
@@ -332,12 +332,12 @@ describe('keep best', () => {
     seed({ n: 3, sha: sha('a'), root: BOB_ROOT });
     seed({ n: 4, sha: sha('b'), root: BOB_ROOT });
     seed({ n: 5, sha: sha('b'), root: BOB_ROOT });
-    expect(service.groups(alice, { media: true }, undefined).groups).toEqual([]);
-    expect(service.stats(alice, { media: true }).groups).toBe(0);
+    expect((await service.groups(alice, { media: true }, undefined)).groups).toEqual([]);
+    expect((await service.stats(alice, { media: true })).groups).toBe(0);
     const result = await service.keepBest(alice, { scope: 'all' });
     expect(result).toEqual({ groups: 0, trashed: 0, reclaimedBytes: 0 });
     expect(trashed).toEqual([]);
-    expect(service.groups(bob, { media: true }, undefined).groups).toHaveLength(2);
+    expect((await service.groups(bob, { media: true }, undefined)).groups).toHaveLength(2);
   });
 
   it('collapses every group when asked for all', async () => {
@@ -355,7 +355,7 @@ describe('keep best', () => {
     seed({ n: 1, sha: sha('a') });
     seed({ n: 2, sha: sha('b') });
     seed({ n: 3, sha: sha('b') });
-    service.markNotDuplicates(alice, [sha('b')]);
+    await service.markNotDuplicates(alice, [sha('b')]);
     const result = await service.keepBest(alice, {
       scope: 'groups',
       sha256s: [sha('a'), sha('b'), sha('c')],

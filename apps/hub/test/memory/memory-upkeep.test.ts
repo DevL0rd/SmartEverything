@@ -72,7 +72,7 @@ function upkeep(review: Pick<MemoryReview, 'run'> = NO_REVIEW): MemoryUpkeep {
     store: opened.store,
     manager,
     review,
-    principals: new Principals(opened.store, () => profileId),
+    principals: new Principals(opened.store, () => Promise.resolve(profileId)),
     clock: fakeClock,
     zone: (): string => 'UTC',
   });
@@ -84,6 +84,7 @@ beforeEach(async () => {
   scheduled = [];
   expiredCalls = [];
   opened = await testStore(() => clock);
+  await opened.store.live.home.load();
   profileId = opened.store.profiles.first().id;
   opened.store.aiChats.create({
     profileId,
@@ -111,47 +112,47 @@ describe('the low-score purge', () => {
     expect(retentionDays(39)).toBe(365);
   });
 
-  it('deletes a score 0 memory only after more than 7 days', () => {
+  it('deletes a score 0 memory only after more than 7 days', async () => {
     seed(0);
     later(7);
-    expect(upkeep().purge()).toBe(0);
+    expect(await upkeep().purge()).toBe(0);
     later(7, 1);
-    expect(upkeep().purge()).toBe(1);
+    expect(await upkeep().purge()).toBe(1);
     expect(survivors()).toEqual([]);
   });
 
-  it('deletes a score 39 memory only after more than 365 days', () => {
+  it('deletes a score 39 memory only after more than 365 days', async () => {
     seed(39);
     later(365);
-    expect(upkeep().purge()).toBe(0);
+    expect(await upkeep().purge()).toBe(0);
     later(365, 1);
-    expect(upkeep().purge()).toBe(1);
+    expect(await upkeep().purge()).toBe(1);
   });
 
-  it('keeps the middle of the range until its own retention', () => {
+  it('keeps the middle of the range until its own retention', async () => {
     seed(20);
     later(65);
-    expect(upkeep().purge()).toBe(0);
+    expect(await upkeep().purge()).toBe(0);
     later(65, 1);
-    expect(upkeep().purge()).toBe(1);
+    expect(await upkeep().purge()).toBe(1);
   });
 
-  it('never deletes 40 and above by age', () => {
+  it('never deletes 40 and above by age', async () => {
     const kept = seed(40);
     const high = seed(95);
     later(10 * 365);
-    expect(upkeep().purge()).toBe(0);
+    expect(await upkeep().purge()).toBe(0);
     expect(survivors()).toEqual([kept.id, high.id].toSorted());
   });
 
-  it('exempts vocabulary', () => {
+  it('exempts vocabulary', async () => {
     const word = seed(0, 'vocabulary');
     later(2 * 365);
-    expect(upkeep().purge()).toBe(0);
+    expect(await upkeep().purge()).toBe(0);
     expect(survivors()).toEqual([word.id]);
   });
 
-  it('restarts the clock on a recall and on an edit', () => {
+  it('restarts the clock on a recall and on an edit', async () => {
     const recalled = seed(0, 'fact', 'recalled one');
     const edited = seed(0, 'fact', 'edited one');
     const idle = seed(0, 'fact', 'idle one');
@@ -159,11 +160,11 @@ describe('the low-score purge', () => {
     opened.store.aiMemories.recalled([recalled.id], clock.toISOString());
     opened.store.aiMemories.change(edited.id, profileId, { text: 'edited again' });
     later(8);
-    expect(upkeep().purge()).toBe(1);
+    expect(await upkeep().purge()).toBe(1);
     expect(survivors()).toEqual([recalled.id, edited.id].toSorted());
     expect(survivors()).not.toContain(idle.id);
     later(13, 1);
-    expect(upkeep().purge()).toBe(2);
+    expect(await upkeep().purge()).toBe(2);
   });
 });
 
@@ -251,7 +252,7 @@ describe('the daily review', () => {
       store: opened.store,
       model,
       writer: new MemoryWriter(opened.store.aiMemories, opened.store.aiChats, embedder, null),
-      principals: new Principals(opened.store, () => profileId),
+      principals: new Principals(opened.store, () => Promise.resolve(profileId)),
       clock: fakeClock,
       zone: (): string => 'UTC',
     });

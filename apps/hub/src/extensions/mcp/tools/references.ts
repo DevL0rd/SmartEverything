@@ -83,35 +83,40 @@ export function referenceField(field: string, optional: boolean, nullable: boole
   return optional ? nulled.optional() : nulled;
 }
 
-function idOf(context: Limited, kind: Kind, wanted: string): string {
+async function idOf(context: Limited, kind: Kind, wanted: string): Promise<string> {
   if (ID.safeParse(wanted).success) {
     return wanted;
   }
   const { store } = context;
   switch (kind) {
     case 'device':
-      return resolveNamed(placedDevices(store, deviceScopeOfActor(context)), wanted, 'device', {
-        names: ({ name, device }) => [name, device.name, device.display_name],
-        label: ({ name }) => name,
-        id: ({ device }) => device.id,
-        lists: 'device_find',
-      }).device.id;
+      return resolveNamed(
+        await placedDevices(store, deviceScopeOfActor(context)),
+        wanted,
+        'device',
+        {
+          names: ({ name, device }) => [name, device.name, device.display_name],
+          label: ({ name }) => name,
+          id: ({ device }) => device.id,
+          lists: 'device_find',
+        },
+      ).device.id;
     case 'room':
-      return resolveNamed(store.rooms.list(), wanted, 'room', {
+      return resolveNamed(await store.host.call('rooms', 'list'), wanted, 'room', {
         names: (row) => [row.name],
         label: (row) => row.name,
         id: (row) => row.id,
         lists: 'home_read',
       }).id;
     case 'group':
-      return resolveNamed(store.deviceGroups.list(), wanted, 'device group', {
+      return resolveNamed(await store.host.call('deviceGroups', 'list'), wanted, 'device group', {
         names: (row) => [row.name],
         label: (row) => row.name,
         id: (row) => row.id,
         lists: 'home_read',
       }).id;
     case 'person':
-      return resolveNamed(store.profiles.list(), wanted, 'person', {
+      return resolveNamed(await store.host.call('profiles', 'list'), wanted, 'person', {
         names: (row) => [row.name],
         label: (row) => row.name,
         id: (row) => row.id,
@@ -120,31 +125,38 @@ function idOf(context: Limited, kind: Kind, wanted: string): string {
   }
 }
 
-function resolvedValue(context: Limited, field: string, value: unknown): unknown {
+async function resolvedValue(context: Limited, field: string, value: unknown): Promise<unknown> {
   const kind = kindOf(field);
   if (typeof value === 'string') {
-    return idOf(context, kind, value);
+    return await idOf(context, kind, value);
   }
   if (Array.isArray(value)) {
-    return value.map((entry: unknown) =>
-      typeof entry === 'string' ? idOf(context, kind, entry) : entry,
+    return await Promise.all(
+      value.map(async (entry: unknown) =>
+        typeof entry === 'string' ? await idOf(context, kind, entry) : entry,
+      ),
     );
   }
   return value;
 }
 
-export function resolveReferences(
+export async function resolveReferences(
   context: Limited,
   fields: readonly string[] | undefined,
   args: Args,
-): Args {
+): Promise<Args> {
   if (fields === undefined) {
     return args;
   }
   return Object.fromEntries(
-    Object.entries(args).map(([field, value]) => [
-      field,
-      fields.includes(field) ? resolvedValue(context, field, value) : value,
-    ]),
+    await Promise.all(
+      Object.entries(args).map(
+        async ([field, value]) =>
+          [
+            field,
+            fields.includes(field) ? await resolvedValue(context, field, value) : value,
+          ] as const,
+      ),
+    ),
   );
 }

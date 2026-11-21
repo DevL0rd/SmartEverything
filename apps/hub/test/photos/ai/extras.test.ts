@@ -4,7 +4,6 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DriveReadService } from '../../../src/drive/service-read';
 import { PhotoMedia } from '../../../src/photos/media-routes';
 import { ffmpegPath } from '../../../src/media/ffmpeg-path';
 import { playableCopyPath } from '../../../src/photos/pipeline/playable';
@@ -12,10 +11,7 @@ import { FACE_MODEL_ID } from '../../../src/photos/ai/defaults';
 import { PhotoAiQueue } from '../../../src/photos/ai/queue';
 import { float32Bytes } from '../../../src/photos/ai/vectors';
 import { startPeople } from '../../../src/photos/people/wiring';
-import {
-  DriveMediaJobsRepository,
-  type DriveMediaJob,
-} from '../../../src/store/repositories/drive-media-jobs';
+import { DriveMediaJobsRepository } from '../../../src/store/repositories/drive-media-jobs';
 import type { PhotoFaceRow } from '../../../src/store/repositories/photo-faces';
 import { makeRig, type Answer, type Rig } from './rig';
 
@@ -70,7 +66,7 @@ describe('videos', () => {
       folderIds: [],
       albumIds: [],
       months: [],
-      cursor: 1,
+      cursor: rig.opened.store.driveFeed.latestSeq(),
     });
     await rig.settle();
     expect(visionBody()).toContain('video_url');
@@ -139,25 +135,25 @@ describe('Photos preferences that cannot be read', () => {
     rig.ai.start();
     await rig.settle();
     expect(rig.sent).toEqual([]);
-    expect(rig.ai.statusOf({ profileId: rig.member })).toMatchObject({
+    expect(await rig.ai.statusOf({ profileId: rig.member })).toMatchObject({
       smartSearch: false,
       faceGrouping: false,
     });
-    expect(() => rig.ai.setSwitches({ profileId: rig.member }, { smartSearch: true })).toThrow(
-      /cannot be read/u,
-    );
+    await expect(
+      rig.ai.setSwitches({ profileId: rig.member }, { smartSearch: true }),
+    ).rejects.toThrow(/cannot be read/u);
   });
 });
 
 describe('model settings', () => {
-  it('starts from the defaults, merges changes and refuses stored garbage', () => {
-    expect(rig.ai.models.read().vision).toBe('qwen/qwen3.6-35b-a3b');
-    expect(rig.ai.models.update({ eraser: 'x/y' })).toMatchObject({
+  it('starts from the defaults, merges changes and refuses stored garbage', async () => {
+    expect((await rig.ai.models()).vision).toBe('qwen/qwen3.6-35b-a3b');
+    expect(await rig.ai.updateModels({ eraser: 'x/y' })).toMatchObject({
       eraser: 'x/y',
       vision: 'qwen/qwen3.6-35b-a3b',
     });
     rig.opened.store.settingsKv.save('photos_ai', { vision: 4 });
-    expect(() => rig.ai.models.read()).toThrow(/cannot be read/u);
+    await expect(rig.ai.models()).rejects.toThrow(/cannot be read/u);
   });
 });
 
@@ -197,14 +193,16 @@ describe('faces idle', () => {
     const second = await rig.photo({ n: 2, root: rig.homeRoot, colour: '#334455' });
     const jobs = new DriveMediaJobsRepository(rig.opened.store.context);
     const queue = new PhotoAiQueue(
-      rig.opened.store.context,
-      { request: (r): DriveMediaJob => jobs.enqueue(r) },
+      rig.opened.store.host,
+      { adopt: (): void => undefined },
       () => undefined,
     );
     const drained: string[] = [];
     queue.onDrained((stage) => drained.push(stage));
-    queue.request('faces', first, 1, 'sface');
-    queue.request('faces', second, 1, 'sface');
+    await queue.request([
+      { kind: 'faces', itemId: first, rev: 1, modelVersion: 'sface' },
+      { kind: 'faces', itemId: second, rev: 1, modelVersion: 'sface' },
+    ]);
     rig.opened.store.database
       .prepare("delete from drive_media_jobs where item_id = ? and kind = 'faces'")
       .run(first);
@@ -213,11 +211,11 @@ describe('faces idle', () => {
     const tracked = queue.tracked({
       resource: 'image',
       run: () => Promise.resolve(),
-      fail: () => undefined,
+      fail: () => Promise.resolve(),
     });
     await tracked.run(job, new AbortController().signal);
     jobs.complete(job.id);
-    tracked.settled?.(job);
+    await tracked.settled?.(job);
     expect(drained).toEqual(['faces']);
   });
 
@@ -226,12 +224,18 @@ describe('faces idle', () => {
     rig.opened.store.photoFaces.replaceKindForItem(id, 'person', [storedFace(id)]);
     const notices: unknown[] = [];
     const stop = rig.opened.store.feed.subscribeNotices((notice) => notices.push(notice));
-    expect(rig.ai.statusOf({ profileId: rig.owner }).people).toEqual({ faces: 1, grouped: 0 });
-    startPeople({ store: rig.opened.store, ai: rig.ai, timeZone: () => 'UTC' });
+    expect((await rig.ai.statusOf({ profileId: rig.owner })).people).toEqual({
+      faces: 1,
+      grouped: 0,
+    });
+    await startPeople({ store: rig.opened.store, ai: rig.ai, timeZone: () => 'UTC' }).drained();
     await rig.settle();
     stop();
     expect(rig.opened.store.photoGroups.forProfile(rig.owner, 'person')).toHaveLength(1);
-    expect(rig.ai.statusOf({ profileId: rig.owner }).people).toEqual({ faces: 1, grouped: 1 });
+    expect((await rig.ai.statusOf({ profileId: rig.owner })).people).toEqual({
+      faces: 1,
+      grouped: 1,
+    });
     expect(notices).toContainEqual({ type: 'photos_people_changed', profileId: rig.owner });
   });
 
@@ -254,13 +258,9 @@ describe('the media job list', () => {
     rig.ai.start();
     await rig.settle();
     expect(rig.opened.store.photoAnalysis.find(id)?.state).toBe('failed');
-    const media = new PhotoMedia(
-      rig.opened.store.context,
-      new DriveReadService(rig.opened.store),
-      rig.opened.store,
-    );
+    const media = new PhotoMedia(rig.opened.store.host);
     const actor = { profileId: rig.owner };
-    expect(media.processing(actor)).toEqual({ queued: 0, running: 0, failed: [] });
-    expect(media.info(actor, id)).toMatchObject({ itemId: id, preview: { state: 'ready' } });
+    expect(await media.processing(actor)).toEqual({ queued: 0, running: 0, failed: [] });
+    expect(await media.info(actor, id)).toMatchObject({ itemId: id, preview: { state: 'ready' } });
   });
 });

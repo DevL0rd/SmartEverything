@@ -1,5 +1,6 @@
 import {
   ApiError,
+  type AccessAuditRow,
   TEMPLATE_SCOPES,
   createClientToken,
   hashClientToken,
@@ -51,9 +52,13 @@ function desktop(): ClientRow {
   return owner;
 }
 
-function refusedWith(work: () => unknown): ApiError {
+function audits(limit: number): Promise<AccessAuditRow[]> {
+  return opened.store.host.call('accessAudit', 'list', limit);
+}
+
+async function refusedAsync(work: () => Promise<unknown>): Promise<ApiError> {
   try {
-    work();
+    await work();
   } catch (error) {
     if (error instanceof ApiError) return error;
     throw error;
@@ -77,55 +82,51 @@ afterEach(async () => {
 });
 
 describe('the owner and the existing owner devices', () => {
-  it('get exactly the stored client row, with owner power, from any route', () => {
+  it('get exactly the stored client row, with owner power, from any route', async () => {
     const phones = Array.from({ length: 4 }, (_, index) =>
       pair('owner', ownerPerson, `Phone ${String(index)}`),
     );
     for (const phone of phones) {
       for (const entry of [HOME, AWAY]) {
         const stored = opened.store.clients.byId(phone.client.id);
-        const resolved = clientForToken(opened.store, phone.token, entry);
+        const resolved = await clientForToken(opened.store, phone.token, entry);
         expect(resolved).toStrictEqual(stored);
         expect(resolved.role).toBe('owner');
       }
     }
-    expect(opened.store.accessAudit.list(10)).toStrictEqual([]);
+    expect(await audits(10)).toStrictEqual([]);
   });
 });
 
 describe('the effective role', () => {
-  it('limits an owner device that acts as a member person, and lets it switch back', () => {
+  it('limits an owner device that acts as a member person, and lets it switch back', async () => {
     const kid = person('Kid', { role: 'member', template: 'child' });
     const phone = pair('owner', ownerPerson);
     opened.store.clients.useProfile(phone.client.id, kid.id);
-    expect(clientForToken(opened.store, phone.token, AWAY).role).toBe('member');
-    expect(() => {
-      assertMayChoosePerson(opened.store, phone.client.id, ownerPerson);
-    }).not.toThrow();
+    expect((await clientForToken(opened.store, phone.token, AWAY)).role).toBe('member');
+    await assertMayChoosePerson(opened.store, phone.client.id, ownerPerson);
     opened.store.clients.useProfile(phone.client.id, ownerPerson);
-    expect(clientForToken(opened.store, phone.token, AWAY).role).toBe('owner');
+    expect((await clientForToken(opened.store, phone.token, AWAY)).role).toBe('owner');
   });
 
-  it('keeps a member device a member even on a person who is an owner', () => {
+  it('keeps a member device a member even on a person who is an owner', async () => {
     const phone = pair('member', ownerPerson);
-    expect(clientForToken(opened.store, phone.token, HOME).role).toBe('member');
+    expect((await clientForToken(opened.store, phone.token, HOME)).role).toBe('member');
   });
 });
 
 describe('switching person', () => {
-  it('is refused for a member device, recorded in the audit, and allowed for its own person', () => {
+  it('is refused for a member device, recorded in the audit, and allowed for its own person', async () => {
     const kid = person('Kid', { role: 'member', template: 'child' });
     const phone = pair('member', kid.id);
-    const error = refusedWith(() => {
-      assertMayChoosePerson(opened.store, phone.client.id, ownerPerson);
-    });
+    const error = await refusedAsync(() =>
+      assertMayChoosePerson(opened.store, phone.client.id, ownerPerson),
+    );
     expect(error.code).toBe('forbidden');
-    expect(opened.store.accessAudit.list(10)).toMatchObject([
+    expect(await audits(10)).toMatchObject([
       { kind: 'refused_scope', client_id: phone.client.id, profile_id: kid.id },
     ]);
-    expect(() => {
-      assertMayChoosePerson(opened.store, phone.client.id, kid.id);
-    }).not.toThrow();
+    await assertMayChoosePerson(opened.store, phone.client.id, kid.id);
   });
 });
 
@@ -138,82 +139,81 @@ describe('pairing', () => {
     access = accessServiceFor(opened, (): Date => moment);
   });
 
-  function claimed(code: string): ClientRow {
-    return access.claim({ code, name: 'Pixel 9', platform: 'android', remote: 'phone' }).client;
+  async function claimed(code: string): Promise<ClientRow> {
+    return (await access.claim({ code, name: 'Pixel 9', platform: 'android', remote: 'phone' }))
+      .client;
   }
 
-  it('puts a new member device on a new member person named after it, never on the owner', () => {
-    const client = claimed(access.startPairing('member', owner.id).code);
+  async function codeOf(role: 'owner' | 'member', profileId?: string): Promise<string> {
+    return (await access.startPairing(role, owner.id, profileId)).code;
+  }
+
+  it('puts a new member device on a new member person named after it, never on the owner', async () => {
+    const client = await claimed(await codeOf('member'));
     expect(client.profile_id).not.toBe(ownerPerson);
     const created = opened.store.profiles.byId(client.profile_id ?? '');
     expect(created.name).toBe('Pixel 9');
     expect(opened.store.personAccess.byProfile(created.id)).toMatchObject({ role: 'member' });
-    expect(opened.store.accessAudit.list(5)).toMatchObject([{ kind: 'pairing_started' }]);
+    expect(await audits(5)).toMatchObject([{ kind: 'pairing_started' }]);
   });
 
-  it('binds a pairing to the named member person and refuses an owner person', () => {
+  it('binds a pairing to the named member person and refuses an owner person', async () => {
     const kid = person('Kid', { role: 'member', template: 'child' });
-    expect(claimed(access.startPairing('member', owner.id, kid.id).code).profile_id).toBe(kid.id);
-    expect(refusedWith(() => access.startPairing('member', owner.id, ownerPerson)).code).toBe(
-      'forbidden',
-    );
-    expect(refusedWith(() => access.startPairing('owner', owner.id, kid.id)).code).toBe(
-      'forbidden',
-    );
+    expect((await claimed(await codeOf('member', kid.id))).profile_id).toBe(kid.id);
+    expect((await refusedAsync(() => codeOf('member', ownerPerson))).code).toBe('forbidden');
+    expect((await refusedAsync(() => codeOf('owner', kid.id))).code).toBe('forbidden');
   });
 
-  it('puts an owner device on an owner person', () => {
-    const client = claimed(access.startPairing('owner', owner.id).code);
+  it('puts an owner device on an owner person', async () => {
+    const client = await claimed(await codeOf('owner'));
     expect(client.profile_id).toBe(ownerPerson);
   });
 
-  it('refuses a person whose access has ended, and a person who became an owner after the code was made', () => {
+  it('refuses a person whose access has ended, and a person who became an owner after the code was made', async () => {
     const guest = person('Guest', {
       role: 'guest',
       template: 'guest',
       expires_at: '2026-10-18T09:00:00.000Z',
     });
-    expect(refusedWith(() => access.startPairing('member', owner.id, guest.id)).code).toBe(
-      'conflict',
-    );
+    expect((await refusedAsync(() => codeOf('member', guest.id))).code).toBe('conflict');
     const kid = person('Kid', { role: 'member', template: 'child' });
-    const { code } = access.startPairing('member', owner.id, kid.id);
+    const code = await codeOf('member', kid.id);
     opened.store.personAccess.change(kid.id, { role: 'owner' });
-    expect(refusedWith(() => claimed(code)).code).toBe('conflict');
+    expect((await refusedAsync(() => claimed(code))).code).toBe('conflict');
   });
 });
 
 describe('guests', () => {
-  it('are refused after the end time and the refusal is audited once', () => {
+  it('are refused after the end time and the refusal is audited once', async () => {
     const guest = person('Guest', {
       role: 'guest',
       template: 'guest',
       expires_at: '2026-10-18T12:00:00.000Z',
     });
     const phone = pair('member', guest.id);
-    expect(clientForToken(opened.store, phone.token, HOME).role).toBe('member');
+    expect((await clientForToken(opened.store, phone.token, HOME)).role).toBe('member');
     moment = new Date('2026-10-18T12:00:00.000Z');
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      expect(refusedWith(() => clientForToken(opened.store, phone.token, HOME)).code).toBe(
+      expect((await refusedAsync(() => clientForToken(opened.store, phone.token, HOME))).code).toBe(
         'forbidden',
       );
     }
-    expect(opened.store.accessAudit.list(10)).toMatchObject([
+    expect(await audits(10)).toMatchObject([
       { kind: 'refused_expired', client_id: phone.client.id },
     ]);
   });
 
-  it('do not lock out an owner device that is only looking at the expired person', () => {
+  it('do not lock out an owner device that is only looking at the expired person', async () => {
     const guest = person('Guest', {
       role: 'guest',
       template: 'guest',
       expires_at: '2026-10-18T09:00:00.000Z',
     });
     const phone = pair('owner', guest.id);
-    expect(clientForToken(opened.store, phone.token, AWAY).role).toBe('member');
+    expect((await clientForToken(opened.store, phone.token, AWAY)).role).toBe('member');
   });
 
-  it('are unpaired by one timer at the end time while owner devices stay, and a later end time re-arms it', () => {
+  it('are unpaired by one timer at the end time while owner devices stay, and a later end time re-arms it', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(START);
     const withdrawn: string[] = [];
@@ -224,7 +224,7 @@ describe('guests', () => {
         withdrawn.push(id);
       },
       clientPaused: (): void => undefined,
-      lapseGrants: (): void => undefined,
+      lapseGrants: (): Promise<void> => Promise.resolve(),
     });
     const guest = person('Guest', {
       role: 'guest',
@@ -234,35 +234,40 @@ describe('guests', () => {
     const device = pair('member', guest.id);
     const viewer = pair('owner', guest.id);
     lifecycle.start();
+    await lifecycle.idle();
     opened.store.personAccess.change(guest.id, { expires_at: '2026-10-18T13:00:00.000Z' });
     lifecycle.arm();
+    await lifecycle.idle();
     vi.advanceTimersByTime(2 * 60 * 60_000);
+    await lifecycle.idle();
     expect(withdrawn).toStrictEqual([]);
     vi.advanceTimersByTime(60 * 60_000);
+    await lifecycle.idle();
     expect(withdrawn).toStrictEqual([device.client.id]);
     expect(opened.store.clients.list().map((client) => client.id)).toContain(viewer.client.id);
     expect(opened.store.clients.list().map((client) => client.id)).not.toContain(device.client.id);
-    expect(opened.store.accessAudit.list(5)).toMatchObject([{ kind: 'person_revoked' }]);
+    expect(await audits(5)).toMatchObject([{ kind: 'person_revoked' }]);
     lifecycle.stop();
   });
 
-  it('stay quiet at startup when an old end time has no devices left', () => {
+  it('stay quiet at startup when an old end time has no devices left', async () => {
     const lifecycle = new AccessLifecycle({
       store: opened.store,
       now: (): Date => moment,
       clientRemoved: (): void => undefined,
       clientPaused: (): void => undefined,
-      lapseGrants: (): void => undefined,
+      lapseGrants: (): Promise<void> => Promise.resolve(),
     });
     person('Guest', { role: 'guest', template: 'guest', expires_at: '2026-10-18T09:00:00.000Z' });
     lifecycle.start();
-    expect(opened.store.accessAudit.list(5)).toStrictEqual([]);
+    await lifecycle.idle();
+    expect(await audits(5)).toStrictEqual([]);
     lifecycle.stop();
   });
 });
 
 describe('revoking a person', () => {
-  it('unpairs the member devices at once, stops their tokens and keeps the person', () => {
+  it('unpairs the member devices at once, stops their tokens and keeps the person', async () => {
     const kid = person('Kid', { role: 'member', template: 'child' });
     const phone = pair('member', kid.id);
     const other = pair('member', kid.id, 'Tablet');
@@ -271,17 +276,17 @@ describe('revoking a person', () => {
       now: (): Date => moment,
       clientRemoved: (): void => undefined,
       clientPaused: (): void => undefined,
-      lapseGrants: (): void => undefined,
+      lapseGrants: (): Promise<void> => Promise.resolve(),
     });
     const owner = desktop();
-    expect(lifecycle.revoke(kid.id, owner.id)).toBe(2);
+    expect(await lifecycle.revoke(kid.id, owner.id)).toBe(2);
     for (const device of [phone, other]) {
-      expect(refusedWith(() => clientForToken(opened.store, device.token, HOME)).code).toBe(
-        'unauthorized',
-      );
+      expect(
+        (await refusedAsync(() => clientForToken(opened.store, device.token, HOME))).code,
+      ).toBe('unauthorized');
     }
     expect(opened.store.profiles.byId(kid.id).name).toBe('Kid');
-    expect(opened.store.accessAudit.list(5)).toMatchObject([
+    expect(await audits(5)).toMatchObject([
       { kind: 'person_revoked', client_id: owner.id, profile_id: kid.id },
     ]);
   });
@@ -290,45 +295,45 @@ describe('revoking a person', () => {
 describe('home-only conditions', () => {
   const conditions = { home_only: true, schedule: null };
 
-  it('refuse a member device over the public route and let the home network and this computer in', () => {
+  it('refuse a member device over the public route and let the home network and this computer in', async () => {
     const kid = person('Kid', { role: 'member', template: 'child', conditions });
     const phone = pair('member', kid.id);
-    expect(refusedWith(() => clientForToken(opened.store, phone.token, AWAY)).code).toBe(
+    expect((await refusedAsync(() => clientForToken(opened.store, phone.token, AWAY))).code).toBe(
       'forbidden',
     );
-    expect(opened.store.accessAudit.list(5)).toMatchObject([
+    expect(await audits(5)).toMatchObject([
       { kind: 'refused_condition', client_id: phone.client.id },
     ]);
-    expect(clientForToken(opened.store, phone.token, HOME).id).toBe(phone.client.id);
+    expect((await clientForToken(opened.store, phone.token, HOME)).id).toBe(phone.client.id);
     expect(
-      clientForToken(opened.store, phone.token, { ...HOME, remote: '::ffff:127.0.0.1' }).id,
+      (await clientForToken(opened.store, phone.token, { ...HOME, remote: '::ffff:127.0.0.1' })).id,
     ).toBe(phone.client.id);
   });
 
-  it('treat a Host header that cannot be read as away instead of failing', () => {
+  it('treat a Host header that cannot be read as away instead of failing', async () => {
     const kid = person('Kid', { role: 'member', template: 'child', conditions });
     const phone = pair('member', kid.id);
-    const refused = refusedWith(() =>
+    const refused = await refusedAsync(() =>
       clientForToken(opened.store, phone.token, { ...HOME, host: 'not a host' }),
     );
     expect(refused.code).toBe('forbidden');
   });
 
-  it('keep the read-only status of the session visible away from home', () => {
+  it('keep the read-only status of the session visible away from home', async () => {
     const kid = person('Kid', { role: 'member', template: 'child', conditions });
     const phone = pair('member', kid.id);
-    expect(clientForToken(opened.store, phone.token, { ...AWAY, statusOnly: true }).role).toBe(
-      'member',
-    );
+    expect(
+      (await clientForToken(opened.store, phone.token, { ...AWAY, statusOnly: true })).role,
+    ).toBe('member');
   });
 
-  it('never bind an owner person or an owner device acting as the person', () => {
+  it('never bind an owner person or an owner device acting as the person', async () => {
     const owner = pair('owner', ownerPerson);
     opened.store.personAccess.change(ownerPerson, { conditions });
-    expect(clientForToken(opened.store, owner.token, AWAY).role).toBe('owner');
+    expect((await clientForToken(opened.store, owner.token, AWAY)).role).toBe('owner');
     const kid = person('Kid', { role: 'member', template: 'child', conditions });
     opened.store.clients.useProfile(owner.client.id, kid.id);
-    expect(clientForToken(opened.store, owner.token, AWAY).role).toBe('member');
+    expect((await clientForToken(opened.store, owner.token, AWAY)).role).toBe('member');
   });
 
   it('start from the template scopes so the contract the guards rely on is explicit', () => {
@@ -337,7 +342,7 @@ describe('home-only conditions', () => {
 });
 
 describe('a schedule that starts', () => {
-  it('reconnects the member devices of the paused person once at the start and leaves owner devices', () => {
+  it('reconnects the member devices of the paused person once at the start and leaves owner devices', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(START);
     const paused: string[] = [];
@@ -348,7 +353,7 @@ describe('a schedule that starts', () => {
       clientPaused: (id): void => {
         paused.push(id);
       },
-      lapseGrants: (): void => undefined,
+      lapseGrants: (): Promise<void> => Promise.resolve(),
     });
     const kid = person('Kid', {
       role: 'member',
@@ -358,14 +363,19 @@ describe('a schedule that starts', () => {
     const phone = pair('member', kid.id);
     const viewer = pair('owner', kid.id, 'Owner phone');
     lifecycle.start();
+    await lifecycle.idle();
     vi.advanceTimersByTime(119 * 60_000);
+    await lifecycle.idle();
     expect(paused).toStrictEqual([]);
     vi.advanceTimersByTime(2 * 60_000);
+    await lifecycle.idle();
     expect(paused).toStrictEqual([phone.client.id]);
     expect(paused).not.toContain(viewer.client.id);
     vi.advanceTimersByTime(60 * 60_000);
+    await lifecycle.idle();
     expect(paused).toStrictEqual([phone.client.id]);
     vi.advanceTimersByTime(23 * 60 * 60_000);
+    await lifecycle.idle();
     expect(paused).toStrictEqual([phone.client.id, phone.client.id]);
     lifecycle.stop();
   });

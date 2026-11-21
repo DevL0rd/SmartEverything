@@ -5,7 +5,6 @@ import {
   type PlannerAlarmRow,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { SimulatedClock } from '../../src/clock/simulated';
 import { plannerPreferencesOf } from '../../src/planner/preferences';
 import type { plannerClockRoutes } from '../../src/server/handlers/planner-clock';
 import {
@@ -20,17 +19,17 @@ import { furnishHome } from '../support/tool-home';
 import type { TestStore } from '../support/store';
 
 let test: TestStore;
-let clock: SimulatedClock;
 let owner: TestPerson;
 let ann: TestPerson;
 let routes: ReturnType<typeof plannerClockRoutes>;
+let advance: ClockHarness['advance'];
 let close: ClockHarness['close'];
 
 const alarm = async (person: TestPerson, body: object): Promise<PlannerAlarmRow> =>
   PLANNER_ALARM_ROW.parse(await call(routes.createPlannerAlarm, person, { body }));
 
 beforeEach(async () => {
-  ({ test, clock, owner, ann, routes, close } = await buildClockHarness());
+  ({ test, owner, ann, routes, advance, close } = await buildClockHarness());
 });
 
 afterEach(async () => {
@@ -129,12 +128,12 @@ describe('alarm sound, limit, challenge and sunrise', () => {
 
   it('refuses a snooze once the limit is used up', async () => {
     const made = await alarm(ann, { time: '08:30', snooze_limit: 1 });
-    clock.advanceTo('2026-11-07T08:30:00.000Z');
+    await advance('2026-11-07T08:30:00.000Z');
     const [ring] = test.store.plannerRings.forRef('alarm', made.id);
     if (ring === undefined) throw new Error('The alarm did not ring.');
     const params = { alarmId: made.id };
     await call(routes.snoozePlannerAlarm, ann, { params, body: { ringId: ring.id } });
-    clock.advanceTo('2026-11-07T08:39:00.000Z');
+    await advance('2026-11-07T08:39:00.000Z');
     await expect(
       call(routes.snoozePlannerAlarm, ann, { params, body: { ringId: ring.id } }),
     ).rejects.toMatchObject({ code: 'conflict' });

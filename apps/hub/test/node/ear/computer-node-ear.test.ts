@@ -1,3 +1,4 @@
+import { inlineMetrics } from '../../../src/node/metrics/node-metrics';
 import {
   NODE_FRAME,
   type ListeningHubMessage,
@@ -77,7 +78,7 @@ function rig(): Rig {
   const stops: number[] = [];
   const posts: ((message: ListeningNodeMessage) => void)[] = [];
   const node = new ComputerNode({
-    collector: COLLECTOR,
+    metrics: inlineMetrics(COLLECTOR),
     controls: CONTROLS,
     link: links.node,
     now: (): Date => new Date(),

@@ -14,6 +14,9 @@ import {
   type TriggerNode,
 } from '@smarteverything/domain';
 import { assembleEngineV3 } from '../../../src/automations/engine-v3-assembly';
+import { directRunLedger } from '../../../src/automations/run-ledger';
+import { AutomationMemory } from '../../../src/automations/automation-memory';
+import { directEngineStore, type EngineStore } from '../../../src/automations/engine-store';
 import { createKindCatalog, type KindCatalog } from '../../../src/automations/plugin-kinds/catalog';
 import type { AssembledEngine } from '../../../src/automations/engine-v3-assembly';
 import type { EffectHandlers } from '../../../src/automations/engine-v3-effects';
@@ -24,6 +27,8 @@ import { seededRandom } from '../../../src/automations/world-v3/random';
 import { persistentFromOwned, withKeptData } from '../../../src/automations/world-v3/variables';
 import { KeptData } from '../../../src/automations/world-v3/kept-data';
 import type { WorldReadDeps } from '../../../src/automations/world-v3/deps';
+import type { WorldMirror } from '../../../src/automations/world-v3/world-mirror';
+import { loadedWorld } from '../../support/world-mirror';
 import { AutomationNodeStateRepository } from '../../../src/store/repositories/automation-node-state';
 import { StoreContext } from '../../../src/store/context';
 import { ChangeFeed } from '../../../src/store/feed';
@@ -84,7 +89,10 @@ export class RigV3 {
   readonly nodes: AutomationRunNodesRepository;
   readonly owned: AutomationOwnedValuesRepository;
   readonly functions: AutomationFunctionsRepository;
-  readonly kept: KeptData;
+  readonly state: AutomationNodeStateRepository;
+  readonly engineStore: EngineStore;
+  memory: AutomationMemory;
+  kept: KeptData;
   readonly finished: FinishedRun[] = [];
   readonly kinds: KindCatalog;
   readonly wiring: {
@@ -97,6 +105,7 @@ export class RigV3 {
 
   constructor(
     readonly home: Home,
+    readonly worldMirror: WorldMirror,
     private readonly options: RigOptions = {},
   ) {
     this.kinds = options.kinds ?? createKindCatalog();
@@ -108,10 +117,17 @@ export class RigV3 {
     this.nodes = new AutomationRunNodesRepository(context);
     this.owned = new AutomationOwnedValuesRepository(context);
     this.functions = new AutomationFunctionsRepository(context);
-    this.kept = new KeptData({
-      rows: new AutomationNodeStateRepository(context),
-      reset: (): void => undefined,
+    this.state = new AutomationNodeStateRepository(context);
+    this.engineStore = directEngineStore({
+      programs: this.programs,
+      plans: this.plans,
+      functions: this.functions,
+      owned: this.owned,
+      state: this.state,
+      records: this.records,
     });
+    this.memory = this.freshMemory();
+    this.kept = new KeptData({ rows: this.memory.state, reset: (): void => undefined });
     this.issuer = new CommandIssuer({
       store: home.db.store,
       database: home.db.database,
@@ -187,7 +203,13 @@ export class RigV3 {
 
   restart(): void {
     this.assembled.engine.shutdown();
+    this.memory = this.freshMemory();
+    this.kept = new KeptData({ rows: this.memory.state, reset: (): void => undefined });
     this.assembled = this.build();
+  }
+
+  private freshMemory(): AutomationMemory {
+    return new AutomationMemory({ writes: this.engineStore.writes, now: () => this.clock.now() });
   }
 
   runs(automationId: string): AutomationRunRecord[] {
@@ -209,13 +231,15 @@ export class RigV3 {
     const { store } = this.home.db;
     return {
       store,
+      world: this.worldMirror,
       executor: this.home.executor,
       clock: this.clock,
       observed: (deviceId, capability) => store.state.value(deviceId, capability),
       presence: { people: () => [] },
-      persistent: withKeptData(persistentFromOwned(this.owned), this.kept),
+      persistent: withKeptData(persistentFromOwned(this.memory.owned), this.kept),
       random: seededRandom,
       memory: transientNodeMemory(),
+      stateRows: this.memory.state,
       signals: { latest: () => [] },
       kinds: this.kinds,
     };
@@ -227,13 +251,10 @@ export class RigV3 {
     return assembleEngineV3({
       store,
       repositories: {
-        programs: this.programs,
-        plans: this.plans,
-        records: this.records,
-        nodes: this.nodes,
-        owned: this.owned,
-        functions: this.functions,
+        store: this.engineStore,
+        runs: directRunLedger(this.records, this.nodes),
       },
+      memory: this.memory,
       clock: this.clock,
       signals: {
         subscribe: (listener) => {
@@ -244,6 +265,7 @@ export class RigV3 {
         },
       },
       watchState: { load: () => null, save: (): void => undefined, retain: (): void => undefined },
+      ready: () => this.worldMirror.load(),
       isPulse: (matcher) => kindSpecOf(SIGNAL_SOURCES, matcher)?.pulse === true,
       ...(this.options.extraEffects === undefined
         ? {}
@@ -269,8 +291,9 @@ export class RigV3 {
   }
 }
 
-export function rigV3(options: RigOptions = {}): Promise<RigV3> {
-  return setup().then((home) => new RigV3(home, options));
+export async function rigV3(options: RigOptions = {}): Promise<RigV3> {
+  const home = await setup();
+  return new RigV3(home, await loadedWorld(home.db.store), options);
 }
 
 export const lit = (value: JsonValue): PortValue => ({ lit: value });

@@ -1,18 +1,11 @@
 import { symlink, unlink } from 'node:fs/promises';
-import type { DriveItem } from '@smarteverything/domain';
-import {
-  announce,
-  appendFeed,
-  commitContent,
-  identityOf,
-  isoOf,
-  recordItem,
-  type ChangeEnv,
-  type NewItem,
-} from './changes';
-import { DriveWriteError, locate, type DriveWriteRoot } from './intents';
+import { ApiError, type DriveItem } from '@smarteverything/domain';
+import { commitContent, recordItem, type ChangeEnv } from './changes';
+import { identityOf, isoOf, type NewItem } from './change-rows';
+import { locate, type DriveWriteRoot } from './intents';
+import { DriveWriteError } from './write-error';
 import { normalizeRelativePath } from './paths';
-import { linkDraft, NO_IDENTITY, specialDraft } from './posix/drafts';
+import { linkDraft } from './posix/drafts';
 import { checkDriveWrite, type DriveWriteGuard } from './quotas';
 import { changeActorOf, type DriveCaller, type WriteStore } from './service-write-support';
 import { stageBytes } from './versions';
@@ -28,10 +21,43 @@ export interface CopyContext {
   readonly env: ChangeEnv;
   readonly store: WriteStore;
   readonly guard: DriveWriteGuard;
-  readonly assertFree: (rootId: string, relPath: string, caller: DriveCaller) => void;
+  readonly assertFree: (rootId: string, relPath: string, caller: DriveCaller) => Promise<void>;
 }
 
-function newItemOf(context: CopyContext, item: DriveItem, parent: DriveItem): NewItem {
+export interface CopyAsk {
+  readonly id: string;
+  readonly toFolderId: string;
+  readonly copyId: string | undefined;
+}
+
+export async function madeAlready(
+  store: Pick<WriteStore, 'host'>,
+  id: string | undefined,
+  rootId: string,
+  relPath: string,
+): Promise<DriveItem | null> {
+  if (id === undefined) return null;
+  const made = await store.host.call('driveItems', 'find', id, null);
+  if (made === undefined) return null;
+  if (made.rootId !== rootId || made.relPath !== relPath) {
+    throw new ApiError('forbidden', 'That item id is taken.');
+  }
+  return made;
+}
+
+export interface FolderPlace {
+  readonly parent: DriveItem | null;
+  readonly name: string;
+  readonly id?: string | undefined;
+}
+
+export interface CopyTarget {
+  readonly parent: DriveItem;
+  readonly id: string | undefined;
+}
+
+function newItemOf(context: CopyContext, item: DriveItem, target: CopyTarget): NewItem {
+  const { parent, id } = target;
   return {
     rootId: context.roots.root.id,
     parentId: parent.id,
@@ -40,17 +66,18 @@ function newItemOf(context: CopyContext, item: DriveItem, parent: DriveItem): Ne
     addedAt: context.env.now().toISOString(),
     outside: false,
     addedByProfileId: context.caller.profileId,
+    ...(id === undefined ? {} : { id }),
   };
 }
 
 export async function copyLink(
   context: CopyContext,
   link: { readonly item: DriveItem; readonly target: string },
-  parent: DriveItem,
+  target: CopyTarget,
 ): Promise<DriveItem> {
   const { env, caller, roots } = context;
-  const added = newItemOf(context, link.item, parent);
-  context.assertFree(roots.root.id, added.relPath, caller);
+  const added = newItemOf(context, link.item, target);
+  await context.assertFree(roots.root.id, added.relPath, caller);
   const path = await locate(roots.root, added.relPath);
   await symlink(link.target, path);
   try {
@@ -58,7 +85,7 @@ export async function copyLink(
     if (stamp === null) {
       throw new DriveWriteError('missing', 'The copied link is missing after it was made.');
     }
-    return recordItem(env, {
+    return await recordItem(env, {
       draft: linkDraft({ ...added, modifiedAt: isoOf(stamp.mtimeNs) }, link.target),
       identity: identityOf(stamp),
       op: 'create',
@@ -70,49 +97,29 @@ export async function copyLink(
   }
 }
 
-export function copySpecial(context: CopyContext, item: DriveItem, parent: DriveItem): DriveItem {
-  const { env, store, caller, roots } = context;
-  const added = newItemOf(context, item, parent);
-  context.assertFree(roots.root.id, added.relPath, caller);
-  const source = store.driveInodes.ofItem(item.id);
-  if (source === undefined) {
-    throw new DriveWriteError('missing', 'The special file has no inode to copy.');
-  }
-  const specialType = source.type;
-  if (
-    specialType !== 'fifo' &&
-    specialType !== 'socket' &&
-    specialType !== 'char' &&
-    specialType !== 'block'
-  ) {
-    throw new DriveWriteError('missing', 'The item is not a special file.');
-  }
-  return store.write(() => {
-    const written = store.driveItems.write({
-      item: specialDraft(added),
-      identity: NO_IDENTITY,
-      inode: {
-        specialType,
-        rdev: source.rdev,
-        mode: source.mode,
-        uid: source.uid,
-        gid: source.gid,
-      },
-    }).item;
-    appendFeed(env, written, 'create', changeActorOf(caller));
-    announce(env, written.rootId, written.parentId, [written]);
-    return written;
+export async function copySpecial(
+  context: CopyContext,
+  item: DriveItem,
+  target: CopyTarget,
+): Promise<DriveItem> {
+  const { store, caller, roots } = context;
+  const added = newItemOf(context, item, target);
+  await context.assertFree(roots.root.id, added.relPath, caller);
+  return store.host.write('driveCopySpecial', {
+    added,
+    sourceItemId: item.id,
+    actor: changeActorOf(caller),
   });
 }
 
 export async function copyFile(
   context: CopyContext,
   item: DriveItem,
-  parent: DriveItem,
+  target: CopyTarget,
 ): Promise<DriveItem> {
   const { env, guard, caller, roots } = context;
-  const relPath = normalizeRelativePath(`${parent.relPath}/${item.name}`);
-  context.assertFree(roots.root.id, relPath, caller);
+  const relPath = normalizeRelativePath(`${target.parent.relPath}/${item.name}`);
+  await context.assertFree(roots.root.id, relPath, caller);
   await checkDriveWrite(guard, {
     profileId: caller.profileId,
     addBytes: item.bytes,
@@ -127,6 +134,7 @@ export async function copyFile(
       staged,
       relPath,
       actor: changeActorOf(caller),
+      id: target.id,
     });
     return written.item;
   } catch (cause) {

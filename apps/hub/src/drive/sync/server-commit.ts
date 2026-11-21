@@ -9,27 +9,17 @@ import {
   type HubEntry,
 } from '@smarteverything/domain/drive-sync';
 import { sendJson } from '../../server/http';
-import {
-  folderDraft,
-  identityOf,
-  isoOf,
-  parentOf,
-  recordItem,
-  commitContent,
-  type ChangeActor,
-} from '../changes';
-import { commitConflictCopy, type ConflictEnv } from '../conflicts';
-import { DriveWriteError, locate, type DriveWriteRoot } from '../intents';
+import { folderDraft, parentOf, recordItem, commitContent, type ChangeActor } from '../changes';
+import { identityOf, isoOf } from '../change-rows';
+import { commitConflictCopy } from '../conflicts';
+import type { ContentAlongside } from '../units/content';
+import { locate, type DriveWriteRoot } from '../intents';
+import { DriveWriteError } from '../write-error';
 import { checkDriveWrite } from '../quotas';
 import { applyMeta, type SyncCall, type WantedMeta } from './server-meta';
 import type { StagedBytes } from '../versions';
-import {
-  assertWritable,
-  inScope,
-  resolveScope,
-  toWirePath,
-  type SyncScope,
-} from './placement-scope';
+import { assertWritable, resolveScope, type SyncScope } from './placement-scope';
+import { inScope, toWirePath } from './sync-paths';
 import {
   contentToken,
   guarded,
@@ -91,7 +81,7 @@ async function makeFolder(
   if (stamp === null) {
     throw new DriveWriteError('missing', 'The new folder is missing after it was made.');
   }
-  recordItem(env, {
+  await recordItem(env, {
     draft: folderDraft(
       {
         rootId: root.id,
@@ -133,31 +123,11 @@ export async function discardTxn(env: SyncEnv, txns: SyncTxns, txn: SyncTxn): Pr
   await env.files.remove(await locate(row, txn.spec.tmpRel));
 }
 
-function carryBlocks(env: SyncEnv, spec: TxnSpec): (item: DriveItem) => void {
-  const hashes = packedToBytes(packHashes(spec.hashes));
-  return (item) => {
-    env.store.driveBlocks.put({
-      itemId: item.id,
-      rev: item.rev,
-      blockSize: spec.meta.blockSize,
-      hashes,
-    });
-    env.store.driveBlocks.removeBefore(item.id, item.rev);
-  };
-}
-
-function copyEnv(env: SyncEnv, spec: TxnSpec): ConflictEnv {
-  const carry = carryBlocks(env, spec);
+function blocksOf(spec: TxnSpec): ContentAlongside {
   return {
-    ...env,
-    conflicts: {
-      insert: (conflict): void => {
-        env.conflicts.insert(conflict);
-        carry(env.store.driveItems.byId(conflict.conflictItemId, null));
-      },
-      find: (id) => env.conflicts.find(id),
-      resolve: (id, resolution, at) => env.conflicts.resolve(id, resolution, at),
-    },
+    kind: 'blocks',
+    blockSize: spec.meta.blockSize,
+    hashes: packedToBytes(packHashes(spec.hashes)),
   };
 }
 
@@ -193,7 +163,7 @@ export class SyncCommitter {
     params: Readonly<Record<string, string>>,
   ): Promise<void> {
     return guarded(response, async () => {
-      const result = await this.commit(nodeOf(this.env, request), params['txn'] ?? '', null);
+      const result = await this.commit(await nodeOf(this.env, request), params['txn'] ?? '', null);
       sendJson(response, 200, result);
     });
   }
@@ -289,7 +259,7 @@ export class SyncCommitter {
         staged: await this.staged(root, spec, assembled),
         relPath: spec.relPath,
         actor,
-        alongside: carryBlocks(this.env, spec),
+        alongside: [blocksOf(spec)],
       });
       await applyMeta(this.callOf(spec, scope), written.item, this.wantedOf(spec));
       return acceptOf(this.env, spec.rootId, spec.opId, written.item.rev);
@@ -318,8 +288,9 @@ export class SyncCommitter {
     const { spec } = txn;
     const root = scope.drive;
     await this.admit(root, spec, assembled, 0);
-    const conflict = await commitConflictCopy(copyEnv(this.env, spec), {
+    const conflict = await commitConflictCopy(this.env, {
       hub,
+      alongside: [blocksOf(spec)],
       staged: await this.staged(root, spec, assembled),
       baseRev: Math.max(spec.baseRev ?? NO_BASE_REV, NO_BASE_REV),
       deviceId: spec.deviceId,

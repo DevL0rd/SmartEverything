@@ -12,7 +12,7 @@ import { captureLogs, testLogger } from '../support/logs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { unusedDrivePath } from '../support/store';
+import { testStoreHost } from '../support/store-host';
 
 const DAY = 86_400_000;
 const DAY_ZERO = Date.parse('2026-01-01T00:00:00.000Z');
@@ -162,11 +162,12 @@ describe('the store sweep', () => {
     let now = DAY_ZERO;
     const open = (): ReturnType<typeof openStore> =>
       openStore({
+        host: testStoreHost(),
         path: join(directory, 'sweep.db'),
         log: testLogger('store'),
         now: () => new Date(now),
         systemTimeZone: 'UTC',
-        drivePathOf: unusedDrivePath,
+        driveFolders: null,
       });
     const wake = (store: ReturnType<typeof openStore>, profile: string): void => {
       store.aiWakes.add({

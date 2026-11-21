@@ -1,10 +1,10 @@
-import type { DriveItem, DriveUploadTarget } from '@smarteverything/domain';
+import type { DriveItem, DriveUpload, DriveUploadTarget } from '@smarteverything/domain';
+import type { Store } from '../store/store';
 import type { ChangeEnv } from './changes';
-import type { StoredDrive } from '../store/repositories/drive-roots';
-import { canRead, canWrite, driveAccess, itemAccess, type DriveActor } from './access';
-import { isFileItem, type FileItem } from './file-item';
+import type { DriveActor } from './access';
+import type { FileItem } from './file-item';
 import { locate, type DriveWriteRoot } from './intents';
-import { freeNameAt, TusError } from './uploads-tus-wire';
+import { absent, freeNameAt, TusError, type TusCaller } from './uploads-tus-wire';
 
 export interface Destination {
   readonly root: DriveWriteRoot;
@@ -12,75 +12,33 @@ export interface Destination {
   readonly item: FileItem | null;
 }
 
-const NO_TARGET = 'There is no such target for this credential.';
-
-const VIEW_ONLY = 'This target can only be viewed; nothing can be uploaded into it.';
-
-function writableTop(store: ChangeEnv['store'], rootId: string, caller: DriveActor): Destination {
-  const root = store.driveRoots.find(rootId);
-  if (root === undefined) {
-    throw new TusError(404, NO_TARGET);
-  }
-  const access = driveAccess(caller, root);
-  if (!canRead(access)) {
-    throw new TusError(404, NO_TARGET);
-  }
-  if (!canWrite(access)) {
-    throw new TusError(403, VIEW_ONLY);
-  }
-  return { root, folder: null, item: null };
-}
-
-type InsideTarget = Exclude<DriveUploadTarget, { readonly kind: 'drive' }>;
-
-function writable(
-  store: ChangeEnv['store'],
-  target: InsideTarget,
-  caller: DriveActor,
-): { readonly root: StoredDrive; readonly found: DriveItem } {
-  const found = store.driveItems.find(
-    target.kind === 'folder' ? target.folderId : target.itemId,
-    caller.profileId,
-  );
-  const root = found === undefined ? undefined : store.driveRoots.find(found.rootId);
-  if (found === undefined || root === undefined) {
-    throw new TusError(404, NO_TARGET);
-  }
-  const access = itemAccess(store, caller, root, found);
-  if (!canRead(access)) {
-    throw new TusError(404, NO_TARGET);
-  }
-  if (!canWrite(access)) {
-    throw new TusError(403, VIEW_ONLY);
-  }
-  return { root, found };
-}
-
-export function destinationOf(
-  store: ChangeEnv['store'],
+export async function destinationOf(
+  store: Pick<Store, 'host'>,
   target: DriveUploadTarget,
   caller: DriveActor,
-): Destination {
-  if (target.kind === 'drive') {
-    return writableTop(store, target.rootId, caller);
+): Promise<Destination> {
+  const found = await store.host.read('driveUploadDestination', { target, caller });
+  if (found.kind === 'refused') throw new TusError(found.status, found.message);
+  return found.destination;
+}
+
+export interface OwnedLookup {
+  readonly id: string;
+  readonly caller: TusCaller;
+  readonly now: Date;
+}
+
+export async function ownedUpload(
+  store: Pick<Store, 'host'>,
+  { id, caller, now }: OwnedLookup,
+): Promise<DriveUpload> {
+  const owner = { profileId: caller.profileId, clientId: caller.clientId, nodeId: caller.nodeId };
+  const upload = await store.host.call('driveUploads', 'findOwned', id, owner);
+  const due = upload?.state === 'open' && Date.parse(upload.expiresAt) <= now.getTime();
+  if (upload === undefined || upload.state === 'failed' || upload.state === 'expired' || due) {
+    throw absent();
   }
-  const { root, found } = writable(store, target, caller);
-  if (target.kind === 'folder') {
-    if (found.kind !== 'folder') {
-      throw new TusError(400, 'The target is not a folder.');
-    }
-    return { root, folder: found, item: null };
-  }
-  if (!isFileItem(found)) {
-    throw new TusError(400, 'The target is not a regular file.');
-  }
-  if (found.rev !== target.baseRev) {
-    throw new TusError(
-      409,
-      `The file is at rev ${String(found.rev)}, not ${String(target.baseRev)}.`,
-    );
-  }
-  return { root, folder: null, item: found };
+  return upload;
 }
 
 export async function relPathOf(
@@ -95,7 +53,13 @@ export async function relPathOf(
   for (let attempt = 1; ; attempt += 1) {
     const candidate = freeNameAt(name, attempt);
     const relPath = folder === '' ? candidate : `${folder}/${candidate}`;
-    const indexed = env.store.driveItems.byPath(destination.root.id, relPath, null);
+    const indexed = await env.store.host.call(
+      'driveItems',
+      'byPath',
+      destination.root.id,
+      relPath,
+      null,
+    );
     const onDisk = await env.files.stamp(await locate(destination.root, relPath));
     if (indexed === undefined && onDisk === null) {
       return relPath;

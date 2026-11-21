@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isAbsolute } from 'node:path';
-import { HARNESS_AUTHORITY } from './server-policy';
+import { HARNESS_AUTHORITY } from './authority';
 import {
   HARNESS_PLATFORM,
   AI_HARNESS_TARGET,

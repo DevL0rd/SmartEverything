@@ -2,17 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DSH_SESSION_HEADER } from '@smarteverything/domain';
 import { ChatDirectory } from '../../../src/assistant/chat-directory';
-import { ConversationLog } from '../../../src/assistant/conversation-log';
 import { AssistantFiles } from '../../../src/assistant/files';
-import { costRolledUp } from '../../../src/assistant/cost-rollup';
 import {
   admitInactiveRemoval,
   removalNeedsInactive,
 } from '../../../src/assistant/agent-runs/inactive-removal';
-import {
-  adoptSubagentSession,
-  settleNativeChild,
-} from '../../../src/assistant/engines/dsh/children';
+import { adoptSubagentSession } from '../../../src/assistant/engines/dsh/children-adoption';
+import { settleNativeChild } from '../../../src/assistant/engines/dsh/children';
 import { harnessRig, type Rig } from './support/rig';
 import { hubLayout } from '../../../src/data-layout';
 
@@ -35,7 +31,7 @@ async function finishedHelper(): Promise<{
   rig = made;
   const { store } = made.opened;
   const parent = made.newChat(made.hub.target);
-  const open = made.service.prepare(made.owner, parent.id, made.authority, made.clientId);
+  const open = await made.service.prepare(made.owner, parent.id, made.authority, made.clientId);
   const host = made.service.directory.get(made.hub.target).host;
   const parentGrant = store.harnessSessions.grant(open.claim.session_id);
   if (parentGrant === undefined) throw new Error('The parent session has no grant.');
@@ -49,7 +45,7 @@ async function finishedHelper(): Promise<{
     origin: 'subagent',
     delegationDepth: 1,
   });
-  const { chat, run } = adoptSubagentSession(store, new ConversationLog(store), {
+  const { chat, run } = await adoptSubagentSession(store, {
     principal: made.service.hostPrincipal(made.owner.profileId, host),
     parentClaim: open.claim,
     parentGrant,
@@ -120,7 +116,6 @@ describe('deleting a finished helper from its row', () => {
   it('removes every trace of the helper and keeps its cost in the parent', async () => {
     const { made, parentId, childId, childSession, runId } = await finishedHelper();
     const { store } = made.opened;
-    store.ledger.rollup(costRolledUp(store));
     const usage = store.ledger.record({
       profile_id: made.owner.profileId,
       chat_id: childId,
@@ -141,6 +136,7 @@ describe('deleting a finished helper from its row', () => {
       new AssistantFiles({
         layout: hubLayout(made.opened.directory, {}),
         chat: store.assistantChat,
+        attachments: store.live.attachments,
         now: (): Date => new Date(),
       }),
     );

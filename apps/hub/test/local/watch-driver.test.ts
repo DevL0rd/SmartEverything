@@ -54,13 +54,11 @@ function driverAnswering(result: WatchActionResult): {
 } {
   const sent: WatchActionRequest[] = [];
   const driver = watchDriver({
-    store: {
-      devices: {
-        byExternal: (provider: string, externalId: string): DeviceRow | undefined =>
-          provider === 'local' && externalId === EXTERNAL_ID ? DEVICE : undefined,
-      },
+    devices: {
+      byExternal: (provider: string, externalId: string): Promise<DeviceRow | undefined> =>
+        Promise.resolve(provider === 'local' && externalId === EXTERNAL_ID ? DEVICE : undefined),
     },
-    watches: { target: (): WatchActionTarget => TARGET },
+    watches: { target: (): Promise<WatchActionTarget> => Promise.resolve(TARGET) },
     actions: {
       run: (_target, action): Promise<WatchActionResult> => {
         sent.push(action);

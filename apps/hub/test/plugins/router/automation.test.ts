@@ -510,7 +510,10 @@ describe('the router client values', () => {
       { stream: LIVE_STREAM, at: NOW, value: JSON_VALUE.parse(liveOf(HOUSE)) },
       1,
     );
-    const handler = pluginValueHandler(opened.store, valueBindingOf('router', value));
+    const handler = pluginValueHandler(
+      { pluginStreams: { list: () => opened.store.pluginData.streams() } },
+      valueBindingOf('router', value),
+    );
     if (handler === undefined) throw new Error('no handler');
     return handler(
       { device },
@@ -571,7 +574,7 @@ function performer(
         ? Promise.resolve(failure(`no tool ${tool.name}`))
         : found.run(args, caller);
     },
-    validate: (tool, args) => byName.get(tool.name)?.validate(args) ?? null,
+    validate: (tool, args) => Promise.resolve(byName.get(tool.name)?.validate(args) ?? null),
     changes: () => () => undefined,
   };
   const handlers = pluginNodeEffects({
@@ -626,9 +629,12 @@ describe('the router nodes in an automation run', () => {
       ok: true,
       value: { sent: true },
     });
-    await vi.waitFor(() => {
-      expect(rig.commands).toEqual([{ command: 'client', client: { action: 'block', mac: TV } }]);
-    });
+    await vi.waitFor(
+      () => {
+        expect(rig.commands).toEqual([{ command: 'client', client: { action: 'block', mac: TV } }]);
+      },
+      { timeout: 10_000 },
+    );
   });
 
   it('restarts Wi-Fi or the whole router', async () => {

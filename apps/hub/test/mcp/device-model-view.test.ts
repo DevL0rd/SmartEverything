@@ -28,8 +28,13 @@ function register(exact: string[]): void {
   });
 }
 
-function modelOf(id: string): Record<string, unknown> {
-  const read = deviceDetails(opened.store, null, OWNER, placedDevice(opened.store, null, id));
+async function modelOf(id: string): Promise<Record<string, unknown>> {
+  const read = await deviceDetails(
+    opened.store,
+    null,
+    OWNER,
+    await placedDevice(opened.store, null, id),
+  );
   const device = Object.fromEntries(Object.entries(read))['device'];
   if (typeof device !== 'object' || device === null) throw new Error('No device.');
   const model: unknown = Object.fromEntries(Object.entries(device))['model'];
@@ -38,9 +43,9 @@ function modelOf(id: string): Record<string, unknown> {
 }
 
 describe('the device read view model field', () => {
-  it('reports no source when nothing resolves', () => {
+  it('reports no source when nothing resolves', async () => {
     const device = addDevice(opened, { model: 'wiz.fan' });
-    expect(modelOf(device.id)).toEqual({
+    expect(await modelOf(device.id)).toEqual({
       id: null,
       asset_hash: null,
       source: 'none',
@@ -49,13 +54,13 @@ describe('the device read view model field', () => {
     });
   });
 
-  it('reports a catalogue model matched by the device identity', () => {
+  it('reports a catalogue model matched by the device identity', async () => {
     register(['wiz.fan']);
     const device = addDevice(opened, { model: 'wiz.fan' });
-    expect(modelOf(device.id)).toMatchObject({ id: 'dev.fan.wiz', extras: [] });
+    expect(await modelOf(device.id)).toMatchObject({ id: 'dev.fan.wiz', extras: [] });
   });
 
-  it('follows a household override of the device', () => {
+  it('follows a household override of the device', async () => {
     register(['other.fan']);
     const device = addDevice(opened, { model: 'wiz.fan' });
     opened.store.modelOverrides.set({
@@ -65,6 +70,6 @@ describe('the device read view model field', () => {
       finish: 'dark',
       setBy: 'owner',
     });
-    expect(modelOf(device.id)).toMatchObject({ id: 'dev.fan.wiz', finish: 'dark' });
+    expect(await modelOf(device.id)).toMatchObject({ id: 'dev.fan.wiz', finish: 'dark' });
   });
 });

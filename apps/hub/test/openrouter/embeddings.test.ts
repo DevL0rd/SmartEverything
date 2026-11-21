@@ -21,10 +21,10 @@ function clientOf(
   answer: (body: { input: readonly unknown[] }) => Response,
   key: string | null = 'key',
 ): OpenRouterClient {
-  const transport: typeof fetch = (input, init) => {
-    const body = bodyOf(init);
+  const transport: typeof fetch = async (input, init) => {
+    const body = await bodyOf(init);
     sent.push({ url: urlOf(input), body });
-    return Promise.resolve(answer({ input: body.input ?? [] }));
+    return answer({ input: body.input ?? [] });
   };
   return new OpenRouterClient({ fetch: transport, key: () => key });
 }
@@ -43,6 +43,7 @@ function vectors(
 function embeddings(client: OpenRouterClient): OpenRouterEmbeddings {
   return new OpenRouterEmbeddings(client, (entry) => {
     metered.push(entry);
+    return Promise.resolve();
   });
 }
 

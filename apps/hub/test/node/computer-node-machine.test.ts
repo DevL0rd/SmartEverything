@@ -1,3 +1,4 @@
+import { inlineMetrics } from '../../src/node/metrics/node-metrics';
 import {
   NODE_FRAME,
   type MachineActionSupport,
@@ -109,7 +110,7 @@ function rig(first: MachineReport | Error): Rig {
     },
   };
   const node = new ComputerNode({
-    collector,
+    metrics: inlineMetrics(collector),
     controls,
     link: links.node,
     now: (): Date => new Date(),

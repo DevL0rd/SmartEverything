@@ -157,7 +157,7 @@ export function chatFileRoutes(store: Store, projects: ProjectFilesService): rea
     method,
     path: CHAT_FILES_PATH,
     handle: async (request, response, params): Promise<void> => {
-      const caller = authenticate(store, request, 'member', false);
+      const caller = await authenticate(store, request, 'member', false);
       const chatId = params['chatId'] ?? '';
       projectCallerAuthority(store, caller, chatId);
       await serveChatFile(projects, { request, response }, { chatId, raw: params['path'] ?? '' });

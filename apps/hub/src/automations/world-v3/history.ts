@@ -82,7 +82,7 @@ export function historyHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
     'state.history': (inputs): ReadResult => {
       const request = parseInputs('state.history', HISTORY, inputs);
-      const device = deviceById(deps.store, request.device);
+      const device = deviceById(deps.world, request.device);
       readableControl(device, request.control);
       const key = controlKey(request.control);
       if (isSampledCapability(key)) {

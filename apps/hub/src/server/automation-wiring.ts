@@ -2,7 +2,7 @@ import type { ToolHub } from '../ai-tools/tool-hub';
 import { decisionView } from '../automations/decision-view';
 import { automationFunctions } from '../automations/service-functions';
 import { automationPrograms } from '../automations/service-programs';
-import type { ProgramEnv } from '../automations/service-programs-analysis';
+import type { ProgramEnv } from '../automations/service-programs';
 import type { ServerContext } from './context';
 import { automationFunctionRoutes } from './handlers/automation-functions';
 import { automationProgramReadRoutes } from './handlers/automation-program-reads';
@@ -26,16 +26,12 @@ export function automationRoutes(context: ServerContext, tools: ToolHub): Automa
   const { store, hub } = context;
   const env: ProgramEnv = {
     store,
-    programs: store.automations,
-    revisions: store.automationRevisions,
-    plans: store.automationPlans,
-    functions: store.automationFunctions,
     secrets: hub.automationSecrets,
     kinds: hub.automationKinds,
     tools,
     engine: hub.automationEngine,
   };
-  const functions = automationFunctions({ ...env, functions: store.automationFunctions });
+  const functions = automationFunctions(env);
   return {
     ...automationValueRoutes(context, hub.automationKinds),
     ...automationProgramRoutes(automationPrograms(env)),

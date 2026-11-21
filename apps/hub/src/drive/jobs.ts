@@ -1,12 +1,12 @@
-import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import type { StoredDrive } from '../store/repositories/drive-roots';
-import { messageOf, type Logger } from '@smarteverything/logging';
+import { background, messageOf, type Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import { MARKER_DIRECTORY } from './root-marker';
 import type { DriveRootLanes } from './root-lanes';
-import { ScanCommitter, type CommitDependencies } from './scanner-commit';
+import type { ScanPort } from './scan-port';
+import { withScan, type ScanSession } from './scan-session';
 import {
   CallClock,
   CONTROL_ACKED,
@@ -92,16 +92,14 @@ export function runnerOf(
 }
 
 export interface ScanEnvironment {
-  readonly store: Pick<
-    Store,
-    'driveRoots' | 'driveItems' | 'driveInodes' | 'driveMissing' | 'feed' | 'write' | 'now'
-  >;
+  readonly scans: ScanPort;
+  readonly feed: Pick<Store['feed'], 'notice'>;
+  readonly now: () => Date;
   readonly availability: (root: StoredDrive) => Promise<RootAvailability>;
-  readonly mounted: (rootId: string) => boolean;
+  readonly mounted: (rootId: string) => Promise<boolean>;
   readonly workerScript: string;
   readonly log: Logger;
   readonly lanes: DriveRootLanes;
-  readonly newId?: () => string;
 }
 
 interface WalkOutcome {
@@ -148,21 +146,29 @@ export class ScanRun {
   private readonly acks = new Int32Array(this.control);
   private readonly origin = Date.now();
   private readonly unreadable: string[] = [];
+  private applied: Promise<void> = Promise.resolve();
   private done = 0;
 
   constructor(
     private readonly env: ScanEnvironment,
     private readonly root: StoredDrive,
-    private readonly committer: ScanCommitter,
+    private readonly session: ScanSession,
     private readonly scope: WalkScope,
   ) {}
 
-  walk(signal: AbortSignal): Promise<WalkOutcome> {
-    if (signal.aborted) {
-      return Promise.resolve({ unreadable: [], skipped: 0, cancelled: true });
-    }
+  async walk(signal: AbortSignal): Promise<WalkOutcome> {
+    if (signal.aborted) return { unreadable: [], skipped: 0, cancelled: true };
+    const includeHidden = this.root.includeHidden || (await this.env.mounted(this.root.id));
+    return this.walking(signal, includeHidden);
+  }
+
+  private walking(signal: AbortSignal, includeHidden: boolean): Promise<WalkOutcome> {
     return new Promise((resolve, reject) => {
-      const worker = new Worker(this.env.workerScript, { workerData: this.data() });
+      if (signal.aborted) {
+        resolve({ unreadable: [], skipped: 0, cancelled: true });
+        return;
+      }
+      const worker = new Worker(this.env.workerScript, { workerData: this.data(includeHidden) });
       const stopWatching = watchHang(this.acks, this.origin, (stuck) => {
         this.hung(stuck);
       });
@@ -189,27 +195,48 @@ export class ScanRun {
         complete(0, true);
       };
       signal.addEventListener('abort', onAbort, { once: true });
+      let walked = false;
+      const markWalked = (): void => {
+        walked = true;
+      };
       worker.on('message', (raw: unknown) => {
-        try {
-          this.message(WALK_MESSAGE.parse(raw), (skipped) => {
-            complete(skipped, false);
-          });
-        } catch (cause) {
-          fail(cause);
-        }
+        this.received(raw, markWalked, complete, fail);
       });
       worker.on('error', fail);
       worker.on('exit', (code) => {
+        if (walked && code === 0) return;
         fail(new Error(`The scan worker stopped with code ${String(code)}.`));
       });
     });
   }
 
-  private data(): WalkData {
+  private received(
+    raw: unknown,
+    walked: () => void,
+    complete: (skipped: number, cancelled: boolean) => void,
+    fail: (cause: unknown) => void,
+  ): void {
+    try {
+      this.message(
+        WALK_MESSAGE.parse(raw),
+        (skipped) => {
+          walked();
+          this.applied.then(() => {
+            complete(skipped, false);
+          }, fail);
+        },
+        fail,
+      );
+    } catch (cause) {
+      fail(cause);
+    }
+  }
+
+  private data(includeHidden: boolean): WalkData {
     return {
       path: this.root.path,
       base: this.scope.base,
-      includeHidden: this.root.includeHidden || this.env.mounted(this.root.id),
+      includeHidden,
       skip: this.root.skipPatterns,
       reserved: [MARKER_DIRECTORY],
       control: this.control,
@@ -223,14 +250,14 @@ export class ScanRun {
     });
   }
 
-  private message(message: WalkMessage, finished: (skipped: number) => void): void {
+  private message(
+    message: WalkMessage,
+    finished: (skipped: number) => void,
+    failed: (cause: unknown) => void,
+  ): void {
     switch (message.kind) {
       case 'batch':
-        this.committer.apply(message.entries);
-        this.done += message.entries.length;
-        Atomics.store(this.acks, CONTROL_ACKED, message.sequence);
-        Atomics.notify(this.acks, CONTROL_ACKED);
-        this.progress();
+        this.batch(message.sequence, message.entries, failed);
         return;
       case 'problem':
         this.unreadable.push(message.relPath);
@@ -248,14 +275,29 @@ export class ScanRun {
     }
   }
 
+  private batch(
+    sequence: number,
+    entries: readonly WalkEntry[],
+    failed: (cause: unknown) => void,
+  ): void {
+    this.applied = this.applied.then(async () => {
+      await this.session.apply(entries);
+      this.done += entries.length;
+      Atomics.store(this.acks, CONTROL_ACKED, sequence);
+      Atomics.notify(this.acks, CONTROL_ACKED);
+      this.progress();
+    });
+    this.applied.catch(failed);
+  }
+
   private progress(): void {
     if (!this.scope.full) return;
-    this.env.store.feed.notice({
+    this.env.feed.notice({
       type: 'drive_progress',
       rootId: this.root.id,
       phase: 'scan',
       done: this.done,
-      total: Math.max(this.committer.previous, this.done),
+      total: Math.max(this.session.previous, this.done),
     });
   }
 
@@ -263,11 +305,15 @@ export class ScanRun {
     this.env.log.warn(stuck ? 'drive.root_unresponsive' : 'drive.root_responsive', {
       rootId: this.root.id,
     });
-    this.env.store.driveRoots.update(
-      this.root.id,
-      stuck
-        ? { state: 'unresponsive', stateReason: 'The storage stopped answering.' }
-        : this.calm(),
+    background(
+      this.env.scans.update(
+        this.root.id,
+        stuck
+          ? { state: 'unresponsive', stateReason: 'The storage stopped answering.' }
+          : this.calm(),
+      ),
+      'drive.root_state_failed',
+      { rootId: this.root.id },
     );
   }
 
@@ -279,31 +325,31 @@ export class ScanRun {
 }
 
 async function scanRoot(env: ScanEnvironment, rootId: string, signal: AbortSignal): Promise<void> {
-  const root = env.store.driveRoots.find(rootId);
+  const root = await env.scans.root(rootId);
   if (root === undefined) {
     env.log.warn('drive.scan_skipped', { rootId, reason: 'no such drive' });
     return;
   }
   const availability = await env.availability(root);
   if (availability !== 'online') {
-    env.store.driveRoots.update(rootId, {
+    await env.scans.update(rootId, {
       state: 'error',
       stateReason: UNAVAILABLE_REASON[availability],
     });
     env.log.info('drive.scan_unavailable', { rootId, availability });
     return;
   }
-  env.store.driveRoots.update(rootId, { state: 'scanning', stateReason: null });
+  await env.scans.update(rootId, { state: 'scanning', stateReason: null });
   const startedAt = performance.now();
   try {
     await env.lanes.run([root.id], () => commitScan(env, root, signal, startedAt));
   } catch (cause) {
     env.log.error('drive.scan_failed', cause, { rootId });
-    env.store.driveRoots.update(rootId, { state: 'error', stateReason: messageOf(cause) });
+    await env.scans.update(rootId, { state: 'error', stateReason: messageOf(cause) });
   }
 }
 
-async function hashForReuse(
+export async function hashForReuse(
   env: ScanEnvironment,
   root: StoredDrive,
   entry: WalkEntry,
@@ -325,39 +371,30 @@ async function hashForReuse(
   return null;
 }
 
-export function commitDependencies(env: ScanEnvironment, root: StoredDrive): CommitDependencies {
-  return {
-    items: env.store.driveItems,
-    inodes: env.store.driveInodes,
-    missing: env.store.driveMissing,
-    hash: (entry) => hashForReuse(env, root, entry),
-    write: (work) => env.store.write(work),
-    now: env.store.now,
-    newId: env.newId ?? randomUUID,
-  };
-}
-
 async function commitScan(
   env: ScanEnvironment,
   root: StoredDrive,
   signal: AbortSignal,
   startedAt: number,
 ): Promise<void> {
-  const dependencies = commitDependencies(env, root);
-  const committer = new ScanCommitter(dependencies, root, null);
-  const outcome = await new ScanRun(env, root, committer, { base: '', full: true }).walk(signal);
+  const outcome = await withScan(env.scans, root.id, null, async (session) => {
+    const walked = await new ScanRun(env, root, session, { base: '', full: true }).walk(signal);
+    if (!walked.cancelled) {
+      await session.finish(walked.unreadable, (entry) => hashForReuse(env, root, entry));
+    }
+    return walked;
+  });
   if (outcome.cancelled) {
     env.log.info('drive.scan_cancelled', { rootId: root.id });
     return;
   }
-  await committer.finish(outcome.unreadable);
-  const ready = env.store.driveRoots.update(root.id, {
+  const ready = await env.scans.update(root.id, {
     state: 'ready',
     stateReason: null,
-    scannedAt: env.store.now().toISOString(),
+    scannedAt: env.now().toISOString(),
   });
   const entries = ready.items + ready.folders;
-  env.store.feed.notice({
+  env.feed.notice({
     type: 'drive_progress',
     rootId: root.id,
     phase: 'scan',

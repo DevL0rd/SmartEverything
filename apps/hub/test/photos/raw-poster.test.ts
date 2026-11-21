@@ -11,14 +11,6 @@ import { hubLayout, type HubLayout } from '../../src/data-layout';
 import { isFileItem } from '../../src/drive/file-item';
 import { ffmpegPath } from '../../src/media/ffmpeg-path';
 import { derivedPath } from '../../src/photos/pipeline/derived-paths';
-import {
-  MotionHandler,
-  clipLocation,
-  extractMotionClip,
-  findMotionClip,
-  motionClipPath,
-  stillLiveId,
-} from '../../src/photos/pipeline/motion';
 import { PosterHandler, posterArguments, posterSeconds } from '../../src/photos/pipeline/poster';
 import { clockwiseRotation, probeVideo } from '../../src/photos/pipeline/probe';
 import {
@@ -35,6 +27,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { DriveItemsRepository } from '../../src/store/repositories/drive-items';
 import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
 import { DriveMediaJobsRepository } from '../../src/store/repositories/drive-media-jobs';
+import { repositoryDerived } from './pipeline-stores';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
 import { insertDriveRow, insertInode } from './photo-rows';
@@ -473,8 +466,7 @@ describe('video posters', () => {
 
   function posterHandler(): PosterHandler {
     return new PosterHandler({
-      store: { write: (work) => context.write(work), driveItems: items, driveMedia: media },
-      writeThumb,
+      derived: repositoryDerived({ context, items, media, writeThumb }),
       locate: (item) => Promise.resolve(join(directory, item.name)),
       layout,
       log: testLogger(),
@@ -571,7 +563,7 @@ describe('video posters', () => {
 
     await handler.run(audio.job, NO_ABORT);
     await expect(handler.run(missing.job, NO_ABORT)).rejects.toThrow();
-    handler.fail(missing.job, new Error('the file is gone'));
+    await handler.fail(missing.job, new Error('the file is gone'));
 
     expect(media.byId(audio.id)).toMatchObject({
       poster_state: 'unsupported',
@@ -594,81 +586,5 @@ describe('video posters', () => {
     await posterHandler().run(job, NO_ABORT);
 
     expect(media.byId(id).poster_state).toBe('none');
-  });
-});
-
-describe('motion and Live clips', () => {
-  const photo = (): Buffer => fixture('motion-photo.jpg');
-
-  it('reads the clip from the XMP directory and the MicroVideo offset', () => {
-    const container =
-      '<Container:Item Item:Semantic="MotionPhoto" Item:Mime="video/mp4" Item:Length="500" Item:Padding="20"/>';
-
-    expect(clipLocation(container, 10_000)).toEqual({ offset: 9480, length: 500 });
-    expect(clipLocation('<x GCamera:MicroVideoOffset="700"/>', 10_000)).toEqual({
-      offset: 9300,
-      length: 700,
-    });
-    expect(clipLocation('<x/>', 10_000)).toBeUndefined();
-  });
-
-  it('finds, validates and extracts the clip of a motion photo', async () => {
-    const path = join(directory, 'motion.jpg');
-    await writeFile(path, photo());
-    const clip = await withFileReader(path, findMotionClip);
-    const target = join(directory, 'out', 'clip.mp4');
-
-    expect(clip).toEqual({
-      offset: photo().length - fixture('motion-clip.mp4').length,
-      length: fixture('motion-clip.mp4').length,
-    });
-    await extractMotionClip(path, clip ?? { offset: 0, length: 0 }, target);
-    expect(await readFile(target)).toEqual(fixture('motion-clip.mp4'));
-  });
-
-  it('ignores plain photos and a file whose trailer is not an MP4', async () => {
-    const trailing = join(directory, 'trailing.jpg');
-    await writeFile(trailing, Buffer.concat([photo(), Buffer.from('padding')]));
-    const plain = join(directory, 'plain.jpg');
-    await copyFile(join(FIXTURES, 'exif-full.jpg'), plain);
-
-    expect(await withFileReader(trailing, findMotionClip)).toBeUndefined();
-    expect(await withFileReader(plain, findMotionClip)).toBeUndefined();
-    expect(await withFileReader(join(FIXTURES, 'screenshot.png'), findMotionClip)).toBeUndefined();
-  });
-
-  function motionHandler(): MotionHandler {
-    return new MotionHandler({
-      store: { write: (work) => context.write(work), driveItems: items, driveMedia: media },
-      locate: (item) => Promise.resolve(join(directory, item.name)),
-      layout,
-      log: testLogger(),
-    });
-  }
-
-  it('stores an Android clip as a derived file linked to its own item', async () => {
-    await writeFile(join(directory, 'motion.jpg'), photo());
-    const id = seed(1, 'image', 'motion.jpg', 'image/jpeg');
-
-    await motionHandler().run(jobs.enqueue({ kind: 'motion', itemId: id, rev: 1 }));
-
-    expect(media.byId(id).motion_clip_id).toBe(id);
-    expect(await readFile(motionClipPath(layout, id, 1))).toEqual(fixture('motion-clip.mp4'));
-  });
-
-  it('pairs an iOS Live still and its movie by content identifier in either order', async () => {
-    await copyFile(join(FIXTURES, 'live-photo.heic'), join(directory, 'IMG_1.HEIC'));
-    await copyFile(join(FIXTURES, 'live-photo.mov'), join(directory, 'IMG_1.MOV'));
-    const still = seed(1, 'image', 'IMG_1.HEIC', 'image/heic');
-    const movie = seed(2, 'video', 'IMG_1.MOV', 'video/quicktime');
-    const handler = motionHandler();
-
-    expect(await stillLiveId(join(directory, 'IMG_1.HEIC'))).toBe(LIVE_ID);
-    await handler.run(jobs.enqueue({ kind: 'motion', itemId: still, rev: 1 }));
-    expect(media.byId(still)).toMatchObject({ live_id: LIVE_ID, motion_clip_id: null });
-    await handler.run(jobs.enqueue({ kind: 'motion', itemId: movie, rev: 1 }));
-
-    expect(media.byId(still).motion_clip_id).toBe(movie);
-    expect(media.byId(movie)).toMatchObject({ live_id: LIVE_ID, motion_clip_id: null });
   });
 });

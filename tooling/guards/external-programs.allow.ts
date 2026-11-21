@@ -217,6 +217,23 @@ export const PROGRAMS: Readonly<Record<string, ProgramEntry>> = {
     kind: 'optional-external',
     reason: 'PulseAudio player of the user’s desktop; the computer speaker falls back to it',
   },
+  sync: {
+    kind: 'os',
+    reason:
+      'coreutils on every Linux hub; flushes the file systems of a large upload batch before the mount close returns',
+  },
+  fusermount3: {
+    kind: 'optional-external',
+    reason:
+      'the user’s own FUSE 3; the Drive mount checks for it, names the package to install when it is missing and unmounts with it',
+  },
+  mount_webdav: {
+    kind: 'os',
+    reason:
+      'always on macOS; mounts a Drive placement over WebDAV when the full mount is not available',
+  },
+  umount: { kind: 'os', reason: 'always on macOS; unmounts a WebDAV Drive placement' },
+  net: { kind: 'os', reason: 'always on Windows; maps a Drive placement as a WebDAV drive letter' },
 };
 
 export const DYNAMIC_SITES: Readonly<Record<string, ProgramEntry>> = {
@@ -288,6 +305,15 @@ export const DYNAMIC_SITES: Readonly<Record<string, ProgramEntry>> = {
   'apps/hub/src/node/controls/linux/speaker-playback.ts': {
     kind: 'optional-external',
     reason: 'starts the player the detected audio stack provides',
+  },
+  'apps/desktop/src/drive-mount/helper-process.ts': {
+    kind: 'bundled',
+    reason:
+      'starts the se-drive-mount helper that ships with the desktop app; its path comes from the launch options',
+  },
+  'apps/desktop/src/drive-mount/placement-tier.ts': {
+    kind: 'os',
+    reason: 'probes for fusermount3 on Linux and the WinFsp registry key with reg on Windows',
   },
   'apps/hub/src/node/controls/linux/tool-probe.ts': {
     kind: 'optional-external',

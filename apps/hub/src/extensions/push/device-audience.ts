@@ -1,25 +1,16 @@
-import {
-  deviceAlertsOn,
-  type ClientPrefRead,
-  type DeviceAlertsPref,
-} from '@smarteverything/domain';
+import { deviceAlertsOn } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { Audience } from './reply-audience';
 
-export interface DeviceAudienceDeps {
-  readonly alertsOf: (clientId: string) => ClientPrefRead<DeviceAlertsPref>;
-  readonly log: Logger;
-}
-
-export function deviceAudience(deviceId: string | null, deps: DeviceAudienceDeps): Audience {
+export function deviceAudience(deviceId: string | null, log: Logger): Audience {
   if (deviceId === null) {
     return () => true;
   }
-  return (clientId) => {
-    const read = deps.alertsOf(clientId);
+  return (client) => {
+    const read = client.deviceAlerts;
     if (read.status === 'invalid') {
-      deps.log.warn('push.device_alerts_unreadable', {
-        clientId,
+      log.warn('push.device_alerts_unreadable', {
+        clientId: client.clientId,
         deviceId,
         reason: read.reason,
       });

@@ -440,7 +440,7 @@ describe('drive families on the node broker', () => {
     expect(() => {
       instance.register({ kind: 'fs', serve: () => Promise.resolve() });
     }).toThrow('already registered');
-    const mcp = instance.openMcp(
+    const mcp = await instance.openMcp(
       'claude',
       { url: new URL('/mcp', CANONICAL).href, pin: null },
       `scg_${'A'.repeat(43)}`,

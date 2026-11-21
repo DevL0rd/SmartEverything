@@ -1,3 +1,4 @@
+import type { DriveSettings } from '@smarteverything/domain';
 import { LEASE_MS } from '@smarteverything/domain/drive-mount';
 import { background, type Logger } from '@smarteverything/logging';
 import type { Store } from '../../store/store';
@@ -7,7 +8,7 @@ import type { PosixChangeEnv, PosixEnv } from '../posix/env';
 import { DrivePosix } from '../posix/service';
 import { MountCommits } from './commits';
 import { MountCopy } from './copy';
-import { MountDedupe } from './dedupe';
+import { MountDedupe, type MountOpMemory } from './dedupe';
 import { Dispatch } from './dispatch';
 import { resolversOf } from './lanes';
 import { MountFinish } from './finish';
@@ -18,11 +19,11 @@ import { LockService } from './lock-service';
 import { fileOperations } from './ops-files';
 import { namespaceOperations } from './ops-namespace';
 import { PushPump } from './push';
-import { onDriveSettingsChanged, readDriveSettings } from '../settings';
-import { SettleGroup } from './settle-group';
+import { onDriveSettingsChanged } from '../settings';
 import { BUNDLED_MOUNT_HASH_WORKER, HashPool } from './workers';
 import { MountRegistry } from './registry';
 import type { MountServices } from './services';
+import type { Attachment } from './session';
 import { Staging } from './staging';
 
 export interface MountEnv {
@@ -33,15 +34,13 @@ export interface MountEnv {
   readonly activity: DriveActivity;
   readonly lanes: DriveRootLanes;
   readonly log: Logger;
+  readonly settings: DriveSettings;
   readonly leaseMs?: number;
   readonly hashWorker?: string;
 }
 
-function journalOf(store: Store): () => string | null {
-  return (): string | null => {
-    const file = store.database.location();
-    return file === null ? null : `${file}-wal`;
-  };
+function journalOf(store: Pick<Store, 'path'>): () => string | null {
+  return (): string => `${store.path}-wal`;
 }
 
 function posixOf(env: MountEnv, held: HeldInodes): DrivePosix {
@@ -54,31 +53,33 @@ function posixOf(env: MountEnv, held: HeldInodes): DrivePosix {
   });
 }
 
+function memoryOf(store: Store): MountOpMemory {
+  return {
+    recall: (placementId, opId) => store.host.call('driveSyncOps', 'recall', placementId, opId),
+    rememberAll: (entries) => store.host.call('driveSyncOps', 'rememberAll', entries),
+  };
+}
+
 function servicesOf(env: MountEnv): MountServices {
   const { store, change } = env;
   const leaseMs = env.leaseMs ?? LEASE_MS;
+  let settings = env.settings;
   const held = new HeldInodes();
   const posix = posixOf(env, held);
   const handles = new HandleTable({ posix, files: change.files, store }, held);
   let pool: HashPool | null = null;
   const hashes = (): HashPool => {
-    pool ??= new HashPool(
-      env.hashWorker ?? BUNDLED_MOUNT_HASH_WORKER,
-      readDriveSettings(store).cpuWorkers,
-    );
+    pool ??= new HashPool(env.hashWorker ?? BUNDLED_MOUNT_HASH_WORKER, settings.cpuWorkers);
     return pool;
   };
-  const listings = new ListingCache(readDriveSettings(store).listingCacheSeconds, (rootId) =>
-    store.driveFeed.latestSeqInRoot(rootId),
-  );
+  const listings = new ListingCache(settings.listingCacheSeconds);
   const staging = new Staging({ files: change.files, store, hashes });
-  const settle = new SettleGroup(store, env.log);
   const fsync = new GroupFsync(journalOf(store));
-  const dedupe = new MountDedupe(store.driveSyncOps, (hook) => store.context.enlist(hook), env.log);
+  const dedupe = new MountDedupe(memoryOf(store), env.log);
   const locks = new LockService(leaseMs);
   const shared = { posix, change, staging, handles };
   const commits = new MountCommits(shared);
-  const finishing = { ...shared, guard: env.guard, fsync, settle, dedupe, log: env.log };
+  const finishing = { ...shared, guard: env.guard, fsync, dedupe, log: env.log };
   return {
     store,
     posix,
@@ -91,13 +92,20 @@ function servicesOf(env: MountEnv): MountServices {
     dedupe,
     fsync,
     stopHashes: (): Promise<void> => (pool === null ? Promise.resolve() : pool.stop()),
-    applySettings: (settings): void => {
-      pool?.resize(settings.cpuWorkers);
-      listings.setSeconds(settings.listingCacheSeconds);
+    applySettings: (next): void => {
+      settings = next;
+      pool?.resize(next.cpuWorkers);
+      listings.setSeconds(next.listingCacheSeconds);
     },
     listings,
     push: new PushPump(store),
-    registry: new MountRegistry({ leaseMs, posix, handles, locks, feed: store.driveFeed }),
+    registry: new MountRegistry({
+      leaseMs,
+      posix,
+      handles,
+      locks,
+      latestSeq: () => store.host.call('driveFeed', 'latestSeq'),
+    }),
   };
 }
 
@@ -130,28 +138,28 @@ export class DriveMount {
   private changed(rootIds: readonly string[]): void {
     for (const rootId of rootIds) {
       this.services.listings.invalidateRoot(rootId);
-      background(
-        Promise.resolve().then(() => {
-          this.pump(rootId);
-        }),
-        'drive_mount.push_failed',
-      );
+      background(this.pump(rootId), 'drive_mount.push_failed');
     }
   }
 
-  pump(rootId: string): void {
+  async pump(rootId: string): Promise<void> {
     const { registry, push } = this.services;
-    let oldest = Number.POSITIVE_INFINITY;
+    const pumped: Attachment[] = [];
+    const pumps: Promise<void>[] = [];
     for (const session of registry.ofRoot(rootId)) {
       for (const attachment of session.attachments.values()) {
         if (attachment.scope.drive.id !== rootId) continue;
-        push.pump(session, attachment);
-        oldest = Math.min(oldest, attachment.sentSeq);
+        pumps.push(push.pump(session, attachment));
+        pumped.push(attachment);
       }
     }
+    await Promise.all(pumps);
+    const oldest = Math.min(...pumped.map((attachment) => attachment.sentSeq));
     push.settle(
       rootId,
-      Number.isFinite(oldest) ? oldest : this.env.store.driveFeed.latestSeqInRoot(rootId),
+      Number.isFinite(oldest)
+        ? oldest
+        : await this.env.store.host.call('driveFeed', 'latestSeqInRoot', rootId),
     );
   }
 
@@ -160,7 +168,6 @@ export class DriveMount {
     this.unsubscribeSettings();
     this.services.registry.stop();
     this.services.listings.clear();
-    this.services.dedupe.stop();
     background(this.services.stopHashes(), 'drive_mount.hash_pool_stop_failed');
   }
 }

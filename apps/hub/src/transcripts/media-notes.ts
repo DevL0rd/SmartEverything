@@ -6,7 +6,7 @@ import { recordAudioTranscription } from '../ledger/transcription';
 import { transcriptionFormat, type TranscriptionProvider } from '../openrouter/transcription';
 import { recordMediaNote } from '../ledger/media-notes';
 import type { OrUsage } from '../openrouter/wire';
-import type { Ledger } from '../ledger/ledger';
+import type { LedgerHost } from '../ledger/units';
 import type {
   AssistantChatRepository,
   StoredAttachment,
@@ -79,7 +79,7 @@ export interface MediaNotesOptions {
   readonly provider: MediaNoteProvider;
   readonly transcriptionProvider: TranscriptionProvider;
   readonly chat: AssistantChatRepository;
-  readonly ledger: Ledger;
+  readonly ledger: LedgerHost;
   readonly filesRoot: string;
   readonly describeImages: () => boolean;
   readonly inputModalities: (file: StoredAttachment) => readonly string[] | null;
@@ -154,18 +154,16 @@ export class MediaNotes {
       data,
       format: transcriptionFormat(file.mime),
     });
-    try {
-      recordAudioTranscription(this.options.ledger, {
-        profileId: file.profile_id,
-        messageId: file.message_id,
-        pluginId: null,
-        model,
-        answer,
-        meta: { attachment_id: file.id, message_id: file.message_id, media: 'audio' },
-      });
-    } catch (cause) {
+    await recordAudioTranscription(this.options.ledger, {
+      profileId: file.profile_id,
+      messageId: file.message_id,
+      pluginId: null,
+      model,
+      answer,
+      meta: { attachment_id: file.id, message_id: file.message_id, media: 'audio' },
+    }).catch((cause: unknown) => {
       this.options.log.error('assistant.media_usage_unrecorded', cause, { attachmentId: file.id });
-    }
+    });
     return answer.text;
   }
 
@@ -180,22 +178,24 @@ export class MediaNotes {
       mime: file.mime,
       data,
     });
-    this.record(file, kind, answer);
+    await this.record(file, kind, answer);
     return answer.text;
   }
 
-  private record(file: StoredAttachment, kind: MediaKind, answer: MediaNoteAnswer): void {
-    try {
-      recordMediaNote(this.options.ledger, {
-        profileId: file.profile_id,
-        messageId: file.message_id,
-        pluginId: null,
-        model: this.model,
-        answer,
-        meta: { attachment_id: file.id, message_id: file.message_id, media: kind },
-      });
-    } catch (cause) {
+  private async record(
+    file: StoredAttachment,
+    kind: MediaKind,
+    answer: MediaNoteAnswer,
+  ): Promise<void> {
+    await recordMediaNote(this.options.ledger, {
+      profileId: file.profile_id,
+      messageId: file.message_id,
+      pluginId: null,
+      model: this.model,
+      answer,
+      meta: { attachment_id: file.id, message_id: file.message_id, media: kind },
+    }).catch((cause: unknown) => {
       this.options.log.error('assistant.media_usage_unrecorded', cause, { attachmentId: file.id });
-    }
+    });
   }
 }

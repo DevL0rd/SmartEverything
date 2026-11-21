@@ -19,7 +19,6 @@ import {
 } from '@smarteverything/domain';
 import { treadmillCapabilities } from '../../src/local/treadmill/capabilities';
 import { Fleet } from '../../src/local/treadmill/fleet';
-import { TreadmillHealth } from '../../src/local/treadmill/health';
 import { TreadmillIngest } from '../../src/local/treadmill/ingest';
 import { Publisher } from '../../src/local/treadmill/publisher';
 import { FakeClock } from './fake-clock';
@@ -255,7 +254,6 @@ function ingestOf(seeded: Seed, capture: Capture): { fleet: Fleet; ingest: Tread
         return Promise.resolve();
       },
     },
-    health: new TreadmillHealth(test.store),
     live: {
       watched: (): boolean => capture.watched.value,
       publish: (deviceId, noticeFor): void => {
@@ -318,6 +316,7 @@ export async function treadmillRig(
   const seeded = await seed(family, gatt);
   const capture = new Capture(seeded.owner.client.id);
   const { fleet, ingest } = ingestOf(seeded, capture);
+  const unfollow = await fleet.start();
   const { test, device } = seeded;
   return {
     ...seeded,
@@ -334,6 +333,10 @@ export async function treadmillRig(
     batch: bodyOf(seeded, ingest),
     weigh: weighing(seeded),
     row: (): DeviceRow => test.store.devices.byId(device.id),
-    close: (): Promise<void> => test.close(),
+    close: async (): Promise<void> => {
+      unfollow();
+      await ingest.idle();
+      await test.close();
+    },
   };
 }

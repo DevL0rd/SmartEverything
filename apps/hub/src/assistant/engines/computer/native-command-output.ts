@@ -18,7 +18,7 @@ import type { ComputerEvent } from './provider-state';
 import { CodexMessageText } from './codex-message-text';
 import { streamCodexTools } from './codex-tools';
 import { streamNativeTools, streamDelta } from './runtime-tools';
-import { messageOf } from '@smarteverything/logging';
+import { background, messageOf } from '@smarteverything/logging';
 
 export class NativeCommandOutput {
   private readonly replies: ProviderReplies;
@@ -90,18 +90,23 @@ export class NativeCommandOutput {
     if (this.closed || ['pending', 'running'].includes(receipt.status)) return;
     this.closed = true;
     const messageId = this.deps.store.assistantEvents.event(this.input.operation_id).message_id;
-    this.deps.store.assistantEvents.mark(this.input.operation_id, 'answered_at');
+    this.written(
+      this.deps.store.host.call('assistantEvents', 'mark', this.input.operation_id, 'answered_at'),
+    );
     if (this.replies.fullText() === '' && receipt.text !== null) this.replies.text(receipt.text);
     if (receipt.status === 'settled' && !['error', 'interrupted'].includes(receipt.outcome ?? '')) {
-      this.deps.conversation.stateOf(messageId, 'answered');
-      this.replies.finish(this.stream.settled());
+      this.written(this.deps.conversation.stateOf(messageId, 'answered'));
+      this.written(this.replies.finish(this.stream.settled()));
       this.stream.snapshot('idle', 'stop', null);
     } else {
       const reason = receipt.text ?? 'Native command completion is unconfirmed.';
-      this.deps.conversation.failedMessage(messageId, reason, 'unknown');
-      this.replies.fail(reason, this.stream.settled());
+      this.written(this.deps.conversation.failedMessage(messageId, reason, 'unknown'));
+      this.written(this.replies.fail(reason, this.stream.settled()));
       this.stream.snapshot('failed', 'error', reason);
     }
+  }
+  private written(write: Promise<unknown>): void {
+    background(write, 'computer.command_state_failed', { operationId: this.input.operation_id });
   }
   private tool(event: Extract<ComputerEvent, { kind: 'tool_call' }>): void {
     if (this.calls.has(event.call_id)) return;

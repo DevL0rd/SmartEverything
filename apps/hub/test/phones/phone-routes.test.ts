@@ -63,6 +63,7 @@ beforeEach(async () => {
   outcome = { ok: true, detail: 'Done.' };
   events = [];
   const phones = idlePhoneNodes(test, (event) => events.push(event));
+  await phones.details.load();
   routes = phoneRoutes({
     store: test.store,
     hub: { phones },
@@ -83,13 +84,14 @@ beforeEach(async () => {
       },
     },
     now: () => new Date(REPORT_AT),
-    files: (_caller, fileId) => ({
-      type: 'receive_file',
-      fileId,
-      name: 'ticket.pdf',
-      mime: 'application/pdf',
-      url: '/media/assistant/ticket',
-    }),
+    files: (_caller, fileId) =>
+      Promise.resolve({
+        type: 'receive_file',
+        fileId,
+        name: 'ticket.pdf',
+        mime: 'application/pdf',
+        url: '/media/assistant/ticket',
+      }),
   });
 });
 

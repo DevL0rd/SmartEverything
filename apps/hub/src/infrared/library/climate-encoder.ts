@@ -115,8 +115,8 @@ class LibraryModelNotClimateError extends Error {
 export function libraryEncoders(library: Pick<IrLibrary, 'model'>): IrEncoderFamily {
   return {
     prefix: LIBRARY_ENCODER_PREFIX,
-    encoder: (libraryId): IrEncoder => {
-      const model = library.model(libraryId);
+    encoder: async (libraryId): Promise<IrEncoder> => {
+      const model = await library.model(libraryId);
       if (model.kind !== 'climate') {
         throw new LibraryModelNotClimateError(libraryId);
       }

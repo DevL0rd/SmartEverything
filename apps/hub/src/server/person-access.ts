@@ -9,11 +9,12 @@ import {
   type QuietHours,
   type Role,
 } from '@smarteverything/domain';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import type { IncomingMessage } from 'node:http';
 import type { Store } from '../store/store';
 import { insideQuiet } from '../reach/reach-rules';
 import type { KnownStanding, PersonStanding } from '../store/repositories/person-access';
+import { storeUnit } from '../store/host/unit';
 import { remoteOf } from './http';
 import { RepeatGate } from './repeat-gate';
 import { remoteKind } from './request-trace';
@@ -82,18 +83,18 @@ export interface Subject {
   readonly profile_id: string | null;
 }
 
-export function refusal(
-  store: Pick<Store, 'accessAudit'>,
-  client: Subject,
-  why: Refusal,
-): ApiError {
+export function refusal(store: Pick<Store, 'host'>, client: Subject, why: Refusal): ApiError {
   if (refusals.pass([client.id, client.profile_id, why.kind, why.detail].join(':')) !== null) {
-    store.accessAudit.record({
-      profile_id: client.profile_id,
-      client_id: client.id,
-      kind: why.kind,
-      detail: why.detail,
-    });
+    background(
+      store.host.call('accessAudit', 'record', {
+        profile_id: client.profile_id,
+        client_id: client.id,
+        kind: why.kind,
+        detail: why.detail,
+      }),
+      'access.audit_failed',
+      { clientId: client.id, kind: why.kind },
+    );
     log.warn('access.refused', {
       clientId: client.id,
       profileId: client.profile_id,
@@ -164,15 +165,23 @@ function withRole(client: ClientRow, ceilingRole: Role, personRole: PersonRole):
   return role === client.role ? client : { ...client, role };
 }
 
-export function effectiveClient(store: Store, client: ClientRow, entry: AccessEntry): ClientRow {
+export type Admission =
+  | { readonly kind: 'admitted'; readonly client: ClientRow }
+  | { readonly kind: 'refused'; readonly subject: Subject; readonly why: Refusal };
+
+export function admissionOf(store: Store, client: ClientRow, entry: AccessEntry): Admission {
   const standing = standingOfClient(store, client);
   if (!standing.known) {
-    if (client.role === 'owner') return client;
-    throw refusal(store, client, {
-      kind: 'refused_scope',
-      detail: 'the access of the person cannot be read',
-      message: 'This person’s access cannot be read; ask the owner to check it.',
-    });
+    if (client.role === 'owner') return { kind: 'admitted', client };
+    return {
+      kind: 'refused',
+      subject: client,
+      why: {
+        kind: 'refused_scope',
+        detail: 'the access of the person cannot be read',
+        message: 'This person’s access cannot be read; ask the owner to check it.',
+      },
+    };
   }
   if (client.role === 'member' && standing.role !== 'owner') {
     const why = standingRefusal(store, standing, {
@@ -180,10 +189,52 @@ export function effectiveClient(store: Store, client: ClientRow, entry: AccessEn
       statusOnly: entry.statusOnly,
     });
     if (why !== null) {
-      throw refusal(store, { ...client, profile_id: store.profiles.activeOf(client.id).id }, why);
+      return {
+        kind: 'refused',
+        subject: { id: client.id, profile_id: store.profiles.activeOf(client.id).id },
+        why,
+      };
     }
   }
-  return withRole(client, client.role, standing.role);
+  return { kind: 'admitted', client: withRole(client, client.role, standing.role) };
+}
+
+export function admitted(store: Pick<Store, 'host'>, admission: Admission): ClientRow {
+  if (admission.kind === 'refused') throw refusal(store, admission.subject, admission.why);
+  return admission.client;
+}
+
+export const CLIENT_ADMISSION_UNIT = storeUnit(
+  (store, { client, entry }: { readonly client: ClientRow; readonly entry: AccessEntry }) =>
+    admissionOf(store, client, entry),
+);
+
+export type TokenAdmission =
+  | { readonly kind: 'unknown' }
+  | { readonly kind: 'known'; readonly client: ClientRow; readonly admission: Admission };
+
+export const TOKEN_ADMISSION_UNIT = storeUnit(
+  (
+    store,
+    { tokenHash, entry }: { readonly tokenHash: string; readonly entry: AccessEntry },
+  ): TokenAdmission => {
+    const client = store.clients.byTokenHash(tokenHash);
+    return client === undefined
+      ? { kind: 'unknown' }
+      : { kind: 'known', client, admission: admissionOf(store, client, entry) };
+  },
+);
+
+export const EFFECTIVE_ROW_UNIT = storeUnit((store, { client }: { readonly client: ClientRow }) =>
+  effectiveRow(store, client),
+);
+
+export async function effectiveClient(
+  store: Pick<Store, 'host'>,
+  client: ClientRow,
+  entry: AccessEntry,
+): Promise<ClientRow> {
+  return admitted(store, await store.host.read('clientAdmission', { client, entry }));
 }
 
 export function effectiveRow(
@@ -209,14 +260,15 @@ export function effectiveClientById(store: Store, clientId: string): ClientRow {
   return effectiveRow(store, store.clients.byId(clientId));
 }
 
-export function assertMemberPerson(
-  store: Store,
+export async function assertMemberPerson(
+  store: Pick<Store, 'host'>,
   client: Pick<ClientRow, 'id' | 'profile_id'>,
   ceiling: Role,
   profileId: string,
-): void {
-  const standing = store.personAccess.standing(profileId);
-  if (ceiling === 'member' && (!standing.known || standing.role === 'owner')) {
+): Promise<void> {
+  if (ceiling !== 'member') return;
+  const standing = await store.host.call('personAccess', 'standing', profileId);
+  if (!standing.known || standing.role === 'owner') {
     throw refusal(store, client, {
       kind: 'refused_scope',
       detail: 'a member device was pointed at an owner person',
@@ -225,8 +277,12 @@ export function assertMemberPerson(
   }
 }
 
-export function assertMayChoosePerson(store: Store, clientId: string, profileId: string): void {
-  const client = store.clients.byId(clientId);
+export async function assertMayChoosePerson(
+  store: Pick<Store, 'host'>,
+  clientId: string,
+  profileId: string,
+): Promise<void> {
+  const client = await store.host.call('clients', 'byId', clientId);
   if (client.role === 'owner') return;
   if (client.profile_id === profileId) return;
   throw refusal(store, client, {

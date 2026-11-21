@@ -26,7 +26,7 @@ const SAMPLES_PER_MS = 16;
 const SNIPPET_SAMPLES = 1000 * SAMPLES_PER_MS;
 
 export interface PhoneEarsOptions {
-  readonly store: Pick<Store, 'devices' | 'feed'>;
+  readonly store: Pick<Store, 'live' | 'feed'>;
   readonly registry: Pick<
     ListeningRegistry,
     'wanted' | 'sensitivityOf' | 'powerModeOf' | 'onSwitched' | 'setState' | 'levels'
@@ -188,7 +188,10 @@ export class PhoneEars {
   }
 
   private deviceOf(clientId: string): DeviceRow {
-    const device = this.options.store.devices.byExternal('local', phoneExternalId(clientId));
+    const device = this.options.store.live.home.devices.byExternal(
+      'local',
+      phoneExternalId(clientId),
+    );
     if (device === undefined) {
       throw new ApiError('not_found', 'This phone has not reported yet, so it has no ear.');
     }
@@ -207,7 +210,10 @@ export class PhoneEars {
 
   private pushAll(): void {
     [...this.options.online()].forEach((clientId) => {
-      const device = this.options.store.devices.byExternal('local', phoneExternalId(clientId));
+      const device = this.options.store.live.home.devices.byExternal(
+        'local',
+        phoneExternalId(clientId),
+      );
       if (device !== undefined) this.push(device.id);
     });
   }
@@ -220,7 +226,7 @@ export class PhoneEars {
   }
 
   private clientOf(deviceId: string): string | null {
-    const device = this.options.store.devices.find(deviceId);
+    const device = this.options.store.live.home.devices.find(deviceId);
     return device?.kind === 'phone' ? clientOfPhone(device) : null;
   }
 }

@@ -10,7 +10,6 @@ import type { LocalDeviceEntry } from '../../../src/store/repositories/local-dev
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Caller } from '../../../src/server/auth';
 import { entryConfigOf, identityOfDevice } from '../../../src/local/treadmill/config';
-import { TreadmillHealth } from '../../../src/local/treadmill/health';
 import { kingsmithTreadmillDriver } from '../../../src/local/treadmill/driver';
 import { treadmillRoutes, type RouteDeps } from '../../../src/local/treadmill/routes';
 import { treadmillSetup } from '../../../src/local/treadmill/setup';
@@ -43,7 +42,6 @@ beforeEach(async () => {
   const deps: RouteDeps = {
     store: rig.test.store,
     fleet: rig.fleet,
-    local: { deviceOf: () => rig.row() },
     bridges,
     ingest: rig.ingest,
     broker: {
@@ -64,7 +62,6 @@ beforeEach(async () => {
       fleet: rig.fleet,
       local: { observe: (): Promise<void> => Promise.resolve() },
       bridges,
-      health: new TreadmillHealth(rig.test.store),
       broker: { run: () => Promise.resolve({ ok: true, detail: 'Done.' }) },
       holderOf: () => null,
       now: rig.clock.now,

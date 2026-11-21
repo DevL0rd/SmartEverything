@@ -52,7 +52,9 @@ const OWNER = { owner: true, profileId: null } as const;
 
 beforeEach(async () => {
   captureLogs();
-  vi.useFakeTimers();
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+  });
   opened = await testStore();
 });
 
@@ -61,10 +63,16 @@ afterEach(async () => {
   await opened.close();
 });
 
+async function demanded(sent: readonly HubFrame[]): Promise<void> {
+  while ((demandedTopics(sent).at(-1)?.length ?? 0) === 0)
+    await new Promise((resolve) => setImmediate(resolve));
+}
+
 describe('a fresh computer reading', () => {
   it('asks the computer for every metric, waits for its first full frame, then lets go', async () => {
     const { service, deviceId, rig } = setup();
     const done = service.freshDetail(deviceId, OWNER);
+    await demanded(rig.sent);
     const asked = demandedTopics(rig.sent).at(-1);
     expect(asked).toEqual(
       ['summary', 'cpu', 'gpu', 'memory', 'disks', 'network', 'sensors', 'power'].sort(),
@@ -89,15 +97,16 @@ describe('a fresh computer reading', () => {
       'phone',
       topics.map((topic) => ({ target: deviceTarget(deviceId), topic })),
     );
-    const before = rig.sent.length;
+    const before = demandedTopics(rig.sent).length;
     await service.freshDetail(deviceId, OWNER);
-    expect(rig.sent.length).toBe(before);
+    expect(demandedTopics(rig.sent)).toHaveLength(before);
     expect(rig.viewers.demand(deviceTarget(deviceId)).topics.size).toBe(topics.length);
   });
 
   it('answers with what it has when the computer sends nothing in time, and still lets go', async () => {
     const { service, deviceId, rig } = setup();
     const done = service.freshDetail(deviceId, OWNER);
+    await demanded(rig.sent);
     await vi.advanceTimersByTimeAsync(3_000);
     await expect(done).resolves.toMatchObject({ deviceId, online: true });
     expect(rig.viewers.watched(deviceTarget(deviceId))).toBe(false);

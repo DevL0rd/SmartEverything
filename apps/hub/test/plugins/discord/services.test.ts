@@ -39,7 +39,7 @@ function files(): PluginFiles {
   return {
     folder: '',
     outbox: '',
-    attachmentsOf: () => [],
+    attachmentsOf: () => Promise.resolve([]),
     fromUpload: (_caller: ToolCaller, id) => Promise.resolve(uploads.get(id) ?? null),
     fromPicture: (_caller: ToolCaller, id) => Promise.resolve(pictures.get(id) ?? null),
     fromMachine: () => Promise.resolve(null),
@@ -66,7 +66,7 @@ function assembled(): {
           activitySteps: false,
           compactAtPercent: 0,
         }),
-        conversation: () => null,
+        conversation: () => Promise.resolve(null),
         usage: () => {
           throw new Error('not used');
         },

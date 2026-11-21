@@ -1,5 +1,5 @@
 import { ApiError, USAGE_FILTER, type UsageFilter, type UsageQuery } from '@smarteverything/domain';
-import { invalid } from '../server/errors';
+import { invalid } from '../server/invalid';
 
 export type UsageViewer =
   { readonly role: 'owner' } | { readonly role: 'member'; readonly profileId: string };

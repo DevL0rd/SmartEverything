@@ -1,15 +1,15 @@
 import {
-  ApiError,
   PLANNER_SIGNAL_SOURCE,
   type PlannerRingNotice,
   type PlannerRingTarget,
   type PlannerSignal,
   type PlannerTimerRow,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
-import type { PlannerTimerPatch } from '../store/repositories/planner-timers';
+import { Coalesced } from '../store/reader';
 import type { Store } from '../store/store';
+import type { TimerAction } from './units/clock';
 
 export interface TimerPorts {
   readonly ring: (notice: PlannerRingNotice, profileId: string) => void;
@@ -17,8 +17,8 @@ export interface TimerPorts {
 }
 
 export interface TimerServiceOptions {
-  readonly store: Store;
-  readonly clock: Clock;
+  readonly store: Pick<Store, 'host'>;
+  readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly ports: TimerPorts;
   readonly log: Logger;
 }
@@ -29,170 +29,127 @@ export interface TimerStart {
   readonly targets: readonly PlannerRingTarget[];
 }
 
-function iso(milliseconds: number): string {
-  return new Date(milliseconds).toISOString();
-}
-
-function remainingOf(timer: PlannerTimerRow, now: number): number {
-  if (timer.ends_at === null) return timer.remaining_ms ?? 0;
-  return Math.max(Date.parse(timer.ends_at) - now, 0);
-}
-
 export class TimerService {
   private cancel: Cancel | null = null;
+  private ticks: Coalesced | null = null;
 
   constructor(private readonly options: TimerServiceOptions) {}
 
-  start(): void {
-    const now = this.now();
-    for (const timer of this.options.store.plannerTimers.running()) {
-      if (timer.ends_at !== null && Date.parse(timer.ends_at) <= now) this.finish(timer, 'missed');
-    }
-    this.arm();
+  async start(): Promise<void> {
+    const ticks: Coalesced = new Coalesced(
+      () => this.tick(ticks, 'rang'),
+      (cause) => {
+        this.options.log.error('planner.timer_tick_failed', cause);
+      },
+    );
+    this.ticks = ticks;
+    await this.finishDue(ticks, 'missed');
+    await this.rearm();
   }
 
   stop(): void {
+    background(this.ticks?.stop(), 'planner.timer_stop_failed');
+    this.ticks = null;
     this.cancel?.();
     this.cancel = null;
   }
 
-  begin(profileId: string, input: TimerStart): PlannerTimerRow {
-    const row = this.options.store.plannerTimers.insert({
+  async settled(): Promise<void> {
+    await this.ticks?.idle();
+  }
+
+  async begin(profileId: string, input: TimerStart): Promise<PlannerTimerRow> {
+    const row = await this.options.store.host.call('plannerTimers', 'insert', {
       profile_id: profileId,
       label: input.label,
       duration_ms: input.durationMs,
       state: 'running',
-      ends_at: iso(this.now() + input.durationMs),
+      ends_at: new Date(this.now() + input.durationMs).toISOString(),
       remaining_ms: null,
       targets: input.targets,
     });
-    this.arm();
+    await this.rearm();
     return row;
   }
 
-  pause(id: string, profileId: string): PlannerTimerRow {
-    const timer = this.options.store.plannerTimers.byId(id, profileId);
-    if (timer.state !== 'running')
-      throw new ApiError('conflict', 'Only a running timer can pause.');
-    const row = this.options.store.plannerTimers.update(id, profileId, {
-      state: 'paused',
-      ends_at: null,
-      remaining_ms: remainingOf(timer, this.now()),
-    });
-    this.arm();
-    return row;
+  pause(id: string, profileId: string): Promise<PlannerTimerRow> {
+    return this.change(id, profileId, { kind: 'pause' });
   }
 
-  resume(id: string, profileId: string): PlannerTimerRow {
-    const timer = this.options.store.plannerTimers.byId(id, profileId);
-    if (timer.state !== 'paused') throw new ApiError('conflict', 'Only a paused timer can resume.');
-    const row = this.options.store.plannerTimers.update(id, profileId, {
-      state: 'running',
-      ends_at: iso(this.now() + remainingOf(timer, 0)),
-      remaining_ms: null,
-    });
-    this.arm();
-    return row;
+  resume(id: string, profileId: string): Promise<PlannerTimerRow> {
+    return this.change(id, profileId, { kind: 'resume' });
   }
 
-  addTime(id: string, profileId: string, milliseconds: number): PlannerTimerRow {
-    const timer = this.options.store.plannerTimers.byId(id, profileId);
-    if (timer.state === 'cancelled') throw new ApiError('conflict', 'A cancelled timer is gone.');
-    const row = this.options.store.plannerTimers.update(
+  addTime(id: string, profileId: string, milliseconds: number): Promise<PlannerTimerRow> {
+    return this.change(id, profileId, { kind: 'add', ms: milliseconds });
+  }
+
+  cancelTimer(id: string, profileId: string): Promise<PlannerTimerRow> {
+    return this.change(id, profileId, { kind: 'cancel' });
+  }
+
+  private async change(
+    id: string,
+    profileId: string,
+    action: TimerAction,
+  ): Promise<PlannerTimerRow> {
+    const row = await this.options.store.host.write('plannerTimerChange', {
       id,
       profileId,
-      this.extension(timer, milliseconds),
-    );
-    this.dismissRings(timer);
-    this.arm();
-    return row;
-  }
-
-  cancelTimer(id: string, profileId: string): PlannerTimerRow {
-    const timer = this.options.store.plannerTimers.byId(id, profileId);
-    if (timer.state === 'cancelled') return timer;
-    const row = this.options.store.plannerTimers.update(id, profileId, {
-      state: 'cancelled',
-      ends_at: null,
-      remaining_ms: null,
+      action,
+      nowMs: this.now(),
     });
-    this.dismissRings(timer);
-    this.arm();
+    await this.rearm();
     return row;
-  }
-
-  private extension(timer: PlannerTimerRow, milliseconds: number): PlannerTimerPatch {
-    if (timer.state === 'running') {
-      return {
-        duration_ms: timer.duration_ms + milliseconds,
-        ends_at: iso(Date.parse(timer.ends_at ?? '') + milliseconds),
-      };
-    }
-    if (timer.state === 'paused') {
-      return {
-        duration_ms: timer.duration_ms + milliseconds,
-        remaining_ms: (timer.remaining_ms ?? 0) + milliseconds,
-      };
-    }
-    return {
-      duration_ms: milliseconds,
-      state: 'running',
-      ends_at: iso(this.now() + milliseconds),
-      remaining_ms: null,
-    };
   }
 
   private now(): number {
     return this.options.clock.now().getTime();
   }
 
-  private arm(): void {
+  private async rearm(): Promise<void> {
+    const { ticks } = this;
+    if (ticks === null) return;
+    ticks.trigger();
+    await ticks.idle();
+  }
+
+  private async tick(ticks: Coalesced, outcome: 'rang' | 'missed'): Promise<void> {
+    await this.finishDue(ticks, outcome);
+    const next = (await this.options.store.host.call('plannerTimers', 'running'))[0];
+    if (this.ticks !== ticks) return;
     this.cancel?.();
     this.cancel = null;
-    const next = this.options.store.plannerTimers.running()[0];
     if (next?.ends_at === null || next === undefined) return;
     this.cancel = this.options.clock.at(new Date(next.ends_at), () => {
-      this.fire();
+      this.cancel = null;
+      ticks.trigger();
     });
   }
 
-  private fire(): void {
-    this.cancel = null;
+  private async finishDue(ticks: Coalesced, outcome: 'rang' | 'missed'): Promise<void> {
     const now = this.now();
-    for (const timer of this.options.store.plannerTimers.running()) {
+    for (const timer of await this.options.store.host.call('plannerTimers', 'running')) {
+      if (this.ticks !== ticks) return;
       if (timer.ends_at === null || Date.parse(timer.ends_at) > now) continue;
       try {
-        this.finish(timer, 'rang');
+        await this.finish(timer, outcome);
       } catch (cause) {
         this.options.log.error('planner.timer_finish_failed', cause, { timerId: timer.id });
       }
     }
-    this.arm();
   }
 
-  private finish(timer: PlannerTimerRow, outcome: 'rang' | 'missed'): void {
-    const dueAt = timer.ends_at ?? iso(this.now());
-    const at = iso(this.now());
-    this.options.store.plannerTimers.update(timer.id, timer.profile_id, {
-      state: 'done',
-      ends_at: null,
-      remaining_ms: null,
-    });
-    const ring = this.options.store.plannerRings.insert({
-      kind: 'timer',
-      ref_id: timer.id,
-      profile_id: timer.profile_id,
-      due_at: dueAt,
-      rang_at: outcome === 'rang' ? at : null,
-      dismissed_at: null,
-      snoozes: 0,
-      target: null,
+  private async finish(timer: PlannerTimerRow, outcome: 'rang' | 'missed'): Promise<void> {
+    const nowMs = this.now();
+    const ring = await this.options.store.host.write('plannerTimerFinish', {
+      timer,
       outcome,
-      missed_reason: outcome === 'missed' ? 'hub_down' : null,
+      nowMs,
     });
     if (outcome === 'missed') return;
     this.options.ports.ring(
-      { type: 'planner_ring', ringId: ring.id, kind: 'timer', refId: timer.id, dueAt },
+      { type: 'planner_ring', ringId: ring.id, kind: 'timer', refId: timer.id, dueAt: ring.due_at },
       timer.profile_id,
     );
     this.options.ports.signal({
@@ -202,18 +159,9 @@ export class TimerService {
       field: null,
       value: true,
       previous: null,
-      at,
+      at: new Date(nowMs).toISOString(),
       profileId: timer.profile_id,
       data: { timerId: timer.id, label: timer.label, durationMs: timer.duration_ms },
     });
-  }
-
-  private dismissRings(timer: PlannerTimerRow): void {
-    const at = iso(this.now());
-    for (const ring of this.options.store.plannerRings.forRef('timer', timer.id)) {
-      if (ring.outcome === 'rang' && ring.dismissed_at === null) {
-        this.options.store.plannerRings.update(ring.id, { dismissed_at: at });
-      }
-    }
   }
 }

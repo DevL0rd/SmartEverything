@@ -353,8 +353,8 @@ describe('phone reports', () => {
 describe('phone context', () => {
   beforeEach(startNodes);
 
-  it('is unknown for a person whose phone has not reported', () => {
-    expect(nodes.contextOf(phone.profileId, phone.profileId)).toEqual({
+  it('is unknown for a person whose phone has not reported', async () => {
+    expect(await nodes.contextOf(phone.profileId, phone.profileId)).toEqual({
       profileId: phone.profileId,
       deviceId: null,
       state: 'unknown',
@@ -369,9 +369,9 @@ describe('phone context', () => {
 
   it('shows the place only to its owner', async () => {
     await nodes.report(phone, report({ values: { phone_context: 'still', place: 'Home' } }));
-    const own = nodes.contextOf(phone.profileId, phone.profileId);
+    const own = await nodes.contextOf(phone.profileId, phone.profileId);
     expect(own).toMatchObject({ state: 'still', place: 'Home', placeShared: true });
-    const other = nodes.contextOf(phone.profileId, crypto.randomUUID());
+    const other = await nodes.contextOf(phone.profileId, crypto.randomUUID());
     expect(other).toMatchObject({ state: 'still', place: null, placeShared: false });
   });
 });

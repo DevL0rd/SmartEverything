@@ -305,14 +305,14 @@ describe('drive_edit', () => {
     expect(calls[1]).toMatchObject({ params: { albumId: ALBUM }, body: { title: 'Trip 2' } });
   });
 
-  it('refuses acting on another person’s drive, even for the owner’s AI', () => {
+  it('refuses acting on another person’s drive, even for the owner’s AI', async () => {
     const other = opened.store.profiles.create({ name: 'Sam' });
-    expect(() =>
+    await expect(
       selected(DRIVE_READ, 'folder').run(context, { rootId: ROOT }, { personId: other.id }),
-    ).toThrow(/nobody, the owner included/u);
-    expect(() =>
+    ).rejects.toThrow(/nobody, the owner included/u);
+    await expect(
       selected(DRIVE_EDIT, 'trash').run(context, { itemIds: [ITEM] }, { personId: other.id }),
-    ).toThrow(/nobody, the owner included/u);
+    ).rejects.toThrow(/nobody, the owner included/u);
     expect(calls).toEqual([]);
   });
 
@@ -321,9 +321,9 @@ describe('drive_edit', () => {
     expect(onlyCall().name).toBe('listRoots');
   });
 
-  it('refuses a member the owner-only action before any operation runs', () => {
+  it('refuses a member the owner-only action before any operation runs', async () => {
     const own = memberContext('c');
-    expect(() => selected(DRIVE_EDIT, 'scrub_start').run(own, {}, {})).toThrow(
+    await expect(selected(DRIVE_EDIT, 'scrub_start').run(own, {}, {})).rejects.toThrow(
       /Only an owner may use startScrub/u,
     );
     expect(calls).toEqual([]);

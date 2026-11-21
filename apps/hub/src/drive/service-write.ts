@@ -23,7 +23,7 @@ import type { ConflictEnv } from './conflicts';
 import type { DriveWriteGuard } from './quotas';
 import type { DriveRootLanes } from './root-lanes';
 import type { DriveReadService } from './service-read';
-import { DriveAlbumWriter, type AlbumEditing } from './service-write-albums';
+import type { AlbumEditing } from './service-write-albums';
 import { DriveAdmin } from './service-write-drives';
 import { DriveStorageWriter, type StorageDeps } from './service-write-storage';
 import type { DriveCaller, WriteStore } from './service-write-support';
@@ -45,38 +45,38 @@ export interface DriveWriteDeps {
 export class DriveWriteService {
   private readonly drives: DriveAdmin;
   private readonly tree: DriveTreeWriter;
-  private readonly albums: DriveAlbumWriter;
+  private readonly albums: AlbumEditing;
   private readonly storage: DriveStorageWriter;
 
   constructor(deps: DriveWriteDeps) {
     this.drives = new DriveAdmin({ store: deps.store, read: deps.read, scan: deps.scan });
     this.tree = new DriveTreeWriter(deps);
-    this.albums = new DriveAlbumWriter(deps.albums);
+    this.albums = deps.albums;
     this.storage = new DriveStorageWriter(deps);
   }
 
-  updateRoot(caller: DriveCaller, rootId: string, change: DriveRootChange): DriveRoot {
+  updateRoot(caller: DriveCaller, rootId: string, change: DriveRootChange): Promise<DriveRoot> {
     return this.drives.update(caller, rootId, change);
   }
 
-  scanRoot(caller: DriveCaller, rootId: string): void {
-    this.drives.scan(caller, rootId);
+  scanRoot(caller: DriveCaller, rootId: string): Promise<void> {
+    return this.drives.scan(caller, rootId);
   }
 
   change(caller: DriveCaller, change: DriveChange): Promise<DriveChangeResult> {
     return this.tree.apply(caller, change);
   }
 
-  createAlbum(caller: DriveCaller, input: DriveAlbumCreate): DriveAlbum {
+  createAlbum(caller: DriveCaller, input: DriveAlbumCreate): Promise<DriveAlbum> {
     return this.albums.create(caller, input);
   }
 
-  updateAlbum(caller: DriveCaller, albumId: string, change: DriveAlbumChange): DriveAlbum {
+  updateAlbum(caller: DriveCaller, albumId: string, change: DriveAlbumChange): Promise<DriveAlbum> {
     return this.albums.update(caller, albumId, change);
   }
 
-  removeAlbum(caller: DriveCaller, albumId: string): void {
-    this.albums.remove(caller, albumId);
+  removeAlbum(caller: DriveCaller, albumId: string): Promise<void> {
+    return this.albums.remove(caller, albumId);
   }
 
   restoreVersion(caller: DriveCaller, itemId: string, versionId: string): Promise<DriveItem> {
@@ -87,23 +87,23 @@ export class DriveWriteService {
     return this.storage.createShare(caller, input);
   }
 
-  revokeShare(caller: DriveCaller, shareId: string): DriveShare {
+  revokeShare(caller: DriveCaller, shareId: string): Promise<DriveShare> {
     return this.storage.revokeShare(caller, shareId);
   }
 
-  setQuota(caller: DriveCaller, set: DriveQuotaSet): void {
-    this.storage.setQuota(caller, set);
+  setQuota(caller: DriveCaller, set: DriveQuotaSet): Promise<void> {
+    return this.storage.setQuota(caller, set);
   }
 
   updateSettings(caller: DriveCaller, update: DriveSettingsUpdate): DriveSettings {
     return this.storage.updateSettings(caller, update);
   }
 
-  startScrub(caller: DriveCaller): DriveScrubState {
+  startScrub(caller: DriveCaller): Promise<DriveScrubState> {
     return this.storage.startScrub(caller);
   }
 
-  reportBackup(caller: DriveCaller, input: DriveBackupReportInput): DriveBackupReport {
+  reportBackup(caller: DriveCaller, input: DriveBackupReportInput): Promise<DriveBackupReport> {
     return this.storage.reportBackup(caller, input);
   }
 

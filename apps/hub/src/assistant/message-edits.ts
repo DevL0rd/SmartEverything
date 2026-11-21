@@ -61,7 +61,7 @@ export class MessageEdits {
     this.ports.requests.assertReplay(chat, message.id, edit);
     const engine = this.ports.engines.forMutation(chat, owner.role);
     await engine?.historyChanged(chat, owner);
-    engine?.historyRemoved?.(chat, [
+    await engine?.historyRemoved?.(chat, [
       message,
       ...this.ports.store.assistantChat.repliesTo(message.id),
     ]);

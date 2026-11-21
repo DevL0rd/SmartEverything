@@ -74,7 +74,6 @@ function envOf(store: TestStore['store'], controls: Controls): PosixEnv {
     guard: { status: (profileId) => store.driveQuotas.status(profileId), space },
     space: {
       read: new DriveReadService(store),
-      store,
       quota: (profileId) => store.driveQuotas.status(profileId),
       probe: { space },
       inodes: () => Promise.resolve({ files: 1000, free: 900 }),

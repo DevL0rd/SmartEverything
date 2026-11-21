@@ -2,11 +2,14 @@ import { PHOTO_RAIL_COUNTS, type PhotoRailCounts } from '@smarteverything/domain
 import { driveSql, lockedTrashSql, type DriveActor } from '../drive/access';
 import { starredBy } from '../store/repositories/drive-stars';
 import type { StoreContext } from '../store/context';
+import { storeUnit } from '../store/host/unit';
 import type { SqlParameters } from '../store/sql';
 import { z } from 'zod';
 import { FILTER_SQL, PHOTO_FROM, PHOTO_SHOWN, visibility } from './library';
 import { trashedPhotoMembership } from './membership';
 import { PEOPLE_COUNT_SQL } from './people/counts';
+import { SharingReader } from './sharing/reads';
+import { AlbumSeen } from './sharing/seen';
 
 const COUNT_FIELD = z.number().int().nonnegative();
 
@@ -85,3 +88,8 @@ export class RailCountsReader {
     return this.context.sql.get(ONE, text, parameters)?.total ?? 0;
   }
 }
+
+export const PHOTO_RAIL_COUNTS_UNIT = storeUnit((store, input: { readonly actor: DriveActor }) => {
+  const sharing = new SharingReader(store, new AlbumSeen(store));
+  return new RailCountsReader(store.context, (actor) => sharing.unread(actor)).read(input.actor);
+});

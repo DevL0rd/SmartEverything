@@ -24,6 +24,7 @@ const COLUMNS =
   'id, name, enabled, revision, definition, draft, layout, origin, author, last_run_at, last_error, run_count, created_at, updated_at';
 
 export interface NewAutomationProgram {
+  readonly id?: string | undefined;
   readonly name: string;
   readonly enabled: boolean;
   readonly program: AutomationV4;
@@ -95,7 +96,7 @@ export class AutomationProgramsRepository {
 
   create(automation: NewAutomationProgram, kinds: NodeKindLookup): StoredAutomationRow {
     return this.context.write(() => {
-      const id = this.context.newId();
+      const id = automation.id ?? this.context.newId();
       const now = this.context.now();
       const layout = completeLayout(automation.program, automation.layout, {
         kinds,

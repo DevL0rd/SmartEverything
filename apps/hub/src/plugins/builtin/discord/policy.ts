@@ -49,8 +49,14 @@ export class Policy {
     return this.config.approved_roles.some((role) => guilds.some((roles) => roles.has(role)));
   }
 
-  isOwner(userId: string): boolean {
-    return this.people.requesterOf(userId) === 'owner';
+  async isOwner(userId: string): Promise<boolean> {
+    return (await this.people.requesterOf(userId)) === 'owner';
+  }
+
+  async owners(userIds: Iterable<string>): Promise<ReadonlySet<string>> {
+    const unique = [...new Set(userIds)];
+    const owned = await Promise.all(unique.map((userId) => this.isOwner(userId)));
+    return new Set(unique.filter((_userId, index) => owned[index] === true));
   }
 
   assertUser(userId: string): void {

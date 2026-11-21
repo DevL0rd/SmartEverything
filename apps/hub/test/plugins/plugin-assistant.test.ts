@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { AssistantFiles } from '../../src/assistant/files';
 import { ChatDirectory, type ChatOwner } from '../../src/assistant/chat-directory';
 import type { EngineStatus } from '../../src/assistant/engines/engine';
-import type { Ledger } from '../../src/ledger/ledger';
+import type { StoreHost } from '../../src/store/host/host';
 import {
   PluginConversations,
   type PluginConversationsOptions,
@@ -65,6 +65,7 @@ function assistantFake(store: TestStore['store']): Fake {
 beforeEach(async () => {
   opened = await testStore(() => NOW);
   const { store } = opened;
+  await store.live.aiModels.load();
   const manifest = PLUGIN_MANIFEST.parse({
     id: 'discord',
     name: 'Discord',
@@ -93,6 +94,7 @@ function chatOf(profileId: string): string {
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: (): Date => NOW,
   });
   return new ChatDirectory(store, files).chatForPlugin(
@@ -106,7 +108,7 @@ describe('plugin conversation commands', () => {
   it('act on the chat of the person who asked, with that person’s role', async () => {
     const { store } = opened;
     const sam = store.profiles.create({ name: 'Sam' });
-    people.set('discord', FRIEND, { name: 'Sam', status: 'approved', profile_id: sam.id });
+    await people.set('discord', FRIEND, { name: 'Sam', status: 'approved', profile_id: sam.id });
     const owners = chatOf(store.personAccess.homeOwner());
     const mine = chatOf(sam.id);
     await conversations.startOver(KEY, FRIEND);
@@ -129,25 +131,24 @@ describe('plugin conversation commands', () => {
     expect(calls).toStrictEqual([]);
   });
 
-  it('do not show a stranger the owner’s conversation in the same channel', () => {
+  it('do not show a stranger the owner’s conversation in the same channel', async () => {
     chatOf(opened.store.personAccess.homeOwner());
-    expect(conversations.conversation(KEY, STRANGER)).toBeNull();
+    expect(await conversations.conversation(KEY, STRANGER)).toBeNull();
   });
 
   it('refuse and record a linked guest whose time has ended', async () => {
     const { store } = opened;
     const lee = store.profiles.create({ name: 'Lee' });
-    people.set('discord', FRIEND, { name: 'Lee', status: 'approved', profile_id: lee.id });
+    await people.set('discord', FRIEND, { name: 'Lee', status: 'approved', profile_id: lee.id });
     store.personAccess.change(lee.id, {
       role: 'guest',
       expires_at: new Date(NOW.getTime() - 1000).toISOString(),
     });
     await expect(conversations.compact(KEY, FRIEND)).rejects.toBeInstanceOf(ApiError);
-    expect(() => conversations.conversation(KEY, FRIEND)).toThrow(ApiError);
+    await expect(conversations.conversation(KEY, FRIEND)).rejects.toBeInstanceOf(ApiError);
     expect(calls).toStrictEqual([]);
-    expect(store.accessAudit.list(10, lee.id).map((entry) => entry.kind)).toStrictEqual([
-      'refused_expired',
-    ]);
+    const audit = await store.host.call('accessAudit', 'list', 10, lee.id);
+    expect(audit.map((entry) => entry.kind)).toStrictEqual(['refused_expired']);
   });
 
   it('act as the home owner when the plugin runs its own conversation', async () => {
@@ -160,42 +161,46 @@ describe('plugin conversation commands', () => {
   it('do not find the owner’s chat for a person who has their own profile', async () => {
     const { store } = opened;
     const sam = store.profiles.create({ name: 'Sam' });
-    people.set('discord', FRIEND, { name: 'Sam', status: 'approved', profile_id: sam.id });
+    await people.set('discord', FRIEND, { name: 'Sam', status: 'approved', profile_id: sam.id });
     chatOf(store.personAccess.homeOwner());
-    expect(conversations.conversation(KEY, FRIEND)).toBeNull();
+    expect(await conversations.conversation(KEY, FRIEND)).toBeNull();
     await expect(conversations.compact(KEY, FRIEND)).rejects.toBeInstanceOf(ApiError);
   });
 });
 
 describe('plugin spending command', () => {
-  let totals: MockInstance<Ledger['totals']>;
+  let reads: MockInstance<StoreHost['read']>;
 
   beforeEach(() => {
-    totals = vi.spyOn(opened.store.ledger, 'totals');
+    reads = vi.spyOn(opened.store.host, 'read');
   });
 
-  it('shows the whole home to the owner and to the plugin itself', () => {
-    people.set('discord', FRIEND, { name: 'Me', status: 'owner' });
-    conversations.usage(FRIEND);
-    conversations.usage();
-    expect(totals).toHaveBeenCalledTimes(6);
-    for (const [filter] of totals.mock.calls) {
+  function totals(): unknown[] {
+    return reads.mock.calls.filter(([name]) => name === 'mcpUsageTotals').map(([, input]) => input);
+  }
+
+  it('shows the whole home to the owner and to the plugin itself', async () => {
+    await people.set('discord', FRIEND, { name: 'Me', status: 'owner' });
+    await conversations.usage(FRIEND);
+    await conversations.usage();
+    expect(totals()).toHaveLength(6);
+    for (const filter of totals()) {
       expect(filter).not.toHaveProperty('profileIds');
     }
   });
 
-  it('shows a linked person only what their own profile spent', () => {
+  it('shows a linked person only what their own profile spent', async () => {
     const sam = opened.store.profiles.create({ name: 'Sam' });
-    people.set('discord', FRIEND, { name: 'Sam', status: 'approved', profile_id: sam.id });
-    conversations.usage(FRIEND);
-    expect(totals).toHaveBeenCalledTimes(3);
-    for (const [filter] of totals.mock.calls) {
+    await people.set('discord', FRIEND, { name: 'Sam', status: 'approved', profile_id: sam.id });
+    await conversations.usage(FRIEND);
+    expect(totals()).toHaveLength(3);
+    for (const filter of totals()) {
       expect(filter).toMatchObject({ profileIds: [sam.id] });
     }
   });
 
-  it('refuses a stranger and reads nothing', () => {
-    expect(() => conversations.usage(STRANGER)).toThrow(ApiError);
-    expect(totals).not.toHaveBeenCalled();
+  it('refuses a stranger and reads nothing', async () => {
+    await expect(conversations.usage(STRANGER)).rejects.toThrow(ApiError);
+    expect(totals()).toHaveLength(0);
   });
 });

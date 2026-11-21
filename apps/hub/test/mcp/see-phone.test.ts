@@ -89,7 +89,7 @@ describe('seeing a phone screen', () => {
   it('asks the chosen phone for a screenshot and returns the picture', async () => {
     const pixel = addPhone('Pixel');
     addPhone('Galaxy');
-    const found = machineOf(context(), 'phone', 'pixel');
+    const found = await machineOf(context(), 'phone', 'pixel');
     expect(found.device.id).toBe(pixel);
     const shot = await phoneShot(context(), found);
     expect(shot).toEqual({ data: PICTURE, at: NOW });
@@ -98,21 +98,23 @@ describe('seeing a phone screen', () => {
     ]);
   });
 
-  it('uses the only phone when none is named and asks which when there are several', () => {
+  it('uses the only phone when none is named and asks which when there are several', async () => {
     const pixel = addPhone('Pixel');
-    expect(machineOf(context(), 'phone', undefined).device.id).toBe(pixel);
+    expect((await machineOf(context(), 'phone', undefined)).device.id).toBe(pixel);
     addPhone('Galaxy');
-    expect(() => machineOf(context(), 'phone', undefined)).toThrow(/Say which phone: .*Galaxy/);
-    expect(() => machineOf(context(), 'phone', undefined)).toThrow(/Pixel/);
+    await expect(machineOf(context(), 'phone', undefined)).rejects.toThrow(
+      /Say which phone: .*Galaxy/,
+    );
+    await expect(machineOf(context(), 'phone', undefined)).rejects.toThrow(/Pixel/);
   });
 
-  it('says there is no phone when none is paired', () => {
-    expect(() => machineOf(context(), 'phone', undefined)).toThrow('no phone to look at');
+  it('says there is no phone when none is paired', async () => {
+    await expect(machineOf(context(), 'phone', undefined)).rejects.toThrow('no phone to look at');
   });
 
   it('passes on the phone’s own reason when it cannot take the picture', async () => {
     addPhone('Pixel');
-    const found = machineOf(context(), 'phone', 'Pixel');
+    const found = await machineOf(context(), 'phone', 'Pixel');
     answer = {
       ok: false,
       detail: 'Screenshots need the SmartEverything accessibility service turned on.',
@@ -122,7 +124,7 @@ describe('seeing a phone screen', () => {
 
   it('refuses an answer without a picture or with one too large for an assistant', async () => {
     addPhone('Pixel');
-    const found = machineOf(context(), 'phone', 'Pixel');
+    const found = await machineOf(context(), 'phone', 'Pixel');
     answer = { ok: true, detail: 'done' };
     await expect(phoneShot(context(), found)).rejects.toThrow('answered without a picture');
     answer = {

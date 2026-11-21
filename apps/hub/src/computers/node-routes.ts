@@ -22,17 +22,17 @@ export function computerNodeRoutes(
     harness.revoke(deviceId);
   };
   return {
-    pairComputerNode: bound(E.pairComputerNode, ({ body, caller }) => ({
-      ...access.pair(body.url, clientOf(caller).id),
+    pairComputerNode: bound(E.pairComputerNode, async ({ body, caller }) => ({
+      ...(await access.pair(body.url, clientOf(caller).id)),
       pin: pinOf(context.connections),
     })),
-    claimComputerNode: bound(E.claimComputerNode, ({ body, remote }) => {
-      const { paired } = access.claim(body.code, body.hello, remote, body.window_token);
+    claimComputerNode: bound(E.claimComputerNode, async ({ body, remote }) => {
+      const { paired } = await access.claim(body.code, body.hello, remote, body.window_token);
       drop(paired.device_id);
       return paired;
     }),
-    revokeComputerNode: bound(E.revokeComputerNode, ({ params }) => {
-      access.revoke(params.deviceId);
+    revokeComputerNode: bound(E.revokeComputerNode, async ({ params }) => {
+      await access.revoke(params.deviceId);
       drop(params.deviceId);
       return DONE_REPLY;
     }),

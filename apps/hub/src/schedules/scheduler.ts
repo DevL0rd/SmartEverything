@@ -41,19 +41,24 @@ export class Scheduler {
   private armedFor: string | null = null;
   private unsubscribe: (() => void) | null = null;
   private readonly active = new Set<string>();
+  private arming: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: SchedulerOptions) {}
 
   start(): void {
-    this.purge();
-    for (const row of this.options.store.schedules.interrupted()) {
-      background(this.resume(row), 'scheduler.resume_failed');
-    }
     this.unsubscribe = this.options.store.feed.subscribe((change) => {
       if (change.table === 'scheduled_actions') {
         this.arm();
       }
     });
+    background(this.started(), 'scheduler.start_failed');
+  }
+
+  private async started(): Promise<void> {
+    await this.purge();
+    for (const row of await this.options.store.host.call('schedules', 'interrupted')) {
+      background(this.resume(row), 'scheduler.resume_failed');
+    }
     this.arm();
   }
 
@@ -65,11 +70,11 @@ export class Scheduler {
     this.armedFor = null;
   }
 
-  runNow(row: ScheduleRow): ScheduleRow {
+  async runNow(row: ScheduleRow): Promise<ScheduleRow> {
     if (row.state !== 'scheduled' && row.state !== 'waiting') {
       throw new ApiError('conflict', 'Only an action that is waiting to run can run now.');
     }
-    return this.options.store.schedules.update(row.id, {
+    return await this.options.store.host.call('schedules', 'update', row.id, {
       nextAt: this.options.clock.now().toISOString(),
     });
   }
@@ -84,8 +89,8 @@ export class Scheduler {
     }
     void this.options.steps
       .run(step, row, stepLineOf(row, index))
-      .then((outcome) => {
-        const fresh = this.options.store.schedules.byId(row.id);
+      .then(async (outcome) => {
+        const fresh = await this.options.store.host.call('schedules', 'byId', row.id);
         const results = withResults(fresh.results, [
           resultOf({
             occurrence: fresh.occurrence,
@@ -95,7 +100,7 @@ export class Scheduler {
             lateMs: 0,
           }),
         ]);
-        this.options.store.schedules.update(row.id, {
+        await this.options.store.host.call('schedules', 'update', row.id, {
           results,
           ...(isScheduleActive(fresh.state) ? {} : { state: finalStateOf(results) }),
         });
@@ -106,11 +111,11 @@ export class Scheduler {
     return row;
   }
 
-  cancelRun(row: ScheduleRow): ScheduleRow {
+  async cancelRun(row: ScheduleRow): Promise<ScheduleRow> {
     if (!isScheduleActive(row.state)) {
       throw new ApiError('conflict', 'It has already finished.');
     }
-    return this.options.store.schedules.update(row.id, {
+    return await this.options.store.host.call('schedules', 'update', row.id, {
       state: 'cancelled',
       nextAt: null,
       finishedAt: this.options.clock.now().toISOString(),
@@ -118,7 +123,15 @@ export class Scheduler {
   }
 
   private arm(): void {
-    const next = this.options.store.schedules.nextDueAt();
+    this.arming = this.arming
+      .then(() => this.armed())
+      .catch((cause: unknown) => {
+        this.options.log.error('schedule.arm_failed', cause);
+      });
+  }
+
+  private async armed(): Promise<void> {
+    const next = await this.options.store.host.call('schedules', 'nextDueAt');
     if (next === this.armedFor) {
       return;
     }
@@ -128,17 +141,22 @@ export class Scheduler {
     if (next === null) {
       return;
     }
+    if (Date.parse(next) <= this.options.clock.now().getTime()) {
+      this.armedFor = null;
+      background(this.fire(), 'scheduler.fire_failed');
+      return;
+    }
     this.cancel = this.options.clock.at(new Date(next), () => {
       this.cancel = null;
       this.armedFor = null;
-      this.fire();
+      background(this.fire(), 'scheduler.fire_failed');
     });
   }
 
-  private fire(): void {
-    this.purge();
+  private async fire(): Promise<void> {
+    await this.purge();
     const now = this.options.clock.now();
-    for (const row of this.options.store.schedules.due(now.toISOString())) {
+    for (const row of await this.options.store.host.call('schedules', 'due', now.toISOString())) {
       background(this.begin(row, now), 'scheduler.begin_failed');
     }
     this.arm();
@@ -153,7 +171,7 @@ export class Scheduler {
     const skipped = occurrence - row.occurrence;
     const dueAt = skipped > 0 ? (row.occurrences[occurrence] ?? row.next_at) : row.next_at;
     const lateMs = Math.max(0, now.getTime() - Date.parse(dueAt));
-    const claimed = this.options.store.schedules.update(row.id, {
+    const claimed = await this.options.store.host.call('schedules', 'update', row.id, {
       state: 'running',
       occurrence,
       step: waiting ? row.step : 0,
@@ -167,7 +185,7 @@ export class Scheduler {
   private async resume(row: ScheduleRow): Promise<void> {
     const step = row.steps[row.step];
     const lateMs = Math.max(0, this.options.clock.now().getTime() - Date.parse(row.updated_at));
-    if (step === undefined || this.options.steps.isRepeatable(step)) {
+    if (step === undefined || (await this.options.steps.isRepeatable(step))) {
       await this.run({ row, lateMs });
       return;
     }
@@ -183,7 +201,7 @@ export class Scheduler {
       lateMs,
       as: 'interrupted',
     });
-    const next = this.options.store.schedules.update(row.id, {
+    const next = await this.options.store.host.call('schedules', 'update', row.id, {
       step: row.step + 1,
       results: withResults(row.results, [interrupted]),
     });
@@ -201,10 +219,10 @@ export class Scheduler {
       if (index === null) {
         return;
       }
-      this.finishOccurrence(id);
+      await this.finishOccurrence(id);
     } catch (cause) {
       this.options.log.error('schedule.run_failed', cause, { scheduleId: id });
-      this.options.store.schedules.update(id, {
+      await this.options.store.host.call('schedules', 'update', id, {
         state: 'failed',
         nextAt: null,
         finishedAt: this.options.clock.now().toISOString(),
@@ -216,13 +234,13 @@ export class Scheduler {
 
   private async runStep(id: string, index: number, lateMs: number): Promise<number | null> {
     const { store, clock } = this.options;
-    const row = store.schedules.byId(id);
+    const row = await store.host.call('schedules', 'byId', id);
     const step = row.steps[index];
     if (row.state !== 'running' || step === undefined) {
       return null;
     }
     if (step.kind === 'wait') {
-      store.schedules.update(id, {
+      await store.host.call('schedules', 'update', id, {
         state: 'waiting',
         step: index + 1,
         nextAt: new Date(clock.now().getTime() + step.seconds * 1000).toISOString(),
@@ -230,7 +248,7 @@ export class Scheduler {
       return null;
     }
     const outcome = await this.options.steps.run(step, row, stepLineOf(row, index));
-    const fresh = store.schedules.byId(id);
+    const fresh = await store.host.call('schedules', 'byId', id);
     const result = resultOf({
       occurrence: fresh.occurrence,
       step: index,
@@ -239,34 +257,46 @@ export class Scheduler {
       lateMs,
     });
     const next = outcome.outcome === 'failed' && step.stopOnFailure ? row.steps.length : index + 1;
-    store.schedules.update(id, { step: next, results: withResults(fresh.results, [result]) });
+    await store.host.call('schedules', 'update', id, {
+      step: next,
+      results: withResults(fresh.results, [result]),
+    });
     return next;
   }
 
-  private finishOccurrence(id: string): void {
+  private async finishOccurrence(id: string): Promise<void> {
     const { store, clock } = this.options;
-    const row = store.schedules.byId(id);
+    const row = await store.host.call('schedules', 'byId', id);
     if (row.state !== 'running') {
       return;
     }
     const next = row.occurrence + 1;
     const nextAt = row.occurrences[next];
     if (nextAt !== undefined) {
-      store.schedules.update(id, { state: 'scheduled', occurrence: next, step: 0, nextAt });
+      await store.host.call('schedules', 'update', id, {
+        state: 'scheduled',
+        occurrence: next,
+        step: 0,
+        nextAt,
+      });
       return;
     }
-    store.schedules.update(id, {
+    await store.host.call('schedules', 'update', id, {
       state: finalStateOf(row.results),
       nextAt: null,
       finishedAt: clock.now().toISOString(),
     });
   }
 
-  private purge(): void {
+  private async purge(): Promise<void> {
     const before = new Date(
       this.options.clock.now().getTime() - SCHEDULE_LIMITS.keepFinishedDays * DAY_MS,
     );
-    const removed = this.options.store.schedules.purgeFinished(before.toISOString());
+    const removed = await this.options.store.host.call(
+      'schedules',
+      'purgeFinished',
+      before.toISOString(),
+    );
     if (removed > 0) {
       this.options.log.info('schedule.purged', { removed });
     }

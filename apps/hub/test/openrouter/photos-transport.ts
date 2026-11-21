@@ -13,8 +13,11 @@ export function urlOf(input: Parameters<typeof fetch>[0]): string {
   return input instanceof URL ? input.href : input.url;
 }
 
-export function bodyOf(init: Parameters<typeof fetch>[1]): SentBody {
-  return SENT_BODY.parse(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
+export async function bodyOf(init: Parameters<typeof fetch>[1]): Promise<SentBody> {
+  const body = init?.body;
+  if (typeof body === 'string') return SENT_BODY.parse(JSON.parse(body));
+  if (body instanceof Blob) return SENT_BODY.parse(JSON.parse(await body.text()));
+  throw new Error('The request has no JSON body.');
 }
 
 export function contentOf(body: SentBody): readonly Record<string, unknown>[] {

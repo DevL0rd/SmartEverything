@@ -49,12 +49,12 @@ function makeCamera(name: string, transcribe: boolean): string {
   return device.id;
 }
 
-function makeListener(
+async function makeListener(
   kind: DeviceKind,
   name: string,
   profileId: string,
   transcribe: boolean,
-): string {
+): Promise<string> {
   const [device] = opened.store.devices.upsert([
     {
       provider: 'local',
@@ -74,7 +74,7 @@ function makeListener(
   if (device === undefined) {
     throw new Error('the device was not stored');
   }
-  new DeviceListeningSwitches(opened.store).save(device.id, { transcribe });
+  await new DeviceListeningSwitches(opened.store).save(device.id, { transcribe });
   return device.id;
 }
 
@@ -107,12 +107,12 @@ function say(secondsAgo: number, text: string, extra: Partial<TranscriptLineInpu
   });
 }
 
-function recall(
+async function recall(
   role: 'owner' | 'member' = 'owner',
   id: string = cameraId,
   profileId = 'someone',
-): string | null {
-  return recentSpeechOf(
+): Promise<string | null> {
+  return await recentSpeechOf(
     { store: opened.store, now: () => new Date(NOW), log: testLogger('voice') },
     { callId: 'call-1', deviceId: id, role, profileId },
   );
@@ -121,6 +121,7 @@ function recall(
 beforeEach(async () => {
   logs = captureLogs();
   opened = await testStore();
+  await opened.store.live.home.load();
   transcripts = new Transcripts({
     store: opened.store,
     clock: new FakeClock(NOW),
@@ -142,11 +143,11 @@ afterEach(async () => {
 });
 
 describe('recentSpeechOf', () => {
-  it('lists the last five minutes oldest first with relative times and drops older speech', () => {
+  it('lists the last five minutes oldest first with relative times and drops older speech', async () => {
     say(400, 'too old');
     say(240, 'dinner is ready');
     say(30, 'I will set the table');
-    const text = recall() ?? '';
+    const text = (await recall()) ?? '';
     expect(text).toContain('Recent speech heard on Kitchen (last 5 minutes)');
     expect(text).not.toContain('too old');
     expect(text.indexOf('[4 min ago] dinner is ready')).toBeGreaterThan(0);
@@ -155,45 +156,46 @@ describe('recentSpeechOf', () => {
     );
   });
 
-  it('keeps the newest speech within the character budget', () => {
+  it('keeps the newest speech within the character budget', async () => {
     for (let index = 0; index < 100; index += 1) {
       say(280 - index, `line ${String(index).padStart(3, '0')} ${'x'.repeat(60)}`);
     }
-    const text = recall() ?? '';
+    const text = (await recall()) ?? '';
     expect(text.length).toBeLessThan(4400);
     expect(text).toContain('line 099');
     expect(text).not.toContain('line 000');
   });
 
-  it('names a speaker who differs from the camera and leaves out the AI and the wake phrase', () => {
+  it('names a speaker who differs from the camera and leaves out the AI and the wake phrase', async () => {
     say(120, 'Sam says hello', { speaker: 'Sam' });
     say(100, 'the assistant answered', { bot: true });
     say(5, 'hey Coordinator turn on the lamp');
-    const text = recall() ?? '';
+    const text = (await recall()) ?? '';
     expect(text).toContain('Sam: Sam says hello');
     expect(text).not.toContain('answered');
     expect(text).not.toContain('turn on the lamp');
   });
 
-  it('gives a member nothing, and nothing when transcription is off, the window is 0 or nothing was heard', () => {
+  it('gives a member nothing, and nothing when transcription is off, the window is 0 or nothing was heard', async () => {
     say(60, 'private talk');
-    expect(recall('member')).toBeNull();
+    expect(await recall('member')).toBeNull();
     const quiet = makeCamera('Porch', false);
-    expect(recall('owner', quiet)).toBeNull();
-    const settings = opened.store.assistantChat.settings();
-    opened.store.assistantChat.saveSettings({
+    expect(await recall('owner', quiet)).toBeNull();
+    const { assistant } = opened.store.live.home;
+    const settings = assistant.read();
+    await assistant.save({
       ...settings,
       voice: { ...settings.voice, speech_context_minutes: 0 },
     });
-    expect(recall()).toBeNull();
-    opened.store.assistantChat.saveSettings({
+    expect(await recall()).toBeNull();
+    await assistant.save({
       ...settings,
       voice: { ...settings.voice, speech_context_minutes: 1 },
     });
-    expect(recall()).toContain('private talk');
+    expect(await recall()).toContain('private talk');
   });
 
-  it('reads only the called camera and logs counts without the text', () => {
+  it('reads only the called camera and logs counts without the text', async () => {
     const other = makeCamera('Garage', true);
     const garage = transcripts.open({
       source: 'camera',
@@ -211,7 +213,7 @@ describe('recentSpeechOf', () => {
       bot: false,
     });
     say(60, 'cooking');
-    const text = recall() ?? '';
+    const text = (await recall()) ?? '';
     expect(text).toContain('cooking');
     expect(text).not.toContain('engine');
     const record = logs.records.find((entry) => entry.event === 'voice.recent_speech');
@@ -219,29 +221,29 @@ describe('recentSpeechOf', () => {
     expect(JSON.stringify(record)).not.toContain('cooking');
   });
 
-  it('gives the winning phone or computer its own last five minutes', () => {
-    const phone = makeListener('phone', 'Pat phone', 'pat', true);
-    const computer = makeListener('computer', 'Pat desk', 'pat', true);
+  it('gives the winning phone or computer its own last five minutes', async () => {
+    const phone = await makeListener('phone', 'Pat phone', 'pat', true);
+    const computer = await makeListener('computer', 'Pat desk', 'pat', true);
     sayOn('phone', phone, 'call me back');
     sayOn('computer', computer, 'compile finished');
     say(30, 'kitchen noise');
-    const heardOnPhone = recall('owner', phone) ?? '';
+    const heardOnPhone = (await recall('owner', phone)) ?? '';
     expect(heardOnPhone).toContain('Recent speech heard on Pat phone');
     expect(heardOnPhone).toContain('call me back');
     expect(heardOnPhone).not.toContain('compile');
     expect(heardOnPhone).not.toContain('kitchen');
-    expect(recall('owner', computer)).toContain('compile finished');
+    expect(await recall('owner', computer)).toContain('compile finished');
   });
 
-  it('keeps a phone or computer private unless transcribing, and gives a member only their own', () => {
-    const own = makeListener('phone', 'Pat phone', 'pat', true);
-    const off = makeListener('computer', 'Pat desk', 'pat', false);
+  it('keeps a phone or computer private unless transcribing, and gives a member only their own', async () => {
+    const own = await makeListener('phone', 'Pat phone', 'pat', true);
+    const off = await makeListener('computer', 'Pat desk', 'pat', false);
     sayOn('phone', own, 'my errands');
     sayOn('computer', off, 'not written down');
-    expect(recall('owner', off)).toBeNull();
-    expect(recall('member', own, 'pat')).toContain('my errands');
-    expect(recall('member', own, 'sam')).toBeNull();
+    expect(await recall('owner', off)).toBeNull();
+    expect(await recall('member', own, 'pat')).toContain('my errands');
+    expect(await recall('member', own, 'sam')).toBeNull();
     say(30, 'camera talk');
-    expect(recall('member', cameraId, 'pat')).toBeNull();
+    expect(await recall('member', cameraId, 'pat')).toBeNull();
   });
 });

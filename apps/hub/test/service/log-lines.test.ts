@@ -29,7 +29,9 @@ let file: LogFile;
 
 beforeEach(async () => {
   folder = await mkdtemp(join(tmpdir(), 'log-lines-'));
-  file = await openLogFile(join(folder, 'hub.log'));
+  file = await openLogFile(join(folder, 'hub.log'), (cause) => {
+    throw cause;
+  });
 });
 
 afterEach(async () => {

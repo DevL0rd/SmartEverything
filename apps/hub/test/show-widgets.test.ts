@@ -130,9 +130,9 @@ afterEach(async () => {
 });
 
 describe('widget_show', () => {
-  it('puts the chosen widgets under the reply being written', () => {
+  it('puts the chosen widgets under the reply being written', async () => {
     const reply = message('responder', 'working');
-    const result = showWidgets(context(), [
+    const result = await showWidgets(context(), [
       { kind: 'device', id: lamp },
       { kind: 'camera', id: camera },
       { kind: 'weather' },
@@ -145,10 +145,13 @@ describe('widget_show', () => {
     ]);
   });
 
-  it('adds across several calls and never twice', () => {
+  it('adds across several calls and never twice', async () => {
     const reply = message('responder', 'working');
-    showWidgets(context(), [{ kind: 'device', id: lamp }]);
-    const second = showWidgets(context(), [{ kind: 'device', id: lamp }, { kind: 'weather' }]);
+    await showWidgets(context(), [{ kind: 'device', id: lamp }]);
+    const second = await showWidgets(context(), [
+      { kind: 'device', id: lamp },
+      { kind: 'weather' },
+    ]);
     expect(second).toEqual({ added: 1, already_shown: 1, dropped: [] });
     expect(widgetsOn(reply.id)).toHaveLength(2);
   });
@@ -167,7 +170,7 @@ describe('widget_show', () => {
     const hub = new ToolHub([
       {
         tools: (): HubTool[] => [power],
-        validate: (): null => null,
+        validate: (): Promise<null> => Promise.resolve(null),
         changes: (): (() => void) => () => undefined,
         call: (): Promise<HubToolResult> =>
           Promise.resolve({ response: { result: 'done' }, line: '', pictures: [] }),
@@ -182,49 +185,49 @@ describe('widget_show', () => {
     expect(widgetsOn(reply.id)).toEqual([]);
   });
 
-  it('keeps the embeds a message already had', () => {
+  it('keeps the embeds a message already had', async () => {
     const reply = message('responder', 'working', [{ kind: 'weather' }]);
-    showWidgets(context(), [{ kind: 'device', id: lamp }]);
+    await showWidgets(context(), [{ kind: 'device', id: lamp }]);
     expect(widgetsOn(reply.id)).toEqual([{ kind: 'weather' }, { kind: 'device', id: lamp }]);
   });
 
-  it('refuses outside a chat and when no reply is being written', () => {
+  it('refuses outside a chat and when no reply is being written', async () => {
     message('responder', null);
-    expect(() => showWidgets(context(null), [{ kind: 'weather' }])).toThrow(ToolError);
-    expect(() => showWidgets(context(), [{ kind: 'weather' }])).toThrow(
+    await expect(showWidgets(context(null), [{ kind: 'weather' }])).rejects.toThrow(ToolError);
+    await expect(showWidgets(context(), [{ kind: 'weather' }])).rejects.toThrow(
       'There is no reply being written',
     );
   });
 
-  it('names what is wrong and attaches none when a widget has nothing to show', () => {
+  it('names what is wrong and attaches none when a widget has nothing to show', async () => {
     const reply = message('responder', 'working');
-    expect(() =>
+    await expect(
       showWidgets(context(), [
         { kind: 'device', id: lamp },
         { kind: 'camera', id: MISSING },
         { kind: 'health', metric: 'steps', range: 'week' },
       ]),
-    ).toThrow(`There is no device ${MISSING}. There is no steps data in the last 30 days`);
+    ).rejects.toThrow(`There is no device ${MISSING}. There is no steps data in the last 30 days`);
     expect(widgetsOn(reply.id)).toEqual([]);
   });
 
-  it('shows the boards of every enabled plugin and names them when one is unknown', () => {
+  it('shows the boards of every enabled plugin and names them when one is unknown', async () => {
     const reply = message('responder', 'working');
     pluginWithBoards('garden', ['garden.soil', 'garden.rain'], true);
     pluginWithBoards('pool', ['pool.level'], true);
     pluginWithBoards('attic', ['attic.heat'], false);
-    const result = showWidgets(context(), [
+    const result = await showWidgets(context(), [
       { kind: 'board', type: 'garden.rain' },
       { kind: 'board', type: 'pool.level' },
     ]);
     expect(result).toEqual({ added: 2, already_shown: 0, dropped: [] });
     expect(widgetsOn(reply.id)).toHaveLength(2);
-    expect(() => showWidgets(context(), [{ kind: 'board', type: 'attic.heat' }])).toThrow(
+    await expect(showWidgets(context(), [{ kind: 'board', type: 'attic.heat' }])).rejects.toThrow(
       'There is no board attic.heat; boards of enabled plugins: garden.soil, garden.rain, pool.level',
     );
   });
 
-  it('reports the widgets a reply has no room for instead of dropping them silently', () => {
+  it('reports the widgets a reply has no room for instead of dropping them silently', async () => {
     const reply = message('responder', 'working');
     const first = ['a', 'b', 'c', 'd'].map((id): ChatWidget => ({
       kind: 'setting_link',
@@ -236,8 +239,12 @@ describe('widget_show', () => {
       setting: id,
       value: null,
     }));
-    expect(showWidgets(context(), first)).toEqual({ added: 4, already_shown: 0, dropped: [] });
-    expect(showWidgets(context(), [...second, first[0] ?? { kind: 'weather' }])).toEqual({
+    expect(await showWidgets(context(), first)).toEqual({
+      added: 4,
+      already_shown: 0,
+      dropped: [],
+    });
+    expect(await showWidgets(context(), [...second, first[0] ?? { kind: 'weather' }])).toEqual({
       added: 2,
       already_shown: 1,
       dropped: ['setting_link:g'],
@@ -245,9 +252,9 @@ describe('widget_show', () => {
     expect(widgetsOn(reply.id)).toHaveLength(6);
   });
 
-  it('says which kind to use when a camera is shown as a device', () => {
+  it('says which kind to use when a camera is shown as a device', async () => {
     message('responder', 'working');
-    expect(() => showWidgets(context(), [{ kind: 'device', id: camera }])).toThrow(
+    await expect(showWidgets(context(), [{ kind: 'device', id: camera }])).rejects.toThrow(
       'is a camera: use kind camera',
     );
   });
@@ -306,7 +313,7 @@ describe('where widget_show is offered', () => {
     const source: ToolSource = {
       tools: () => [tool],
       call: () => Promise.resolve({ response: {}, line: '', pictures: [] }),
-      validate: () => null,
+      validate: () => Promise.resolve(null),
       changes: () => () => undefined,
     };
     const chat = opened.store.aiChats.chat(chatId);

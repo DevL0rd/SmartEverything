@@ -11,37 +11,38 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
 import { exportCollectionText, exportItemText } from '../planner/ical/export';
+import type { CalendarReader } from '../planner/ical/calendar-reader';
 import { importIcs } from '../planner/ical/import';
 import { IcalParseError } from '../planner/ical/model';
-import { collectionOf } from '../planner/feeds/access';
 import type { Store } from '../store/store';
 import type { BuildOptions } from './build';
 import type { ServerContext } from './context';
 import { authenticate, type Caller } from './auth';
-import { invalid } from './errors';
+import { invalid } from './invalid';
 import { BODY_LIMIT, readBody, sendJson } from './http';
 import type { RawRoute } from './http-server';
 import { assertOwnerRoute } from './owner-route';
 import { assertScopeRoute } from './person-scope';
-import { plannerProfileOf } from './handlers/planner-items';
+import { plannerProfileOf } from './handlers/planner-profile';
 
 export interface PlannerIcalServices {
   readonly store: Store;
+  readonly calendars: CalendarReader;
   readonly now: () => Date;
   readonly log: Logger;
 }
 
 const FILE_TYPE = `${PLANNER_ICS_CONTENT_TYPE}; charset=utf-8`;
 
-function authorize(
+async function authorize(
   services: PlannerIcalServices,
   request: IncomingMessage,
   endpoint: EndpointShape,
   params: Readonly<Record<string, string>>,
-): Caller {
-  const caller = authenticate(services.store, request, endpoint.access, false);
+): Promise<Caller> {
+  const caller = await authenticate(services.store, request, endpoint.access, false);
   assertOwnerRoute(services.store, caller, endpoint);
-  assertScopeRoute(services.store, caller, endpoint, params);
+  await assertScopeRoute(services.store, caller, endpoint, params);
   return caller;
 }
 
@@ -87,7 +88,7 @@ async function importCalendar(
   response: ServerResponse,
   params: Readonly<Record<string, string>>,
 ): Promise<void> {
-  const caller = authorize(services, request, E.importPlannerCalendar, params);
+  const caller = await authorize(services, request, E.importPlannerCalendar, params);
   const query = queryOf(request, E.importPlannerCalendar.query);
   const { store } = services;
   const type = (request.headers['content-type'] ?? '').toLowerCase();
@@ -95,13 +96,17 @@ async function importCalendar(
     throw new ApiError('unsupported_media_type', `Send the file as ${PLANNER_ICS_CONTENT_TYPE}.`);
   }
   const profileId = plannerProfileOf({ store }, caller, query.personId);
-  const collection = collectionOf(store, profileId, params['collectionId'] ?? '', 'edit');
+  const collection = await store.host.read('plannerFeedCollection', {
+    profileId,
+    collectionId: params['collectionId'] ?? '',
+    need: 'edit',
+  });
   if (collection.source === 'feed') {
     throw new ApiError('invalid_request', 'A subscribed calendar cannot be imported into.');
   }
   const text = (await readBody(request, BODY_LIMIT)).toString('utf8');
   try {
-    const result = importIcs(store, services.now, {
+    const result = await importIcs(store, services.calendars, services.now, {
       profileId: collection.profile_id,
       collectionId: collection.id,
       text,
@@ -121,47 +126,61 @@ async function importCalendar(
   }
 }
 
-function exportCalendar(
+async function exportCalendar(
   services: PlannerIcalServices,
   request: IncomingMessage,
   response: ServerResponse,
   params: Readonly<Record<string, string>>,
-): void {
-  const caller = authorize(services, request, E.exportPlannerCalendar, params);
+): Promise<void> {
+  const caller = await authorize(services, request, E.exportPlannerCalendar, params);
   const query = queryOf(request, E.exportPlannerCalendar.query);
   const { store } = services;
   const profileId = plannerProfileOf({ store }, caller, query.personId);
-  const collection = collectionOf(store, profileId, params['collectionId'] ?? '', 'view');
-  sendCalendar(response, exportCollectionText(store, collection, services.now()), collection.name);
+  const collection = await store.host.read('plannerFeedCollection', {
+    profileId,
+    collectionId: params['collectionId'] ?? '',
+    need: 'view',
+  });
+  sendCalendar(
+    response,
+    await exportCollectionText(store, collection, services.now()),
+    collection.name,
+  );
 }
 
-function exportItem(
+async function exportItem(
   services: PlannerIcalServices,
   request: IncomingMessage,
   response: ServerResponse,
   params: Readonly<Record<string, string>>,
-): void {
-  const caller = authorize(services, request, E.exportPlannerItem, params);
+): Promise<void> {
+  const caller = await authorize(services, request, E.exportPlannerItem, params);
   const query = queryOf(request, E.exportPlannerItem.query);
   const { store } = services;
   const profileId = plannerProfileOf({ store }, caller, query.personId);
-  const item = store.plannerItems.byId(params['itemId'] ?? '', profileId);
-  sendCalendar(response, exportItemText(store, item, services.now()), item.title);
+  const item = await store.host.call('plannerItems', 'byId', params['itemId'] ?? '', profileId);
+  sendCalendar(response, await exportItemText(store, item, services.now()), item.title);
 }
 
-function publishedFeed(
+async function publishedFeed(
   services: PlannerIcalServices,
   request: IncomingMessage,
   response: ServerResponse,
   params: Readonly<Record<string, string>>,
-): void {
+): Promise<void> {
   const file = PLANNER_PUBLISHED_FEED_FILE.safeParse(params['file']);
   const { store } = services;
-  const link = file.success ? store.plannerExportLinks.byToken(file.data.slice(0, -4)) : undefined;
+  const link = file.success
+    ? await store.host.call('plannerExportLinks', 'byToken', file.data.slice(0, -4))
+    : undefined;
   if (link === undefined)
     throw new ApiError('not_found', 'This calendar link is no longer available.');
-  const collection = store.plannerCollections.anyById(link.collection_id);
-  sendPublished(request, response, exportCollectionText(store, collection, services.now(), false));
+  const collection = await store.host.call('plannerCollections', 'anyById', link.collection_id);
+  sendPublished(
+    request,
+    response,
+    await exportCollectionText(store, collection, services.now(), false),
+  );
 }
 
 type Handler = (
@@ -203,11 +222,12 @@ export function plannerIcalRoutes(services: PlannerIcalServices): readonly RawRo
 }
 
 export const plannerIcalRoutesOf = (
-  options: Pick<BuildOptions, 'clock' | 'log'>,
+  options: Pick<BuildOptions, 'clock' | 'log' | 'core'>,
   context: Pick<ServerContext, 'store'>,
 ): readonly RawRoute[] =>
   plannerIcalRoutes({
     store: context.store,
+    calendars: options.core.planner.calendars,
     now: options.clock.now,
     log: options.log.forArea('hub.planner'),
   });

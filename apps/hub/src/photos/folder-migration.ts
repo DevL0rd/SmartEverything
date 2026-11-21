@@ -1,41 +1,33 @@
 import { rmdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { DriveItem } from '@smarteverything/domain';
-import { z } from 'zod';
-import type { Sql } from '../store/sql';
+import type { StoreHost } from '../store/host/host';
 import { fsCode } from '../fs-code';
-import { announce, appendFeed, isoOf } from '../drive/changes';
+import { isoOf } from '../drive/change-rows';
 import { migratePhotoPending } from './folder-pending';
-import { repathItem } from '../drive/service-write-repath';
-import { DriveWriteError, locate, type DriveWriteRoot } from '../drive/intents';
+import { locate, type DriveWriteRoot } from '../drive/intents';
+import { DriveWriteError } from '../drive/write-error';
 import { relPathOf } from '../drive/uploads-tus-target';
 import { isFileItem } from '../drive/file-item';
+import type { DriveItemIdentity } from '../store/repositories/drive-items';
 import { syncPhotoDirectories, writePhotoFolderReceipt } from './folder-receipts';
 import { BackupService, type BackupEnv } from './backup';
-
-const RELOCATION = z.strictObject({
-  item_id: z.string(),
-  from_path: z.string(),
-  to_path: z.string().nullable(),
-  mtime_ns: z.string().nullable(),
-});
-
-type Relocation = z.output<typeof RELOCATION>;
+import type { Relocation } from './folder-migration-units';
 
 interface RelocationFile {
   readonly env: BackupEnv;
   readonly root: DriveWriteRoot;
   readonly item: DriveItem;
+  readonly identity: DriveItemIdentity;
 }
 
 async function verified(
-  { env, root, item }: RelocationFile,
+  { env, root, item, identity }: RelocationFile,
   path: string,
   mtimeNs: string | null,
 ): Promise<string> {
   const stamp = await env.files.stamp(await locate(root, path));
-  const identity = env.store.driveItems.identityOf(item.id);
-  if (stamp === null || identity === null) {
+  if (stamp === null) {
     throw new DriveWriteError('missing', 'Photo relocation requires the original indexed file.');
   }
   const identityMatches =
@@ -54,49 +46,49 @@ async function verified(
 }
 
 async function relocateBytes(
-  { env, root, item }: RelocationFile,
+  file: RelocationFile,
   row: Relocation,
   target: string,
   mtimeNs: string,
 ): Promise<void> {
+  const { env, root } = file;
   const sourcePath = await locate(root, row.from_path);
   const targetPath = await locate(root, target);
   const source = await env.files.stamp(sourcePath);
   const destination = await env.files.stamp(targetPath);
   if (destination === null) {
-    await verified({ env, root, item }, row.from_path, mtimeNs);
+    await verified(file, row.from_path, mtimeNs);
     await env.files.link(sourcePath, targetPath);
   }
-  await verified({ env, root, item }, target, mtimeNs);
+  await verified(file, target, mtimeNs);
   await syncPhotoDirectories(env, root, dirname(target));
   if (source !== null) {
-    await verified({ env, root, item }, row.from_path, mtimeNs);
+    await verified(file, row.from_path, mtimeNs);
     await env.files.unlink(sourcePath);
     await env.files.syncDirectory(dirname(sourcePath));
   }
 }
 
 async function relocate(env: BackupEnv, service: BackupService, row: Relocation): Promise<void> {
-  const item = env.store.driveItems.byId(row.item_id, null);
-  const rootRow = env.store.driveRoots.byId(item.rootId);
-  if (rootRow.scope !== 'person' || rootRow.ownerProfileId === null) {
+  const { host } = env.store;
+  const { item, root, identity } = await host.read('photoRelocationSource', { id: row.item_id });
+  const owner = root.ownerProfileId;
+  if (root.scope !== 'person' || owner === null) {
     throw new DriveWriteError('corrupt', 'Photo relocation requires its original personal Drive.');
   }
-  const root = rootRow;
-  const folder = await service.manualTarget(rootRow.ownerProfileId);
-  const parent = env.store.driveItems.byId(folder.folderId, null);
+  if (identity === null) {
+    throw new DriveWriteError('missing', 'Photo relocation requires the original indexed file.');
+  }
+  const file = { env, root, item, identity };
+  const folder = await service.manualTarget(owner);
+  const parent = await host.call('driveItems', 'byId', folder.folderId, null);
   const target =
     row.to_path ?? (await relPathOf(env, { root, folder: parent, item: null }, item.name));
-  const mtimeNs = row.mtime_ns ?? (await verified({ env, root, item }, row.from_path, null));
+  const mtimeNs = row.mtime_ns ?? (await verified(file, row.from_path, null));
   if (row.to_path === null) {
-    env.sql.run(
-      'plan the photo relocation',
-      'update drive_photo_relocations set to_path = $target, mtime_ns = $mtimeNs where item_id = $id',
-      { target, mtimeNs, id: item.id },
-    );
+    await host.write('photoRelocationPlan', { id: item.id, target, mtimeNs });
   }
-  const identity = env.store.driveItems.identityOf(item.id);
-  if (identity === null || !isFileItem(item))
+  if (!isFileItem(item))
     throw new DriveWriteError('missing', 'The original photo identity is missing.');
   await writePhotoFolderReceipt(env, root, {
     kind: 'file',
@@ -109,27 +101,16 @@ async function relocate(env: BackupEnv, service: BackupService, row: Relocation)
     mtimeNs,
     sha256: item.sha256,
   });
-  await relocateBytes({ env, root, item }, row, target, mtimeNs);
-  env.store.write(() => {
-    repathItem(
-      env,
-      item,
-      { parentId: parent.id, relPath: target, name: target.slice(folder.path.length + 1) },
-      { op: 'move', actor: { actorProfileId: rootRow.ownerProfileId, via: 'app', deviceId: null } },
-    );
-    env.sql.run(
-      'finish the photo relocation',
-      'delete from drive_photo_relocations where item_id = $id',
-      { id: item.id },
-    );
+  await relocateBytes(file, row, target, mtimeNs);
+  await host.write('photoRelocationFinish', {
+    item,
+    target: { parentId: parent.id, relPath: target, name: target.slice(folder.path.length + 1) },
+    owner,
   });
 }
 
 export async function migratePhotosFolder(env: BackupEnv, signal?: AbortSignal): Promise<void> {
-  const pending = env.sql.all(
-    RELOCATION,
-    'select item_id, from_path, to_path, mtime_ns from drive_photo_relocations order by item_id',
-  );
+  const pending = await env.store.host.read('photoRelocations', null);
   const service = new BackupService(env);
   if (pending.length > 0)
     env.log.info('photos.folders_migration_started', { items: pending.length });
@@ -144,39 +125,16 @@ export async function migratePhotosFolder(env: BackupEnv, signal?: AbortSignal):
 }
 
 async function removeOldFolders(env: BackupEnv): Promise<void> {
-  const folders = env.sql.all(
-    z.strictObject({ item_id: z.string() }),
-    `select f.item_id from drive_photo_old_folders f join drive_items i on i.id = f.item_id
-      order by length(i.rel_path) desc, i.id`,
-  );
-  for (const row of folders)
-    await removeOldFolder(env, env.store.driveItems.byId(row.item_id, null));
+  for (const id of await env.store.host.read('photoOldFolders', null)) {
+    await removeOldFolder(env, id);
+  }
 }
 
-function retainOldFolder(env: BackupEnv, id: string): void {
-  env.sql.run(
-    'retain a nonempty former photo folder',
-    'delete from drive_photo_old_folders where item_id = $id',
-    { id },
-  );
-}
-
-async function removeOldFolder(env: BackupEnv, item: DriveItem): Promise<void> {
-  const root = env.store.driveRoots.byId(item.rootId);
-  const children = env.store.driveItems.children({
-    rootId: root.id,
-    parentId: item.id,
-    after: null,
-    limit: 1,
-    viewer: null,
-  });
-  const pending = env.sql.get(
-    z.strictObject({ id: z.string() }),
-    "select id from drive_uploads where target_kind = 'folder' and target_id = $id and state = 'open'",
-    { id: item.id },
-  );
-  if (children.entries.length > 0 || pending !== undefined) {
-    retainOldFolder(env, item.id);
+async function removeOldFolder(env: BackupEnv, id: string): Promise<void> {
+  const { host } = env.store;
+  const { item, root, occupied } = await host.read('photoOldFolderState', { id });
+  if (occupied) {
+    await host.write('photoOldFolderRetain', { id });
     return;
   }
   try {
@@ -191,32 +149,16 @@ async function removeOldFolder(env: BackupEnv, item: DriveItem): Promise<void> {
     await env.files.syncDirectory(dirname(path));
   } catch (cause) {
     if (fsCode(cause) === 'ENOTEMPTY' || fsCode(cause) === 'EEXIST') {
-      retainOldFolder(env, item.id);
+      await host.write('photoOldFolderRetain', { id });
       return;
     }
     if (fsCode(cause) !== 'ENOENT') throw cause;
   }
-  env.store.write(() => {
-    appendFeed(env, { ...item, rev: item.rev + 1 }, 'delete', {
-      actorProfileId: null,
-      via: 'scan',
-      deviceId: null,
-    });
-    env.store.driveItems.remove(item.id);
-    env.store.driveGrants.sweepOrphans();
-    env.store.driveShortcuts.sweepOrphans();
-    announce(env, item.rootId, item.parentId, []);
-  });
+  await host.write('photoOldFolderRemove', { item });
 }
 
-export function assertPhotosFolderPrepared(sql: Sql): void {
-  const pending = sql.get(
-    z.strictObject({ total: z.int().nonnegative() }),
-    `select (select count(*) from drive_photo_relocations)
-      + (select count(*) from drive_photo_old_folders)
-      + (select count(*) from drive_photo_trash_folders) as total`,
-  );
-  if (pending === undefined || pending.total > 0) {
+export async function assertPhotosFolderPrepared(host: StoreHost): Promise<void> {
+  if ((await host.read('photoFoldersPending', null)) > 0) {
     throw new Error(
       'Hub data preparation is incomplete. Run service.mjs --prepare-data <absolute data root> before starting the Hub.',
     );

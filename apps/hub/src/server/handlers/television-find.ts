@@ -67,8 +67,8 @@ export const televisionFindRoutes = (
   running = new Map<string, Promise<FindResult>>(),
 ) =>
   ({
-    findTelevision: bound(E.findTelevision, ({ params }) => {
-      const device = context.store.devices.byId(params.deviceId);
+    findTelevision: bound(E.findTelevision, async ({ params }) => {
+      const device = await context.store.host.call('devices', 'byId', params.deviceId);
       if (device.provider !== 'smartthings' || device.kind !== 'television') {
         throw new ApiError(
           'invalid_request',

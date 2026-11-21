@@ -28,20 +28,20 @@ type DriveReadRoute =
 function driveReadRoutes(store: Store, services: DriveServices): Routes<DriveReadRoute> {
   const { read } = services;
   return {
-    listRoots: bound(E.listRoots, ({ caller }) => read.listRoots(actorOf(store, caller))),
+    listRoots: bound(E.listRoots, ({ caller }) => read.listRoots(actorOf(caller))),
     browseFolder: bound(E.browseFolder, ({ query, caller }) =>
-      refusing(() => read.browseFolder(actorOf(store, caller), query)),
+      refusing(() => read.browseFolder(actorOf(caller), query)),
     ),
     readItem: bound(E.readItem, ({ params, caller }) =>
-      refusing(() => read.readItem(actorOf(store, caller), params.itemId)),
+      refusing(() => read.readItem(actorOf(caller), params.itemId)),
     ),
     readRecent: bound(E.readRecent, ({ query, caller }) =>
-      refusing(() => read.readRecent(actorOf(store, caller), query)),
+      refusing(() => read.readRecent(actorOf(caller), query)),
     ),
     readDriveSettings: bound(E.readDriveSettings, () => readDriveSettings(store)),
     readDriveSettingsRunning: bound(E.readDriveSettingsRunning, () => runningFileIoThreads()),
     updateDriveSettings: bound(E.updateDriveSettings, ({ body, caller }) =>
-      refusing(() => services.write.updateSettings(callerOf(store, caller), body)),
+      refusing(() => services.write.updateSettings(callerOf(caller), body)),
     ),
   };
 }
@@ -57,14 +57,13 @@ export function driveRoutes(
   return {
     ...driveReadRoutes(store, services),
     ...driveLibraryRoutes(store, services),
-    ...driveAlbumRoutes(store, services),
-    ...driveGrantRoutes(store, services.grants),
+    ...driveAlbumRoutes(services),
+    ...driveGrantRoutes(services.grants),
     ...driveStorageRoutes(store, services),
   };
 }
 
 export function driveExtraRoutes(
-  store: Store,
   extras: DriveExtras,
 ): ReturnType<typeof driveContentRoutes> &
   ReturnType<typeof driveDownloadRoutes> &
@@ -72,10 +71,10 @@ export function driveExtraRoutes(
   ReturnType<typeof driveSocialRoutes> &
   ReturnType<typeof driveOfflineRoutes> {
   return {
-    ...driveContentRoutes(store, extras.content),
-    ...driveDownloadRoutes(store, extras.downloads),
-    ...driveSharingRoutes(store, extras.sharing),
-    ...driveSocialRoutes(store, extras.social),
-    ...driveOfflineRoutes(store, extras.offline),
+    ...driveContentRoutes(extras.content),
+    ...driveDownloadRoutes(extras.downloads),
+    ...driveSharingRoutes(extras.sharing),
+    ...driveSocialRoutes(extras.social),
+    ...driveOfflineRoutes(extras.offline),
   };
 }

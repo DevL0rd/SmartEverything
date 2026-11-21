@@ -34,7 +34,7 @@ const RECEIPT = z.strictObject({
 });
 type SaveReceipt = z.infer<typeof RECEIPT>;
 type SaveRequest = z.infer<typeof SAVED_REQUEST>;
-type ReviewedOffer = ReturnType<typeof reviewedHubSourceOffer>;
+type ReviewedOffer = Awaited<ReturnType<typeof reviewedHubSourceOffer>>;
 
 async function checkSource(
   reviewed: ReviewedOffer,
@@ -162,7 +162,7 @@ async function existingRecovery(
 }
 
 async function saveUnderLock(data: string, request: SaveRequest): Promise<HubUpdateSourceSaved> {
-  const reviewed = reviewedHubSourceOffer(data, request.ownerClient, request.offerId);
+  const reviewed = await reviewedHubSourceOffer(data, request.ownerClient, request.offerId);
   const { folder } = reviewed.offer.source;
   const ref = `refs/heads/${request.branch}`;
   await gitSourceText(folder, ['check-ref-format', ref], 'validate the recovery branch name');

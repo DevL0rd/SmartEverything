@@ -8,25 +8,26 @@ import {
   type ReachSettingsChange,
 } from '@smarteverything/domain';
 import { z } from 'zod';
+import type { MirroredSavedKey } from '../store/home-mirror';
 import type { Store } from '../store/store';
 
-const BLOCKED_KEY = 'reach.blocked_cameras';
+const BLOCKED_KEY: MirroredSavedKey = 'reach.blocked_cameras';
 
 const STORED_BLOCKED = z.strictObject({ blocked: z.array(z.uuid()) });
 
-const WAKE_OFF_KEY = 'reach.wake_off';
+const WAKE_OFF_KEY: MirroredSavedKey = 'reach.wake_off';
 
 const STORED_CAMERA_LIST = z.strictObject({ cameras: z.array(z.uuid()) });
 
-const STANDBY_OFF_KEY = 'reach.speaker_standby_off';
+const STANDBY_OFF_KEY: MirroredSavedKey = 'reach.speaker_standby_off';
 
-const QUIET_KEY = 'reach.quiet';
+const QUIET_KEY: MirroredSavedKey = 'reach.quiet';
 
 const STORED_QUIET = z.strictObject({ people: z.record(z.uuid(), QUIET_HOURS) });
 
 type StoredQuiet = z.infer<typeof STORED_QUIET>;
 
-export type ReachRulesStore = Pick<Store, 'settingsKv' | 'settings' | 'devices'>;
+export type ReachRulesStore = Pick<Store, 'live'>;
 
 export function insideQuiet(quiet: QuietHours, minute: number): boolean {
   return insideClockWindow(quiet, minute);
@@ -48,20 +49,23 @@ export class ReachRules {
     };
   }
 
-  save(profileId: string, change: ReachSettingsChange): ReachSettings {
+  async save(profileId: string, change: ReachSettingsChange): Promise<ReachSettings> {
+    const { saved } = this.store.live.home;
+    const writes: Promise<void>[] = [];
     if (change.quiet !== undefined) {
       const { [profileId]: _previous, ...others } = this.storedQuiet().people;
       const people = change.quiet === null ? others : { ...others, [profileId]: change.quiet };
-      this.store.settingsKv.save(QUIET_KEY, { people });
+      writes.push(saved.save(QUIET_KEY, { people }));
     }
     if (change.cameras !== undefined) {
       const allowed = new Set(change.cameras);
       const blocked = this.allCameras().filter((id) => !allowed.has(id));
-      this.store.settingsKv.save(BLOCKED_KEY, { blocked });
+      writes.push(saved.save(BLOCKED_KEY, { blocked }));
     }
     if (change.wakeOff !== undefined) {
-      this.store.settingsKv.save(WAKE_OFF_KEY, { cameras: [...new Set(change.wakeOff)] });
+      writes.push(saved.save(WAKE_OFF_KEY, { cameras: [...new Set(change.wakeOff)] }));
     }
+    await Promise.all(writes);
     if (change.cameras !== undefined || change.wakeOff !== undefined) {
       this.listeners.forEach((listener) => {
         listener();
@@ -78,12 +82,12 @@ export class ReachRules {
   }
 
   wakeOff(): readonly string[] {
-    const stored = this.store.settingsKv.read(WAKE_OFF_KEY);
+    const stored = this.store.live.home.saved.read(WAKE_OFF_KEY);
     return stored === null ? [] : STORED_CAMERA_LIST.parse(stored).cameras;
   }
 
   standbyOff(): readonly string[] {
-    const stored = this.store.settingsKv.read(STANDBY_OFF_KEY);
+    const stored = this.store.live.home.saved.read(STANDBY_OFF_KEY);
     return stored === null ? [] : STORED_CAMERA_LIST.parse(stored).cameras;
   }
 
@@ -92,18 +96,18 @@ export class ReachRules {
   }
 
   private storedQuiet(): StoredQuiet {
-    const stored = this.store.settingsKv.read(QUIET_KEY);
+    const stored = this.store.live.home.saved.read(QUIET_KEY);
     return stored === null ? { people: {} } : STORED_QUIET.parse(stored);
   }
 
   cameras(): readonly string[] {
-    const stored = this.store.settingsKv.read(BLOCKED_KEY);
+    const stored = this.store.live.home.saved.read(BLOCKED_KEY);
     const blocked = new Set(stored === null ? [] : STORED_BLOCKED.parse(stored).blocked);
     return this.allCameras().filter((id) => !blocked.has(id));
   }
 
   private allCameras(): string[] {
-    return this.store.devices
+    return this.store.live.home.devices
       .list()
       .filter((device) => isCamera(device))
       .map((device) => device.id);
@@ -114,7 +118,7 @@ export class ReachRules {
     if (quiet === null) {
       return false;
     }
-    const zone = this.store.settings.read().time_zone;
+    const zone = this.store.live.home.settings.read().time_zone;
     return insideQuiet(quiet, localClock(this.now(), zone).minuteOfDay);
   }
 

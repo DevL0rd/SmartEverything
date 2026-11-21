@@ -57,7 +57,7 @@ export const automationEntityOptionsRoutes = (context: EntityOptionsContext, adm
         pluginId: params.pluginId,
         entity: params.entity,
         query,
-        caller: toolCallerOf(context.store, caller),
+        caller: toolCallerOf(caller),
       }),
     ),
   }) as const;

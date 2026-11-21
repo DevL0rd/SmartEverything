@@ -73,6 +73,12 @@ function preferenceRoute(
     });
     if (!models.some((model) => model.id === params.modelId))
       throw new ApiError('invalid_request', 'The selected runtime has not reported this model.');
-    return store.aiRuntimeProvider.prefer(params.runtime, params.modelId, body.device_id);
+    return store.host.call(
+      'aiRuntimeProvider',
+      'prefer',
+      params.runtime,
+      params.modelId,
+      body.device_id,
+    );
   });
 }

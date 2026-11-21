@@ -37,7 +37,7 @@ export interface QueuePorts {
   readonly record: Pick<RevisionRecord, 'list' | 'save'>;
   readonly now: () => Date;
   readonly newId: () => string;
-  readonly sourceOf: (component: PipelineComponent) => ReleaseSource;
+  readonly sourceOf: (component: PipelineComponent) => Promise<ReleaseSource>;
   readonly prepare: (revision: UpdateRevision) => Promise<Prepared>;
   readonly execute: (revision: UpdateRevision, step: UpdateRevisionStep) => Promise<StepOutcome>;
   readonly changed: (revision: UpdateRevision) => void;
@@ -184,7 +184,9 @@ export class ReleaseQueue {
     const running = await this.change(revision, { status: 'running' });
     try {
       const prepared = await this.ports.prepare(running);
-      const steps = prepared.components.map((component) => this.planned(component));
+      const steps = await Promise.all(
+        prepared.components.map((component) => this.planned(component)),
+      );
       return await this.change(running, {
         base: prepared.base,
         notes: prepared.notes,
@@ -198,8 +200,8 @@ export class ReleaseQueue {
     }
   }
 
-  private planned(component: PipelineComponent): UpdateRevisionStep {
-    const source = this.ports.sourceOf(component);
+  private async planned(component: PipelineComponent): Promise<UpdateRevisionStep> {
+    const source = await this.ports.sourceOf(component);
     return {
       component,
       status: source === 'hub' ? 'pending' : 'waiting',

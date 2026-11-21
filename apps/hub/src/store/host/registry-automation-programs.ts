@@ -1,0 +1,52 @@
+import {
+  AUTOMATION_FUNCTION_UNIT,
+  AUTOMATION_FUNCTIONS_UNIT,
+  CREATE_AUTOMATION_FUNCTION_UNIT,
+  REMOVE_AUTOMATION_FUNCTION_UNIT,
+  SAVE_AUTOMATION_FUNCTION_UNIT,
+} from '../../automations/function-units';
+import {
+  AUTOMATION_PROGRAM_REVISIONS_UNIT,
+  AUTOMATION_PROGRAM_USER_UNIT,
+  COMPARE_AUTOMATION_PROGRAM_UNIT,
+  REMOVE_AUTOMATION_PROGRAM_UNIT,
+  RENAME_AUTOMATION_PROGRAM_UNIT,
+  SAVE_AUTOMATION_DRAFT_UNIT,
+} from '../../automations/program-history-units';
+import {
+  CHECK_AUTOMATION_PROGRAM_UNIT,
+  COMMIT_AUTOMATION_PROGRAM_UNIT,
+  PREPARE_AUTOMATION_PROGRAM_UNIT,
+} from '../../automations/program-units';
+import {
+  COMMIT_FUNCTION_CALLERS_UNIT,
+  PREPARE_FUNCTION_CALLERS_UNIT,
+} from '../../automations/service-functions-callers';
+import {
+  COMMIT_FUNCTION_EXTRACT_UNIT,
+  PREPARE_FUNCTION_EXTRACT_UNIT,
+} from '../../automations/service-functions-extract';
+
+export const AUTOMATION_PROGRAM_READ_UNITS = {
+  prepareAutomationProgram: PREPARE_AUTOMATION_PROGRAM_UNIT,
+  checkAutomationProgram: CHECK_AUTOMATION_PROGRAM_UNIT,
+  automationProgramUser: AUTOMATION_PROGRAM_USER_UNIT,
+  automationProgramRevisions: AUTOMATION_PROGRAM_REVISIONS_UNIT,
+  compareAutomationProgram: COMPARE_AUTOMATION_PROGRAM_UNIT,
+  automationFunctions: AUTOMATION_FUNCTIONS_UNIT,
+  automationFunction: AUTOMATION_FUNCTION_UNIT,
+  prepareFunctionCallers: PREPARE_FUNCTION_CALLERS_UNIT,
+  prepareFunctionExtract: PREPARE_FUNCTION_EXTRACT_UNIT,
+} as const;
+
+export const AUTOMATION_PROGRAM_WRITE_UNITS = {
+  commitAutomationProgram: COMMIT_AUTOMATION_PROGRAM_UNIT,
+  renameAutomationProgram: RENAME_AUTOMATION_PROGRAM_UNIT,
+  removeAutomationProgram: REMOVE_AUTOMATION_PROGRAM_UNIT,
+  saveAutomationDraft: SAVE_AUTOMATION_DRAFT_UNIT,
+  createAutomationFunction: CREATE_AUTOMATION_FUNCTION_UNIT,
+  saveAutomationFunction: SAVE_AUTOMATION_FUNCTION_UNIT,
+  removeAutomationFunction: REMOVE_AUTOMATION_FUNCTION_UNIT,
+  commitFunctionCallers: COMMIT_FUNCTION_CALLERS_UNIT,
+  commitFunctionExtract: COMMIT_FUNCTION_EXTRACT_UNIT,
+} as const;

@@ -41,6 +41,7 @@ beforeEach(async () => {
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: (): Date => new Date(),
   });
   chat = new ChatDirectory(store, files).create(owner, {
@@ -54,23 +55,31 @@ afterEach(async () => {
 });
 
 describe('finishReply embeds', () => {
-  it('keeps widgets attached during the turn when there are no sources', () => {
-    const reply = conversation.startReply(chat, null, 'anthropic/claude-sonnet-5');
+  it('keeps widgets attached during the turn when there are no sources', async () => {
+    const reply = await conversation.startReply({
+      chat,
+      replyTo: null,
+      model: 'anthropic/claude-sonnet-5',
+    });
     attachWidgets(opened.store, reply, [{ kind: 'weather' }]);
-    const finished = conversation.finishReply(reply.id, 'Done', done([]));
+    const finished = await conversation.finishReply(reply.id, 'Done', done([]));
     expect(chatWidgetsOf(finished.embeds)).toEqual([{ kind: 'weather' }]);
     expect(embedsOf(reply.id).some((embed) => embed.kind === WEB_SOURCES_KIND)).toBe(false);
   });
 
-  it('keeps widgets and adds the sources embed, replacing an older one', () => {
-    const reply = conversation.startReply(chat, null, 'anthropic/claude-sonnet-5');
+  it('keeps widgets and adds the sources embed, replacing an older one', async () => {
+    const reply = await conversation.startReply({
+      chat,
+      replyTo: null,
+      model: 'anthropic/claude-sonnet-5',
+    });
     attachWidgets(opened.store, reply, [{ kind: 'weather' }]);
-    conversation.finishReply(reply.id, 'Done', done(SOURCES));
+    await conversation.finishReply(reply.id, 'Done', done(SOURCES));
     expect(chatWidgetsOf(embedsOf(reply.id))).toEqual([{ kind: 'weather' }]);
     expect(embedsOf(reply.id).filter((embed) => embed.kind === WEB_SOURCES_KIND)).toEqual([
       { kind: WEB_SOURCES_KIND, sources: SOURCES },
     ]);
-    conversation.finishReply(reply.id, 'Done again', done(NEWER));
+    await conversation.finishReply(reply.id, 'Done again', done(NEWER));
     expect(chatWidgetsOf(embedsOf(reply.id))).toEqual([{ kind: 'weather' }]);
     expect(embedsOf(reply.id).filter((embed) => embed.kind === WEB_SOURCES_KIND)).toEqual([
       { kind: WEB_SOURCES_KIND, sources: NEWER },

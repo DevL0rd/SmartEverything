@@ -1,5 +1,4 @@
 import {
-  VACUUM_SCENE,
   type JsonValue,
   type VacuumSavedMap,
   type VacuumScene,
@@ -9,19 +8,13 @@ import type { Logger } from '@smarteverything/logging';
 import {
   MapBlobError,
   XiaomiCloudError,
-  applyRoute,
-  buildVacuumScene,
-  buildWallsLayer,
-  decodeMapLayer,
-  decodeMapRoute,
-  decryptMapBlob,
-  type MapDocument,
   type PushedMapObjects,
   type Route,
 } from '@smarteverything/xiaomi';
 import { z } from 'zod';
 import { MapDownloadError, type MapCloud } from '../adapters/xiaomi/map-cloud';
 import type { MapCache } from './map-cache';
+import { errorOf, type MapDecodeOutcome, type MapDecoder } from './map-decode';
 import { SlotQueue, keyOf } from './slot-queue';
 import { SavedMapsFeed, parseSavedMaps, parseText, type SavedMapList } from './saved-maps';
 
@@ -59,6 +52,7 @@ export interface MapFetchPorts {
   readonly cache: MapCache;
   readonly identity: (deviceId: string) => MapIdentity | null;
   readonly pushed: (deviceId: string) => PushedMapObjects;
+  readonly decoder: Pick<MapDecoder, 'decode'>;
   readonly published: (deviceId: string, scene: VacuumScene) => void;
   readonly savedMaps: (deviceId: string, maps: readonly VacuumSavedMap[]) => void;
   readonly task: (deviceId: string, taskId: number | null) => void;
@@ -261,7 +255,7 @@ export class MapFetcher {
   }
 
   private async build(target: MapTarget): Promise<VacuumScene> {
-    const { log, now } = this.ports;
+    const { log } = this.ports;
     const identity = await at('identity', () => this.identityOf(target.deviceId));
     log.info('vacuum_map.fetch_started', {
       deviceId: target.deviceId,
@@ -275,13 +269,31 @@ export class MapFetcher {
       index: target.index,
       bytes: bytes.length,
     });
-    const map = await at('decode', () => this.mapOf(bytes, identity));
-    const route = await at('decode', () => decodeMapRoute(map.paths));
+    const outcome = await at('decode', () => this.decode(target, bytes, identity));
+    if (outcome.stage === 'decode') throw new MapStageError('decode', errorOf(outcome.error));
     if (target.slot === 'current') {
-      this.ports.task(target.deviceId, map.task_id ?? null);
-      this.ports.route(target.deviceId, route);
+      this.ports.task(target.deviceId, outcome.taskId);
+      this.ports.route(target.deviceId, outcome.route);
     }
-    return at('scene', () => this.sceneOf(target, map, route, now()));
+    if (outcome.stage === 'scene') throw new MapStageError('scene', errorOf(outcome.error));
+    return outcome.scene;
+  }
+
+  private decode(
+    target: MapTarget,
+    bytes: Uint8Array,
+    identity: MapIdentity,
+  ): Promise<MapDecodeOutcome> {
+    if (isNullFile(bytes)) throw new NoMapError();
+    return this.ports.decoder.decode({
+      bytes,
+      model: identity.model,
+      did: identity.did,
+      slot: target.slot,
+      index: target.index,
+      fetchedAt: this.ports.now().toISOString(),
+      pushed: this.ports.pushed(target.deviceId),
+    });
   }
 
   private identityOf(deviceId: string): MapIdentity {
@@ -316,33 +328,6 @@ export class MapFetcher {
       });
       return cloud.call(INTERIM_PLAIN_PATH, body);
     }
-  }
-
-  private mapOf(bytes: Uint8Array, identity: MapIdentity): MapDocument {
-    if (isNullFile(bytes)) throw new NoMapError();
-    return decryptMapBlob(bytes, identity.model, identity.did);
-  }
-
-  private sceneOf(
-    target: MapTarget,
-    map: MapDocument,
-    route: Route | null,
-    fetchedAt: Date,
-  ): VacuumScene {
-    const base = buildVacuumScene({
-      map,
-      index: target.index,
-      slot: target.slot,
-      fetchedAt: fetchedAt.toISOString(),
-    });
-    const layer = buildWallsLayer(
-      map,
-      decodeMapLayer(map, 'map_data'),
-      this.ports.pushed(target.deviceId),
-    );
-    const own =
-      target.slot === 'current' && map.map_id !== undefined ? { robotMapId: map.map_id } : {};
-    return VACUUM_SCENE.parse(applyRoute({ ...base, ...own, ...layer }, route));
   }
 
   private failed(target: MapTarget, error: unknown): void {

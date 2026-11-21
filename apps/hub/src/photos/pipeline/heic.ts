@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { availableParallelism, freemem } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { Worker } from 'node:worker_threads';
-import { crc32, deflateSync } from 'node:zlib';
+import { crc32, deflate } from 'node:zlib';
 import { background, messageOf, type Logger } from '@smarteverything/logging';
 import sharp from 'sharp';
 import { z } from 'zod';
@@ -258,8 +259,10 @@ function pngChunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([length, tag, data, checksum]);
 }
 
-function embedProfile(png: Buffer, profile: Buffer): Buffer {
-  const body = Buffer.concat([Buffer.from('icc\0\0', 'latin1'), deflateSync(profile)]);
+const deflateAsync = promisify(deflate);
+
+async function embedProfile(png: Buffer, profile: Buffer): Promise<Buffer> {
+  const body = Buffer.concat([Buffer.from('icc\0\0', 'latin1'), await deflateAsync(profile)]);
   return Buffer.concat([
     png.subarray(0, PNG_HEADER_END),
     pngChunk('iCCP', body),
@@ -269,7 +272,7 @@ function embedProfile(png: Buffer, profile: Buffer): Buffer {
 
 async function toSrgb(pixels: HeicPixels, profile: Buffer): Promise<DecodedSource> {
   const edge = DERIVED_LONG_EDGE.preview;
-  const tagged = embedProfile(
+  const tagged = await embedProfile(
     await sharp(pixels.data, {
       ...UNLIMITED_PIXELS,
       raw: { width: pixels.width, height: pixels.height, channels: RGBA_CHANNELS },

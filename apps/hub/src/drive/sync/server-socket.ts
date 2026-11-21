@@ -18,7 +18,7 @@ import type { Store } from '../../store/store';
 import { nodeCaller } from '../node-caller';
 import type { DriveActor } from '../access';
 import { SyncConnection, SyncRegistry, type SyncMode, type SyncSession } from './server-connection';
-import { changesAfter, indexIsStale, indexPages } from './server-index';
+import { firstIndexCursor, type IndexCursor, type IndexPage } from './server-index';
 import { resolveScope, type SyncScope } from './placement-scope';
 
 export type { SyncMode, SyncSession } from './server-connection';
@@ -53,9 +53,9 @@ class DriveSyncCore {
     readonly log: Logger,
   ) {}
 
-  admit(access: ComputerNodeAccess, request: IncomingMessage): void {
+  async admit(access: ComputerNodeAccess, request: IncomingMessage): Promise<void> {
     try {
-      nodeCaller(this.store, access.authenticate(bearerOf(request)));
+      nodeCaller(this.store, await access.authenticate(bearerOf(request)));
     } catch (cause) {
       this.log.warn('drive_sync.refused_upgrade', { reason: messageOf(cause) });
       throw cause;
@@ -149,7 +149,8 @@ class DriveSyncCore {
     );
     connection.bind(this.sessionOf(connection, scope, actor), scope.indexId);
     this.registry.add(scope.drive.id, connection);
-    if (indexIsStale(this.store, scope, hello.indexId, hello.afterSeq)) {
+    const latest = await this.store.host.call('driveFeed', 'latestSeqInRoot', scope.drive.id);
+    if (hello.indexId !== scope.indexId || hello.afterSeq > latest) {
       await this.sendIndex(connection, scope);
     } else {
       connection.advance(hello.afterSeq);
@@ -161,7 +162,7 @@ class DriveSyncCore {
 
   private actorOf(connection: SyncConnection): DriveActor {
     const caller = nodeCaller(this.store, connection.identity);
-    return { profileId: profileIdOf(this.store, caller) };
+    return { profileId: profileIdOf(caller) };
   }
 
   private sessionOf(connection: SyncConnection, scope: SyncScope, actor: DriveActor): SyncSession {
@@ -177,19 +178,19 @@ class DriveSyncCore {
   }
 
   private async sendIndex(connection: SyncConnection, scope: SyncScope): Promise<void> {
-    const seq = this.store.driveFeed.latestSeqInRoot(scope.drive.id);
-    const pages = indexPages(this.store, scope);
-    let current = pages.next();
-    while (current.done !== true) {
-      const following = pages.next();
+    const { host } = this.store;
+    const seq = await host.call('driveFeed', 'latestSeqInRoot', scope.drive.id);
+    let cursor: IndexCursor | null = firstIndexCursor(scope);
+    while (cursor !== null) {
+      const page: IndexPage = await host.read('driveSyncIndexPage', { scope, cursor });
       await connection.deliver({
         type: 'index',
         indexId: scope.indexId,
         seq,
-        entries: current.value,
-        last: following.done === true,
+        entries: page.entries,
+        last: page.cursor === null,
       });
-      current = following;
+      cursor = page.cursor;
     }
     connection.advance(seq);
   }
@@ -201,7 +202,10 @@ class DriveSyncCore {
   ): Promise<void> {
     let force = announce;
     for (;;) {
-      const changes = changesAfter(this.store, scope, connection.sentSeq);
+      const changes = await this.store.host.read('driveSyncChanges', {
+        scope,
+        after: connection.sentSeq,
+      });
       if (changes.seq === connection.sentSeq && !force) return;
       force = false;
       await connection.deliver({
@@ -252,9 +256,9 @@ class DriveSyncEndpoint extends ComputerSockets<SyncConnection> {
     super(mode === 'sync' ? DRIVE_SYNC_PROTOCOL : DRIVE_SUBSCRIBE_PROTOCOL, access, core.log);
   }
 
-  override upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
-    this.core.admit(this.access, request);
-    super.upgrade(request, socket, head);
+  override async upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+    await this.core.admit(this.access, request);
+    await super.upgrade(request, socket, head);
   }
 
   protected open(socket: WebSocket, identity: ComputerNodeRow): SyncConnection {
@@ -290,12 +294,12 @@ export class DriveSyncServer {
     };
   }
 
-  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
     const offered = (request.headers['sec-websocket-protocol'] ?? '')
       .split(',')
       .map((value) => value.trim());
     const endpoint = offered.includes(DRIVE_SUBSCRIBE_PROTOCOL) ? this.subscribe : this.sync;
-    endpoint.upgrade(request, socket, head);
+    return endpoint.upgrade(request, socket, head);
   }
 
   revoke(deviceId: string): void {

@@ -9,7 +9,7 @@ import { bearerOf } from '../../server/http';
 import type { Store } from '../../store/store';
 import type { ChangeActor, ChangeEnv } from '../changes';
 import type { ConflictEnv } from '../conflicts';
-import { DriveWriteError } from '../intents';
+import { DriveWriteError } from '../write-error';
 import { nodeCaller } from '../node-caller';
 import { DrivePathError } from '../paths';
 import { PosixError } from '../posix/errors';
@@ -17,6 +17,7 @@ import type { DrivePosix } from '../posix/service';
 import { DriveFreeSpaceError, DriveQuotaExceededError } from '../quotas';
 import type { DriveActor } from '../access';
 import type { DataSpaceProbe } from '../data-space';
+import type { ContentHasher } from '../hasher';
 
 export interface SyncNode {
   readonly deviceId: string;
@@ -47,20 +48,21 @@ export interface SyncEnv extends ConflictEnv {
     >;
   readonly posix: SyncPosix;
   readonly space: DataSpaceProbe['space'];
-  readonly authenticate: (request: IncomingMessage) => SyncNode | null;
+  readonly hasher: Pick<ContentHasher, 'hash'>;
+  readonly authenticate: (request: IncomingMessage) => Promise<SyncNode | null>;
 }
 
 export function syncAuthentication(
   store: Store,
   nodes: Pick<ComputerNodeAccess, 'authenticate'>,
-): (request: IncomingMessage) => SyncNode | null {
-  return (request) => {
+): (request: IncomingMessage) => Promise<SyncNode | null> {
+  return async (request) => {
     const token = bearerOf(request);
     if (token === null) return null;
     try {
-      const identity = nodes.authenticate(token);
+      const identity = await nodes.authenticate(token);
       const caller = nodeCaller(store, identity);
-      const profileId = profileIdOf(store, caller);
+      const profileId = profileIdOf(caller);
       return {
         deviceId: identity.device_id,
         profileId,

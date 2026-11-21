@@ -143,7 +143,7 @@ export interface HubDatabase {
   readonly finishCommand: (id: string, outcome: CommandOutcome) => Promise<void>;
   readonly insertCommands: (
     rows: readonly CommandInsert[],
-    record?: (rows: readonly CommandRow[]) => void,
+    ownerRunId: string | null,
   ) => Promise<readonly CommandRow[]>;
   readonly loadDevices: () => Promise<readonly DeviceRecord[]>;
   readonly loadDeviceIdentities: () => Promise<readonly DeviceIdentity[]>;

@@ -2,11 +2,10 @@ import { ApiError } from '@smarteverything/domain';
 import type { AutomationQuestion } from '@smarteverything/domain';
 import type { WaitResume } from '@smarteverything/flow/interpret/waits';
 import type { Wait } from '@smarteverything/flow/state/run-state';
+import { background } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../../clock';
-import type {
-  AutomationQuestionsRepository,
-  QuestionWrite,
-} from '../../store/repositories/automation-questions';
+import type { StoreHost } from '../../store/host/host';
+import type { QuestionWrite } from '../../store/repositories/automation-questions';
 
 export interface Answerer {
   readonly profileId: string;
@@ -20,10 +19,7 @@ export interface AnswerFeed {
 }
 
 export interface DeskPorts {
-  readonly questions: Pick<
-    AutomationQuestionsRepository,
-    'open' | 'find' | 'openFor' | 'answer' | 'close' | 'closeRun'
-  >;
+  readonly host: Pick<StoreHost, 'call'>;
   readonly clock: Pick<Clock, 'now'>;
 }
 
@@ -43,20 +39,25 @@ export class QuestionDesk implements AnswerFeed {
 
   constructor(private readonly ports: DeskPorts) {}
 
-  open(write: QuestionWrite): AutomationQuestion {
-    return this.ports.questions.open(write);
+  open(write: QuestionWrite): Promise<AutomationQuestion> {
+    return this.ports.host.call('automationQuestions', 'open', write);
   }
 
-  pending(personId: string | null): AutomationQuestion[] {
-    return this.ports.questions.openFor(personId, this.ports.clock.now().toISOString());
+  pending(personId: string | null): Promise<AutomationQuestion[]> {
+    return this.ports.host.call(
+      'automationQuestions',
+      'openFor',
+      personId,
+      this.ports.clock.now().toISOString(),
+    );
   }
 
-  close(id: string): void {
-    this.ports.questions.close(id);
+  async close(id: string): Promise<void> {
+    await this.ports.host.call('automationQuestions', 'close', id);
   }
 
-  closeRun(runId: string): void {
-    this.ports.questions.closeRun(runId);
+  async closeRun(runId: string): Promise<void> {
+    await this.ports.host.call('automationQuestions', 'closeRun', runId);
   }
 
   watch = (wait: AnswerWait, resume: Listener): Cancel => {
@@ -64,28 +65,32 @@ export class QuestionDesk implements AnswerFeed {
     const held = this.listeners.get(id) ?? new Set<Listener>();
     held.add(resume);
     this.listeners.set(id, held);
-    const stored = this.ports.questions.find(id);
-    const answered = stored === undefined ? undefined : resumeOf(stored);
-    if (answered !== undefined) {
-      queueMicrotask(() => {
-        resume(answered);
-      });
-    }
+    background(this.answered(id, resume), 'automation.question_read_failed', { questionId: id });
     return () => {
       held.delete(resume);
       if (held.size === 0) this.listeners.delete(id);
     };
   };
 
-  answer(id: string, by: Answerer, answer: string): AutomationQuestion {
-    const question = this.ports.questions.find(id);
+  async answer(id: string, by: Answerer, answer: string): Promise<AutomationQuestion> {
+    const question = await this.ports.host.call('automationQuestions', 'find', id);
     if (question === undefined) throw new ApiError('not_found', 'There is no such question.');
     this.requireAnswerable(question, by, answer);
-    const recorded = this.ports.questions.answer({ id, answer, answeredBy: by.profileId });
+    const recorded = await this.ports.host.call('automationQuestions', 'answer', {
+      id,
+      answer,
+      answeredBy: by.profileId,
+    });
     if (!recorded) throw new ApiError('conflict', 'This question was just answered.');
     const resume: WaitResume = { kind: 'answer', answer, by: by.profileId };
     for (const listener of [...(this.listeners.get(id) ?? [])]) listener(resume);
-    return this.ports.questions.find(id) ?? question;
+    return (await this.ports.host.call('automationQuestions', 'find', id)) ?? question;
+  }
+
+  private async answered(id: string, resume: Listener): Promise<void> {
+    const stored = await this.ports.host.call('automationQuestions', 'find', id);
+    const answered = stored === undefined ? undefined : resumeOf(stored);
+    if (answered !== undefined && this.listeners.get(id)?.has(resume) === true) resume(answered);
   }
 
   private requireAnswerable(question: AutomationQuestion, by: Answerer, answer: string): void {

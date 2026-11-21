@@ -17,7 +17,7 @@ interface Open {
 
 async function open(): Promise<Open> {
   const chat = rig.newChat(rig.hub.target);
-  const request = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const request = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), request);
   const base = {
     session_id: request.claim.session_id,

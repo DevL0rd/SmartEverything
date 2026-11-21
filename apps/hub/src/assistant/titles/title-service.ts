@@ -26,7 +26,7 @@ export class TitleService {
 
   constructor(private readonly deps: ChatTitlesDeps) {
     this.legacy = new ChatTitles(deps);
-    deps.store.dshSessions.onAppend((sessionId, events) => {
+    deps.store.live.dshSessions.onAppend((sessionId, events) => {
       this.adopt(sessionId, events);
     });
   }

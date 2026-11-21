@@ -47,32 +47,45 @@ export class HealthDaily {
 
   replace(profileId: string, day: string, figures: readonly DailyFigure[]): void {
     const before = new Map(this.ofDay(profileId, day).map((row) => [row.metric, row]));
-    this.context.sql.run(
-      'clear the daily figures',
-      'delete from health_daily where profile_id = $profileId and day = $day',
-      { profileId, day },
-    );
+    const changed = figures.filter((figure) => {
+      const previous = before.get(figure.metric);
+      return previous?.value !== figure.value || previous.unit !== figure.unit;
+    });
+    const kept = new Set(figures.map((figure) => figure.metric));
+    const removed = [...before.values()].filter((row) => !kept.has(row.metric));
     const now = this.context.now();
-    for (const figure of figures) {
+    for (const figure of changed) {
       this.context.sql.run(
         'save the daily figure',
         `insert into health_daily (profile_id, day, metric, value, unit, updated_at)
-         values ($profileId, $day, $metric, $value, $unit, $now)`,
+         values ($profileId, $day, $metric, $value, $unit, $now)
+         on conflict (profile_id, day, metric) do update set value = excluded.value,
+           unit = excluded.unit, updated_at = excluded.updated_at`,
         { profileId, day, metric: figure.metric, value: figure.value, unit: figure.unit, now },
       );
     }
-    for (const after of this.ofDay(profileId, day)) {
-      const previous = before.get(after.metric) ?? null;
-      before.delete(after.metric);
-      this.context.changed(
-        'health_daily',
-        previous === null ? 'INSERT' : 'UPDATE',
-        after,
-        previous,
+    for (const row of removed) {
+      this.context.sql.run(
+        'remove the daily figure',
+        'delete from health_daily where profile_id = $profileId and day = $day and metric = $metric',
+        { profileId, day, metric: row.metric },
       );
     }
-    for (const removed of before.values()) {
-      this.context.changed('health_daily', 'DELETE', null, removed);
+    if (changed.length > 0) {
+      const metrics = new Set(changed.map((figure) => figure.metric));
+      for (const after of this.ofDay(profileId, day)) {
+        if (!metrics.has(after.metric)) continue;
+        const previous = before.get(after.metric) ?? null;
+        this.context.changed(
+          'health_daily',
+          previous === null ? 'INSERT' : 'UPDATE',
+          after,
+          previous,
+        );
+      }
+    }
+    for (const row of removed) {
+      this.context.changed('health_daily', 'DELETE', null, row);
     }
   }
 

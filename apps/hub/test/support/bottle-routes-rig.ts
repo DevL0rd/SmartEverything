@@ -3,7 +3,6 @@ import type { DeviceRow } from '@smarteverything/domain';
 import { BottleActions } from '../../src/local/bottle/actions';
 import { BOTTLE_CAPABILITIES } from '../../src/local/bottle/capabilities';
 import { BOTTLE_ENTRY_CONFIG } from '../../src/local/bottle/config';
-import { planDepsOf } from '../../src/local/bottle/ingest';
 import { bottleRoutes, type RouteDeps } from '../../src/local/bottle/routes';
 import { bottleSetup } from '../../src/local/bottle/setup';
 import { WatchBridges } from '../../src/local/watch-bridge';
@@ -21,7 +20,6 @@ export interface RouteRig {
 function fakeLocal(rig: BottleRig, removed: string[]): RouteDeps['local'] {
   const store = rig.test.store;
   return {
-    deviceOf: (entry): DeviceRow | undefined => store.devices.byExternal('local', entry.externalId),
     add: (setup): Promise<DeviceRow> => {
       if (setup.driver !== 'larq_bottle') {
         throw new Error('only bottles are added in this rig');
@@ -63,16 +61,20 @@ export function routeRig(rig: BottleRig): RouteRig {
     log: testLogger('bottle'),
   });
   const removed: string[] = [];
-  const plan = planDepsOf(rig.ingestDeps);
   const routes = bottleRoutes({
     store: rig.test.store,
+    roster: rig.roster,
     local: fakeLocal(rig, removed),
     bridges,
     ingest: rig.ingest,
     broker: rig.broker,
-    actions: new BottleActions({ store: rig.test.store, broker: rig.broker, bridges, plan }),
-    plan,
-    views: rig.views,
+    actions: new BottleActions({
+      store: rig.test.store,
+      broker: rig.broker,
+      bridges,
+      now: rig.clock.now,
+    }),
+    views: { ...rig.reads, holder: (device) => bridges.holderOf(device) },
     acts: rig.acts,
     stats: rig.stats,
     now: rig.clock.now,

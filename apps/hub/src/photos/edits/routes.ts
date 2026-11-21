@@ -1,7 +1,6 @@
 import { PHOTOS_EDIT_ENDPOINTS } from '@smarteverything/domain';
 import { callerOf } from '../../server/handlers/drive-services';
 import { bound, type Bound } from '../../server/router';
-import type { Store } from '../../store/store';
 import { PhotoEditService } from './service';
 import { VideoEditService } from './video';
 import type { EditDeps } from './deps';
@@ -19,33 +18,33 @@ export interface PhotoEditRoutes {
   readonly readPhotoEditJob: Bound<typeof E.readPhotoEditJob>;
 }
 
-export function photoEditRoutes(store: Store, deps: EditDeps): PhotoEditRoutes {
+export function photoEditRoutes(deps: EditDeps): PhotoEditRoutes {
   const photos = new PhotoEditService(deps);
   const videos = new VideoEditService(deps);
   return {
     readPhotoEdit: bound(E.readPhotoEdit, ({ params, caller }) =>
-      photos.read(callerOf(store, caller), params.itemId),
+      photos.read(callerOf(caller), params.itemId),
     ),
     readPhotoEditPatch: bound(E.readPhotoEditPatch, ({ params, caller }) =>
-      photos.readPatch(callerOf(store, caller), params.itemId, params.patchId),
+      photos.readPatch(callerOf(caller), params.itemId, params.patchId),
     ),
     readPhotoEditBase: bound(E.readPhotoEditBase, ({ params, caller }) =>
-      photos.readBase(callerOf(store, caller), params.itemId),
+      photos.readBase(callerOf(caller), params.itemId),
     ),
     savePhotoEdit: bound(E.savePhotoEdit, ({ params, body, caller }) =>
-      photos.save(callerOf(store, caller), params.itemId, body),
+      photos.save(callerOf(caller), params.itemId, body),
     ),
     revertPhotoEdit: bound(E.revertPhotoEdit, ({ params, caller }) =>
-      photos.revert(callerOf(store, caller), params.itemId),
+      photos.revert(callerOf(caller), params.itemId),
     ),
     erasePhotoArea: bound(E.erasePhotoArea, ({ params, body, caller }) =>
-      photos.erase(callerOf(store, caller), params.itemId, body),
+      photos.erase(callerOf(caller), params.itemId, body),
     ),
     editPhotoVideo: bound(E.editPhotoVideo, ({ params, body, caller }) =>
-      videos.start(callerOf(store, caller), params.itemId, body),
+      videos.start(callerOf(caller), params.itemId, body),
     ),
     readPhotoEditJob: bound(E.readPhotoEditJob, ({ params, caller }) =>
-      videos.read(callerOf(store, caller), params.jobId),
+      videos.read(callerOf(caller), params.jobId),
     ),
   };
 }

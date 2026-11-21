@@ -58,25 +58,39 @@ function figuresOf(
   device: DeviceRow,
   state: DeviceState,
   day: string,
-): StateFigures {
+): Promise<StateFigures> {
   const settings = entrySettingsOf(state.entry);
   const goal = brushGoalOf(settings, settings.personId);
-  return state.figures.get(`${settings.personId ?? ''}|${day}|${JSON.stringify(goal)}`, () => {
-    const sessions = deps.store.brushingSessions.all(device.id, settings.personId ?? undefined);
-    const facts = dailyFactsOf(sessions, goal, day);
-    const stats = computeBrushingStats({ sessions, goal, range: 'week', anchor: day, today: day });
-    return {
-      today: facts.today,
-      streak: facts.streak.current,
-      score: stats.consistency.score,
-      lastSession: sessions.at(-1) ?? null,
-    };
-  });
+  return state.figures.get(
+    `${settings.personId ?? ''}|${day}|${JSON.stringify(goal)}`,
+    async () => {
+      const sessions = await deps.store.host.call(
+        'brushingSessions',
+        'all',
+        device.id,
+        settings.personId ?? undefined,
+      );
+      const facts = dailyFactsOf(sessions, goal, day);
+      const stats = computeBrushingStats({
+        sessions,
+        goal,
+        range: 'week',
+        anchor: day,
+        today: day,
+      });
+      return {
+        today: facts.today,
+        streak: facts.streak.current,
+        score: stats.consistency.score,
+        lastSession: sessions.at(-1) ?? null,
+      };
+    },
+  );
 }
 
 const NO_FIGURES: StateFigures = { today: null, streak: null, score: null, lastSession: null };
 
-function stateView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): BrushView {
+async function stateView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): Promise<BrushView> {
   const state = deps.fleet.of(device);
   const settings = entrySettingsOf(state.entry);
   const profile = entryProfileOf(state.entry);
@@ -97,47 +111,50 @@ function stateView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): BrushView
     battery: batteryViewOf(deps, device, state),
     handle: handleViewOf(deps, device, state),
     personId: settings.personId,
-    personName: nameOf(deps, settings.personId),
+    personName: await nameOf(deps, settings.personId),
     mine,
-    ...(mine ? figuresOf(deps, device, state, day) : NO_FIGURES),
+    ...(mine ? await figuresOf(deps, device, state, day) : NO_FIGURES),
     writes: definition.writes(state),
     mayConfigure: viewer.role === 'owner',
   };
 }
 
-function sessionsView(
+async function sessionsView(
   deps: ViewDeps,
   device: DeviceRow,
   viewer: Viewer,
   query: BrushReadQuery,
-): BrushView {
+): Promise<BrushView> {
   const limit = query.limit ?? DEFAULT_BRUSH_PAGE;
-  const page = deps.store.brushingSessions.page({
+  const owner = viewer.role === 'owner';
+  const page = await deps.store.host.read('brushPage', {
     deviceId: device.id,
-    personId: viewer.role === 'owner' ? undefined : viewer.profileId,
+    personId: owner ? undefined : viewer.profileId,
     before: query.before,
     limit: limit + 1,
+    hiddenFor: owner ? null : viewer.profileId,
   });
   return {
     view: 'sessions',
-    sessions: page.slice(0, limit),
-    more: page.length > limit,
-    hidden:
-      viewer.role === 'owner'
-        ? 0
-        : deps.store.brushingSessions.countHidden(device.id, viewer.profileId),
+    sessions: page.sessions.slice(0, limit),
+    more: page.sessions.length > limit,
+    hidden: page.hidden,
   };
 }
 
-function sessionView(deps: ViewDeps, viewer: Viewer, query: BrushReadQuery): BrushView {
+async function sessionView(
+  deps: ViewDeps,
+  viewer: Viewer,
+  query: BrushReadQuery,
+): Promise<BrushView> {
   if (query.sessionId === undefined) {
     throw new ApiError('invalid_request', 'Reading one session needs sessionId.');
   }
-  const session = deps.store.brushingSessions.byId(query.sessionId);
+  const session = await deps.store.host.call('brushingSessions', 'byId', query.sessionId);
   if (viewer.role !== 'owner' && session.personId !== viewer.profileId) {
     throw new ApiError('forbidden', 'This session belongs to another person.');
   }
-  return { view: 'session', session, personName: nameOf(deps, session.personId) };
+  return { view: 'session', session, personName: await nameOf(deps, session.personId) };
 }
 
 function personOf(viewer: Viewer, query: BrushReadQuery, brushPerson: string | null): string {
@@ -150,12 +167,12 @@ function personOf(viewer: Viewer, query: BrushReadQuery, brushPerson: string | n
     : viewer.profileId;
 }
 
-function statsView(
+async function statsView(
   deps: ViewDeps,
   device: DeviceRow,
   viewer: Viewer,
   query: BrushReadQuery,
-): BrushView {
+): Promise<BrushView> {
   const state = deps.fleet.of(device);
   const settings = entrySettingsOf(state.entry);
   const personId = personOf(viewer, query, settings.personId);
@@ -163,17 +180,17 @@ function statsView(
   const today = deps.clock.dayOf(deps.now(), goal.eveningToHour);
   const range = query.range ?? 'week';
   const anchor = query.anchor ?? today;
-  const figures = state.statistics.get(
+  const figures = await state.statistics.get(
     `${personId}|${range}|${anchor}|${today}|${JSON.stringify(goal)}`,
-    () => {
-      const sessions = deps.store.brushingSessions.all(device.id, personId);
+    async () => {
+      const sessions = await deps.store.host.call('brushingSessions', 'all', device.id, personId);
       return {
         stats: computeBrushingStats({ sessions, goal, range, anchor, today }),
         today: todayOf(sessions, goal, today),
       };
     },
   );
-  return { view: 'stats', personId, personName: nameOf(deps, personId), ...figures };
+  return { view: 'stats', personId, personName: await nameOf(deps, personId), ...figures };
 }
 
 function settingsView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): BrushView {
@@ -191,12 +208,12 @@ function settingsView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): BrushV
   };
 }
 
-export function readBrush(
+export async function readBrush(
   deps: ViewDeps,
   device: DeviceRow,
   viewer: Viewer,
   query: BrushReadQuery,
-): BrushView {
+): Promise<BrushView> {
   const state = deps.fleet.of(device);
   switch (query.view) {
     case 'state':
@@ -216,7 +233,10 @@ export function readBrush(
         deps,
         device,
         state,
-        visible(deps.store.brushingSessions.all(device.id, undefined), viewer),
+        visible(
+          await deps.store.host.call('brushingSessions', 'all', device.id, undefined),
+          viewer,
+        ),
       );
     case 'settings':
       return settingsView(deps, device, viewer);

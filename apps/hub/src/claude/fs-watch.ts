@@ -1,4 +1,4 @@
-import { existsSync, watch, type FSWatcher } from 'node:fs';
+import { watch, type FSWatcher } from 'node:fs';
 import { dirname, relative, sep } from 'node:path';
 import type { Logger } from '@smarteverything/logging';
 import { ClaudeWatchError } from './errors';
@@ -49,11 +49,7 @@ export class PathWatch {
     if (this.stopped) {
       return false;
     }
-    if (existsSync(this.options.directory)) {
-      return this.open();
-    }
-    this.awaitDirectory();
-    return false;
+    return this.open();
   }
 
   private open(): boolean {
@@ -79,18 +75,26 @@ export class PathWatch {
     return true;
   }
 
-  private awaitDirectory(): void {
-    const { directory, log } = this.options;
-    let ancestor = dirname(directory);
-    while (!existsSync(ancestor)) {
-      ancestor = dirname(ancestor);
-    }
-    const next = relative(ancestor, directory).split(sep)[0];
-    const waiting = watch(ancestor, { persistent: false }, (_event, file) => {
-      if (file === next) {
-        this.attach();
+  private watchAncestor(ancestor: string): { waiting: FSWatcher; ancestor: string } {
+    const next = relative(ancestor, this.options.directory).split(sep)[0];
+    try {
+      const waiting = watch(ancestor, { persistent: false }, (_event, file) => {
+        if (file === next) {
+          this.attach();
+        }
+      });
+      return { waiting, ancestor };
+    } catch (cause) {
+      if (isMissing(cause) && dirname(ancestor) !== ancestor) {
+        return this.watchAncestor(dirname(ancestor));
       }
-    });
+      throw new ClaudeWatchError(ancestor, cause);
+    }
+  }
+
+  private awaitDirectory(): void {
+    const { log } = this.options;
+    const { waiting, ancestor } = this.watchAncestor(dirname(this.options.directory));
     waiting.on('error', (cause) => {
       log.warn('watch.failed', { directory: ancestor, reason: cause.message });
       this.attach();

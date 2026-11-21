@@ -1,3 +1,4 @@
+import type { DriveItemWindow } from '../store/repositories/drive-items';
 import {
   ApiError,
   DRIVE_DOWNLOAD,
@@ -13,10 +14,11 @@ import { basename, extname } from 'node:path';
 import type { Store } from '../store/store';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import type { ZipEntry } from '../zip/zip-stream';
-import { inLockedFolder, itemAccess, mayExport, type DriveActor } from './access';
+import { inLockedFolder, mayExport, type DriveActor } from './access';
 import { isFileItem } from './file-item';
 import { resolveInRoot } from './paths';
-import { DRIVE_PAGE_SIZE, type DriveReadService } from './service-read';
+import type { DriveReadService } from './service-read';
+import { DRIVE_PAGE_SIZE } from './page-size';
 import { viewOnlyRefusal } from './sharing/export-guard';
 
 const log = new Logger('hub.drive-download');
@@ -26,8 +28,8 @@ const PACKED = /\.(zip|gz|tgz|bz2|xz|zst|7z|rar|jar|apk)$/i;
 const PACKED_KINDS: ReadonlySet<DriveItem['kind']> = new Set(['image', 'video', 'audio']);
 
 export interface DriveDownloadDeps {
-  readonly store: Pick<Store, 'driveRoots' | 'driveItems' | 'driveGrants' | 'driveOpens'>;
-  readonly read: Pick<DriveReadService, 'readItem' | 'rootOfItem'>;
+  readonly store: Pick<Store, 'host'>;
+  readonly read: Pick<DriveReadService, 'readItemAndRoot'>;
   readonly links: {
     readonly driveDownload: (itemId: string, rev: number) => MediaLink;
     readonly driveDownloadTicket: (ticketId: string) => MediaLink;
@@ -45,16 +47,16 @@ interface Held extends DriveZipTicket {
   readonly expiresAt: number;
 }
 
-function refusalOf(
+async function refusalOf(
   deps: DriveDownloadDeps,
   actor: DriveActor,
-  root: StoredDrive,
   item: DriveItem,
-): ApiError | null {
+): Promise<ApiError | null> {
   if (inLockedFolder(item)) {
     return new ApiError('forbidden', 'It is in the locked folder, which is never downloaded.');
   }
-  if (!mayExport(itemAccess(deps.store, actor, root, item), item.locked)) {
+  const access = await deps.store.host.read('driveItemAccess', { actor, item });
+  if (!mayExport(access, item.locked)) {
     return viewOnlyRefusal();
   }
   return null;
@@ -101,7 +103,7 @@ class Gatherer {
   }
 
   async root(item: DriveItem, root: StoredDrive, name: string): Promise<void> {
-    const refusal = refusalOf(this.deps, this.actor, root, item);
+    const refusal = await refusalOf(this.deps, this.actor, item);
     if (refusal !== null) {
       this.skip(item.relPath, refusal.message);
     } else if (item.kind === 'folder') {
@@ -148,7 +150,7 @@ class Gatherer {
     this.folders += 1;
     let after: string | null = null;
     do {
-      const window = this.deps.store.driveItems.children({
+      const window: DriveItemWindow = await this.deps.store.host.call('driveItems', 'children', {
         rootId: item.rootId,
         parentId: item.id,
         after,
@@ -173,7 +175,7 @@ export class DriveDownloads {
     const gathered = new Gatherer(this.deps, actor);
     const found: { readonly item: DriveItem; readonly root: StoredDrive }[] = [];
     for (const id of new Set(itemIds)) {
-      const located = this.locate(actor, id);
+      const located = await this.locate(actor, id);
       if (located === null) {
         gathered.skip(id, 'It is not available to you.');
       } else {
@@ -182,7 +184,7 @@ export class DriveDownloads {
     }
     const [only] = found;
     if (found.length === 1 && only !== undefined && isFileItem(only.item)) {
-      return this.single(actor, only.root, only.item);
+      return this.single(actor, only.item);
     }
     const taken = new Set<string>();
     for (const { item, root } of found) {
@@ -195,7 +197,7 @@ export class DriveDownloads {
       );
     }
     const entries = [...gathered.entries, ...skippedNote(gathered.skipped, this.deps.now())];
-    const name = this.zipNameOf(
+    const name = await this.zipNameOf(
       actor,
       found.map(({ item }) => item),
     );
@@ -224,27 +226,32 @@ export class DriveDownloads {
     return ticket;
   }
 
-  private locate(
+  private async locate(
     actor: DriveActor,
     id: string,
-  ): { readonly item: DriveItem; readonly root: StoredDrive } | null {
+  ): Promise<{ readonly item: DriveItem; readonly root: StoredDrive } | null> {
     try {
-      const item = this.deps.read.readItem(actor, id);
-      return { item, root: this.deps.read.rootOfItem(actor, item) };
+      return await this.deps.read.readItemAndRoot(actor, id);
     } catch (cause) {
       if (cause instanceof ApiError && cause.code === 'not_found') return null;
       throw cause;
     }
   }
 
-  private single(actor: DriveActor, root: StoredDrive, item: DriveItem): DriveDownload {
-    const refusal = refusalOf(this.deps, actor, root, item);
+  private async single(actor: DriveActor, item: DriveItem): Promise<DriveDownload> {
+    const refusal = await refusalOf(this.deps, actor, item);
     if (refusal !== null) throw refusal;
     if (!isFileItem(item)) {
       throw new ApiError('invalid_request', 'A link or special file has no bytes to download.');
     }
     const link = this.deps.links.driveDownload(item.id, item.rev);
-    this.deps.store.driveOpens.record(actor.profileId, item.id, this.deps.now().toISOString());
+    await this.deps.store.host.call(
+      'driveOpens',
+      'record',
+      actor.profileId,
+      item.id,
+      this.deps.now().toISOString(),
+    );
     return DRIVE_DOWNLOAD.parse({
       kind: 'file',
       name: item.name,
@@ -258,13 +265,18 @@ export class DriveDownloads {
     });
   }
 
-  private zipNameOf(actor: DriveActor, roots: readonly DriveItem[]): string {
+  private async zipNameOf(actor: DriveActor, roots: readonly DriveItem[]): Promise<string> {
     const [first] = roots;
     if (roots.length === 1 && first !== undefined) return `${first.name}.zip`;
     const parents = new Set(roots.map((item) => item.parentId));
     const [parentId] = parents;
     if (parents.size === 1 && parentId !== undefined && parentId !== null) {
-      const parent = this.deps.store.driveItems.find(parentId, actor.profileId);
+      const parent = await this.deps.store.host.call(
+        'driveItems',
+        'find',
+        parentId,
+        actor.profileId,
+      );
       if (parent !== undefined && basename(parent.name) !== '') return `${parent.name}.zip`;
     }
     return 'Files.zip';

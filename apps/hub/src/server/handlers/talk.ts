@@ -1,19 +1,6 @@
-import {
-  API_ENDPOINTS as E,
-  ApiError,
-  type TalkMemberKind,
-  type TalkNewMember,
-} from '@smarteverything/domain';
-import type { Store } from '../../store/store';
-import { memberLabel } from '../../talk/labels';
-import { recentTalkMessages } from '../../talk/recent-messages';
+import { API_ENDPOINTS as E, ApiError, type TalkMemberKind } from '@smarteverything/domain';
 import { clientOf, ownerOrSelf, type Caller } from '../auth';
-import {
-  assertChannelReach,
-  channelHidden,
-  presenceInScope,
-  scopesOfCaller,
-} from '../person-scope';
+import { assertChannelReach, callerScopes, presenceInScope } from '../person-scope';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound } from '../router';
 
@@ -21,14 +8,6 @@ interface MemberParams {
   readonly channelId: string;
   readonly memberKind: TalkMemberKind;
   readonly memberId: string;
-}
-
-function addMember(store: Store, channelId: string, member: TalkNewMember): void {
-  store.talk.setMember(
-    { channelId, kind: member.member_kind, memberId: member.member_id },
-    member.listening ?? member.member_kind === 'client',
-    memberLabel(store, member.member_kind, member.member_id),
-  );
 }
 
 function mayChange(caller: Caller, params: MemberParams): void {
@@ -47,72 +26,63 @@ function keyOf(params: MemberParams): {
 
 const channelRoutes = ({ store, talk }: ServerContext) =>
   ({
-    readTalk: bound(E.readTalk, ({ query, caller }) => {
-      const scope = scopesOfCaller(store, caller)?.channels ?? null;
-      const channels = store.talk.channels().filter((row) => !channelHidden(scope, row.id));
-      return {
-        channels,
-        members: store.talk.members().filter((row) => !channelHidden(scope, row.channel_id)),
-        messages: recentTalkMessages(store.talk, channels, query.messages),
-        ...presenceInScope(scope, talk.presence()),
-      };
+    readTalk: bound(E.readTalk, async ({ query, caller }) => {
+      const scope = (await callerScopes(store, caller))?.channels ?? null;
+      const view = await store.host.read('talkView', { scope, messages: query.messages });
+      return { ...view, ...presenceInScope(scope, talk.presence()) };
     }),
     createTalkChannel: bound(E.createTalkChannel, ({ body }) =>
-      store.write(() => {
-        const { members, ...channel } = body;
-        const row = store.talk.createChannel(channel);
-        members.forEach((member) => {
-          addMember(store, row.id, member);
-        });
-        return row;
-      }),
+      store.host.write('talkChannelCreate', body),
     ),
     updateTalkChannel: bound(E.updateTalkChannel, ({ params, body }) =>
-      store.talk.updateChannel(params.channelId, body),
+      store.host.call('talk', 'updateChannel', params.channelId, body),
     ),
     removeTalkChannel: bound(E.removeTalkChannel, async ({ params }) => {
-      await talk.recorder.discard(store.talk.removeChannel(params.channelId));
+      await talk.recorder.discard(await store.host.call('talk', 'removeChannel', params.channelId));
       return DONE_REPLY;
     }),
   }) as const;
 
 const memberRoutes = ({ store }: ServerContext) =>
   ({
-    setTalkMember: bound(E.setTalkMember, ({ params, body, caller }) => {
+    setTalkMember: bound(E.setTalkMember, async ({ params, body, caller }) => {
       mayChange(caller, params);
-      assertChannelReach(store, caller, params.channelId);
-      return store.talk.setMember(
-        keyOf(params),
-        body.listening,
-        memberLabel(store, params.memberKind, params.memberId),
-      );
+      const scope = (await callerScopes(store, caller))?.channels ?? null;
+      assertChannelReach(store, caller, scope, params.channelId);
+      return store.host.write('talkMemberSet', { key: keyOf(params), listening: body.listening });
     }),
-    removeTalkMember: bound(E.removeTalkMember, ({ params, caller }) => {
+    removeTalkMember: bound(E.removeTalkMember, async ({ params, caller }) => {
       mayChange(caller, params);
-      assertChannelReach(store, caller, params.channelId);
-      store.talk.removeMember(keyOf(params));
+      const scope = (await callerScopes(store, caller))?.channels ?? null;
+      assertChannelReach(store, caller, scope, params.channelId);
+      await store.host.call('talk', 'removeMember', keyOf(params));
       return DONE_REPLY;
     }),
   }) as const;
 
 const messageRoutes = ({ store, talk, links }: ServerContext) =>
   ({
-    listTalkMessages: bound(E.listTalkMessages, ({ query, caller }) => {
-      const scope = scopesOfCaller(store, caller)?.channels ?? null;
-      return store.talk.messages(query).filter((row) => !channelHidden(scope, row.channel_id));
+    listTalkMessages: bound(E.listTalkMessages, async ({ query, caller }) => {
+      const scope = (await callerScopes(store, caller))?.channels ?? null;
+      return store.host.read('talkMessages', { scope, query });
     }),
-    talkMessageLinks: bound(E.talkMessageLinks, ({ body, caller }) =>
-      body.ids.map((id) => {
-        const message = store.talk.message(id);
-        assertChannelReach(store, caller, message.channel_id);
+    talkMessageLinks: bound(E.talkMessageLinks, async ({ body, caller }) => {
+      const scope = (await callerScopes(store, caller))?.channels ?? null;
+      const messages = await Promise.all(
+        body.ids.map((id) => store.host.call('talk', 'message', id)),
+      );
+      return messages.map((message) => {
+        assertChannelReach(store, caller, scope, message.channel_id);
         if (message.storage_path === null) {
-          throw new ApiError('not_found', `The message ${id} has no saved audio.`);
+          throw new ApiError('not_found', `The message ${message.id} has no saved audio.`);
         }
-        return { id, ...links.talkMessage(id) };
-      }),
-    ),
+        return { id: message.id, ...links.talkMessage(message.id) };
+      });
+    }),
     removeTalkMessage: bound(E.removeTalkMessage, async ({ params }) => {
-      await talk.recorder.discard([store.talk.removeMessage(params.messageId)]);
+      await talk.recorder.discard([
+        await store.host.call('talk', 'removeMessage', params.messageId),
+      ]);
       return DONE_REPLY;
     }),
   }) as const;

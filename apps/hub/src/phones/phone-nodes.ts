@@ -18,12 +18,12 @@ import {
   type RowChange,
   type StateUpdate,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
 import type { DeviceRecord } from '../database/port';
 import type { Core, HubParts } from '../hub-assembly';
 import type { Store } from '../store/store';
-import { nextContext } from './phone-context';
+import { PhoneDetailCopy } from './phone-detail-copy';
 import {
   describePhone,
   isPhoneCapability,
@@ -131,18 +131,22 @@ export type PhoneReportListener = (reported: PhoneReported) => void;
 export class PhoneNodes {
   private unsubscribe: (() => void) | null = null;
   private readonly listeners = new Set<PhoneReportListener>();
+  readonly details: PhoneDetailCopy;
 
-  constructor(private readonly options: PhoneNodesOptions) {}
+  constructor(private readonly options: PhoneNodesOptions) {
+    this.details = new PhoneDetailCopy(options.store);
+  }
 
   start(): void {
     this.unsubscribe = this.options.store.feed.subscribe((change) => {
-      this.clientRemoved(change);
+      background(this.clientRemoved(change), 'phone.device_not_removed');
     });
   }
 
   stop(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.details.stop();
   }
 
   onReport(listener: PhoneReportListener): () => void {
@@ -176,11 +180,8 @@ export class PhoneNodes {
         details: event.details,
       });
     });
-    const previous = this.options.store.phoneContexts.byDevice(device.id);
-    this.options.store.phoneContexts.save(
-      nextContext({ device: device.id, phone, previous, report }),
-    );
-    const detail = this.storeDetail(device, report);
+    await this.options.store.host.write('phoneContext', { device: device.id, phone, report });
+    const detail = await this.storeDetail(device, report);
     this.options.log.info('phone.reported', {
       device: device.id,
       values: Object.keys(report.values).length,
@@ -193,7 +194,10 @@ export class PhoneNodes {
     });
   }
 
-  private storeDetail(device: DeviceRow, report: PhoneReport): PhoneDetail | undefined {
+  private async storeDetail(
+    device: DeviceRow,
+    report: PhoneReport,
+  ): Promise<PhoneDetail | undefined> {
     if (report.detail === undefined) return undefined;
     const { update, invalid } = splitPhoneDetail(report.detail);
     invalid.forEach(({ section, issue }) => {
@@ -201,12 +205,13 @@ export class PhoneNodes {
     });
     if (update === undefined) return undefined;
     const parts = stampPhoneDetail(update, report.at);
-    this.options.store.phoneDetails.merge(device.id, parts);
+    await this.options.store.host.call('phoneDetails', 'merge', device.id, parts);
+    this.details.merged(device.id, parts);
     return parts;
   }
 
-  contextOf(profileId: string, viewerProfileId: string): PhoneContext {
-    const entry = this.options.store.phoneContexts.latestOf(profileId);
+  async contextOf(profileId: string, viewerProfileId: string): Promise<PhoneContext> {
+    const entry = await this.options.store.host.call('phoneContexts', 'latestOf', profileId);
     const own = viewerProfileId === profileId;
     if (entry === undefined) {
       return {
@@ -266,7 +271,7 @@ export class PhoneNodes {
     hardware?: PhoneHardware,
   ): Promise<DeviceRow> {
     const externalId = phoneExternalId(phone.clientId);
-    const known = this.deviceOf(externalId);
+    const known = await this.deviceOf(externalId);
     const wanted = describePhone(phone, machineOf(report, known, hardware));
     if (
       known?.name === phone.name &&
@@ -276,7 +281,7 @@ export class PhoneNodes {
       return known;
     }
     await this.options.apply([wanted]);
-    const saved = this.deviceOf(externalId);
+    const saved = await this.deviceOf(externalId);
     if (saved === undefined) {
       throw new ApiError('internal', 'This phone could not be saved as a device.');
     }
@@ -284,26 +289,24 @@ export class PhoneNodes {
     return saved;
   }
 
-  private deviceOf(externalId: string): DeviceRow | undefined {
-    return this.options.store.devices.byExternal('local', externalId);
+  private deviceOf(externalId: string): Promise<DeviceRow | undefined> {
+    return this.options.store.host.call('devices', 'byExternal', 'local', externalId);
   }
 
-  private clientRemoved(change: RowChange): void {
+  private async clientRemoved(change: RowChange): Promise<void> {
     if (change.table !== 'clients' || change.operation !== 'DELETE' || change.oldRecord === null) {
       return;
     }
     const externalId = phoneExternalId(change.oldRecord.id);
-    if (this.deviceOf(externalId) === undefined) {
+    if ((await this.deviceOf(externalId)) === undefined) {
       return;
     }
-    this.options.forget([externalId]).then(
-      () => {
-        this.options.log.info('phone.device_removed', { externalId });
-      },
-      (cause: unknown) => {
-        this.options.log.error('phone.device_not_removed', cause, { externalId });
-      },
-    );
+    try {
+      await this.options.forget([externalId]);
+      this.options.log.info('phone.device_removed', { externalId });
+    } catch (cause) {
+      this.options.log.error('phone.device_not_removed', cause, { externalId });
+    }
   }
 }
 

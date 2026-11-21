@@ -8,6 +8,7 @@ import {
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
 import type { Store } from '../store/store';
 import type { AppViewAsk, AppViewBroker, AppViewOutcome } from './broker';
+import type { AppViewClient } from './app-view-units';
 
 export interface AppViewDesk {
   readonly broker: Pick<AppViewBroker, 'ask' | 'answer'>;
@@ -26,32 +27,29 @@ function ownAppId(caller: Caller): string | null {
   return caller.kind === 'client' ? caller.client.id : null;
 }
 
-function appsOf(desk: AppViewDesk, personId: string): readonly ClientRow[] {
-  return desk.store.clients
-    .list()
-    .filter((client) => desk.store.profiles.activeOf(client.id).id === personId);
+function appsOf(clients: readonly AppViewClient[], personId: string): readonly ClientRow[] {
+  return clients.filter((entry) => entry.profileId === personId).map((entry) => entry.client);
 }
 
 function named(apps: readonly ClientRow[]): string {
   return apps.map((app) => `${app.name} (${app.id})`).join(', ');
 }
 
-function namedApp(desk: AppViewDesk, caller: Caller, appId: string): ClientRow {
-  const app = desk.store.clients.find(appId);
-  if (app === undefined) {
+function namedApp(clients: readonly AppViewClient[], caller: Caller, appId: string): ClientRow {
+  const entry = clients.find((candidate) => candidate.client.id === appId);
+  if (entry === undefined) {
     throw new ApiError('not_found', 'No paired app has that id.');
   }
-  const own = desk.store.profiles.activeOf(app.id).id === profileIdOf(desk.store, caller);
+  const app = entry.client;
+  const own = entry.profileId === profileIdOf(caller);
   if (roleOfCaller(caller) !== 'owner' && !own) {
     throw new ApiError('forbidden', 'Only an owner may show things in another person’s app.');
   }
   return app;
 }
 
-function openApp(desk: AppViewDesk, caller: Caller): ClientRow {
-  const open = appsOf(desk, profileIdOf(desk.store, caller)).filter((app) =>
-    desk.foreground().has(app.id),
-  );
+function openApp(desk: AppViewDesk, clients: readonly AppViewClient[], caller: Caller): ClientRow {
+  const open = appsOf(clients, profileIdOf(caller)).filter((app) => desk.foreground().has(app.id));
   const own = open.find((app) => app.id === ownAppId(caller));
   const [only, ...others] = open;
   if (own !== undefined) return own;
@@ -112,7 +110,10 @@ export async function showInApp(
   input: ShowInAppInput,
 ): Promise<ShowInAppResult> {
   const request = requestOf(input);
+  const clients = await desk.store.host.read('appViewClients', null);
   const app =
-    input.appId === undefined ? openApp(desk, caller) : namedApp(desk, caller, input.appId);
+    input.appId === undefined
+      ? openApp(desk, clients, caller)
+      : namedApp(clients, caller, input.appId);
   return resultOf(app, await desk.broker.ask(app.id, request));
 }

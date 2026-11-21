@@ -9,7 +9,7 @@ import type { OwnerAlert } from '../extensions/owner-alerts';
 import { DriveReadService } from '../drive/service-read';
 import type { DriveWriteService } from '../drive/service-write';
 import { systemDataSpace } from '../drive/data-space';
-import { DuplicatesService } from '../photos/duplicates';
+import { DuplicatesService, hostedDuplicates } from '../photos/duplicates';
 import type { Store } from '../store/store';
 import type { BuildOptions } from './build';
 import type { ServerContext } from './context';
@@ -17,12 +17,13 @@ import { driveListings } from './handlers/drive-listings';
 import { drivePlacementRoutes, type DrivePlacementRoutes } from './handlers/drive-placements';
 import { startDrive, type RunningDrive } from './handlers/drive-start';
 import { createDriveSurfaces } from './handlers/drive-surface-routes';
+import { loadDriveSettings } from '../drive/settings';
 import type { DriveDeps } from './handlers/drive-wiring';
 import { startPhotoAi } from '../photos/ai/wiring';
 import { photoHubRoutes, type PhotoHubInputs, type PhotoHubRoutes } from './handlers/photos-hub';
 import type { PhotoAi } from '../photos/ai/service';
 import { photoSharing, type PhotoSharingHub } from '../photos/sharing/wiring';
-import { PlacesService, placesDatasetPath } from '../photos/places';
+import { PlacesService, hostedPlaces, placesDatasetPath } from '../photos/places';
 import { PhotoSearchIndexer } from '../photos/search-index';
 import type { RawRoute } from './http-server';
 
@@ -141,7 +142,6 @@ function placementsOf(store: Store, placements: DrivePlacements, log: Logger): S
   const lifecycle = new PlacementLifecycle({
     store,
     placements,
-    now: (): string => store.now().toISOString(),
     log,
   });
   return { placements, stop: lifecycle.start() };
@@ -156,7 +156,7 @@ function permittedCameras(store: Store, context: ServerContext): () => readonly 
 }
 
 function duplicatesOf(store: Store, slot: WriteSlot): DuplicatesService {
-  return new DuplicatesService(store.context, {
+  return new DuplicatesService(hostedDuplicates(store.host), {
     trash: (itemIds, actor) => slot.change(actor, { action: 'trash', itemIds: [...itemIds] }),
     star: (itemId, actor) => slot.change(actor, { action: 'star', itemIds: [itemId] }),
   });
@@ -169,7 +169,6 @@ function photoInputsOf(
   shared: {
     readonly duplicates: DuplicatesService;
     readonly ai: PhotoAi;
-    readonly places: PlacesService;
     readonly sharing: PhotoSharingHub;
   },
 ): PhotoHubInputs {
@@ -187,7 +186,6 @@ function photoInputsOf(
     attachmentPath: (storagePath) => join(options.layout.system.ai.assistant, storagePath),
     permittedCameras: permittedCameras(options.store, context),
     ai: shared.ai,
-    places: shared.places,
     sharing: shared.sharing,
     links: context.links,
   };
@@ -196,7 +194,6 @@ function photoInputsOf(
 interface PhotoServices {
   readonly shared: {
     readonly ai: PhotoAi;
-    readonly places: PlacesService;
     readonly sharing: PhotoSharingHub;
   };
   readonly stop: () => Promise<void>;
@@ -217,19 +214,18 @@ function startPhotoServices(
     openRouter: context.openRouter,
   });
   const places = new PlacesService({
-    context: store.context,
-    reader: store.reader,
-    datasetPath: placesDatasetPath(),
+    store: hostedPlaces(store.host),
+    datasetPath: placesDatasetPath,
     log,
   });
   places.load().catch((cause: unknown) => {
     log.error('photos.places_load_failed', cause);
   });
-  const sharing = photoSharing({ store, now: options.clock.now });
+  const sharing = photoSharing({ store });
   const searchIndex = new PhotoSearchIndexer(store);
   searchIndex.start();
   return {
-    shared: { ai: photoAi.ai, places, sharing },
+    shared: { ai: photoAi.ai, sharing },
     stop: async (): Promise<void> => {
       sharing.autoSaver.stop();
       await searchIndex.stop();
@@ -267,10 +263,11 @@ export async function startDriveHub(
     services,
     nodes: context.computerNodes,
     log,
+    settings: await loadDriveSettings(store),
   });
   const routes = {
     ...drive.routes,
-    ...drivePlacementRoutes(store, placed.placements),
+    ...drivePlacementRoutes(placed.placements),
     ...photoHubRoutes(photoInputsOf(options, context, drive, { duplicates, ...photos.shared })),
   };
   const rawRoutes: readonly RawRoute[] = [...drive.rawRoutes, ...surfaces.routes];

@@ -9,6 +9,7 @@ import {
 import { z } from 'zod';
 import type { DriveActor } from '../drive/access';
 import type { StoreContext } from '../store/context';
+import { storeUnit } from '../store/host/unit';
 import { starredBy } from '../store/repositories/drive-stars';
 import type { SqlParameters } from '../store/sql';
 import {
@@ -245,4 +246,43 @@ export class LibraryReader {
     const statement = pageStatement(actor, month, { ...query, meaningIds: meaning }, this.albums);
     return pageOf(month, this.context.sql.all(PAGE_ROW, statement.text, statement.parameters));
   }
+}
+
+export interface LibraryQuery {
+  readonly actor: DriveActor;
+  readonly timeZone: string;
+  readonly meaning: readonly string[];
+}
+
+export const PHOTO_BUCKETS_UNIT = storeUnit(
+  (store, input: LibraryQuery & { readonly scope: LibraryScope }) =>
+    new LibraryReader(store.context, () => input.timeZone).buckets(
+      input.actor,
+      input.scope,
+      input.meaning,
+    ),
+);
+
+export const PHOTO_PAGE_UNIT = storeUnit(
+  (store, input: LibraryQuery & { readonly month: string; readonly query: PageQuery }) =>
+    new LibraryReader(store.context, () => input.timeZone).page(
+      input.actor,
+      input.month,
+      input.query,
+      input.meaning,
+    ),
+);
+
+export interface LibraryPages {
+  buckets(
+    actor: DriveActor,
+    scope: LibraryScope,
+    meaning: readonly string[],
+  ): Promise<LibraryBucket[]>;
+  page(
+    actor: DriveActor,
+    month: string,
+    query: PageQuery,
+    meaning: readonly string[],
+  ): Promise<LibraryPage>;
 }

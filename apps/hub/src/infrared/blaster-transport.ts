@@ -8,7 +8,7 @@ import type { IrTransport } from './appliance-service';
 import type { IrFrame } from './encoders';
 
 export interface BlasterTransportOptions {
-  readonly store: Pick<Store, 'feed' | 'commands'>;
+  readonly store: Pick<Store, 'feed' | 'host'>;
   readonly clock: Clock;
   readonly submit: (commands: readonly NewCommand[]) => readonly CommandRow[];
 }
@@ -45,7 +45,7 @@ export function blasterTransport(options: BlasterTransportOptions): IrTransport 
               },
             ]),
           ),
-        current: (id) => options.store.commands.byId(id),
+        current: (id) => options.store.host.call('commands', 'byId', id),
       });
       const [command] = outcome.commands;
       if (!outcome.allFinished || command?.status !== 'succeeded') {

@@ -43,7 +43,6 @@ beforeEach(async () => {
   const deps: RouteDeps = {
     store: rig.test.store,
     fleet: rig.fleet,
-    local: { deviceOf: () => rig.row() },
     bridges,
     ingest: rig.ingest,
     broker: {

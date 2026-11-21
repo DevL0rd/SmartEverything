@@ -19,13 +19,16 @@ import { PushCommandChannel, type PushCommandOutcome } from '../../src/extension
 import { actBottle, type ActDeps, type Actor } from '../../src/local/bottle/acts';
 import { BottleActions } from '../../src/local/bottle/actions';
 import { BottleActionBroker } from '../../src/local/bottle/broker';
-import { BOTTLE_ENTRY_CONFIG } from '../../src/local/bottle/config';
+import { BOTTLE_DRIVER, BOTTLE_ENTRY_CONFIG } from '../../src/local/bottle/config';
 import { homeClock } from '../../src/local/bottle/clock';
 import { BOTTLE_CAPABILITIES } from '../../src/local/bottle/capabilities';
 import { bottleSetup } from '../../src/local/bottle/setup';
-import { BottleIngest, planDepsOf, type IngestDeps } from '../../src/local/bottle/ingest';
+import { BottleIngest } from '../../src/local/bottle/ingest';
 import { syncPlanOf } from '../../src/local/bottle/plan';
-import { Snapshots } from '../../src/local/bottle/snapshots';
+import type { BottleReadDeps } from '../../src/local/bottle/reads';
+import type { Snapshots } from '../../src/local/bottle/snapshots';
+import { bottleWorkerDeps, planDepsOf, type BottleWorkerDeps } from '../../src/local/bottle/sync';
+import { FleetRoster } from '../../src/local/fleet-roster';
 import type { ViewDeps } from '../../src/local/bottle/view-deps';
 import { StatsCache } from '../../src/local/bottle/views-stats';
 import { FakeCap } from './fake-cap';
@@ -60,7 +63,9 @@ export interface BottleRig {
   readonly broker: BottleActionBroker;
   readonly actions: BottleActions;
   readonly ingest: BottleIngest;
-  readonly ingestDeps: IngestDeps;
+  readonly ingestDeps: BottleWorkerDeps;
+  readonly roster: FleetRoster;
+  readonly reads: BottleReadDeps;
   readonly views: ViewDeps;
   readonly acts: ActDeps;
   readonly stats: StatsCache;
@@ -202,7 +207,9 @@ async function seed(bound: 'owner' | 'member' | null): Promise<Seeded> {
 }
 
 interface Parts {
-  readonly ingestDeps: IngestDeps;
+  readonly ingestDeps: BottleWorkerDeps;
+  readonly roster: FleetRoster;
+  readonly reads: BottleReadDeps;
   readonly broker: BottleActionBroker;
   readonly actions: BottleActions;
   readonly views: ViewDeps;
@@ -214,35 +221,42 @@ interface Parts {
 function partsOf(seeded: Seeded, capture: Capture, bridge: BottleRig['bridge']): Parts {
   const { test, clock } = seeded;
   const log = testLogger('bottle');
-  const snapshots = new Snapshots(test.store.bottleLogs);
+  const ingestDeps: BottleWorkerDeps = {
+    ...bottleWorkerDeps(test.store, clock.now().toISOString()),
+    now: clock.now,
+  };
+  const { snapshots } = ingestDeps;
   const stats = new StatsCache();
+  const roster = new FleetRoster({
+    store: test.store,
+    accepts: (entry): boolean => entry.driver === BOTTLE_DRIVER,
+    name: 'bottle',
+  });
   const local = {
     observe: (_id: string, values: Readonly<Record<string, JsonValue>>): Promise<void> => {
       capture.observed.push({ ...values });
       return Promise.resolve();
     },
   };
-  const ingestDeps: IngestDeps = {
-    store: test.store,
-    readings: test.store.bottleReadings,
-    logs: test.store.bottleLogs,
-    snapshots,
-    sink: (): AdapterSink => capture.sink,
-    local,
-    clock: homeClock(test.store),
-    now: clock.now,
-    log,
-  };
   const broker = new BottleActionBroker(capture.channel, log);
   const actions = new BottleActions({
     store: test.store,
     broker,
     bridges: { holderOf: (): WatchBridge | null => bridge.holder },
-    plan: planDepsOf(ingestDeps),
+    now: clock.now,
   });
-  const shared = { ingestDeps, snapshots, stats, local, actions, bridge, seeded };
+  const shared = { ingestDeps, snapshots, stats, local, actions, bridge, seeded, roster };
   return {
     ingestDeps,
+    roster,
+    reads: {
+      store: test.store,
+      holder: (): WatchBridge | null => bridge.holder,
+      syncing: (): boolean => false,
+      clock: homeClock(test.store),
+      now: clock.now,
+      stats,
+    },
     broker,
     actions,
     snapshots,
@@ -253,7 +267,8 @@ function partsOf(seeded: Seeded, capture: Capture, bridge: BottleRig['bridge']):
 }
 
 interface Shared {
-  readonly ingestDeps: IngestDeps;
+  readonly ingestDeps: BottleWorkerDeps;
+  readonly roster: FleetRoster;
   readonly snapshots: Snapshots;
   readonly stats: StatsCache;
   readonly local: ActDeps['local'];
@@ -273,7 +288,6 @@ function viewsOf(shared: Shared): ViewDeps {
     now: clock.now,
     holder: (): WatchBridge | null => shared.bridge.holder,
     syncing: (): boolean => false,
-    stats: shared.stats,
   };
 }
 
@@ -281,14 +295,7 @@ function actsOf(shared: Shared): ActDeps {
   const { test, clock } = shared.seeded;
   return {
     store: test.store,
-    readings: test.store.bottleReadings,
-    snapshots: shared.snapshots,
-    drinks: {
-      store: test.store,
-      readings: test.store.bottleReadings,
-      clock: shared.ingestDeps.clock,
-      log: shared.ingestDeps.log,
-    },
+    roster: shared.roster,
     actions: shared.actions,
     bridges: {
       takeOver: (_device, client): Promise<WatchBridge> =>
@@ -298,8 +305,24 @@ function actsOf(shared: Shared): ActDeps {
     stats: shared.stats,
     clock: shared.ingestDeps.clock,
     now: clock.now,
-    log: shared.ingestDeps.log,
+    log: testLogger('bottle'),
   };
+}
+
+function ingestOf(seeded: Seeded, capture: Capture, roster: FleetRoster): BottleIngest {
+  return new BottleIngest({
+    store: seeded.test.store,
+    roster,
+    sink: (): AdapterSink => capture.sink,
+    local: {
+      observe: (_id: string, values: Readonly<Record<string, JsonValue>>): Promise<void> => {
+        capture.observed.push({ ...values });
+        return Promise.resolve();
+      },
+    },
+    now: seeded.clock.now,
+    log: testLogger('bottle'),
+  });
 }
 
 export async function bottleRig(
@@ -310,15 +333,19 @@ export async function bottleRig(
   const capture = new Capture();
   const bridge: BottleRig['bridge'] = { holder: null };
   const parts = partsOf(seeded, capture, bridge);
+  const unfollow = parts.roster.follow({
+    added: () => Promise.resolve(),
+    removed: () => undefined,
+  });
+  await parts.roster.load();
   const cap = new FakeCap(Date.parse(START));
-  const ingest = new BottleIngest(parts.ingestDeps);
+  const ingest = ingestOf(seeded, capture, parts.roster);
   const sync: BottleRig['sync'] = (minutes = 0, by = owner, trigger = 'wake') => {
     clock.advanceTo(new Date(Date.parse(START) + minutes * 60_000).toISOString());
     const entry = test.store.localDevices.byExternalId(device.external_id);
     const plan = syncPlanOf(planDepsOf(parts.ingestDeps), { entry, deviceId: device.id });
     return ingest.process(
       test.store.devices.byId(device.id),
-      entry,
       by.client,
       runPlan(plan, cap, { now: clock.now(), trigger }),
     );
@@ -339,7 +366,11 @@ export async function bottleRig(
     row: () => test.store.devices.byId(device.id),
     entry: () => test.store.localDevices.byExternalId(device.external_id),
     seconds: (minutes) => Math.floor(Date.parse(START) / 1000) + minutes * 60,
-    close: () => test.close(),
+    close: async (): Promise<void> => {
+      unfollow();
+      await ingest.idle();
+      await test.close();
+    },
   };
 }
 

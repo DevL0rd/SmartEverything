@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { basename } from 'node:path';
 import type { DriveItem } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ScanCommitter, type CommitDependencies } from '../../src/drive/scanner-commit';
+import { TestScan, type TestScanDeps } from './local-ports';
 import type { WalkEntry } from '../../src/drive/scanner-walk';
 import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
@@ -40,7 +40,7 @@ afterEach(() => {
   fixture.database.close();
 });
 
-function dependencies(): CommitDependencies {
+function dependencies(): TestScanDeps {
   return {
     items,
     inodes: new DriveInodesRepository(context),
@@ -61,8 +61,8 @@ function driveTotals(): {
   return { items: root.items, folders: root.folders, bytes: root.bytes };
 }
 
-function committer(): ScanCommitter {
-  return new ScanCommitter(dependencies(), roots.byId(ROOT), null);
+function committer(): TestScan {
+  return new TestScan(dependencies(), roots.byId(ROOT), null);
 }
 
 function fileEntry(
@@ -105,7 +105,7 @@ function folderEntry(
   };
 }
 
-async function scanned(entries: readonly WalkEntry[]): Promise<ScanCommitter> {
+async function scanned(entries: readonly WalkEntry[]): Promise<TestScan> {
   const scan = committer();
   scan.apply(entries);
   await scan.finish([]);

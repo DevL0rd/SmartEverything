@@ -19,11 +19,17 @@ beforeEach(async () => {
   clock = START;
   const now = (): Date => new Date(clock);
   opened = await testStore(now);
+  await opened.store.live.aiModels.load();
   const { store } = opened;
   profileId = store.profiles.first().id;
   chats = new ChatDirectory(
     store,
-    new AssistantFiles({ layout: hubLayout(opened.directory, {}), chat: store.assistantChat, now }),
+    new AssistantFiles({
+      layout: hubLayout(opened.directory, {}),
+      chat: store.assistantChat,
+      attachments: store.live.attachments,
+      now,
+    }),
   );
 });
 
@@ -38,10 +44,11 @@ describe('conversation chats', () => {
     expect(chats.conversationChat(profileId).id).toBe(first.id);
   });
 
-  it('names the conversation chat after the AI and keeps the name when it is used', () => {
+  it('names the conversation chat after the AI and keeps the name when it is used', async () => {
     expect(chats.conversationChat(profileId)).toMatchObject({ title: 'Coordinator' });
-    const settings = opened.store.assistantChat.settings();
-    opened.store.assistantChat.saveSettings({ ...settings, name: 'Jarvis' });
+    await opened.store.live.home.load();
+    const settings = opened.store.live.home.assistant.read();
+    await opened.store.live.home.assistant.save({ ...settings, name: 'Jarvis' });
     chats.retitleConversations();
     expect(chats.conversationChat(profileId).title).toBe('Jarvis');
     expect(opened.store.aiChats.titleAuto(chats.conversationChat(profileId).id)).toBe(false);

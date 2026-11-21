@@ -42,7 +42,7 @@ export class VoiceSamples {
   }
 
   async sample(listener: Listener, voice: CallVoice, signal?: AbortSignal): Promise<VoiceSample> {
-    const model = voiceModelFor(this.options.store.assistantChat.settings().voice.thinking_level);
+    const model = voiceModelFor(this.options.store.live.home.assistant.read().voice.thinking_level);
     const file = this.pathOf(model, voice);
     const cached = await readFile(file).catch((error: unknown) => {
       if (isMissing(error)) return null;
@@ -82,18 +82,16 @@ export class VoiceSamples {
 
   private record(listener: Listener, model: string, usage: UsageMetadata): void {
     const callId = randomUUID();
-    try {
-      recordLiveTurn(this.options.store.ledger, this.options.prices, {
-        ...listener,
-        callId,
-        chatId: null,
-        messageId: null,
-        pluginId: null,
-        model,
-        usage,
-      });
-    } catch (error) {
+    recordLiveTurn(this.options.store.host, this.options.prices, {
+      ...listener,
+      callId,
+      chatId: null,
+      messageId: null,
+      pluginId: null,
+      model,
+      usage,
+    }).catch((error: unknown) => {
       this.options.log.error('voice_sample.usage_unrecorded', error, { callId });
-    }
+    });
   }
 }

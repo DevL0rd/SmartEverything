@@ -6,7 +6,6 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SimulatedClock } from '../../src/clock/simulated';
-import { AlarmSounds } from '../../src/planner/alarm-sound';
 import { plannerPreferencesOf } from '../../src/planner/preferences';
 import {
   PHONE_RING_ACK,
@@ -95,8 +94,6 @@ beforeEach(async () => {
         return Promise.resolve(reachable);
       },
     },
-    sounds: new AlarmSounds(test.store, testLogger('sounds')),
-    preferencesOf: (profileId): PlannerPreferences => plannerPreferencesOf(test.store, profileId),
     now: (): Date => clock.now(),
     log: testLogger('phone-rings'),
   });
@@ -109,8 +106,9 @@ afterEach(async () => {
 });
 
 describe('pushing the desired set', () => {
-  it('pushes the rules of an added alarm to its target phone only', () => {
+  it('pushes the rules of an added alarm to its target phone only', async () => {
     const alarm = test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     expect(sent).toHaveLength(1);
     expect(sent[0]?.clientId).toBe(owner.client.id);
     expect(sent[0]?.set.alarms).toEqual([
@@ -134,34 +132,40 @@ describe('pushing the desired set', () => {
     expect(sent.some((push) => push.clientId === other.client.id)).toBe(false);
   });
 
-  it('pushes again after an alarm edit and carries the new rule', () => {
+  it('pushes again after an alarm edit and carries the new rule', async () => {
     const alarm = test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     test.store.plannerAlarms.update(alarm.id, owner.profileId, {
       time: '06:30',
       skip_on: '2026-11-09',
     });
+    await rings.settled();
     expect(sent).toHaveLength(2);
     expect(sent[1]?.set.alarms[0]).toMatchObject({ time: '06:30', skipOn: '2026-11-09' });
     expect(sent[1]?.set.version).not.toBe(sent[0]?.set.version);
   });
 
-  it('sends rules and never a horizon of instants for a repeating alarm', () => {
+  it('sends rules and never a horizon of instants for a repeating alarm', async () => {
     test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     const [alarm] = sent[0]?.set.alarms ?? [];
     expect(Object.keys(alarm ?? {})).not.toContain('next');
     expect(sent[0]?.set.alarms).toHaveLength(1);
   });
 
-  it('drops a disabled alarm from the set', () => {
+  it('drops a disabled alarm from the set', async () => {
     const alarm = test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     test.store.plannerAlarms.update(alarm.id, owner.profileId, { enabled: false });
+    await rings.settled();
     expect(sent.at(-1)?.set.alarms).toEqual([]);
   });
 
-  it('pushes a running timer as its absolute end instant and drops it when paused', () => {
+  it('pushes a running timer as its absolute end instant and drops it when paused', async () => {
     const timer = test.store.plannerTimers.insert(
       timerInput([{ kind: 'client', clientId: owner.client.id }]),
     );
+    await rings.settled();
     expect(sent.at(-1)?.set.timers).toEqual([
       {
         id: timer.id,
@@ -175,22 +179,27 @@ describe('pushing the desired set', () => {
       ends_at: null,
       remaining_ms: 300_000,
     });
+    await rings.settled();
     expect(sent.at(-1)?.set.timers).toEqual([]);
   });
 
-  it('tells a phone that lost its target to clear the rule', () => {
+  it('tells a phone that lost its target to clear the rule', async () => {
     const alarm = test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     test.store.plannerAlarms.update(alarm.id, owner.profileId, { targets: [] });
+    await rings.settled();
     expect(toOwner().at(-1)?.set.alarms).toEqual([]);
   });
 
-  it('does not push again when a change leaves the set unchanged', () => {
+  it('does not push again when a change leaves the set unchanged', async () => {
     const alarm = test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     test.store.plannerAlarms.update(alarm.id, owner.profileId, { smart_minutes: 20 });
+    await rings.settled();
     expect(sent).toHaveLength(1);
   });
 
-  it('resolves a paired phone device target to its client', () => {
+  it('resolves a paired phone device target to its client', async () => {
     const phone = addPhoneDevice(test, {
       clientId: other.client.id,
       profileId: other.profileId,
@@ -199,11 +208,13 @@ describe('pushing the desired set', () => {
     test.store.plannerAlarms.insert(
       alarmInput({ targets: [{ kind: 'device', deviceId: phone.device.id }] }),
     );
+    await rings.settled();
     expect(sent.map((push) => push.clientId)).toEqual([other.client.id]);
   });
 
-  it('merges the alarms of every person that targets the same phone', () => {
+  it('merges the alarms of every person that targets the same phone', async () => {
     test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     test.store.plannerAlarms.insert(
       alarmInput({
         profile_id: other.profileId,
@@ -212,6 +223,7 @@ describe('pushing the desired set', () => {
         targets: [{ kind: 'client', clientId: owner.client.id }],
       }),
     );
+    await rings.settled();
     expect(
       toOwner()
         .at(-1)
@@ -220,7 +232,7 @@ describe('pushing the desired set', () => {
     ).toEqual(['Gym', 'Work']);
   });
 
-  it('gives a desktop client its own ring set', () => {
+  it('gives a desktop client its own ring set', async () => {
     const desktop = test.store.clients.create({
       name: 'Desk',
       platform: 'desktop',
@@ -229,18 +241,21 @@ describe('pushing the desired set', () => {
       tokenHash: hashClientToken(createClientToken()),
       profileId: owner.profileId,
     });
+    await rings.settled();
     test.store.plannerAlarms.insert(
       alarmInput({ targets: [{ kind: 'client', clientId: desktop.id }] }),
     );
+    await rings.settled();
     expect(sent.map((entry) => entry.clientId)).toEqual([desktop.id]);
-    expect(rings.desired(desktop.id).alarms).toHaveLength(1);
-    expect(rings.desired(owner.client.id).alarms).toHaveLength(0);
+    expect((await rings.desired(desktop.id)).alarms).toHaveLength(1);
+    expect((await rings.desired(owner.client.id)).alarms).toHaveLength(0);
     sent.length = 0;
     rings.connected(desktop.id);
+    await rings.settled();
     expect(sent.map((entry) => entry.clientId)).toEqual([desktop.id]);
   });
 
-  it('ignores a browser client', () => {
+  it('ignores a browser client', async () => {
     const desktop = test.store.clients.create({
       name: 'Tab',
       platform: 'web',
@@ -249,10 +264,13 @@ describe('pushing the desired set', () => {
       tokenHash: hashClientToken(createClientToken()),
       profileId: owner.profileId,
     });
+    await rings.settled();
     test.store.plannerAlarms.insert(
       alarmInput({ targets: [{ kind: 'client', clientId: desktop.id }] }),
     );
+    await rings.settled();
     rings.connected(desktop.id);
+    await rings.settled();
     expect(sent).toHaveLength(0);
   });
 });
@@ -260,6 +278,7 @@ describe('pushing the desired set', () => {
 describe('acknowledgement', () => {
   it('records the ack of the current version with its time', async () => {
     test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     await Promise.resolve();
     const version = sent[0]?.set.version ?? '';
     clock.advanceTo('2026-11-07T08:00:05.000Z');
@@ -273,18 +292,21 @@ describe('acknowledgement', () => {
     });
   });
 
-  it('ignores an ack of a version that was already replaced', () => {
+  it('ignores an ack of a version that was already replaced', async () => {
     const alarm = test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     const first = sent[0]?.set.version ?? '';
     test.store.plannerAlarms.update(alarm.id, owner.profileId, { time: '08:00' });
+    await rings.settled();
     expect(rings.acknowledge(owner.client.id, first)).toBe(false);
     expect(rings.stateOf(owner.client.id)?.ackedAt).toBeNull();
   });
 });
 
 describe('reconnect', () => {
-  it('sends the current set on the connected event, even with nothing to ring', () => {
+  it('sends the current set on the connected event, even with nothing to ring', async () => {
     rings.connected(owner.client.id);
+    await rings.settled();
     expect(sent).toHaveLength(1);
     expect(sent[0]?.set).toMatchObject({ alarms: [], timers: [] });
   });
@@ -292,6 +314,7 @@ describe('reconnect', () => {
   it('keeps an unreached push pending, never retries on time, and re-sends on reconnect', async () => {
     reachable = false;
     test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     await Promise.resolve();
     await Promise.resolve();
     expect(rings.stateOf(owner.client.id)).toMatchObject({ reached: false, ackedAt: null });
@@ -299,6 +322,7 @@ describe('reconnect', () => {
     expect(sent).toHaveLength(1);
     reachable = true;
     rings.connected(owner.client.id);
+    await rings.settled();
     expect(sent).toHaveLength(2);
     expect(sent[1]?.set.version).toBe(sent[0]?.set.version);
     await Promise.resolve();
@@ -306,10 +330,12 @@ describe('reconnect', () => {
     expect(rings.stateOf(owner.client.id)?.reached).toBe(true);
   });
 
-  it('re-sends an already acknowledged set when the phone reconnects', () => {
+  it('re-sends an already acknowledged set when the phone reconnects', async () => {
     test.store.plannerAlarms.insert(alarmInput());
+    await rings.settled();
     rings.acknowledge(owner.client.id, sent[0]?.set.version ?? '');
     rings.connected(owner.client.id);
+    await rings.settled();
     expect(sent).toHaveLength(2);
     expect(rings.stateOf(owner.client.id)?.ackedAt).toBeNull();
   });
@@ -320,22 +346,26 @@ describe('the ring set a phone installs', () => {
     return rings.read(owner.client.id, owner.profileId);
   }
 
-  function savePreferences(change: (current: PlannerPreferences) => PlannerPreferences): void {
+  async function savePreferences(
+    change: (current: PlannerPreferences) => PlannerPreferences,
+  ): Promise<void> {
     test.store.plannerPreferences.put(
       owner.profileId,
       change(plannerPreferencesOf(test.store, owner.profileId)),
     );
     rings.preferencesChanged(owner.profileId);
+    await rings.settled();
   }
 
-  it('carries the sound, the snooze limit and the challenge of each ring', () => {
+  it('carries the sound, the snooze limit and the challenge of each ring', async () => {
     test.store.plannerAlarms.insert(
       alarmInput({
         snooze_limit: 3,
         challenge: { kind: 'maths', difficulty: 'hard', count: 4 },
       }),
     );
-    const [ring] = readOwner().rings;
+    await rings.settled();
+    const [ring] = (await readOwner()).rings;
     expect(ring).toMatchObject({
       sound: { kind: 'tone', id: 'sunrise' },
       snoozeLimit: 3,
@@ -343,9 +373,10 @@ describe('the ring set a phone installs', () => {
     });
   });
 
-  it('gives a timer the clock default sound and no limit or challenge', () => {
+  it('gives a timer the clock default sound and no limit or challenge', async () => {
     test.store.plannerTimers.insert(timerInput([{ kind: 'client', clientId: owner.client.id }]));
-    const [ring] = readOwner().rings;
+    await rings.settled();
+    const [ring] = (await readOwner()).rings;
     expect(ring).toMatchObject({
       kind: 'timer',
       sound: { kind: 'tone', id: 'default' },
@@ -354,14 +385,15 @@ describe('the ring set a phone installs', () => {
     });
   });
 
-  it('records what the phone read so its acknowledgement matches', () => {
+  it('records what the phone read so its acknowledgement matches', async () => {
     test.store.plannerAlarms.insert(alarmInput());
-    const set = readOwner();
+    await rings.settled();
+    const set = await readOwner();
     expect(rings.acknowledge(owner.client.id, set.hash)).toBe(true);
   });
 
-  it('computes the next bedtime windows from the bedtime preferences', () => {
-    savePreferences((current) => ({
+  it('computes the next bedtime windows from the bedtime preferences', async () => {
+    await savePreferences((current) => ({
       ...current,
       bedtime: {
         ...current.bedtime,
@@ -371,7 +403,8 @@ describe('the ring set a phone installs', () => {
         schedule: [{ days: [0, 1, 2, 3, 4, 5, 6], bed: '23:00', wake: '07:00' }],
       },
     }));
-    const { bedtimeWindows } = readOwner();
+    await rings.settled();
+    const { bedtimeWindows } = await readOwner();
     expect(bedtimeWindows).toHaveLength(7);
     expect(bedtimeWindows[0]).toEqual({
       windDownAt: '2026-11-07T22:30:00.000Z',
@@ -380,26 +413,30 @@ describe('the ring set a phone installs', () => {
     });
   });
 
-  it('gives no windows while bedtime or Do not disturb is off', () => {
+  it('gives no windows while bedtime or Do not disturb is off', async () => {
     const schedule = [{ days: [1, 2, 3, 4, 5], bed: '23:00', wake: '07:00' }] as const;
-    savePreferences((current) => ({
+    await savePreferences((current) => ({
       ...current,
       bedtime: { ...current.bedtime, enabled: false, schedule },
     }));
-    expect(readOwner().bedtimeWindows).toEqual([]);
-    savePreferences((current) => ({
+    await rings.settled();
+    expect((await readOwner()).bedtimeWindows).toEqual([]);
+    await savePreferences((current) => ({
       ...current,
       bedtime: { ...current.bedtime, enabled: true, do_not_disturb: false },
     }));
-    expect(readOwner().bedtimeWindows).toEqual([]);
+    await rings.settled();
+    expect((await readOwner()).bedtimeWindows).toEqual([]);
   });
 
-  it('pushes the phones of a person again when the bedtime changes and not when it does not', () => {
+  it('pushes the phones of a person again when the bedtime changes and not when it does not', async () => {
     rings.connected(owner.client.id);
+    await rings.settled();
     const before = sent.length;
-    savePreferences((current) => current);
+    await savePreferences((current) => current);
+    await rings.settled();
     expect(sent).toHaveLength(before);
-    savePreferences((current) => ({
+    await savePreferences((current) => ({
       ...current,
       bedtime: {
         ...current.bedtime,
@@ -407,17 +444,20 @@ describe('the ring set a phone installs', () => {
         schedule: [{ days: [1], bed: '23:00', wake: '07:00' }],
       },
     }));
+    await rings.settled();
     expect(sent).toHaveLength(before + 1);
     expect(sent.every((push) => push.clientId === owner.client.id)).toBe(true);
   });
 
-  it('pushes again when the clock default sound changes for a running timer', () => {
+  it('pushes again when the clock default sound changes for a running timer', async () => {
     test.store.plannerTimers.insert(timerInput([{ kind: 'client', clientId: owner.client.id }]));
+    await rings.settled();
     const before = sent.length;
-    savePreferences((current) => ({
+    await savePreferences((current) => ({
       ...current,
       clock: { ...current.clock, sound: { kind: 'tone', id: 'birds' } },
     }));
+    await rings.settled();
     expect(sent).toHaveLength(before + 1);
     expect(toOwner().at(-1)?.set.timerSound).toEqual({ kind: 'tone', id: 'birds' });
   });

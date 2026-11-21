@@ -30,7 +30,7 @@ function toolsReturning(
         asked.push(args);
         return Promise.resolve({ response, line: '', pictures: [] });
       },
-      validate: (): null => null,
+      validate: (): Promise<null> => Promise.resolve(null),
       changes: (): (() => void) => (): void => undefined,
     },
   ]);

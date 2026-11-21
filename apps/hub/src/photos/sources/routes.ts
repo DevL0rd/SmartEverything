@@ -19,13 +19,13 @@ export function photoSourceRoutes(
   return {
     listPhotoSource: bound(E.listPhotoSource, ({ params, query, caller }) =>
       services[params.source].page(
-        { profileId: profileIdOf(store, caller), devices: deviceScopeOf(store, caller) },
+        { profileId: profileIdOf(caller), devices: deviceScopeOf(store, caller) },
         query,
       ),
     ),
     keepSourceItems: bound(E.keepSourceItems, async ({ params, body, caller }) => ({
       kept: await services[params.source].keep(
-        { profileId: profileIdOf(store, caller), devices: deviceScopeOf(store, caller) },
+        { profileId: profileIdOf(caller), devices: deviceScopeOf(store, caller) },
         body.itemIds,
       ),
     })),

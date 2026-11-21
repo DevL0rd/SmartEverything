@@ -6,7 +6,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { DriveActor } from '../../drive/access';
-import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
 import type { Store } from '../../store/store';
 import { activityOf } from './activity';
 import type { AlbumSeen } from './seen';

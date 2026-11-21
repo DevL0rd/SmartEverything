@@ -202,7 +202,7 @@ export class HomeMapsRepository {
     });
   }
 
-  private entries(): SetEntry[] {
+  entries(): SetEntry[] {
     return this.context.sql.all(SET_ENTRY, ENTRIES);
   }
 

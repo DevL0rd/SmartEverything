@@ -76,7 +76,7 @@ describe('the plan a phone follows', () => {
   it('leaves the writes out while the brush is in use', async () => {
     rig = await sonicareRig(identityOf({ model: 'HX999X', bonded: true, routineIds: [0] }));
     await configure(rig, { consent: true, defaultMode: 'clean' });
-    rig.batch(1, [
+    await rig.batch(1, [
       rig.frame('4010', '02', 1),
       rig.frame('4082', '01', 1),
       rig.frame('4090', word(5), 1),
@@ -109,9 +109,9 @@ describe('the plan a phone follows', () => {
 
   it('cancels a transfer the handle may still hold after a dropped link', async () => {
     rig = await sonicareRig();
-    rig.batch(0, [rig.frame('40d0', word(5), 0)]);
-    rig.batch(1, [rig.frame('40e0', `${word(5)}0f000000aaaa`, 1)]);
-    rig.batch(2, [], 'asleep');
+    await rig.batch(0, [rig.frame('40d0', word(5), 0)]);
+    await rig.batch(1, [rig.frame('40e0', `${word(5)}0f000000aaaa`, 1)]);
+    await rig.batch(2, [], 'asleep');
     const plan = planOf(rig.row(), rig.fleet.of(rig.row()), true, rig.clock.now());
     expect(plan.initial).toMatchObject([{ kind: 'write', hex: '02' }]);
   });

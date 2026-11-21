@@ -95,12 +95,12 @@ beforeEach(async () => {
     error_at: null,
   });
   const catalogue = new Catalogue({
-    models: store.aiModels,
+    models: store.live.aiModels,
     client: new OpenRouterClient({ fetch, key: (): null => null }),
     clock: systemClock,
     log: testLogger('catalogue'),
   });
-  catalogue.start();
+  await catalogue.start();
   catalogue.stop();
   const routes = new HarnessRoutes(catalogue, () => true);
   selections = new OwnEngineSelections(
@@ -174,8 +174,8 @@ describe('paid Claude and OpenAI models on the metered OpenRouter route', () => 
     expect(selected).toMatchObject({ kind: 'dsh', model: CLAUDE_MODEL });
   });
 
-  it('leaves a chosen model to its provider default and keeps the configured new-chat effort', () => {
-    opened.store.aiModels.replace(
+  it('leaves a chosen model to its provider default and keeps the configured new-chat effort', async () => {
+    await opened.store.live.aiModels.replace(
       [{ ...ROW, reasoning: 'optional', efforts: ['low', 'high'], default_effort: 'high' }],
       'openrouter',
     );

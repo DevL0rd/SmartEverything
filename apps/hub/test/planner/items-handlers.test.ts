@@ -68,7 +68,7 @@ beforeEach(async () => {
   ann = addPerson(test, 'Ann', 'member');
   bob = addPerson(test, 'Bob', 'member');
   const context = { store: test.store };
-  items = plannerItemRoutes(context, () => NOW);
+  items = plannerItemRoutes(context);
   collections = plannerCollectionRoutes(context);
   changedPreferences = [];
   preferences = plannerPreferenceRoutes(context, (profileId) => {

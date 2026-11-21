@@ -5,7 +5,7 @@ import {
   type PlannerItemRow,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { completeOpenSteps } from '../../src/planner/completion';
+import { completeOpenSteps } from '../../src/planner/units/completion';
 import type { Caller } from '../../src/server/auth';
 import {
   plannerCollectionRoutes,
@@ -66,7 +66,7 @@ beforeEach(async () => {
   addPerson(test, 'Owner', 'owner');
   ann = addPerson(test, 'Ann', 'member');
   const context = { store: test.store };
-  items = plannerItemRoutes(context, () => NOW);
+  items = plannerItemRoutes(context);
   collections = plannerCollectionRoutes(context);
 });
 

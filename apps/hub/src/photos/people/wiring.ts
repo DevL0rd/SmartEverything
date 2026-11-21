@@ -1,15 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@smarteverything/logging';
-import { z } from 'zod';
+import type { PhotoMergeSuggestion } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
 import type { PhotoAi } from '../ai/service';
-import { LibraryReader } from '../library';
+import type { LibraryPages } from '../library';
 import { photoPeopleRoutes, type PhotoPeopleRoutes } from './routes';
 import { PhotoSearch } from './search';
+import { hostedPeople } from './people-store';
 import { PeopleService } from './service';
-import { PhotoSuggest } from './suggest';
-
-const PROFILE = z.strictObject({ id: z.string() });
 
 const log = new Logger('hub.photos');
 
@@ -22,17 +20,14 @@ export interface PeopleWiring {
 export function startPeople(wiring: PeopleWiring): PeopleService {
   const { store, ai } = wiring;
   const service = new PeopleService({
-    context: store.context,
-    groups: store.photoGroups,
-    faces: store.photoFaces,
-    consent: ai.consent,
+    store: hostedPeople(store.host),
     newId: randomUUID,
     log,
-    profiles: (): readonly string[] =>
-      store.context.sql.all(PROFILE, 'select id from profiles order by id').map((row) => row.id),
     regrouped: (profileId): void => {
       store.feed.notice({ type: 'photos_people_changed', profileId });
     },
+    suggestions: (profileId): Promise<readonly PhotoMergeSuggestion[]> =>
+      store.host.read('photoMergeSuggestions', { profileId }),
   });
   const regroup = (): void => {
     service.drained().catch((cause: unknown) => {
@@ -47,11 +42,12 @@ export function startPeople(wiring: PeopleWiring): PeopleService {
 export function photoPeople(wiring: PeopleWiring): PhotoPeopleRoutes {
   const { store, ai, timeZone } = wiring;
   const service = startPeople(wiring);
-  const search = new PhotoSearch(new LibraryReader(store.context, timeZone), ai, log, Date.now);
-  return photoPeopleRoutes(
-    store,
-    service,
-    search,
-    new PhotoSuggest(store.context, service, store.photoGroups),
-  );
+  const pages: LibraryPages = {
+    buckets: (actor, scope, meaning) =>
+      store.host.read('photoBuckets', { actor, scope, meaning, timeZone: timeZone() }),
+    page: (actor, month, query, meaning) =>
+      store.host.read('photoPage', { actor, month, query, meaning, timeZone: timeZone() }),
+  };
+  const search = new PhotoSearch(pages, ai, log, Date.now);
+  return photoPeopleRoutes(service, search);
 }

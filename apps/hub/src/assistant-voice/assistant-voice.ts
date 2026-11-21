@@ -121,20 +121,15 @@ export class AssistantVoice {
     );
   }
 
-  sample(
+  async sample(
     client: ClientRow,
     profileId: string | undefined,
     voice: CallVoice,
     signal?: AbortSignal,
   ): Promise<VoiceSample> {
-    return this.samples.sample(
-      {
-        clientId: client.id,
-        profileId: profileId ?? this.options.store.profiles.activeOf(client.id).id,
-      },
-      voice,
-      signal,
-    );
+    const chosen =
+      profileId ?? (await this.options.store.host.call('profiles', 'activeOf', client.id)).id;
+    return this.samples.sample({ clientId: client.id, profileId: chosen }, voice, signal);
   }
 
   attachOutreach(desk: OutreachDesk): void {
@@ -173,8 +168,8 @@ export class AssistantVoice {
     return this.desk.attachVideo(callId, source);
   }
 
-  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
-    this.sockets.upgrade(request, socket, head);
+  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+    return this.sockets.upgrade(request, socket, head);
   }
 
   callOpen(callMessageId: string): boolean {

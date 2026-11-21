@@ -13,17 +13,17 @@ export async function revokeToken(
   response: ServerResponse,
 ): Promise<void> {
   const form = await readForm(request);
-  const client = authenticateClient(store, request, form);
+  const client = await authenticateClient(store, request, form);
   const token = single(form, 'token');
   if (token === undefined) {
     throw invalidRequest('Send the token to revoke exactly once.');
   }
-  const row = store.oauth.token(hashSecret(token));
+  const row = await store.host.call('oauth', 'token', hashSecret(token));
   if (row?.client_id === client.row.id) {
     if (row.kind === 'refresh') {
-      store.oauth.revokeFamily(row.family);
+      await store.host.call('oauth', 'revokeFamily', row.family);
     } else {
-      store.oauth.revokeToken(row.token_hash);
+      await store.host.call('oauth', 'revokeToken', row.token_hash);
     }
     log.info('token.revoked', { clientId: client.row.id, kind: row.kind });
   }

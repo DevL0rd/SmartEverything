@@ -99,10 +99,10 @@ function rig(): Rig {
   const host = new ChildHost({
     kind: 'ear',
     log,
-    spawn: (): FakeChild => {
+    spawn: (): Promise<FakeChild> => {
       const child = new FakeChild(1000 + children.length);
       children.push(child);
-      return child;
+      return Promise.resolve(child);
     },
   });
   const process = new EarProcess({

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setImmediate } from 'node:timers/promises';
 import {
   ApiError,
   RELEASE_FILES_DIRECTORY,
@@ -12,6 +13,8 @@ import {
   type ReleaseUpload,
 } from '@smarteverything/domain';
 import type { ReleaseStaging } from './staging';
+
+const HASH_SLICE_BYTES = 1024 * 1024;
 
 export const PUBLICATION_REFUSALS = [
   'upload_missing',
@@ -93,11 +96,16 @@ export function stagedPath(stage: StagedRelease, path: string): string {
 export async function readListed(stage: StagedRelease, path: string): Promise<Buffer> {
   const listed = listedFile(stage, path);
   const bytes = await readFile(stagedPath(stage, path));
-  if (bytes.length !== listed.size || sha256Of(bytes) !== listed.sha256)
+  if (bytes.length !== listed.size || (await sha256Of(bytes)) !== listed.sha256)
     refuse('file_changed', `${path} no longer matches the signed release.`);
   return bytes;
 }
 
-export function sha256Of(bytes: Buffer): string {
-  return createHash('sha256').update(bytes).digest('hex');
+async function sha256Of(bytes: Buffer): Promise<string> {
+  const hash = createHash('sha256');
+  for (let at = 0; at < bytes.length; at += HASH_SLICE_BYTES) {
+    hash.update(bytes.subarray(at, at + HASH_SLICE_BYTES));
+    await setImmediate();
+  }
+  return hash.digest('hex');
 }

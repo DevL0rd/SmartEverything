@@ -11,9 +11,8 @@ import {
   type HomeMapSource,
   type HomeMapSourceGeometry,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
-import type { HomeMapSourceLocation } from '../store/repositories/home-maps';
-import type { StoredRoomLink } from '../store/repositories/vacuum-room-links';
+import { background, type Logger } from '@smarteverything/logging';
+import type { HomeMapApplied, HomeMapSourceLocation } from '../store/repositories/home-maps';
 import {
   addToBatch,
   awaitsAlignment,
@@ -34,7 +33,8 @@ import { planArrival } from './feed-arrival';
 import { withLinkedRooms } from './room-links';
 import type { SourceInventory } from './sources/registry';
 import type { XiaomiVacuumSource } from './sources/xiaomi-vacuum';
-import type { HomeMapService } from './service';
+import type { HomeMapRoomLinkStore } from './map-store';
+import type { HeldMaps, HomeMapService } from './service';
 
 export type FeedSource = Pick<
   XiaomiVacuumSource,
@@ -43,16 +43,10 @@ export type FeedSource = Pick<
 
 export interface FeedPorts {
   readonly source: FeedSource;
-  readonly maps: Pick<HomeMapService, 'get' | 'apply'>;
-  readonly sets: {
-    readonly ids: () => readonly HomeMapId[];
-    readonly defaultId: () => HomeMapId | null;
-    readonly locations: (deviceId: string) => readonly HomeMapSourceLocation[];
-  };
+  readonly maps: Pick<HomeMapService, 'exclusive' | 'sourceLocations'>;
   readonly inventory: () => SourceInventory;
-  readonly atomically: <T>(work: () => T) => T;
-  readonly links: { readonly list: (deviceId: string) => readonly StoredRoomLink[] };
-  readonly syncLinks: (deviceId: string) => number;
+  readonly links: HomeMapRoomLinkStore;
+  readonly syncLinks: (held: HeldMaps, deviceId: string) => Promise<number>;
   readonly newId: () => string;
   readonly now: () => string;
   readonly log: Logger;
@@ -88,6 +82,17 @@ interface Assigned {
   readonly actor: HomeMapActor;
 }
 
+interface RobotMapKey {
+  readonly deviceId: string;
+  readonly robotMapId: number;
+}
+
+interface Writing {
+  readonly noticeId: string;
+  readonly actor: HomeMapActor;
+  readonly refuseSourceConflictOn?: HomeMapId;
+}
+
 export class RobotMapFeeds {
   private readonly watched = new Map<string, () => void>();
   private readonly seen = new Map<string, Map<number, string>>();
@@ -95,7 +100,7 @@ export class RobotMapFeeds {
 
   constructor(private readonly ports: FeedPorts) {}
 
-  watch(inventory: SourceInventory): void {
+  async watch(inventory: SourceInventory): Promise<void> {
     const devices = new Set(this.ports.source.devicesOf(inventory));
     for (const [deviceId, release] of this.watched) {
       if (devices.has(deviceId)) continue;
@@ -103,18 +108,24 @@ export class RobotMapFeeds {
       this.watched.delete(deviceId);
       this.seen.delete(deviceId);
     }
+    const followed: Promise<FeedStatus | 'failed'>[] = [];
     for (const deviceId of devices) {
       if (this.watched.has(deviceId)) continue;
       this.watched.set(
         deviceId,
         this.ports.source.onMapChange(deviceId, (change) => {
-          this.follow(change.deviceId, change.robotMapId);
+          background(
+            this.follow(change.deviceId, change.robotMapId),
+            'home_map.feed_import_failed',
+            { deviceId: change.deviceId, robotMapId: change.robotMapId },
+          );
         }),
       );
       for (const { robotMapId } of this.ports.source.robotMaps(deviceId)) {
-        this.follow(deviceId, robotMapId);
+        followed.push(this.follow(deviceId, robotMapId));
       }
     }
+    await Promise.all(followed);
   }
 
   stop(): void {
@@ -123,9 +134,9 @@ export class RobotMapFeeds {
     this.seen.clear();
   }
 
-  follow(deviceId: string, robotMapId: number): FeedStatus | 'failed' {
+  async follow(deviceId: string, robotMapId: number): Promise<FeedStatus | 'failed'> {
     try {
-      return this.route(deviceId, robotMapId);
+      return await this.ports.maps.exclusive((maps) => this.route(maps, deviceId, robotMapId));
     } catch (error) {
       this.ports.log.error('home_map.feed_import_failed', {
         deviceId,
@@ -139,7 +150,7 @@ export class RobotMapFeeds {
   list(): HomeMapFeed[] {
     return this.ports.source
       .devicesOf(this.ports.inventory())
-      .flatMap((deviceId) => this.feedsOf(deviceId));
+      .flatMap((deviceId) => this.feedsOf(deviceId, this.ports.maps.sourceLocations(deviceId)));
   }
 
   setFeed(
@@ -147,39 +158,43 @@ export class RobotMapFeeds {
     robotMapId: number,
     assignment: HomeMapFeedAssignment,
     actor: HomeMapActor,
-  ): HomeMapFeed {
-    const ref = this.refOf(deviceId, robotMapId);
-    const held = this.locationOf(deviceId, robotMapId, ref.isCurrent);
-    const released = 'target' in assignment;
-    const version = this.ports.atomically(() =>
-      released
-        ? this.release(deviceId, robotMapId, held, actor)
-        : this.assign({ deviceId, robotMapId, ref, held, target: assignment, actor }),
-    );
-    this.announced.add(newRobotMapNoticeId(deviceId, robotMapId));
-    if (released) this.seenOf(deviceId).delete(robotMapId);
-    if (version !== null) {
-      this.seenOf(deviceId).set(robotMapId, version);
-      if (ref.isCurrent) this.ports.syncLinks(deviceId);
-    }
-    return this.feedOf(deviceId, robotMapId);
+  ): Promise<HomeMapFeed> {
+    return this.ports.maps.exclusive(async (maps) => {
+      const ref = this.refOf(maps, deviceId, robotMapId);
+      const held = this.locationOf(maps, deviceId, robotMapId, ref.isCurrent);
+      const released = 'target' in assignment;
+      const version = released
+        ? await this.release(maps, { deviceId, robotMapId }, held, actor)
+        : await this.assign(maps, { deviceId, robotMapId, ref, held, target: assignment, actor });
+      this.announced.add(newRobotMapNoticeId(deviceId, robotMapId));
+      if (released) this.seenOf(deviceId).delete(robotMapId);
+      if (version !== null) {
+        this.seenOf(deviceId).set(robotMapId, version);
+        if (ref.isCurrent) await this.ports.syncLinks(maps, deviceId);
+      }
+      return this.feedOf(maps, deviceId, robotMapId);
+    });
   }
 
-  private route(deviceId: string, robotMapId: number): FeedStatus {
+  private async route(maps: HeldMaps, deviceId: string, robotMapId: number): Promise<FeedStatus> {
     const geometry = this.ports.source.readMap(deviceId, robotMapId);
     if (geometry === null) return 'not_ready';
     if (this.seenOf(deviceId).get(robotMapId) === geometry.version) return 'duplicate';
     const ref = this.refFor(deviceId, robotMapId);
-    const held = this.locationOf(deviceId, robotMapId, ref?.isCurrent === true);
-    if (held === undefined) return this.unfed(deviceId, robotMapId, ref);
-    const status = this.merge(held, { deviceId, robotMapId, geometry, ref });
+    const held = this.locationOf(maps, deviceId, robotMapId, ref?.isCurrent === true);
+    if (held === undefined) return this.unfed(maps, deviceId, robotMapId, ref);
+    const status = await this.merge(maps, held, { deviceId, robotMapId, geometry, ref });
     this.seenOf(deviceId).set(robotMapId, geometry.version);
     return status;
   }
 
-  private merge(held: HomeMapSourceLocation, routed: Routed): FeedStatus {
+  private async merge(
+    maps: HeldMaps,
+    held: HomeMapSourceLocation,
+    routed: Routed,
+  ): Promise<FeedStatus> {
     const { source: stored, mapId } = held;
-    const map = this.ports.maps.get(mapId);
+    const map = maps.get(mapId);
     if (awaitsAlignment(map, stored)) return 'unchanged';
     const plan = planImport({
       map,
@@ -198,9 +213,9 @@ export class RobotMapFeeds {
     const ops = plan.kind === 'noop' ? bind : [...bind, ...plan.ops];
     if (ops.length === 0) return 'unchanged';
     const actor = plan.kind === 'noop' ? `source:${stored.id}` : plan.actor;
-    const result = this.ports.maps.apply(ops, actor, {}, mapId);
+    const result = await maps.apply(ops, actor, {}, mapId);
     this.noteBound(stored, routed);
-    if (routed.ref?.isCurrent === true) this.ports.syncLinks(routed.deviceId);
+    if (routed.ref?.isCurrent === true) await this.ports.syncLinks(maps, routed.deviceId);
     return result.applied.length > 0 ? 'imported' : 'unchanged';
   }
 
@@ -213,12 +228,17 @@ export class RobotMapFeeds {
     });
   }
 
-  private unfed(deviceId: string, robotMapId: number, ref: RobotMapRef | undefined): FeedStatus {
-    if (this.ports.sets.ids().length === 0) return 'no_map';
+  private async unfed(
+    maps: HeldMaps,
+    deviceId: string,
+    robotMapId: number,
+    ref: RobotMapRef | undefined,
+  ): Promise<FeedStatus> {
+    if (maps.ids().length === 0) return 'no_map';
     const elementId = newRobotMapNoticeId(deviceId, robotMapId);
     if (this.announced.has(elementId)) return 'already_announced';
     this.announced.add(elementId);
-    if (noticeClearOps(this.ports.maps.get(), elementId).length > 0) return 'already_announced';
+    if (noticeClearOps(maps.get(), elementId).length > 0) return 'already_announced';
     const name = ref === undefined || ref.name === '' ? `Map ${String(robotMapId)}` : ref.name;
     const element = HOME_MAP_NOTICE_WRITE.parse({
       id: this.ports.newId(),
@@ -227,27 +247,27 @@ export class RobotMapFeeds {
       detail: name,
       createdAt: this.ports.now(),
     });
-    this.ports.maps.apply([{ op: 'add', kind: 'notice', element }], `source:${deviceId}`);
+    await maps.apply([{ op: 'add', kind: 'notice', element }], `source:${deviceId}`);
     this.ports.log.info('home_map.new_robot_map', { deviceId, robotMapId });
     return 'announced';
   }
 
-  private release(
-    deviceId: string,
-    robotMapId: number,
+  private async release(
+    maps: HeldMaps,
+    { deviceId, robotMapId }: RobotMapKey,
     held: HomeMapSourceLocation | undefined,
     actor: HomeMapActor,
-  ): null {
+  ): Promise<null> {
     const batches: OpBatches = new Map();
-    if (held !== undefined) this.detach(batches, held);
-    this.write(batches, newRobotMapNoticeId(deviceId, robotMapId), actor);
+    if (held !== undefined) this.detach(maps, batches, held);
+    await this.write(maps, batches, { noticeId: newRobotMapNoticeId(deviceId, robotMapId), actor });
     this.ports.log.info('home_map.feed_released', { deviceId, robotMapId });
     return null;
   }
 
-  private assign(ctx: Assigned): string | null {
+  private async assign(maps: HeldMaps, ctx: Assigned): Promise<string | null> {
     const { deviceId, robotMapId, held, target, actor } = ctx;
-    const destination = this.ports.maps.get(target.mapId);
+    const destination = maps.get(target.mapId);
     this.ensureFloor(destination, target);
     if (held?.mapId === target.mapId && held.source.floorId === target.floorId) return null;
     const geometry = this.ports.source.readMap(deviceId, robotMapId);
@@ -259,12 +279,13 @@ export class RobotMapFeeds {
     }
     this.ensureFloorFree(destination, ctx);
     const batches: OpBatches = new Map();
-    if (held !== undefined) this.detach(batches, held);
-    addToBatch(batches, target.mapId, this.arrivalOps(destination, ctx, geometry));
-    const results = this.write(batches, newRobotMapNoticeId(deviceId, robotMapId), actor);
-    if (results.get(target.mapId)?.conflicts.some((entry) => entry.kind === 'source') === true) {
-      throw new ApiError('conflict', 'The robot map cannot feed that floor.');
-    }
+    if (held !== undefined) this.detach(maps, batches, held);
+    addToBatch(batches, target.mapId, await this.arrivalOps(maps, destination, ctx, geometry));
+    await this.write(maps, batches, {
+      noticeId: newRobotMapNoticeId(deviceId, robotMapId),
+      actor,
+      refuseSourceConflictOn: target.mapId,
+    });
     this.ports.log.info('home_map.feed_set', {
       deviceId,
       robotMapId,
@@ -275,11 +296,12 @@ export class RobotMapFeeds {
     return geometry.version;
   }
 
-  private arrivalOps(
+  private async arrivalOps(
+    maps: HeldMaps,
     destination: HomeMap,
     ctx: Assigned,
     geometry: HomeMapSourceGeometry,
-  ): readonly HomeMapOp[] {
+  ): Promise<readonly HomeMapOp[]> {
     const { deviceId, robotMapId, ref, target } = ctx;
     const plan = planArrival({
       map: destination,
@@ -295,34 +317,32 @@ export class RobotMapFeeds {
     if (plan.kind === 'refused')
       this.ports.log.warn('home_map.feed_refused', { deviceId, robotMapId });
     const linked = ref.isCurrent
-      ? withLinkedRooms(plan.ops, this.ports.links.list(deviceId))
+      ? withLinkedRooms(plan.ops, await this.ports.links.list(deviceId))
       : plan.ops;
     const named = withRobotMap(linked, { robotMapId, name: ref.name === '' ? null : ref.name });
-    const placed = this.ports.sets
-      .ids()
-      .some((mapId) => placedAnywhere(this.ports.maps.get(mapId), deviceId));
+    const placed = maps.ids().some((mapId) => placedAnywhere(maps.get(mapId), deviceId));
     return placed ? withoutPlacedDevice(named, deviceId) : named;
   }
 
-  private detach(batches: OpBatches, held: HomeMapSourceLocation): void {
-    const map = this.ports.maps.get(held.mapId);
+  private detach(maps: HeldMaps, batches: OpBatches, held: HomeMapSourceLocation): void {
+    const map = maps.get(held.mapId);
     addToBatch(batches, held.mapId, detachOps(map, held.source));
   }
 
-  private write(
+  private async write(
+    maps: HeldMaps,
     batches: OpBatches,
-    noticeId: string,
-    actor: HomeMapActor,
-  ): Map<HomeMapId, ReturnType<HomeMapService['apply']>> {
-    const defaultId = this.ports.sets.defaultId();
+    writing: Writing,
+  ): Promise<readonly HomeMapApplied[]> {
+    const defaultId = maps.defaultId();
     if (defaultId !== null) {
-      addToBatch(batches, defaultId, noticeClearOps(this.ports.maps.get(defaultId), noticeId));
+      addToBatch(batches, defaultId, noticeClearOps(maps.get(defaultId), writing.noticeId));
     }
-    const results = new Map<HomeMapId, ReturnType<HomeMapService['apply']>>();
-    for (const [mapId, ops] of batches) {
-      results.set(mapId, this.ports.maps.apply(ops, actor, {}, mapId));
-    }
-    return results;
+    return maps.applyAll(
+      [...batches].map(([mapId, ops]) => ({ mapId, ops })),
+      writing.actor,
+      writing.refuseSourceConflictOn ?? null,
+    );
   }
 
   private ensureFloor(destination: HomeMap, target: HomeMapFeedTarget): void {
@@ -342,14 +362,14 @@ export class RobotMapFeeds {
     }
   }
 
-  private refOf(deviceId: string, robotMapId: number): RobotMapRef {
+  private refOf(maps: HeldMaps, deviceId: string, robotMapId: number): RobotMapRef {
     if (!this.ports.source.devicesOf(this.ports.inventory()).includes(deviceId)) {
       throw new ApiError('not_found', 'That device has no robot maps.');
     }
     const found = this.refFor(deviceId, robotMapId);
     if (found !== undefined) return found;
-    const orphan = this.ports.sets
-      .locations(deviceId)
+    const orphan = maps
+      .sourceLocations(deviceId)
       .find((entry) => entry.source.robotMapId === robotMapId);
     if (orphan === undefined) throw new ApiError('not_found', 'The robot has no such map.');
     return { name: orphan.source.robotMapName ?? '', isCurrent: false };
@@ -366,11 +386,12 @@ export class RobotMapFeeds {
   }
 
   private locationOf(
+    maps: HeldMaps,
     deviceId: string,
     robotMapId: number,
     isCurrent: boolean,
   ): HomeMapSourceLocation | undefined {
-    return locationFor(this.ports.sets.locations(deviceId), robotMapId, isCurrent);
+    return locationFor(maps.sourceLocations(deviceId), robotMapId, isCurrent);
   }
 
   private seenOf(deviceId: string): Map<number, string> {
@@ -379,16 +400,14 @@ export class RobotMapFeeds {
     return held;
   }
 
-  private feedsOf(deviceId: string): HomeMapFeed[] {
-    return feedsFor(
-      deviceId,
-      this.ports.source.robotMaps(deviceId),
-      this.ports.sets.locations(deviceId),
-    );
+  private feedsOf(deviceId: string, locations: readonly HomeMapSourceLocation[]): HomeMapFeed[] {
+    return feedsFor(deviceId, this.ports.source.robotMaps(deviceId), locations);
   }
 
-  private feedOf(deviceId: string, robotMapId: number): HomeMapFeed {
-    const found = this.feedsOf(deviceId).find((feed) => feed.robotMapId === robotMapId);
+  private feedOf(maps: HeldMaps, deviceId: string, robotMapId: number): HomeMapFeed {
+    const found = this.feedsOf(deviceId, maps.sourceLocations(deviceId)).find(
+      (feed) => feed.robotMapId === robotMapId,
+    );
     if (found === undefined) throw new ApiError('not_found', 'The robot has no such map.');
     return found;
   }

@@ -38,8 +38,13 @@ export function cameraNoticeOfEvent(
   row: EventRow,
   isCamera: (deviceId: string) => boolean,
 ): CameraNotice | null {
+  const candidate = cameraNoticeCandidate(row);
+  return candidate !== null && isCamera(candidate.deviceId) ? candidate : null;
+}
+
+export function cameraNoticeCandidate(row: EventRow): CameraNotice | null {
   const kind = noticeKindOf(row);
-  if (kind === null || row.device_id === null || !isCamera(row.device_id)) {
+  if (kind === null || row.device_id === null) {
     return null;
   }
   return {

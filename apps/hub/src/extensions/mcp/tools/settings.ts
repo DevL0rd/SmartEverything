@@ -65,17 +65,20 @@ async function preferences(context: ToolContext, as: ActingAs): Promise<Record<s
 }
 
 async function settings(context: ToolContext, as: ActingAs): Promise<Record<string, unknown>> {
-  const owner = ownerOf(context);
-  const profileId = profileFor(context, as);
+  const owner = await ownerOf(context);
+  const profileId = await profileFor(context, as);
   return {
     home: await operate(context, 'readSettings', {}),
     push: await operate(context, 'readPushStatus', {}),
     drive_settings: readDriveSettings(context.store),
-    person: context.store.profiles.byId(profileId),
+    person: await context.store.host.call('profiles', 'byId', profileId),
     preferences: await preferences(context, as),
-    layouts: context.store.personal
-      .layouts({ clientId: as.clientId ?? owner.id, profileId })
-      .map((row) => row.page),
+    layouts: (
+      await context.store.host.call('personal', 'layouts', {
+        clientId: as.clientId ?? owner.id,
+        profileId,
+      })
+    ).map((row) => row.page),
     changed_by: CHANGED_BY,
   };
 }

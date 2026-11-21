@@ -1,5 +1,7 @@
 import { truncate } from 'node:fs/promises';
-import type { DriveFeedOp, DriveItem } from '@smarteverything/domain';
+import type { DriveItem } from '@smarteverything/domain';
+import type { Store } from '../../store/store';
+import type { ContentAlongside } from '../units/content';
 import { commitContent, type ChangeActor } from '../changes';
 import { locate, type DriveWriteRoot } from '../intents';
 import { commitPatchContent } from '../patch-content';
@@ -8,32 +10,19 @@ import type { PosixChangeEnv } from '../posix/env';
 import { stageInPlace } from '../versions';
 import { coversRanges } from '../../store/repositories/drive-mount-commits';
 
-const PAGE = 100;
-
-const SAME_CONTENT: ReadonlySet<DriveFeedOp> = new Set(['rename', 'move', 'star', 'unstar']);
-
 export function changedElsewhere(
-  env: {
-    readonly store: {
-      readonly driveFeed: Pick<PosixChangeEnv['store']['driveFeed'], 'recentOfItem'>;
-    };
-  },
+  env: { readonly store: Pick<Store, 'host'> },
   item: Pick<DriveItem, 'id' | 'rev'>,
   nodeId: string,
   baseRev: number,
-): boolean {
-  if (item.rev === baseRev) return false;
-  let before: number | null = null;
-  for (;;) {
-    const window = env.store.driveFeed.recentOfItem(item.id, before, PAGE);
-    for (const row of window.rows) {
-      if (row.rev <= baseRev) return false;
-      if (SAME_CONTENT.has(row.op)) continue;
-      if (row.via !== 'mount' || row.deviceId !== nodeId) return true;
-    }
-    if (window.next === null) return false;
-    before = window.next;
-  }
+): Promise<boolean> {
+  if (item.rev === baseRev) return Promise.resolve(false);
+  return env.store.host.read('driveChangedElsewhere', {
+    itemId: item.id,
+    rev: item.rev,
+    nodeId,
+    baseRev,
+  });
 }
 
 export interface ApplyRequest {
@@ -44,7 +33,7 @@ export interface ApplyRequest {
   readonly size: number;
   readonly digest: () => Promise<string>;
   readonly actor: ChangeActor;
-  readonly settled: (item: DriveItem) => void;
+  readonly alongside: readonly ContentAlongside[];
 }
 
 export function clampRanges(ranges: readonly ByteRange[], size: number): readonly ByteRange[] {
@@ -66,7 +55,7 @@ export async function applyContent(env: PosixChangeEnv, request: ApplyRequest): 
       staged: bytes,
       relPath,
       actor,
-      alongside: request.settled,
+      alongside: request.alongside,
     });
     return written.item;
   }
@@ -80,7 +69,7 @@ export async function applyContent(env: PosixChangeEnv, request: ApplyRequest): 
     relPath,
     patch,
     actor,
-    alongside: request.settled,
+    alongside: request.alongside,
   });
   return written.item;
 }

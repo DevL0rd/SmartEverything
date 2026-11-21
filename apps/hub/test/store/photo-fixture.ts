@@ -13,7 +13,7 @@ import {
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
 
 export const NOW = '2026-11-14T10:00:00.000Z';
 
@@ -58,7 +58,7 @@ export function photoFixture(): PhotoFixture {
   const alice = profiles.create({ name: 'Alice' }).id;
   const bob = profiles.create({ name: 'Bob' }).id;
   const cara = profiles.create({ name: 'Cara' }).id;
-  const roots = new DriveRootsRepository(context, drivePathOf);
+  const roots = new DriveRootsRepository(context, driveFolders);
   roots.insert(sharedDriveRoot(SHARED_ROOT));
   roots.insert(personalDriveRoot(ALICE_ROOT, alice));
   roots.insert(personalDriveRoot(BOB_ROOT, bob));

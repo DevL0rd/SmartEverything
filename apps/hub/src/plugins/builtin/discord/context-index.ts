@@ -97,25 +97,26 @@ export class ContextIndex {
       .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
   }
 
-  query(ask: ContextAsk): {
+  async query(ask: ContextAsk): Promise<{
     readonly records: readonly ContextView[];
     readonly retained: number;
     readonly evicted: number;
     readonly incomplete: true;
     readonly search: string;
     readonly persistent: false;
-  } {
+  }> {
     const { origin } = ask;
     this.assertReadable(origin);
     const records = [...this.items.values()].filter((record) => this.accessible(record, origin));
     const anchor = records.find((record) => record.messageId === origin.messageId);
     const parent = ask.includeParent ? anchor?.parentId : undefined;
-    const selected = records.filter((record) => this.matches(record, ask, parent));
+    const selected = records
+      .filter((record) => this.matches(record, ask, parent))
+      .reverse()
+      .slice(0, Math.min(MOST, ask.limit));
+    const owners = await this.policy.owners(selected.map((record) => record.actorId));
     return {
-      records: selected
-        .reverse()
-        .slice(0, Math.min(MOST, ask.limit))
-        .map((record) => this.present(record)),
+      records: selected.map((record) => this.present(record, owners)),
       retained: records.length,
       evicted: this.evicted,
       incomplete: true,
@@ -136,12 +137,12 @@ export class ContextIndex {
     this.evicted += 1;
   }
 
-  private present(record: ContextRecord): ContextView {
+  private present(record: ContextRecord, owners: ReadonlySet<string>): ContextView {
     return {
       ...record,
       text: readableText(record.text, record.mentions),
       authorName: displayName(record.author),
-      fromOwner: this.policy.isOwner(record.actorId),
+      fromOwner: owners.has(record.actorId),
     };
   }
 

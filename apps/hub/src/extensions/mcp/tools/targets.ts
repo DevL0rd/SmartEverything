@@ -53,8 +53,14 @@ export function hasTarget(target: Target): boolean {
   return Object.values(target).some((value) => value !== undefined);
 }
 
-export function deviceNames(store: Store): ReadonlyMap<string, string> {
-  return new Map(store.devices.list().map((device) => [device.id, baseNameOf(device)] as const));
+type HostStore = Pick<Store, 'host'>;
+
+export async function deviceNames(store: HostStore): Promise<ReadonlyMap<string, string>> {
+  return new Map(
+    (await store.host.call('devices', 'list')).map(
+      (device) => [device.id, baseNameOf(device)] as const,
+    ),
+  );
 }
 
 function order(left: Placed, right: Placed): number {
@@ -79,11 +85,21 @@ function roomsById(roomRows: readonly RoomRow[]): ReadonlyMap<string, RoomRow> {
   return new Map(roomRows.map((room) => [room.id, room]));
 }
 
-export function placedDevices(store: Store, scope: DeviceScope | null): Placed[] {
-  const roomRows = store.rooms.list();
+export async function placedDevices(
+  store: HostStore,
+  scope: DeviceScope | null,
+): Promise<Placed[]> {
+  const home = await store.host.read('mcpHomeDevices', null);
+  return placedFrom(home.rooms, home.devices, scope);
+}
+
+export function placedFrom(
+  roomRows: readonly RoomRow[],
+  devices: readonly DeviceRow[],
+  scope: DeviceScope | null,
+): Placed[] {
   const rooms = roomsById(roomRows);
-  return store.devices
-    .list()
+  return devices
     .filter((device) => !deviceHidden(scope, device))
     .map((device) => placedOf(device, baseNameOf(device), rooms))
     .sort(order);
@@ -124,11 +140,11 @@ const DEVICE_NAMING: NamedLookup<Placed> = {
   id: ({ device }) => device.id,
 };
 
-function memberIds(
-  store: Store,
+async function memberIds(
+  store: HostStore,
   target: Target,
   all: readonly Placed[],
-): ReadonlySet<string> | null {
+): Promise<ReadonlySet<string> | null> {
   const sets: ReadonlySet<string>[] = [];
   if (target.deviceIds !== undefined) {
     sets.push(
@@ -140,7 +156,8 @@ function memberIds(
     );
   }
   if (target.group !== undefined) {
-    const group = resolveNamed(store.deviceGroups.list(), target.group, 'device group', {
+    const groups = await store.host.call('deviceGroups', 'list');
+    const group = resolveNamed(groups, target.group, 'device group', {
       names: (row) => [row.name],
       label: (row) => row.name,
       id: (row) => row.id,
@@ -169,9 +186,13 @@ function describedTarget(target: Target): string {
     .join(', ');
 }
 
-export function targeted(store: Store, scope: DeviceScope | null, target: Target): Placed[] {
-  const all = placedDevices(store, scope);
-  const members = memberIds(store, target, all);
+export async function targeted(
+  store: HostStore,
+  scope: DeviceScope | null,
+  target: Target,
+): Promise<Placed[]> {
+  const all = await placedDevices(store, scope);
+  const members = await memberIds(store, target, all);
   const found = all.filter((placed) => selected(target, members, placed));
   if (found.length === 0) {
     throw new ToolError(
@@ -182,8 +203,12 @@ export function targeted(store: Store, scope: DeviceScope | null, target: Target
   return found;
 }
 
-export function placedDevice(store: Store, scope: DeviceScope | null, reference: string): Placed {
-  const device = store.devices.find(reference);
+export async function placedDevice(
+  store: HostStore,
+  scope: DeviceScope | null,
+  reference: string,
+): Promise<Placed> {
+  const { device, rooms } = await store.host.read('mcpDeviceWithRooms', reference);
   if (device === undefined) {
     if (ID_PATTERN.safeParse(reference).success) {
       throw new ToolError(
@@ -191,13 +216,12 @@ export function placedDevice(store: Store, scope: DeviceScope | null, reference:
         'not_found',
       );
     }
-    return resolveNamed(placedDevices(store, scope), reference, 'device', DEVICE_NAMING);
+    return resolveNamed(await placedDevices(store, scope), reference, 'device', DEVICE_NAMING);
   }
   if (deviceHidden(scope, device)) {
     throw new ToolError('That device is not part of your access; ask the owner.', 'forbidden');
   }
-  const roomRows = store.rooms.list();
-  return placedOf(device, baseNameOf(device), roomsById(roomRows));
+  return placedOf(device, baseNameOf(device), roomsById(rooms));
 }
 
 export interface Naming<T> {

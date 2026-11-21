@@ -5,7 +5,7 @@ import {
   type AiUsageRow,
   type JsonValue,
 } from '@smarteverything/domain';
-import type { Ledger } from './ledger';
+import type { LedgerHost } from './units';
 
 export interface PriceBook {
   readonly priceOf: (modelId: string) => AiPricing;
@@ -164,16 +164,16 @@ interface GeminiTurn {
   readonly meta: Readonly<Record<string, JsonValue>>;
 }
 
-function recordGeminiTurn(
-  ledger: Ledger,
+async function recordGeminiTurn(
+  host: LedgerHost,
   prices: PriceBook,
   kind: { readonly source: 'gemini' | 'gemini_live'; readonly work: 'voice' | 'transcribe' },
   turn: GeminiTurn,
-): AiUsageRow {
+): Promise<AiUsageRow> {
   const { usage } = turn;
   const modelId = googleModelIdOf(turn.model);
   const priced = priceTurn(usage, modelId, prices.priceOf(modelId));
-  return ledger.record({
+  return host.write('ledgerRecord', {
     profile_id: turn.profileId,
     client_id: turn.clientId,
     plugin_id: turn.pluginId,
@@ -195,9 +195,13 @@ function recordGeminiTurn(
   });
 }
 
-export function recordLiveTurn(ledger: Ledger, prices: PriceBook, turn: LiveTurn): AiUsageRow {
+export async function recordLiveTurn(
+  host: LedgerHost,
+  prices: PriceBook,
+  turn: LiveTurn,
+): Promise<AiUsageRow> {
   return recordGeminiTurn(
-    ledger,
+    host,
     prices,
     { source: 'gemini_live', work: 'voice' },
     { ...turn, meta: {} },

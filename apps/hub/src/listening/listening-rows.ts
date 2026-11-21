@@ -9,13 +9,11 @@ import {
   type TranscriptPauseReason,
 } from '@smarteverything/domain';
 import type { ReachRules } from '../reach/reach-rules';
+import type { HomeMirror } from '../store/home-mirror';
 import type { Store } from '../store/store';
 import type { DeviceListeningSwitches } from './listening-switches';
 
-export type ListeningRowStore = Pick<
-  Store,
-  'cameras' | 'devices' | 'state' | 'talk' | 'computerNodes'
->;
+export type ListeningRowStore = Pick<Store, 'live'>;
 
 export interface Runtime {
   readonly state: ListeningRuntimeState | null;
@@ -55,17 +53,18 @@ function writingOf(transcribe: boolean, paused: TranscriptPauseReason | null): L
   return paused === null ? { state: 'on' } : { state: 'paused', reason: paused };
 }
 
-function privateCamera(store: ListeningRowStore, device: DeviceRow): boolean {
+function privateCamera(home: HomeMirror, device: DeviceRow): boolean {
   const privacy = privacySwitchOf(device);
-  return privacy !== null && isPrivate(privacy, store.state.value(device.id, privacy.key));
+  return privacy !== null && isPrivate(privacy, home.state.value(device.id, privacy.key));
 }
 
 export function cameraRows(sources: ListeningRowSources): BareSource[] {
-  const { store, rules } = sources;
+  const { rules } = sources;
+  const { home } = sources.store.live;
   const allowed = new Set(rules.cameras());
   const off = new Set(rules.wakeOff());
-  return store.cameras.list().flatMap((camera) => {
-    const device = store.devices.find(camera.device_id);
+  return home.cameras.list().flatMap((camera) => {
+    const device = home.devices.find(camera.device_id);
     if (device === undefined) return [];
     const wake = allowed.has(device.id) && !off.has(device.id);
     const runtime = sources.runtime(device.id);
@@ -78,7 +77,7 @@ export function cameraRows(sources: ListeningRowSources): BareSource[] {
         profileId: null,
         wake,
         transcribe: camera.transcribe,
-        state: stateOf(wake || camera.transcribe, device, runtime, privateCamera(store, device)),
+        state: stateOf(wake || camera.transcribe, device, runtime, privateCamera(home, device)),
         writing: writingOf(camera.transcribe, paused),
         sensitivity: camera.wake_sensitivity,
         changeable: true,
@@ -88,8 +87,8 @@ export function cameraRows(sources: ListeningRowSources): BareSource[] {
 }
 
 export function deviceRows(sources: ListeningRowSources, kind: 'phone' | 'computer'): BareSource[] {
-  const { store } = sources;
-  return store.devices
+  const { home } = sources.store.live;
+  return home.devices
     .list()
     .filter((device) => device.kind === kind)
     .map((device) => {
@@ -99,7 +98,7 @@ export function deviceRows(sources: ListeningRowSources, kind: 'phone' | 'comput
         key: device.id,
         kind,
         name: deviceName(device),
-        profileId: personOfDevice(store, device),
+        profileId: personOfDevice(home, device),
         wake: saved.wake,
         transcribe: saved.transcribe,
         state: stateOf(saved.wake || saved.transcribe, device, runtime, false),
@@ -112,10 +111,10 @@ export function deviceRows(sources: ListeningRowSources, kind: 'phone' | 'comput
 }
 
 export function personOfDevice(
-  store: Pick<Store, 'computerNodes'>,
+  nodes: { readonly computerNodes: Pick<Store['computerNodes'], 'personOf'> },
   device: Pick<DeviceRow, 'id' | 'kind' | 'details'>,
 ): string | null {
-  if (device.kind === 'computer') return store.computerNodes.personOf(device.id);
+  if (device.kind === 'computer') return nodes.computerNodes.personOf(device.id);
   const profileId = device.details['profileId'];
   return typeof profileId === 'string' ? profileId : null;
 }
@@ -124,7 +123,7 @@ export function walkieRows(
   store: ListeningRowStore,
   runtime: (key: string) => Runtime,
 ): BareSource[] {
-  return store.talk.channels().map((channel) => ({
+  return store.live.home.talk.channels().map((channel) => ({
     key: channel.id,
     kind: 'walkie',
     name: channel.name,

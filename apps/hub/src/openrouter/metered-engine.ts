@@ -8,6 +8,7 @@ import {
   DEFAULT_AI_HARNESS_PERMISSION,
   closestEffort,
 } from '@smarteverything/domain';
+import type { AiModelsState } from '../store/ai-models-state';
 import type { Store } from '../store/store';
 import type {
   AiEffort,
@@ -32,16 +33,13 @@ export interface MeteredCatalogue {
 }
 
 export function meteredCatalogue(store: {
-  readonly aiModels: Pick<Store['aiModels'], 'row'>;
+  readonly live: { readonly aiModels: Pick<AiModelsState, 'row'> };
 }): MeteredCatalogue {
-  return { row: (id) => store.aiModels.row(id) };
+  return { row: (id) => store.live.aiModels.row(id) };
 }
 
-export function defaultEngine(
-  store: Pick<Store, 'aiModels' | 'aiEngineDefaults'>,
-  profileId: string,
-): Engine {
-  const stored = store.aiEngineDefaults.read();
+export function defaultEngine(store: Pick<Store, 'live'>, profileId: string): Engine {
+  const stored = store.live.engineDefaults.read();
   const engine =
     stored ?? meteredEngine(profileId, { model: null, effort: null }, meteredCatalogue(store));
   return engine.kind === 'dsh'

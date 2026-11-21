@@ -46,6 +46,7 @@ function sink(): { readonly frames: EarHostFrame[]; readonly send: (frame: EarHo
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   hosts = new EarHosts({ store: opened.store, log: testLogger('listening') });
   hosts.start();
   moves = [];

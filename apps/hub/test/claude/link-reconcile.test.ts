@@ -50,11 +50,11 @@ function hostWith(initial: ComputerAiSettings): {
   const log = testLogger();
   const plane = new LinkPlane({
     credential: {
-      verify: (): boolean => true,
+      verify: (): Promise<boolean> => Promise.resolve(true),
       read: (): Promise<string | null> => Promise.resolve('token'),
       ensure: (): Promise<string> => Promise.resolve('token'),
       revoke: (): Promise<void> => Promise.resolve(),
-      retireBridge: (): number => 0,
+      retireBridge: (): Promise<number> => Promise.resolve(0),
     },
     clock,
     log,

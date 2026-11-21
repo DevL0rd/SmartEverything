@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  isWorthKeeping,
   type BeltMode,
   openSummary,
   zoneOffsetSeconds,
@@ -22,7 +21,7 @@ const DEFAULT_CONTEXT: FigureContext = {
 };
 
 export interface KeeperOptions {
-  readonly store: Pick<Store, 'treadmillSessions' | 'settings' | 'write'>;
+  readonly store: Pick<Store, 'host' | 'settings'>;
   readonly deviceId: string;
   readonly log: Logger;
 }
@@ -69,16 +68,21 @@ export class SessionKeeper {
     return this.activeId;
   }
 
-  use(context: FigureContext): void {
+  async use(context: FigureContext): Promise<void> {
     if (sameContext(this.context, context)) {
       return;
     }
     this.context = context;
-    this.accumulator = new FigureAccumulator(context);
+    const accumulator = new FigureAccumulator(context);
+    this.accumulator = accumulator;
     if (this.activeId !== null) {
-      const stored = this.options.store.treadmillSessions.samples(this.activeId);
+      const stored = await this.options.store.host.call(
+        'treadmillSessions',
+        'samples',
+        this.activeId,
+      );
       for (const sample of [...stored, ...this.pending]) {
-        this.accumulator.add(sample);
+        accumulator.add(sample);
       }
     }
   }
@@ -97,10 +101,10 @@ export class SessionKeeper {
     return { figures: this.figures(), heartRateSource: this.heartRateSource };
   }
 
-  begin(
+  async begin(
     started: { readonly at: string; readonly mode: BeltMode | null },
     walker: WalkerContext,
-  ): void {
+  ): Promise<void> {
     const summary: SessionSummary = {
       startedAt: started.at,
       endedAt: started.at,
@@ -122,7 +126,8 @@ export class SessionKeeper {
     this.accumulator = new FigureAccumulator(this.context);
     this.beltKcal = null;
     this.heartRateSource = null;
-    this.options.store.treadmillSessions.open(
+    await this.options.store.host.write(
+      'treadmillOpen',
       sessionOf(this.options, this.activeId, summary, { ...walker, ...this.measured() }),
     );
   }
@@ -135,24 +140,21 @@ export class SessionKeeper {
     }
   }
 
-  flush(machine: MachineState, at: string, walker: WalkerContext): void {
+  async flush(machine: MachineState, at: string, walker: WalkerContext): Promise<void> {
     const id = this.activeId;
     const summary = openSummary(machine, at);
     if (id === null || summary === null) {
       return;
     }
-    const { store } = this.options;
-    store.write(() => {
-      store.treadmillSessions.appendSamples(id, this.pending);
-      store.treadmillSessions.save(
-        sessionOf(this.options, id, summary, { ...walker, ...this.measured() }),
-        false,
-      );
+    await this.options.store.host.write('treadmillFlush', {
+      id,
+      samples: this.pending,
+      session: sessionOf(this.options, id, summary, { ...walker, ...this.measured() }),
     });
     this.pending = [];
   }
 
-  finish(summary: SessionSummary, walker: WalkerContext): TreadmillSession | null {
+  async finish(summary: SessionSummary, walker: WalkerContext): Promise<TreadmillSession | null> {
     const id = this.activeId;
     this.activeId = null;
     if (id === null) {
@@ -161,45 +163,15 @@ export class SessionKeeper {
     const measured = this.measured();
     const { store, log, deviceId } = this.options;
     const session = sessionOf(this.options, id, summary, { ...walker, ...measured });
-    return store.write(() => {
-      if (!isWorthKeeping(session)) {
-        store.treadmillSessions.remove(id);
-        log.info('treadmill.session_discarded', {
-          device: deviceId,
-          activeSeconds: Math.round(session.activeSeconds),
-        });
-        this.pending = [];
-        return null;
-      }
-      store.treadmillSessions.appendSamples(id, this.pending);
-      store.treadmillSessions.save(session, true);
-      this.pending = [];
-      return session;
-    });
+    const kept = await store.host.write('treadmillFinish', { id, samples: this.pending, session });
+    this.pending = [];
+    if (!kept) {
+      log.info('treadmill.session_discarded', {
+        device: deviceId,
+        activeSeconds: Math.round(session.activeSeconds),
+      });
+      return null;
+    }
+    return session;
   }
-}
-
-export function closeOrphans(
-  store: Pick<Store, 'treadmillSessions' | 'write'>,
-  log: Logger,
-): TreadmillSession[] {
-  const closed: TreadmillSession[] = [];
-  for (const id of store.treadmillSessions.openIds()) {
-    const session = store.treadmillSessions.byId(id);
-    const lastSecond = store.treadmillSessions.lastSampleSecond(id) ?? 0;
-    const finished = {
-      ...session,
-      endedAt: new Date(Date.parse(session.startedAt) + lastSecond * 1000).toISOString(),
-    };
-    store.write(() => {
-      if (isWorthKeeping(finished)) {
-        store.treadmillSessions.save(finished, true);
-        closed.push(finished);
-      } else {
-        store.treadmillSessions.remove(id);
-      }
-    });
-    log.info('treadmill.orphan_closed', { session: id, kept: isWorthKeeping(finished) });
-  }
-  return closed;
 }

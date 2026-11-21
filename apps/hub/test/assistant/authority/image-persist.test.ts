@@ -30,9 +30,9 @@ function authority(): ConversationAuthority {
 }
 
 describe('a generated image is saved after the turn that started it has ended', () => {
-  it('accepts the result once the native writer of the initiating chat was released', () => {
+  it('accepts the result once the native writer of the initiating chat was released', async () => {
     const chat = rig.newChat({ kind: 'server' });
-    rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
     const { store } = rig.opened;
     const scope = authority();
     store.harnessRecovery.authorize(scope);
@@ -53,9 +53,9 @@ describe('a generated image is saved after the turn that started it has ended', 
     }).not.toThrow();
   });
 
-  it('asks the spending gate on behalf of the person who started the image', () => {
+  it('asks the spending gate on behalf of the person who started the image', async () => {
     const chat = rig.newChat({ kind: 'server' });
-    rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
     const { store } = rig.opened;
     const scope = authority();
     store.harnessRecovery.authorize(scope);

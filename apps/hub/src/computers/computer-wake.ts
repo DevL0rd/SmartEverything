@@ -6,7 +6,7 @@ import type { OnSuperseded, WakeClaim } from '../wake-name/wake-claims';
 import { messageOf } from '@smarteverything/logging';
 
 export interface ComputerWakeDeps {
-  readonly store: Pick<Store, 'profiles' | 'aiOutreach'>;
+  readonly store: Pick<Store, 'host'>;
   readonly service: Pick<ReachService, 'computer' | 'hangUp'>;
   readonly log: Logger;
 }
@@ -52,9 +52,12 @@ export async function wakeComputer(
     const by = answeredBy(winner);
     service
       .hangUp(answered.id)
-      .then(() => {
-        store.aiOutreach.step(answered.id, { state: 'ended', detail: `Answered by ${by}` });
-      })
+      .then(() =>
+        store.host.call('aiOutreach', 'step', answered.id, {
+          state: 'ended',
+          detail: `Answered by ${by}`,
+        }),
+      )
       .catch((cause: unknown) => {
         log.warn('wake.supersede_failed', {
           computerId: wake.computerId,
@@ -66,8 +69,9 @@ export async function wakeComputer(
     winner = claim;
     settle();
   });
+  const owner = await store.host.call('profiles', 'first');
   row = await service.computer(
-    { profileId: store.profiles.first().id, role: 'owner', clientId: null, chatId: null },
+    { profileId: owner.id, role: 'owner', clientId: null, chatId: null },
     { computerId: wake.computerId, reason: reasonOf(wake.phrase) },
     wake.heard,
   );

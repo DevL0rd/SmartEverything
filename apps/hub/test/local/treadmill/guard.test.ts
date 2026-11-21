@@ -27,8 +27,8 @@ describe('stopping a remote start when nobody steps on', () => {
     rig = await treadmillRig();
     const guard = new NoStepsGuard();
     guard.arm(rig.row().id, rig.clock.now().getTime());
-    rig.batch(1, [statusHex({ state: COUNTDOWN })]);
-    rig.batch(2, [statusHex({ state: RUNNING, speed10: 8, time: 1, steps: 0 })]);
+    await rig.batch(1, [statusHex({ state: COUNTDOWN })]);
+    await rig.batch(2, [statusHex({ state: RUNNING, speed10: 8, time: 1, steps: 0 })]);
     const later = rig.clock.now().getTime() + MINUTE_MS;
     expect(guard.expired(rig.fleet.of(rig.row()), later)).toBe(true);
   });
@@ -38,7 +38,7 @@ describe('stopping a remote start when nobody steps on', () => {
     rig = await treadmillRig('ftms', FTMS_GATT);
     const guard = new NoStepsGuard();
     guard.arm(rig.row().id, rig.clock.now().getTime());
-    rig.ingest.process(rig.row(), rig.owner.client, {
+    await rig.ingest.process(rig.row(), rig.owner.client, {
       frames: [
         { at: rig.clock.now().toISOString(), characteristic: '2ada', hex: '04' },
         { at: rig.clock.now().toISOString(), characteristic: '2acd', hex: '00002c01' },

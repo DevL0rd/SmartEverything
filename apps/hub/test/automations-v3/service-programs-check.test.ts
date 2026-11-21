@@ -22,9 +22,9 @@ afterEach(() => {
   rig.close();
 });
 
-function stored(): string {
+async function stored(): Promise<string> {
   const body = [setPower('lamp', rig.lamp.id), setPower('later', rig.lamp.id)];
-  const result = rig.service.create(rig.owner.caller, {
+  const result = await rig.service.create(rig.owner.caller, {
     name: 'Lamp',
     enabled: true,
     definition: automationOf(body),
@@ -34,16 +34,16 @@ function stored(): string {
 }
 
 describe('checking a whole program', () => {
-  it('saves nothing and says whether the program would save', () => {
-    const result = rig.service.check(rig.owner.caller, {
+  it('saves nothing and says whether the program would save', async () => {
+    const result = await rig.service.check(rig.owner.caller, {
       definition: automationOf([logLine('say', 'hi')]),
     });
     expect(result).toMatchObject({ ok: true, id: null, revision: null });
     expect(rig.programs.list()).toHaveLength(0);
   });
 
-  it('lists every error at once with the node, port and a suggested fix', () => {
-    const result = rig.service.check(rig.owner.caller, {
+  it('lists every error at once with the node, port and a suggested fix', async () => {
+    const result = await rig.service.check(rig.owner.caller, {
       definition: automationOf([
         setPower('first', randomUUID()),
         step('second', 'debug.log', { message: { wire: { from: 'nothing', port: 'here' } } }),
@@ -61,22 +61,26 @@ describe('checking a whole program', () => {
     });
   });
 
-  it('shows what the save would refuse for this person as a problem', () => {
+  it('shows what the save would refuse for this person as a problem', async () => {
     const wake = step('wake', 'ai.wake', { instruction: lit('look around') });
-    const forMember = rig.service.check(rig.member.caller, { definition: automationOf([wake]) });
+    const forMember = await rig.service.check(rig.member.caller, {
+      definition: automationOf([wake]),
+    });
     expect(forMember.ok).toBe(false);
     expect(forMember.problems).toContainEqual(
       expect.objectContaining({ severity: 'error', code: 'forbidden' }),
     );
-    const forOwner = rig.service.check(rig.owner.caller, { definition: automationOf([wake]) });
+    const forOwner = await rig.service.check(rig.owner.caller, {
+      definition: automationOf([wake]),
+    });
     expect(forOwner.ok).toBe(true);
   });
 });
 
 describe('previewing a patch', () => {
-  it('checks the result of the operations on the stored automation and saves nothing', () => {
-    const id = stored();
-    const result = rig.service.check(rig.owner.caller, {
+  it('checks the result of the operations on the stored automation and saves nothing', async () => {
+    const id = await stored();
+    const result = await rig.service.check(rig.owner.caller, {
       automationId: id,
       ops: [{ op: 'remove', key: 'later' }],
     });
@@ -87,9 +91,9 @@ describe('previewing a patch', () => {
     expect(rig.programs.byId(id).revision).toBe(1);
   });
 
-  it('reports a refused operation as a problem', () => {
-    const id = stored();
-    const result = rig.service.check(rig.owner.caller, {
+  it('reports a refused operation as a problem', async () => {
+    const id = await stored();
+    const result = await rig.service.check(rig.owner.caller, {
       automationId: id,
       ops: [{ op: 'remove', key: 'nothing' }],
     });
@@ -97,9 +101,9 @@ describe('previewing a patch', () => {
     expect(result.problems).toContainEqual(expect.objectContaining({ code: 'unknown_key' }));
   });
 
-  it('reports the errors the operations would cause', () => {
-    const id = stored();
-    const result = rig.service.check(rig.owner.caller, {
+  it('reports the errors the operations would cause', async () => {
+    const id = await stored();
+    const result = await rig.service.check(rig.owner.caller, {
       automationId: id,
       ops: [{ op: 'set', key: 'lamp', ports: { target: lit({ device: randomUUID() }) } }],
     });

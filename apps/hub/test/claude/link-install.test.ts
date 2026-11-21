@@ -22,11 +22,11 @@ it('installs the link without copying the Claude plugin registry anywhere', asyn
     directory,
     launch: { command: 'node', script: 'helper.mjs', directory, ready: join(directory, 'ready') },
     token: {
-      verify: (): boolean => true,
+      verify: (): Promise<boolean> => Promise.resolve(true),
       read: (): Promise<string | null> => Promise.resolve('token'),
       ensure: (): Promise<string> => Promise.resolve('token'),
       revoke: (): Promise<void> => Promise.resolve(),
-      retireBridge: (): number => 0,
+      retireBridge: (): Promise<number> => Promise.resolve(0),
     },
     cli: (): Promise<string> => Promise.resolve('[]'),
     readUrl: (): Promise<string> => Promise.resolve('http://127.0.0.1:1'),

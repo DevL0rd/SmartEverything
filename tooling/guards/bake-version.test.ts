@@ -18,7 +18,7 @@ const FINGERPRINTED = [
 
 const RECORDED = {
   version: 4,
-  fingerprint: 'fdb40e2516809f889066c402168694148aca32d104eddb8201a938ecf4cde78f',
+  fingerprint: 'eb42be0435da046998769387611349e3d34ab538cb7f1efc73a341d385f095fc',
 } as const;
 
 function normalised(text: string): string {

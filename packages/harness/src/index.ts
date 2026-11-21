@@ -75,8 +75,9 @@ export { SubscriptionProviderError } from './providers/errors';
 export type { SubscriptionFailure } from './providers/errors';
 export type { SubscriptionModelCatalog } from './providers/catalog';
 export type { SubscriptionAttachmentOptions } from './providers/pi-delegate';
-export { HARNESS_AUTHORITY } from './host/server-policy';
-export type { HarnessAuthority, HarnessServerToolAccess } from './host/server-policy';
+export { HARNESS_AUTHORITY } from './host/authority';
+export type { HarnessAuthority } from './host/authority';
+export type { HarnessServerToolAccess } from './host/server-policy';
 
 export { RemoteSubscriptionAdapter } from './providers/remote-adapter';
 export type { SubscriptionInferencePort } from './providers/remote-adapter';

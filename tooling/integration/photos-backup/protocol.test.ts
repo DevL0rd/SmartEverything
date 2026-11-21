@@ -28,11 +28,21 @@ function transportOf(): UploadTransport {
 
 const CAMERA = { key: 'phone:DCIM/Camera', name: 'Camera' } as const;
 
-function rememberPhoto(): void {
-  fixture.service.checkHashes(fixture.profileId, {
-    deviceId: fixture.phoneId,
-    assets: [{ localId: 'photo', sha256: hash('photo'), folder: CAMERA }],
+async function rememberPhoto(): Promise<void> {
+  await fixture.opened.store.host.write('photoBackupCheck', {
+    profileId: fixture.profileId,
+    request: {
+      deviceId: fixture.phoneId,
+      assets: [{ localId: 'photo', sha256: hash('photo'), folder: CAMERA }],
+    },
   });
+}
+
+async function phoneState(): Promise<unknown> {
+  const state = await fixture.opened.store.host.read('photoBackupState', {
+    profileId: fixture.profileId,
+  });
+  return state.devices[0];
 }
 
 describe('the actual app upload runner against real tus HTTP', () => {
@@ -61,7 +71,7 @@ describe('the actual app upload runner against real tus HTTP', () => {
   });
 
   it('rejects equal-size bytes that changed since the phone hash without verifying its backup', async () => {
-    rememberPhoto();
+    await rememberPhoto();
     const changed = {
       ...appRequest(fixture.folderId, 'photo'),
       source: new Blob(['other'], { type: 'image/jpeg' }),
@@ -75,7 +85,7 @@ describe('the actual app upload runner against real tus HTTP', () => {
     expect(
       fixture.opened.store.driveItems.byPath(fixture.root.id, 'Uploads/app.jpg'),
     ).toBeUndefined();
-    expect(fixture.service.state(fixture.profileId).devices[0]).toMatchObject({
+    expect(await phoneState()).toMatchObject({
       backedUp: 0,
       uploading: 1,
     });
@@ -114,7 +124,7 @@ describe('the actual app upload runner against real tus HTTP', () => {
   });
 
   it('backs up once and transfers no bytes for the second hash-only backup', async () => {
-    rememberPhoto();
+    await rememberPhoto();
     let sent = 0;
     const transport: UploadTransport = {
       send: async (request) => {
@@ -129,13 +139,16 @@ describe('the actual app upload runner against real tus HTTP', () => {
     }).outcome;
     expect(outcome.kind).toBe('done');
     expect(sent).toBe(5);
-    expect(fixture.service.state(fixture.profileId).devices[0]).toMatchObject({
+    expect(await phoneState()).toMatchObject({
       backedUp: 1,
       uploading: 0,
     });
-    const repeated = fixture.service.checkHashes(fixture.profileId, {
-      deviceId: fixture.phoneId,
-      assets: [{ localId: 'photo', sha256: hash('photo'), folder: CAMERA }],
+    const repeated = await fixture.opened.store.host.write('photoBackupCheck', {
+      profileId: fixture.profileId,
+      request: {
+        deviceId: fixture.phoneId,
+        assets: [{ localId: 'photo', sha256: hash('photo'), folder: CAMERA }],
+      },
     });
     expect(repeated.missing).toEqual([]);
     expect(repeated.have).toHaveLength(1);
@@ -144,11 +157,11 @@ describe('the actual app upload runner against real tus HTTP', () => {
 
   it('rolls back item, receipt, backup verification and notices when settlement fails', async () => {
     await fixture.close();
-    fixture = await protocolFixture((item, service): void => {
-      service.settleItem(item);
+    fixture = await protocolFixture(async (item, service): Promise<void> => {
+      await service.settle(item);
       throw new Error('Isolated settlement failure');
     });
-    rememberPhoto();
+    await rememberPhoto();
     const notices: unknown[] = [];
     const unsubscribe = fixture.opened.store.feed.subscribeNotices((notice) => {
       notices.push(notice);
@@ -162,7 +175,7 @@ describe('the actual app upload runner against real tus HTTP', () => {
     expect(
       fixture.opened.store.driveItems.byPath(fixture.root.id, 'Uploads/app.jpg'),
     ).toBeUndefined();
-    expect(fixture.service.state(fixture.profileId).devices[0]).toMatchObject({
+    expect(await phoneState()).toMatchObject({
       backedUp: 0,
       uploading: 1,
     });

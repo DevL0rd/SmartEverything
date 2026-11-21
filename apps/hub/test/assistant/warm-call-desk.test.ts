@@ -103,6 +103,7 @@ function hostedCall(desk: CallDesk, callId: string): ReturnType<CallDesk['host']
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   wires = [];
   chatId = opened.store.aiChats.create({
     profileId: opened.store.profiles.first().id,

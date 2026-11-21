@@ -106,11 +106,20 @@ function centralTool(
   const verify = (): void => {
     service.storage.verify(claim, input);
   };
-  return withCentralToolAuthority(service, claim.session_id, { callId, verify }, (authority) => {
-    authority.authorize(eventId);
-    const { access } = centralPorts(service);
-    return access.transportCall(access.authorizeCall(claim.session_id, name, args), name, args);
-  });
+  return withCentralToolAuthority(
+    service,
+    claim.session_id,
+    { callId, verify },
+    async (authority) => {
+      authority.authorize(eventId);
+      const { access } = centralPorts(service);
+      return await access.transportCall(
+        await access.authorizeCall(claim.session_id, name, args),
+        name,
+        args,
+      );
+    },
+  );
 }
 
 function centralContext(

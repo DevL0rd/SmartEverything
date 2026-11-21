@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { PHOTOS_CLIENT_PREFS, type PhotosAiNotice } from '@smarteverything/domain';
+import {
+  PHOTOS_CLIENT_PREFS,
+  type PhotoAiStatus,
+  type PhotosAiNotice,
+} from '@smarteverything/domain';
 import { makeRig, type Answer, type Rig } from './rig';
 
 let rig: Rig;
@@ -50,8 +54,8 @@ function labelsOf(itemId: string): string {
 function setSwitches(
   profileId: string,
   change: { smartSearch?: boolean; faceGrouping?: boolean },
-): void {
-  rig.ai.setSwitches({ profileId }, change);
+): Promise<PhotoAiStatus> {
+  return rig.ai.setSwitches({ profileId }, change);
 }
 
 describe('Smart search consent', () => {
@@ -113,7 +117,7 @@ describe('Smart search consent', () => {
     rig.ai.start();
     await rig.settle();
     expect(rig.sent).toEqual([]);
-    setSwitches(rig.member, { smartSearch: true });
+    await setSwitches(rig.member, { smartSearch: true });
     await rig.settle();
     expect(rig.opened.store.photoAnalysis.find(id)?.state).toBe('done');
     expect(chatCalls()).toBe(1);
@@ -124,7 +128,7 @@ describe('Smart search consent', () => {
     rig.ai.start();
     await rig.settle();
     expect(rig.ai.index.size()).toBe(1);
-    setSwitches(rig.owner, { smartSearch: false });
+    await setSwitches(rig.owner, { smartSearch: false });
     await rig.settle();
     expect(rig.opened.store.photoAnalysis.find(id)).toBeUndefined();
     expect(rig.opened.store.photoEmbeddings.find(id)).toBeUndefined();
@@ -132,7 +136,7 @@ describe('Smart search consent', () => {
     expect(rig.ai.index.size()).toBe(0);
     expect(count("select count(*) as total from drive_media_jobs where kind = 'vision'")).toBe(0);
     const calls = chatCalls();
-    setSwitches(rig.owner, { smartSearch: true });
+    await setSwitches(rig.owner, { smartSearch: true });
     await rig.settle();
     expect(chatCalls()).toBe(calls + 1);
     expect(rig.opened.store.photoAnalysis.find(id)?.state).toBe('done');
@@ -166,7 +170,7 @@ describe('Smart search consent', () => {
       name: 'Mum',
       coverFaceId: null,
     });
-    setSwitches(rig.member, { faceGrouping: false });
+    await setSwitches(rig.member, { faceGrouping: false });
     await rig.settle();
     expect(rig.opened.store.photoFaces.forItem(id)).toEqual([]);
     expect(rig.opened.store.photoGroups.find(group.id)).toBeUndefined();
@@ -175,7 +179,7 @@ describe('Smart search consent', () => {
   it('never analyses a locked item or a file outside the Photos library', async () => {
     await rig.photo({ n: 1, root: rig.memberRoot, relPath: '.locked/1.jpg', answer: BEACH });
     await rig.photo({ n: 2, root: rig.memberRoot, relPath: 'Documents/scan.jpg', answer: BEACH });
-    setSwitches(rig.member, { smartSearch: true });
+    await setSwitches(rig.member, { smartSearch: true });
     rig.ai.start();
     await rig.settle();
     expect(rig.sent).toEqual([]);
@@ -204,14 +208,14 @@ describe('the incremental photo AI scheduler', () => {
       folderIds: [],
       albumIds: [],
       months: [],
-      cursor: 1,
+      cursor: rig.opened.store.driveFeed.latestSeq(),
     });
     await rig.settle();
     expect(rig.opened.store.photoAnalysis.find(id)).toMatchObject({ state: 'done' });
   });
 
   it('never returns the photos of a person whose consent is off', async () => {
-    setSwitches(rig.owner, { smartSearch: false, faceGrouping: false });
+    await setSwitches(rig.owner, { smartSearch: false, faceGrouping: false });
     const id = await rig.photo({ n: 1, root: rig.homeRoot, answer: BEACH });
     rig.ai.start();
     await rig.settle();
@@ -250,7 +254,7 @@ describe('the Photos analysis jobs', () => {
       folderIds: [],
       albumIds: [],
       months: [],
-      cursor: 1,
+      cursor: rig.opened.store.driveFeed.latestSeq(),
     });
     rig.answers.set(id, CAKE);
     await rig.settle();
@@ -264,7 +268,7 @@ describe('the Photos analysis jobs', () => {
     await rig.settle();
     expect(rig.sent).toEqual([]);
     expect(rig.opened.store.photoAnalysis.find(id)?.state).toBe('needs_key');
-    const waiting = rig.ai.statusOf({ profileId: rig.owner });
+    const waiting = await rig.ai.statusOf({ profileId: rig.owner });
     expect(waiting.hasKey).toBe(false);
     expect(waiting.tags).toMatchObject({ needsKey: 1, done: 0 });
     rig.keyState.key = 'sk-new';
@@ -279,17 +283,17 @@ describe('the Photos analysis jobs', () => {
     rig.ai.start();
     await rig.settle();
     expect(rig.opened.store.photoAnalysis.find(id)?.state).toBe('failed');
-    expect(rig.ai.statusOf({ profileId: rig.owner }).tags.failed).toBe(1);
+    expect((await rig.ai.statusOf({ profileId: rig.owner })).tags.failed).toBe(1);
   });
 
   it('runs only the failed analyses again on a retry, for the photos the caller sees', async () => {
     const home = await rig.photo({ n: 1, root: rig.homeRoot });
     const own = await rig.photo({ n: 2, root: rig.memberRoot, colour: '#443322' });
     const fine = await rig.photo({ n: 3, root: rig.homeRoot, colour: '#225511', answer: CAKE });
-    setSwitches(rig.member, { smartSearch: true });
+    await setSwitches(rig.member, { smartSearch: true });
     rig.ai.start();
     await rig.settle();
-    expect(rig.ai.statusOf({ profileId: rig.owner }).tags.failed).toBe(2);
+    expect((await rig.ai.statusOf({ profileId: rig.owner })).tags.failed).toBe(2);
     rig.answers.set(home, BEACH);
     rig.answers.set(own, BEACH);
     const calls = chatCalls();
@@ -303,15 +307,15 @@ describe('the Photos analysis jobs', () => {
     expect(chatCalls()).toBe(calls + 2);
     expect(rig.opened.store.photoAnalysis.find(home)?.state).toBe('done');
     expect(rig.opened.store.photoAnalysis.find(fine)?.state).toBe('done');
-    expect(rig.ai.statusOf({ profileId: rig.owner }).tags.failed).toBe(0);
+    expect((await rig.ai.statusOf({ profileId: rig.owner })).tags.failed).toBe(0);
   });
 
   it('retries nothing for a person whose Smart search is off', async () => {
     await rig.photo({ n: 1, root: rig.memberRoot });
-    setSwitches(rig.member, { smartSearch: true });
+    await setSwitches(rig.member, { smartSearch: true });
     rig.ai.start();
     await rig.settle();
-    setSwitches(rig.member, { smartSearch: false });
+    await setSwitches(rig.member, { smartSearch: false });
     await rig.settle();
     const calls = rig.sent.length;
     await rig.ai.retryFailed({ profileId: rig.member });
@@ -369,7 +373,7 @@ describe('meaning search', () => {
     const hits = await rig.ai.meaning({ profileId: rig.owner }, 'dog on the beach', 0.1);
     expect(hits[0]?.itemId).toBe(beach);
     expect(hits.map((hit) => hit.itemId)).not.toContain(cake);
-    rig.ai.models.update({ embedding: 'other/embedding' });
+    await rig.ai.updateModels({ embedding: 'other/embedding' });
     expect(await rig.ai.meaning({ profileId: rig.owner }, 'dog on the beach', 0.1)).toEqual([]);
   });
 
@@ -389,12 +393,12 @@ describe('Smart features status and models', () => {
     await rig.photo({ n: 2, root: rig.memberRoot, colour: '#443322', answer: CAKE });
     rig.ai.start();
     await rig.settle();
-    const owner = rig.ai.statusOf({ profileId: rig.owner });
+    const owner = await rig.ai.statusOf({ profileId: rig.owner });
     expect(owner).toMatchObject({ smartSearch: true, hasKey: true, total: 2 });
     expect(owner.tags.done).toBe(1);
     expect(owner.index.done).toBe(1);
     expect(owner.spentMicros).toBeGreaterThan(0);
-    const member = rig.ai.statusOf({ profileId: rig.member });
+    const member = await rig.ai.statusOf({ profileId: rig.member });
     expect(member).toMatchObject({ smartSearch: false, total: 1, spentMicros: 0 });
     expect(member.tags.done).toBe(0);
     expect(member.estimateMicros).toBe(0);
@@ -405,11 +409,11 @@ describe('Smart features status and models', () => {
     const id = await rig.photo({ n: 1, root: rig.homeRoot, answer: BEACH });
     rig.ai.start();
     await rig.settle();
-    rig.ai.models.update({ vision: 'qwen/qwen3-vl-8b-instruct' });
+    await rig.ai.updateModels({ vision: 'qwen/qwen3-vl-8b-instruct' });
     await rig.ai.scheduler.reconcile();
     await rig.settle();
     expect(chatCalls()).toBe(1);
-    const estimate = rig.ai.statusOf({ profileId: rig.owner }).estimateMicros;
+    const estimate = (await rig.ai.statusOf({ profileId: rig.owner })).estimateMicros;
     expect(estimate).toBeGreaterThan(0);
     await expect(
       rig.ai.reanalyse({ estimateMicros: estimate + 1, everything: false }),
@@ -421,7 +425,7 @@ describe('Smart features status and models', () => {
     await rig.settle();
     expect(chatCalls()).toBe(2);
     expect(rig.opened.store.photoAnalysis.find(id)?.model).toBe('qwen/qwen3-vl-8b-instruct');
-    expect(rig.ai.statusOf({ profileId: rig.owner }).estimateMicros).toBe(0);
+    expect((await rig.ai.statusOf({ profileId: rig.owner })).estimateMicros).toBe(0);
   });
 
   it('re-runs photos already analysed by the current model only when everything is confirmed', async () => {
@@ -430,7 +434,7 @@ describe('Smart features status and models', () => {
     rig.ai.start();
     await rig.settle();
     expect(chatCalls()).toBe(1);
-    const status = rig.ai.statusOf({ profileId: rig.owner });
+    const status = await rig.ai.statusOf({ profileId: rig.owner });
     expect(status.estimateMicros).toBe(0);
     expect(status.everythingMicros).toBeGreaterThan(0);
     expect(await rig.ai.reanalyse({ estimateMicros: 0, everything: false })).toEqual({
@@ -455,8 +459,8 @@ describe('Smart features status and models', () => {
     );
   });
 
-  it('stores the Smart switches in the Photos preferences of the person', () => {
-    rig.ai.setSwitches({ profileId: rig.member }, { smartSearch: true });
+  it('stores the Smart switches in the Photos preferences of the person', async () => {
+    await rig.ai.setSwitches({ profileId: rig.member }, { smartSearch: true });
     const read = rig.opened.store.personal.pref(PHOTOS_CLIENT_PREFS.photos, {
       clientId: rig.member,
       profileId: rig.member,
@@ -472,23 +476,25 @@ describe('the analysis of one photo', () => {
   it('shows a person only the analysis of photos they can open', async () => {
     const mine = await rig.photo({ n: 1, root: rig.homeRoot, answer: BEACH });
     const theirs = await rig.photo({ n: 2, root: rig.memberRoot, colour: '#556677', answer: CAKE });
-    setSwitches(rig.member, { smartSearch: true });
+    await setSwitches(rig.member, { smartSearch: true });
     rig.ai.start();
     await rig.settle();
-    expect(rig.ai.analysisOf({ profileId: rig.owner }, mine)).toMatchObject({
+    expect(await rig.ai.analysisOf({ profileId: rig.owner }, mine)).toMatchObject({
       state: 'done',
       scene: 'beach',
       text: null,
     });
-    expect(() => rig.ai.analysisOf({ profileId: rig.owner }, theirs)).toThrow(
+    await expect(rig.ai.analysisOf({ profileId: rig.owner }, theirs)).rejects.toThrow(
       /not in your Photos/u,
     );
-    expect(rig.ai.analysisOf({ profileId: rig.member }, theirs)).toMatchObject({ state: 'done' });
+    expect(await rig.ai.analysisOf({ profileId: rig.member }, theirs)).toMatchObject({
+      state: 'done',
+    });
   });
 
   it('says skipped for a photo nobody analysed', async () => {
     const id = await rig.photo({ n: 1, root: rig.memberRoot });
-    expect(rig.ai.analysisOf({ profileId: rig.member }, id)).toMatchObject({
+    expect(await rig.ai.analysisOf({ profileId: rig.member }, id)).toMatchObject({
       state: 'skipped',
       caption: null,
     });

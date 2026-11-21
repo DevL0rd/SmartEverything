@@ -117,6 +117,7 @@ let opened: TestStore;
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
 });
 
 afterEach(async () => {
@@ -138,7 +139,7 @@ function kitOf(): VoiceKit {
   };
 }
 
-function whoOf(): VoiceWho {
+async function whoOf(): Promise<VoiceWho> {
   const profileId = opened.store.profiles.first().id;
   const chat = opened.store.aiChats.create({
     profileId,
@@ -150,8 +151,13 @@ function whoOf(): VoiceWho {
     engine: TEST_ENGINE,
   });
   return {
-    caller: hostedCallerOf(opened.store, { profileId, role: 'owner', label: 'Kitchen speaker' }),
+    caller: await hostedCallerOf(opened.store, {
+      profileId,
+      role: 'owner',
+      label: 'Kitchen speaker',
+    }),
     chatId: chat.id,
+    chatTools: chat.tools,
     place: null,
     speaking: null,
     canSee: false,
@@ -163,7 +169,7 @@ const REQUEST = { recentSpeech: null, known: null, starting: true } as const;
 describe('memory in a voice call', () => {
   it('declares the memory tool, keeps what it adds and recalls it into the conversation note', async () => {
     const kit = kitOf();
-    const who = whoOf();
+    const who = await whoOf();
     const hub = voiceHub(kit, () => who);
     expect(declarationsOf(kit, hub, who).map((tool) => tool.name)).toContain('memory');
     const added = await hub.call(
@@ -178,7 +184,7 @@ describe('memory in a voice call', () => {
       },
     );
     expect(added.response['error']).toBeUndefined();
-    const note = voiceNoteOf(kit, hub, who, REQUEST);
+    const note = await voiceNoteOf(kit, hub, who, REQUEST);
     expect(note).toContain('Notes kept with the memory tool');
     expect(note).toContain('Sam takes the 8:10 bus.');
     expect(note).toContain('Person: Me, the owner of the home.');
@@ -189,7 +195,7 @@ describe('memory in a voice call', () => {
 
   it('offers no memory when the person switched it off or the chat has memory off', async () => {
     const kit = kitOf();
-    const who = whoOf();
+    const who = await whoOf();
     const hub = voiceHub(kit, () => who);
     await hub.call(
       'memory',
@@ -204,11 +210,11 @@ describe('memory in a voice call', () => {
     );
     opened.store.aiChats.update(who.chatId, { memory: false });
     expect(hub.list().map((tool) => tool.name)).not.toContain('memory');
-    expect(voiceNoteOf(kit, hub, who, REQUEST)).not.toContain('green tea');
+    expect(await voiceNoteOf(kit, hub, who, REQUEST)).not.toContain('green tea');
     opened.store.aiChats.update(who.chatId, { memory: true });
-    expect(voiceNoteOf(kit, hub, who, REQUEST)).toContain('green tea');
+    expect(await voiceNoteOf(kit, hub, who, REQUEST)).toContain('green tea');
     opened.store.aiMemories.changeSettings(who.caller.profileId, { enabled: false });
     expect(hub.list().map((tool) => tool.name)).not.toContain('memory');
-    expect(voiceNoteOf(kit, hub, who, REQUEST)).not.toContain('green tea');
+    expect(await voiceNoteOf(kit, hub, who, REQUEST)).not.toContain('green tea');
   });
 });

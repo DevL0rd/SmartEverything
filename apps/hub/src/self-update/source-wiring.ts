@@ -18,7 +18,7 @@ export function hubUpdateSourceWiring(
   bootRunId: string | undefined,
 ): {
   readonly routes: HubUpdateSourceRoutes;
-  readonly watch: (live: Pick<LiveHub, 'announce'>) => () => Promise<void>;
+  readonly watch: (live: Pick<LiveHub, 'announce'>) => Promise<() => Promise<void>>;
 } {
   let refresh: (() => void) | undefined;
   const { routes, settleChecks } = hubUpdateSourceRoutes(
@@ -31,8 +31,8 @@ export function hubUpdateSourceWiring(
   );
   return {
     routes,
-    watch: (live): (() => Promise<void>) => {
-      const configured = findCheckoutSource(layout);
+    watch: async (live): Promise<() => Promise<void>> => {
+      const configured = await findCheckoutSource(layout);
       if (configured === undefined) return () => Promise.resolve();
       const source = watchHubUpdateSource({
         probe: (signal) => configuredSourceTip(layout, signal),

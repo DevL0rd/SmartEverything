@@ -1,24 +1,14 @@
-import {
-  ApiError,
-  type DriveComment,
-  type DriveCommentAdd,
-  type DriveCommentEdit,
-  type DriveCommentThread,
-  type DriveItem,
-  type DriveNotificationKind,
+import type {
+  DriveComment,
+  DriveCommentAdd,
+  DriveCommentEdit,
+  DriveCommentThread,
 } from '@smarteverything/domain';
-import { DriveCommentParentError } from '../../store/repositories/drive-comments';
 import type { Store } from '../../store/store';
-import { canRead, itemAccess, type DriveActor, type ItemAccess } from '../access';
-import { DRIVE_PAGE_SIZE, type DriveReadService } from '../service-read';
-import { peopleWithAccess, type AudienceStore } from './audience';
-import { checkMentions } from './mentions';
-
-export type CommentStore = AudienceStore & Pick<Store, 'driveComments' | 'driveNotifications'>;
+import type { DriveActor } from '../access';
 
 export interface CommentsEnv {
-  readonly store: CommentStore;
-  readonly read: DriveReadService;
+  readonly store: Pick<Store, 'host'>;
 }
 
 export interface CommentPage {
@@ -26,153 +16,26 @@ export interface CommentPage {
   readonly next: string | null;
 }
 
-function missingComment(): ApiError {
-  return new ApiError('not_found', 'There is no such comment.');
-}
-
-function moderates(access: ItemAccess): boolean {
-  return access === 'own' || access === 'shared';
-}
-
 export class DriveComments {
   constructor(private readonly env: CommentsEnv) {}
 
-  list(actor: DriveActor, itemId: string, cursor: string | undefined): CommentPage {
-    this.env.read.readItem(actor, itemId);
-    const { threads, next } = this.env.store.driveComments.threads(
-      itemId,
-      cursor ?? null,
-      DRIVE_PAGE_SIZE,
-    );
-    return { items: threads, next };
+  list(actor: DriveActor, itemId: string, cursor: string | undefined): Promise<CommentPage> {
+    return this.env.store.host.read('driveComments', { actor, itemId, cursor });
   }
 
-  add(actor: DriveActor, itemId: string, input: DriveCommentAdd): DriveComment {
-    const item = this.env.read.readItem(actor, itemId);
-    const mentions = checkMentions(this.env.store, item, input.mentions);
-    const comment = this.attach(item, actor, input, mentions);
-    this.notifyAdded(item, comment, mentions);
-    return comment;
+  add(actor: DriveActor, itemId: string, add: DriveCommentAdd): Promise<DriveComment> {
+    return this.env.store.host.write('driveCommentAdd', { actor, itemId, add });
   }
 
-  edit(actor: DriveActor, commentId: string, input: DriveCommentEdit): DriveComment {
-    const { comment, item } = this.opened(actor, commentId);
-    if (comment.deleted) throw missingComment();
-    if (comment.authorProfileId !== actor.profileId) {
-      throw new ApiError('forbidden', 'Only the author can change a comment.');
-    }
-    const mentions = checkMentions(this.env.store, item, input.mentions);
-    const edited = this.env.store.driveComments.edit(commentId, input.body, mentions);
-    this.notify(
-      item,
-      edited,
-      mentions.filter((profileId) => !comment.mentions.includes(profileId)),
-      'mentioned',
-    );
-    return edited;
+  edit(actor: DriveActor, commentId: string, edit: DriveCommentEdit): Promise<DriveComment> {
+    return this.env.store.host.write('driveCommentEdit', { actor, commentId, edit });
   }
 
-  resolve(actor: DriveActor, commentId: string, resolved: boolean): DriveComment {
-    const { comment, access } = this.opened(actor, commentId);
-    if (comment.parentId !== null) {
-      throw new ApiError('invalid_request', 'Only the first comment of a thread can be resolved.');
-    }
-    if (!moderates(access) && comment.authorProfileId !== actor.profileId) {
-      throw new ApiError(
-        'forbidden',
-        'Only the owner of the file or the person who started the thread can resolve it.',
-      );
-    }
-    return this.env.store.driveComments.resolve(commentId, resolved ? actor.profileId : null);
+  resolve(actor: DriveActor, commentId: string, resolved: boolean): Promise<DriveComment> {
+    return this.env.store.host.write('driveCommentResolve', { actor, commentId, resolved });
   }
 
-  remove(actor: DriveActor, commentId: string): void {
-    const { comment, access } = this.opened(actor, commentId);
-    if (comment.deleted) throw missingComment();
-    if (!moderates(access) && comment.authorProfileId !== actor.profileId) {
-      throw new ApiError(
-        'forbidden',
-        'Only the author or the owner of the file can delete a comment.',
-      );
-    }
-    this.env.store.driveComments.remove(commentId);
-  }
-
-  private opened(
-    actor: DriveActor,
-    commentId: string,
-  ): { readonly comment: DriveComment; readonly item: DriveItem; readonly access: ItemAccess } {
-    const { store } = this.env;
-    const comment = store.driveComments.find(commentId);
-    const item =
-      comment === undefined ? undefined : store.driveItems.find(comment.itemId, actor.profileId);
-    if (comment === undefined || item === undefined) throw missingComment();
-    const access = itemAccess(store, actor, store.driveRoots.byId(item.rootId), item);
-    if (!canRead(access)) throw missingComment();
-    return { comment, item, access };
-  }
-
-  private attach(
-    item: DriveItem,
-    actor: DriveActor,
-    input: DriveCommentAdd,
-    mentions: readonly string[],
-  ): DriveComment {
-    try {
-      return this.env.store.driveComments.add({
-        itemId: item.id,
-        authorProfileId: actor.profileId,
-        parentId: input.parentId,
-        body: input.body,
-        mentions,
-      });
-    } catch (cause) {
-      if (cause instanceof DriveCommentParentError) {
-        throw new ApiError(
-          'invalid_request',
-          'Reply to the first comment of a thread on this item.',
-        );
-      }
-      throw cause;
-    }
-  }
-
-  private notifyAdded(item: DriveItem, comment: DriveComment, mentions: readonly string[]): void {
-    const told = new Set<string>(mentions);
-    this.notify(item, comment, mentions, 'mentioned');
-    if (comment.parentId === null) {
-      const watchers = peopleWithAccess(this.env.store, item)
-        .filter((person) => person.access === 'own' || person.access === 'edit')
-        .map((person) => person.profileId)
-        .filter((profileId) => !told.has(profileId));
-      this.notify(item, comment, watchers, 'commented');
-      return;
-    }
-    const participants = this.env.store.driveComments
-      .participants(comment.parentId)
-      .filter((profileId) => !told.has(profileId));
-    this.notify(item, comment, participants, 'replied');
-  }
-
-  private notify(
-    item: DriveItem,
-    comment: DriveComment,
-    recipients: readonly string[],
-    kind: DriveNotificationKind,
-  ): void {
-    const reachable = new Set(
-      peopleWithAccess(this.env.store, item).map((person) => person.profileId),
-    );
-    for (const profileId of recipients) {
-      if (profileId === comment.authorProfileId || !reachable.has(profileId)) continue;
-      this.env.store.driveNotifications.add({
-        profileId,
-        kind,
-        itemId: item.id,
-        actorProfileId: comment.authorProfileId,
-        actorName: null,
-        refId: comment.id,
-      });
-    }
+  async remove(actor: DriveActor, commentId: string): Promise<void> {
+    await this.env.store.host.write('driveCommentRemove', { actor, commentId });
   }
 }

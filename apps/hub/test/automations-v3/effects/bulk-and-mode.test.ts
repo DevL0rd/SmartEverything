@@ -1,4 +1,4 @@
-import { setImmediate as nextTurn } from 'node:timers/promises';
+import { settleWithHost } from '../../support/host-settle';
 import {
   NODE_POLICY,
   NODE_REGISTRY,
@@ -26,6 +26,7 @@ import { FakeClock } from '../../support/fake-clock';
 import { FakeAdapter, LAMP } from '../../support/fake-provider';
 import { testLogger } from '../../support/logs';
 import { testRun } from './support';
+import { adapterDirectory } from '../../support/adapter-directory';
 
 const LAMPS = 6;
 const open: TestDatabase[] = [];
@@ -132,12 +133,22 @@ async function home(): Promise<Rig> {
     store: db.database,
     inventory,
     drivers: new DeviceDriverRegistry(),
-    adapters: { adapterFor: (): CountingAdapter => adapter },
+    adapters: adapterDirectory((): CountingAdapter => adapter),
     hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
     log: testLogger(),
     now: clock.now,
   });
-  const issuer = new CommandIssuer({ store: db.store, database: db.database, executor, clock });
+  const counts = { admissions: 0, inserts: 0 };
+  const counted = {
+    ...db.database,
+    insertCommands: (
+      ...args: Parameters<typeof db.database.insertCommands>
+    ): ReturnType<typeof db.database.insertCommands> => {
+      counts.inserts += 1;
+      return db.database.insertCommands(...args);
+    },
+  };
+  const issuer = new CommandIssuer({ store: db.store, database: counted, executor, clock });
   const ports = { store: db.store, executor, issuer };
   const setter = new DeviceSetter(ports);
   const toggler = new DeviceToggler(ports, (deviceId, capability) =>
@@ -153,20 +164,18 @@ async function home(): Promise<Rig> {
       kept: { read: unused, write: unused },
       extra: {},
     }),
-    ...deviceExtraHandlers({ setter, store: db.store, feed: db.store.feed, clock }),
+    ...deviceExtraHandlers({
+      setter,
+      store: db.store,
+      feed: db.store.feed,
+      clock,
+      observed: (deviceId, capability) => db.store.state.value(deviceId, capability),
+    }),
   };
-  const counts = { admissions: 0, inserts: 0 };
   const perform: Perform = (kind, params, mode) => {
     const handler = handlers[kind];
     if (handler === undefined) throw new Error(`no handler for ${kind}`);
-    const run = testRun();
-    return handler(params, request(kind, mode), {
-      ...run,
-      commands: (rows): void => {
-        counts.inserts += 1;
-        run.commands(rows);
-      },
-    });
+    return handler(params, request(kind, mode), testRun());
   };
   const admit = executor.admit.bind(executor);
   executor.admit = <T>(
@@ -181,7 +190,7 @@ async function home(): Promise<Rig> {
 }
 
 async function settle(): Promise<void> {
-  for (let turn = 0; turn < 20; turn += 1) await nextTurn();
+  await settleWithHost();
 }
 
 function report(db: TestDatabase, deviceId: string, capability: string, value: JsonValue): void {

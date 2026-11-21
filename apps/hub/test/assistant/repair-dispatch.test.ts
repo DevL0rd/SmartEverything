@@ -25,6 +25,7 @@ import type { StoredEvent } from '../../src/store/repositories/assistant-events'
 import { storedFromLog } from '../../src/store/repositories/runtime-log-types';
 import { CLAUDE_TEST_ENGINE, TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
+import { mainDeliveryEvents } from '../support/delivery-events';
 import { testStore, type TestStore } from '../support/store';
 
 const CRASH_STACK = `at example (file.ts:2:1)${'x'.repeat(9000)}`;
@@ -115,27 +116,27 @@ function selectedEngine(kind: Engine['kind'], deliver: Engine['deliver']): Engin
 
 function delivery(registry: EngineRegistry): AssistantDelivery {
   return new AssistantDelivery({
-    events: opened.store.assistantEvents,
+    events: mainDeliveryEvents(opened.store),
     route: (event) => registry.route(event),
     delivered: (event): void => {
-      conversation.delivered(event.id);
+      void conversation.delivered(event.id);
     },
     failed: (event, reason): void => {
-      conversation.failed(event, reason);
+      void conversation.failed(event, reason);
     },
     retrying: () => undefined,
     stopped: (event): void => {
-      conversation.failed(event, 'Stopped', 'stopped');
+      void conversation.failed(event, 'Stopped', 'stopped');
     },
     log: testLogger('repair'),
   });
 }
 
-function retainedRequest(fingerprint: string): RepairRequest {
+async function retainedRequest(fingerprint: string): Promise<RepairRequest> {
   return {
     ...request,
     fingerprint,
-    retained: retainedLogOf(opened.store, logs, fingerprint, profileId),
+    retained: await retainedLogOf(opened.store, logs, fingerprint, profileId),
   };
 }
 
@@ -180,7 +181,7 @@ describe('repair through the selected chat engine', () => {
       fallback = chat;
       request = { ...request, recipient: { active: null, previousChatId: chat.id } };
       const { group } = await evidence();
-      expect(repair.admit(retainedRequest(group.fingerprint))).toMatchObject({
+      expect(repair.admit(await retainedRequest(group.fingerprint))).toMatchObject({
         kind: 'queued',
         chatId: chat.id,
       });
@@ -242,7 +243,7 @@ describe('repair through the selected chat engine', () => {
     const { store } = opened;
     const local = newChat(true);
     fallback = local;
-    store.computerAi.bindLocal(CLAUDE_TEST_ENGINE.device_id);
+    store.live.computers.bindLocal(CLAUDE_TEST_ENGINE.device_id);
     repair.admit({ ...request, recipient: { active: null, previousChatId: local.id } });
     const registry = new EngineRegistry(store);
     registry.attach(selectedEngine('claude', () => Promise.resolve()));
@@ -271,9 +272,11 @@ describe('repair through the selected chat engine', () => {
     repair.admit(request);
     const worker = delivery(registry);
     worker.pump();
+    await worker.settled();
     const next = randomUUID();
     repair.admit({ ...request, id: next });
     worker.pump();
+    await worker.settled();
     expect(delivered).toEqual([request.id]);
     expect(steer).not.toHaveBeenCalled();
     release();
@@ -317,7 +320,7 @@ describe('repair through the selected chat engine', () => {
     expect(repair.admit({ ...request, kind: 'automatic' })).toMatchObject({ reason: 'disabled' });
     store.settingsKv.save('ai-repair', { enabled: true });
     const { group } = await evidence();
-    const automatic = { ...retainedRequest(group.fingerprint), kind: 'automatic' as const };
+    const automatic = { ...(await retainedRequest(group.fingerprint)), kind: 'automatic' as const };
     expect(repair.admit(automatic)).toMatchObject({ kind: 'queued' });
     expect(repair.admit(automatic)).toMatchObject({ kind: 'existing' });
     expect(repair.admit({ ...automatic, id: randomUUID() })).toMatchObject({
@@ -388,7 +391,7 @@ describe('repair through the selected chat engine', () => {
   it('rejects dismissed evidence and accepts a new observation without duplicating the old request', async () => {
     const { store } = opened;
     const { record, group } = await evidence();
-    const input = retainedRequest(group.fingerprint);
+    const input = await retainedRequest(group.fingerprint);
     repair.admit(input);
     store.assistantEvents.mark(request.id, 'answered_at');
     store.aiRepairInbox.dismiss({ kind: 'inactive' });
@@ -406,7 +409,7 @@ describe('repair through the selected chat engine', () => {
   it('uses normal retry and stop behavior and records the visible failure in the inbox', async () => {
     const { store } = opened;
     const { group } = await evidence();
-    repair.admit(retainedRequest(group.fingerprint));
+    repair.admit(await retainedRequest(group.fingerprint));
     const registry = new EngineRegistry(store);
     const deliver = vi.fn<Engine['deliver']>(() =>
       Promise.reject(new Error('Engine disconnected')),
@@ -419,6 +422,7 @@ describe('repair through the selected chat engine', () => {
     expect(worker.stopChat(chat.id)).toBe(false);
     expect(worker.stopChat(fallback.id)).toBe(true);
     await vi.advanceTimersByTimeAsync(0);
+    await conversation.settled();
     expect(store.aiRepairInbox.list({ limit: 1 }).groups[0]?.progress).toBe('failed');
     expect(store.assistantChat.message(queuedEvent().message_id ?? '')).toMatchObject({
       state: 'failed',

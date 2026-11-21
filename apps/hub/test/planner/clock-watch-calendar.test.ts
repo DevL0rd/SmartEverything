@@ -91,6 +91,7 @@ describe('calendar push', () => {
       now: (): Date => NOW,
     });
     calendar.start();
+    w.settlers.push(() => calendar.settled());
   });
 
   afterEach(() => {

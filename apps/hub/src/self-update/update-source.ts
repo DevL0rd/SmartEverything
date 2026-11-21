@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { isMissing } from '../fs-util';
 import type { HubLayout } from '../data-layout';
 import {
@@ -7,23 +7,25 @@ import {
   type UpdateSource,
 } from '../service/configuration';
 
-function configText(path: string): string | undefined {
+async function configText(path: string): Promise<string | undefined> {
   try {
-    return readFileSync(path, 'utf8');
+    return await readFile(path, 'utf8');
   } catch (cause) {
     if (isMissing(cause)) return undefined;
     throw cause;
   }
 }
 
-export function findUpdateSource(layout: HubLayout): UpdateSource | undefined {
+export async function findUpdateSource(layout: HubLayout): Promise<UpdateSource | undefined> {
   const path = layout.system.config.service;
-  const text = configText(path);
+  const text = await configText(path);
   return text === undefined ? undefined : parseServiceConfigText(path, text).updateSource;
 }
 
-export function findCheckoutSource(layout: HubLayout): CheckoutUpdateSource | undefined {
-  const source = findUpdateSource(layout);
+export async function findCheckoutSource(
+  layout: HubLayout,
+): Promise<CheckoutUpdateSource | undefined> {
+  const source = await findUpdateSource(layout);
   if (source?.checkout === undefined || source.remote === undefined) return undefined;
   return { ...source, checkout: source.checkout, remote: source.remote };
 }

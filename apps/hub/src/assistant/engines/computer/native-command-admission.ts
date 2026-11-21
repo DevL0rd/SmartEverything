@@ -13,9 +13,10 @@ import type { z } from 'zod';
 import type { ComputerRunnerDeps } from './ports';
 import type { ProviderState } from './provider-state';
 import { pendingCommand } from '../../../codex/provider-commands';
-import { eventAuthority } from '../../turn-authority';
+import { authorityScope } from '../../turn-authority';
 import { nativeCommandAdapter } from './native-command-adapters';
 import {
+  assertManualBinding,
   commandAuthority,
   manualCommandCaller,
   assertClaudeCommandBinding,
@@ -37,44 +38,31 @@ export async function nativeCommandCatalogue(
     throw new ApiError('upstream_failed', 'Native command discovery returned another operation.');
   return AI_NATIVE_COMMAND_CATALOGUE.parse(reply.reply.value);
 }
-export function retainManualCommand(
+export async function retainManualCommand(
   deps: ComputerRunnerDeps,
   chat: AiChatRow,
   invocation: { readonly input: AiNativeCommandWrite; readonly command: AiNativeCommandDescriptor },
-): void {
+): Promise<void> {
   const { input, command } = invocation;
   commandAuthority(deps, chat, input.scope);
+  assertManualBinding(chat, input);
   const client =
     input.scope.client_id === null
       ? undefined
       : effectiveClientById(deps.store, input.scope.client_id);
   if (client === undefined)
     throw new ApiError('forbidden', 'A native manual command needs its genuine initiating client.');
-  const text = `/${command.native_name}${input.arguments === '' ? '' : ` ${input.arguments}`}`;
-  deps.store.durableWrite(() => {
-    const message = deps.conversation.person({
-      chat,
-      clientId: client.id,
-      author: client.name,
-      text,
-      files: [],
-      clientMessageId: input.operation_id,
-      origin: { source: 'chat', plugin_id: null, device_id: input.scope.device_id, name: null },
-    });
-    const event = deps.store.assistantEvents.add({
-      id: input.operation_id,
-      kind: 'chat',
-      chat_id: chat.id,
-      message_id: message.id,
-      profile_id: chat.profile_id,
-      client_id: client.id,
-      text,
-    });
-    deps.store.assistantEvents.mark(event.id, 'delivered_at');
-    eventAuthority(deps.store, event);
-    manualCommandCaller(deps, chat, input);
-    deps.store.nativeCommandOperations.reserve(input, pendingCommand(input));
-    deps.conversation.stateOf(message.id, 'working');
+  await deps.store.host.write('nativeManualCommandRetain', {
+    chat,
+    client: { id: client.id, name: client.name },
+    text: `/${command.native_name}${input.arguments === '' ? '' : ` ${input.arguments}`}`,
+    input,
+    receipt: pendingCommand(input),
+    held: deps.store.live.chatWork.holds.held(),
+    scope: authorityScope(),
+    localDevice: deps.store.live.computers.isLocal(input.scope.device_id)
+      ? input.scope.device_id
+      : null,
   });
 }
 export function rejectUnknownCommand(

@@ -13,6 +13,8 @@ import {
   combinedAnnotations,
   inlineSchemaOf,
   jsonSchemaOf,
+  lazyListing,
+  once,
   validArguments,
   type Tool,
   type ToolAnnotations,
@@ -73,17 +75,19 @@ function withToolTexts(name: McpToolName, inputSchema: Args): Args {
 
 export function servedListing(
   name: McpToolName,
-  inputSchema: Args,
+  inputSchema: () => Args,
   annotations: ToolAnnotations,
 ): ToolListing {
   const text = textOf(name);
-  return {
-    name,
-    title: text.title,
-    description: text.description,
-    inputSchema: withToolTexts(name, inputSchema),
-    annotations: { ...annotations, title: text.title },
-  };
+  return lazyListing(
+    {
+      name,
+      title: text.title,
+      description: text.description,
+      annotations: { ...annotations, title: text.title },
+    },
+    () => withToolTexts(name, inputSchema()),
+  );
 }
 
 type Shape = Readonly<Record<string, z.core.$ZodType>>;
@@ -94,10 +98,8 @@ interface Branch {
   readonly part: Tool;
   readonly shape: Shape;
   readonly required: readonly string[];
-  readonly schema: Args;
+  readonly schema: () => Args;
 }
-
-const REQUIRED = z.looseObject({ required: z.array(z.string()).default([]) });
 
 function shapeOf(part: Tool): Shape {
   if (!(part.input instanceof z.ZodObject)) {
@@ -114,11 +116,15 @@ function branchOf(route: Routed, value: string, line: string, part: Tool): Branc
       'internal',
     );
   }
-  const schema = jsonSchemaOf(
-    z.strictObject({ [route.key]: z.literal(value).describe(line), ...shape }),
-    'input',
+  const schema = once(() =>
+    jsonSchemaOf(
+      z.strictObject({ [route.key]: z.literal(value).describe(line), ...shape }),
+      'input',
+    ),
   );
-  const required = REQUIRED.parse(schema).required.filter((field) => field !== route.key);
+  const required = Object.entries(shape)
+    .filter(([, field]) => field._zod.optin === undefined)
+    .map(([field]) => field);
   return { value, line, part, shape, required, schema };
 }
 
@@ -257,6 +263,28 @@ function refusedFields(route: Routed, branch: Branch, args: Args): void {
   }
 }
 
+function variantsOf(
+  name: McpToolName,
+  route: Routed,
+  branches: readonly Branch[],
+): ReadonlyMap<string, Args> {
+  return new Map(
+    branches.map((branch) => {
+      const inputSchema = once(() => withToolTexts(name, branch.schema()));
+      return [
+        branch.value,
+        {
+          selector: { [route.key]: branch.value },
+          get inputSchema(): Args {
+            return inputSchema();
+          },
+          annotations: { ...branch.part.listing.annotations, title: textOf(name).title },
+        },
+      ];
+    }),
+  );
+}
+
 function routedTool(name: McpToolName, route: Routed, parts: ReadonlyMap<string, Tool>): Tool {
   const branches = Object.entries(route.branches).map(([value, branch]) =>
     branchOf(route, value, branch.line, partNamed(parts, branch.part)),
@@ -274,23 +302,14 @@ function routedTool(name: McpToolName, route: Routed, parts: ReadonlyMap<string,
     name,
     listing: servedListing(
       name,
-      jsonSchemaOf(routedInput(route, branches), 'input'),
+      () => jsonSchemaOf(routedInput(route, branches), 'input'),
       annotationsOf(branches.map((branch) => branch.part)),
     ),
-    variants: new Map(
-      branches.map((branch) => [
-        branch.value,
-        {
-          selector: { [route.key]: branch.value },
-          inputSchema: withToolTexts(name, branch.schema),
-          annotations: { ...branch.part.listing.annotations, title: textOf(name).title },
-        },
-      ]),
-    ),
-    check: (context, args): string | null => {
+    variants: variantsOf(name, route, branches),
+    check: async (context, args): Promise<string | null> => {
       try {
         const found = resolve(args);
-        return found.tool.check(context, found.args);
+        return await found.tool.check(context, found.args);
       } catch (cause) {
         if (cause instanceof Error) {
           return cause.message;
@@ -306,16 +325,20 @@ function routedTool(name: McpToolName, route: Routed, parts: ReadonlyMap<string,
 }
 
 function renamed(name: McpToolName, part: Tool): Tool {
-  const { inputSchema, annotations } = part.listing;
-  return { ...part, name, listing: servedListing(name, inputSchema, annotations) };
+  return {
+    ...part,
+    name,
+    listing: servedListing(name, () => part.listing.inputSchema, part.listing.annotations),
+  };
 }
 
 function composed(name: McpToolName, members: readonly Tool[]): Tool {
   return {
     name,
     input: NO_ARGUMENTS,
-    listing: servedListing(name, jsonSchemaOf(NO_ARGUMENTS, 'input'), annotationsOf(members)),
-    check: (_context, args): string | null => argumentIssues(NO_ARGUMENTS, args),
+    listing: servedListing(name, () => jsonSchemaOf(NO_ARGUMENTS, 'input'), annotationsOf(members)),
+    check: (_context, args): Promise<string | null> =>
+      Promise.resolve(argumentIssues(NO_ARGUMENTS, args)),
     call: async (context, args): Promise<ToolOutput> => {
       validArguments(NO_ARGUMENTS, args);
       const outputs = await Promise.all(members.map((member) => member.call(context, {})));

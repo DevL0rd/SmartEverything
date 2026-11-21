@@ -76,6 +76,7 @@ describe('C30 one-off scheduled actions', () => {
   it('runs after the given seconds, records the step result and finishes', async () => {
     const row = await schedule({ kind: 'in', seconds: 240 }, [lamp(false)], 'Off soon');
     expect(row).toMatchObject({ state: 'scheduled', next_at: '2026-10-08T10:04:00.000Z' });
+    await rig().until(() => rig().clock.pending().includes('2026-10-08T10:04:00.000Z'));
     rig().clock.advanceTo('2026-10-08T10:03:59.000Z');
     await rig().settle();
     expect(rig().commands()).toHaveLength(0);

@@ -16,14 +16,17 @@ import { runService } from '../src/service/runner';
 import { HUB_VERSION } from '../src/version';
 import { captureLogs } from './support/logs';
 import { bundledLogWorker } from './support/log-worker';
+import { bundledCodecWorker } from './support/codec-worker';
 import { fakeGo2rtcServer, freePort, temporaryDirectory } from './support/server';
 import { testLayout } from './support/test-layout';
+import { testStoreHost } from './support/store-host';
 
 let directory: { path: string; remove: () => Promise<void> };
 let layout: HubLayout;
 let pointer: Pick<Location, 'rootId' | 'state'>;
 let originalTemporary: string | undefined;
 let logWorkerScript: string;
+let codecWorkerScript: string;
 
 beforeAll(async () => {
   await import('../src/start');
@@ -35,6 +38,7 @@ beforeEach(async () => {
   directory = await temporaryDirectory();
   layout = await testLayout(directory.path);
   logWorkerScript = await bundledLogWorker(directory.path);
+  codecWorkerScript = await bundledCodecWorker(directory.path);
   const marker = await readMarker(layout);
   pointer = { rootId: marker?.rootId ?? '', state: 'active' };
 });
@@ -79,6 +83,8 @@ function host(): Host & { readonly value: Parameters<typeof runService>[0] } {
       pointer,
       fileIoThreads: { threads: 8, source: 'saved' },
       logWorkerScript,
+      storeHostScript: testStoreHost().script,
+      codecWorkerScript,
       exit: (code): void => {
         exited(code);
       },

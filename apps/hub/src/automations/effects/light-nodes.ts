@@ -138,30 +138,30 @@ function writable(device: DeviceRow, control: string): Presented | undefined {
   return presented?.writable === true ? presented : undefined;
 }
 
-function brightnessFade(
+async function brightnessFade(
   store: Store,
   device: DeviceRow,
   ask: LightParams,
   wanted: readonly Wanted[],
-): { readonly control: string; readonly from: number; readonly to: number } | undefined {
+): Promise<{ readonly control: string; readonly from: number; readonly to: number } | undefined> {
   const target = wanted.find((entry) => entry.control === 'brightness');
   const presented = writable(device, 'brightness');
   if (target === undefined || presented === undefined || ask.power === 'off') return undefined;
   if ((ask.transition ?? 0) <= 0) return undefined;
   const to = target.value(presented);
-  const from = store.state.value(device.id, presented.key);
+  const from = await store.host.call('state', 'value', device.id, presented.key);
   return typeof to === 'number' && typeof from === 'number'
     ? { control: presented.key, from, to }
     : undefined;
 }
 
-function planDevice(
+async function planDevice(
   store: Store,
   device: DeviceRow,
   ask: LightParams,
   wanted: readonly Wanted[],
-): Draft | string {
-  const faded = brightnessFade(store, device, ask, wanted);
+): Promise<Draft | string> {
+  const faded = await brightnessFade(store, device, ask, wanted);
   const changes: Change[] = [];
   const ignored: string[] = [];
   for (const entry of wanted) {
@@ -282,18 +282,18 @@ function announceFade(run: EffectRun, plans: readonly DevicePlan[], ask: LightPa
   });
 }
 
-function planned(
+async function planned(
   ports: LightEffectPorts,
   ask: LightParams,
   colour: ColourAsk,
   request: EffectRequest,
-): { readonly plans: readonly DevicePlan[]; readonly skipped: readonly Skipped[] } {
+): Promise<{ readonly plans: readonly DevicePlan[]; readonly skipped: readonly Skipped[] }> {
   const { lights, skipped } = lightsOf(ports.store, ask);
   const wanted = wantedOf(ask, colour);
   const drafts: Draft[] = [];
   const left = [...skipped];
   for (const light of lights) {
-    const draft = planDevice(ports.store, light, ask, wanted);
+    const draft = await planDevice(ports.store, light, ask, wanted);
     if (typeof draft === 'string') left.push({ deviceId: light.id, reason: draft });
     else drafts.push(draft);
   }
@@ -327,7 +327,7 @@ function lightSet(ports: LightEffectPorts): EffectHandler {
     if (!asked.ok) return asked;
     const { ask, colour } = asked.value;
     try {
-      const { plans, skipped } = planned(ports, ask, colour, request);
+      const { plans, skipped } = await planned(ports, ask, colour, request);
       announceFade(run, plans, ask);
       const at = stampOf(request.path);
       const mode = modeOf(request);

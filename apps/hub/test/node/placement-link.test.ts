@@ -1,3 +1,4 @@
+import { inlineMetrics } from '../../src/node/metrics/node-metrics';
 import {
   DEFAULT_COMPUTER_SCOPES,
   type DrivePlacement,
@@ -207,7 +208,7 @@ describe('ComputerNode placements', () => {
     captureLogs();
     const links = localLinks();
     const node = new ComputerNode({
-      collector: idleCollector(),
+      metrics: inlineMetrics(idleCollector()),
       controls: inertControls(),
       link: links.node,
       now: (): Date => new Date('2026-11-07T10:00:00.000Z'),

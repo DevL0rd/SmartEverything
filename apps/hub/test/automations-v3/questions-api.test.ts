@@ -14,10 +14,10 @@ let rig: ProgramRig;
 let routes: ReturnType<typeof automationQuestionRoutes>;
 let automationId: string;
 
-beforeEach(() => {
+beforeEach(async () => {
   captureLogs();
   rig = programRig();
-  const made = rig.service.create(rig.owner.caller, {
+  const made = await rig.service.create(rig.owner.caller, {
     name: 'Door',
     enabled: true,
     definition: automationOf([logLine('say', 'hi')]),
@@ -25,7 +25,7 @@ beforeEach(() => {
   if (made.id === null) throw new Error(made.summary);
   automationId = made.id;
   const desk = new QuestionDesk({
-    questions: rig.store.automationQuestions,
+    host: rig.store.host,
     clock: { now: (): Date => NOW },
   });
   routes = automationQuestionRoutes({ store: rig.store, questions: desk });

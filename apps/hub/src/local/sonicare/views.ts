@@ -34,9 +34,7 @@ function forecastOf(context: ViewContext, state: BrushState): HeadForecast | nul
   if (typeof head.serial !== 'string') {
     return null;
   }
-  const row = context.deps.store.brushingSessions
-    .heads(context.device.id)
-    .find((item) => item.serial === head.serial);
+  const row = context.heads.find((item) => item.serial === head.serial);
   return row === undefined
     ? null
     : headForecast(
@@ -97,7 +95,7 @@ export function sonicareHeadTimeline(context: ViewContext, state: BrushState): H
   const current = state.head.serial;
   const forecast = forecastOf(context, state);
   return {
-    timeline: context.deps.store.brushingSessions.heads(context.device.id).map((head) => ({
+    timeline: context.heads.map((head) => ({
       serial: head.serial,
       type: head.type,
       firstSeen: head.firstSeen,

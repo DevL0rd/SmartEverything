@@ -113,7 +113,7 @@ export class CallDesk {
 
   async start(endpoint: VoiceEndpoint, client: ClientRow, message: CallStart): Promise<void> {
     await this.calls.get(endpoint.id)?.conversation.end('replaced', null, 'replaced_by_new_call');
-    const caller = callerOf(this.options.store, client, message.device);
+    const caller = await callerOf(this.options.store, client, message.device);
     const chatId = this.options.responder.chatForCall({
       profileId: caller.profileId,
       clientId: client.id,
@@ -153,7 +153,7 @@ export class CallDesk {
     const call = await this.open({
       id: request.callId,
       endpoint: request.endpoint,
-      caller: hostedCallerOf(this.options.store, request.caller),
+      caller: await hostedCallerOf(this.options.store, request.caller),
       chatId: request.opening.chatId,
       source: null,
       opening: request.opening.text,
@@ -331,11 +331,12 @@ export class CallDesk {
   private async open(spec: CallSpec): Promise<Call> {
     const { store } = this.options;
     await this.options.memory.prepare(callPrincipal({ ...spec.caller, chatId: spec.chatId }));
+    const { tools: chatTools } = await store.host.call('aiChats', 'chat', spec.chatId);
     const record = new CallRecord(store, {
       chatId: spec.chatId,
       profileId: spec.caller.profileId,
       clientId: spec.caller.clientId,
-      author: assistantLabel(store.assistantChat.settings()),
+      author: assistantLabel(store.live.home.assistant.read()),
       person: spec.caller.person,
     });
     const slack =
@@ -346,6 +347,7 @@ export class CallDesk {
     const hooks = conversationHooks(this.deps, () => call, spec.speech, spec.listening);
     const call: Call = {
       ...spec,
+      chatTools,
       endpoint: slot,
       link,
       startedAt: this.options.now(),

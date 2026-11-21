@@ -8,7 +8,6 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { SimulatedClock } from '../../src/clock/simulated';
 import type { PhoneRings } from '../../src/planner/phone-rings';
 import { plannerPreferencesOf } from '../../src/planner/preferences';
 import type { Bound } from '../../src/server/router';
@@ -24,12 +23,12 @@ import type { TestPerson } from '../support/phone-fixtures';
 import type { TestStore } from '../support/store';
 
 let test: TestStore;
-let clock: SimulatedClock;
 let owner: TestPerson;
 let ann: TestPerson;
 let bob: TestPerson;
 let phoneRings: PhoneRings;
 let routes: ReturnType<typeof plannerClockRoutes>;
+let advance: ClockHarness['advance'];
 let close: ClockHarness['close'];
 
 const alarm = async (person: TestPerson, body: object): Promise<PlannerAlarmRow> =>
@@ -41,7 +40,7 @@ const timer = async (person: TestPerson, durationMs: number): Promise<{ id: stri
   );
 
 beforeEach(async () => {
-  ({ test, clock, owner, ann, bob, phoneRings, routes, close } = await buildClockHarness());
+  ({ test, owner, ann, bob, phoneRings, routes, advance, close } = await buildClockHarness());
 });
 
 afterEach(async () => {
@@ -145,7 +144,7 @@ describe('alarms', () => {
 describe('ringing alarms', () => {
   async function ringing(person: TestPerson): Promise<{ alarmId: string; ringId: string }> {
     const made = await alarm(person, { time: '08:30' });
-    clock.advanceTo('2026-11-07T08:30:00.000Z');
+    await advance('2026-11-07T08:30:00.000Z');
     const [ring] = test.store.plannerRings.forRef('alarm', made.id);
     if (ring === undefined) throw new Error('The alarm did not ring.');
     return { alarmId: made.id, ringId: ring.id };
@@ -228,7 +227,7 @@ describe('timers', () => {
 
   it('finishes a started timer on the clock', async () => {
     const started = await timer(ann, 60_000);
-    clock.advanceTo('2026-11-07T08:01:00.000Z');
+    await advance('2026-11-07T08:01:00.000Z');
     expect(test.store.plannerTimers.byId(started.id, ann.profileId).state).toBe('done');
   });
 });
@@ -242,10 +241,10 @@ describe('stopwatch', () => {
 
   it('runs, laps, pauses and resets for the caller', async () => {
     await run(routes.startPlannerStopwatch, ann);
-    clock.advanceTo('2026-11-07T08:00:10.000Z');
+    await advance('2026-11-07T08:00:10.000Z');
     const lapped = await run(routes.lapPlannerStopwatch, ann);
     expect(lapped.laps).toEqual([{ elapsed_ms: 10_000, split_ms: 10_000 }]);
-    clock.advanceTo('2026-11-07T08:00:25.000Z');
+    await advance('2026-11-07T08:00:25.000Z');
     const paused = await run(routes.pausePlannerStopwatch, ann);
     expect(paused).toMatchObject({ running: false, accumulated_ms: 25_000 });
     await expect(run(routes.lapPlannerStopwatch, bob)).rejects.toMatchObject({
@@ -283,7 +282,7 @@ describe('phone rings', () => {
         dueAt: '2026-11-07T08:10:00.000Z',
       }),
     ]);
-    expect(set.hash).toBe(phoneRings.desired(ann.client.id).version);
+    expect(set.hash).toBe((await phoneRings.desired(ann.client.id)).version);
   });
 
   it('leaves a one-off alarm that has passed out of the set', async () => {

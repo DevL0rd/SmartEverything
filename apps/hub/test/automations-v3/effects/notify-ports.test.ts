@@ -34,7 +34,7 @@ async function rig(failing = false): Promise<{
   const { store, close } = await testStore();
   const calls: Call[] = [];
   const tools: Pick<ToolHub, 'check' | 'call'> = {
-    check: (): ToolCheck => ({ ok: true, tool: TOOL }),
+    check: (): Promise<ToolCheck> => Promise.resolve({ ok: true, tool: TOOL }),
     call: (name, args): Promise<HubToolResult> => {
       calls.push({ name, args });
       if (failing) return Promise.reject(new Error('The phone is unreachable'));
@@ -54,7 +54,7 @@ async function rig(failing = false): Promise<{
     events: { record: (): void => undefined },
     ai: slot,
     computers: new AutomationComputersSlot(),
-    questions: new QuestionDesk({ questions: store.automationQuestions, clock }),
+    questions: new QuestionDesk({ host: store.host, clock }),
   });
   return { calls, handlers, close };
 }

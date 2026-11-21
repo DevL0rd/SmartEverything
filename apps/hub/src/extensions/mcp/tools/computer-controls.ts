@@ -125,7 +125,7 @@ export async function changeAudio(
   context: OperatingContext,
   { deviceId: wanted, change }: Chosen<AudioChange>,
 ): Promise<Fields> {
-  const deviceId = computerIdOf(context, wanted);
+  const deviceId = await computerIdOf(context, wanted);
   const state = AUDIO_STATE.parse(await changed(context, 'changeComputerAudio', deviceId, change));
   return answered(audioSummary(change), compactAudio(state));
 }
@@ -178,7 +178,7 @@ export async function changeDisplay(
   context: OperatingContext,
   { deviceId: wanted, change }: DisplayRequest,
 ): Promise<Fields> {
-  const deviceId = computerIdOf(context, wanted);
+  const deviceId = await computerIdOf(context, wanted);
   if (change['action'] === 'keep' || change['action'] === 'revert') {
     const keep = change['action'] === 'keep';
     const state = DISPLAY_STATE.parse(
@@ -215,7 +215,7 @@ export async function changeSystem(
   context: OperatingContext,
   { deviceId: wanted, change }: Chosen<SystemToolChange>,
 ): Promise<Fields> {
-  const deviceId = computerIdOf(context, wanted);
+  const deviceId = await computerIdOf(context, wanted);
   return answered(systemSummary(change), await systemState(context, deviceId, change));
 }
 
@@ -236,7 +236,7 @@ export async function changeWindow(
   windowId: string,
   action: WindowAction,
 ): Promise<Fields> {
-  const deviceId = computerIdOf(context, wanted);
+  const deviceId = await computerIdOf(context, wanted);
   const state = WINDOWS_STATE.parse(
     await changed(context, 'changeComputerWindow', deviceId, { windowId, action }),
   );

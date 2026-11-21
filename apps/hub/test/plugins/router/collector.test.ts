@@ -2,6 +2,7 @@ import type { RouterSnapshot } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RouterCollector } from '../../../src/plugins/builtin/router/collector';
 import type { RouterShell } from '../../../src/plugins/builtin/router/router-shell';
+import type { WireAudience } from '../../../src/plugins/builtin/wire-gate';
 import { testLogger } from '../../support/logs';
 import { collectReply } from './collect-fixture';
 
@@ -10,6 +11,7 @@ interface Rig {
   readonly lines: string[];
   readonly recorded: RouterSnapshot[];
   readonly published: RouterSnapshot[];
+  readonly audiences: WireAudience[];
   readonly shell: { fail: boolean };
 }
 
@@ -17,6 +19,7 @@ function rig(): Rig {
   const lines: string[] = [];
   const recorded: RouterSnapshot[] = [];
   const published: RouterSnapshot[] = [];
+  const audiences: WireAudience[] = [];
   let bytes = 0;
   const control = { fail: false };
   const shell: RouterShell = {
@@ -45,11 +48,12 @@ function rig(): Rig {
     record: (snapshot): void => {
       recorded.push(snapshot);
     },
-    publish: (snapshot): void => {
+    publish: (snapshot, _full, audience): void => {
       published.push(snapshot);
+      audiences.push(audience);
     },
   });
-  return { collector, lines, recorded, published, shell: control };
+  return { collector, lines, recorded, published, audiences, shell: control };
 }
 
 beforeEach(() => {
@@ -78,6 +82,20 @@ describe('router recording', () => {
     collector.stop();
     expect(published).toHaveLength(recorded.length);
     expect(published.length).toBeGreaterThan(10);
+  });
+
+  it('sends the per-second frames only to viewers and one frame every 30 s to everyone', async () => {
+    const { collector, published, audiences } = rig();
+    collector.setCadence('fast');
+    await vi.advanceTimersByTimeAsync(60_000);
+    collector.stop();
+    const everyone = audiences.filter((audience) => audience === 'everyone').length;
+    expect(published.length).toBeGreaterThan(50);
+    expect(everyone).toBeGreaterThanOrEqual(2);
+    expect(everyone).toBeLessThanOrEqual(3);
+    expect(audiences.filter((audience) => audience === 'viewers')).toHaveLength(
+      published.length - everyone,
+    );
   });
 
   it('asks for the full frame every 10 s when watched and every 30 s otherwise', async () => {

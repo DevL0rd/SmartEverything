@@ -85,6 +85,7 @@ function owner(): ReturnType<TestStore['store']['clients']['create']> {
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   now = START;
   heard = [];
   chatId = opened.store.aiChats.create({

@@ -26,13 +26,13 @@ interface Streaming {
   readonly chat: AiChatRow;
   readonly replyId: string;
   readonly publish: (rest: Tail) => void;
-  readonly row: () => ReturnType<Rig['opened']['store']['assistantChat']['message']>;
+  readonly row: () => Promise<ReturnType<Rig['opened']['store']['assistantChat']['message']>>;
 }
 
 async function streaming(): Promise<Streaming> {
   const { store } = rig.opened;
   const chat = rig.newChat(rig.hub.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
   const current = store.aiChats.chat(chat.id);
   const streams = new ConversationProjector(
@@ -78,7 +78,10 @@ async function streaming(): Promise<Streaming> {
     chat: current,
     replyId: reply.id,
     publish,
-    row: () => store.assistantChat.message(reply.id),
+    row: async (): Promise<ReturnType<Rig['opened']['store']['assistantChat']['message']>> => {
+      await streams.settled();
+      return store.assistantChat.message(reply.id);
+    },
   };
 }
 
@@ -119,24 +122,24 @@ describe('a streamed native reply', () => {
 
     expect(exec.mock.calls.filter(([sql]) => sql === 'commit')).toStrictEqual([]);
     expect(changes).toStrictEqual([]);
-    expect(turn.row().text).toBe('');
+    expect((await turn.row()).text).toBe('');
   });
 
   it('saves the text so far when a tool call starts and finishes', async () => {
     const turn = await streaming();
     turn.publish({ kind: 'text', delta: 'Looking. ' });
-    expect(turn.row().text).toBe('');
+    expect((await turn.row()).text).toBe('');
 
     turn.publish(tool('call-1', 'running'));
-    expect(turn.row().text).toBe('Looking.');
-    expect(timelineTexts(turn.row().embeds)).toStrictEqual(['Looking. ']);
+    expect((await turn.row()).text).toBe('Looking.');
+    expect(timelineTexts((await turn.row()).embeds)).toStrictEqual(['Looking. ']);
 
     turn.publish({ kind: 'text', delta: 'Found it. ' });
-    expect(turn.row().text).toBe('Looking.');
+    expect((await turn.row()).text).toBe('Looking.');
 
     turn.publish(tool('call-1', 'completed'));
-    expect(turn.row().text).toBe('Looking. Found it.');
-    expect(timelineTexts(turn.row().embeds)).toStrictEqual(['Looking. ', 'Found it. ']);
+    expect((await turn.row()).text).toBe('Looking. Found it.');
+    expect(timelineTexts((await turn.row()).embeds)).toStrictEqual(['Looking. ', 'Found it. ']);
   });
 
   it('saves the whole reply and answers when the turn completes', async () => {
@@ -145,9 +148,9 @@ describe('a streamed native reply', () => {
     turn.publish({ kind: 'text', delta: 'now.' });
     turn.publish({ kind: 'completed', durable_seq: 3, interrupted: false });
 
-    expect(turn.row().text).toBe('Done now.');
-    expect(turn.row().state).toBe('answered');
-    expect(timelineTexts(turn.row().embeds)).toStrictEqual(['Done now.']);
+    expect((await turn.row()).text).toBe('Done now.');
+    expect((await turn.row()).state).toBe('answered');
+    expect(timelineTexts((await turn.row()).embeds)).toStrictEqual(['Done now.']);
   });
 
   it('commits the same few times whether a reply has 10 or 600 text chunks', async () => {
@@ -175,6 +178,6 @@ describe('a streamed native reply', () => {
       turn.publish({ kind: 'text', delta: 'x'.repeat(10_000) });
     turn.publish({ kind: 'completed', durable_seq: 3, interrupted: false });
 
-    expect(turn.row().text).toBe('x'.repeat(150_000));
+    expect((await turn.row()).text).toBe('x'.repeat(150_000));
   });
 });

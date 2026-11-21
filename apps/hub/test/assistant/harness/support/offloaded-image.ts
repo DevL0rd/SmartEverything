@@ -11,10 +11,15 @@ const ATTACHMENT = {
   height: 1,
 };
 
-export function appendOffloadedImage(rig: Rig, seeded: SeededConversation): void {
-  const reopened = rig.service.prepare(rig.owner, seeded.chat.id, rig.authority, rig.clientId);
+export async function appendOffloadedImage(rig: Rig, seeded: SeededConversation): Promise<void> {
+  const reopened = await rig.service.prepare(
+    rig.owner,
+    seeded.chat.id,
+    rig.authority,
+    rig.clientId,
+  );
   const next = storedHistory(rig, seeded.sessionId).length;
-  rig.opened.store.dshSessions.append(
+  await rig.opened.store.live.dshSessions.append(
     {
       claim: reopened.claim,
       operation_id: randomUUID(),

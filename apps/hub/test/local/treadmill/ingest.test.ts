@@ -2,8 +2,6 @@ import { bytesToHex, wilinkChecksum } from '@smarteverything/ble';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { MetricSeries, TreadmillLiveNotice, TreadmillSession } from '@smarteverything/domain';
 import { entrySettingsOf } from '../../../src/local/treadmill/config';
-import { recomputeSessions } from '../../../src/local/treadmill/figures';
-import { TreadmillHealth } from '../../../src/local/treadmill/health';
 import { actTreadmill } from '../../../src/local/treadmill/acts';
 import { readTreadmill } from '../../../src/local/treadmill/views';
 import {
@@ -39,11 +37,11 @@ afterEach(async () => {
   await rig.close();
 });
 
-function walkFor(seconds: number, speed10 = 30): void {
-  rig.batch(0, [statusHex({ state: IDLE })]);
-  rig.batch(1, [statusHex({ state: COUNTDOWN })]);
+async function walkFor(seconds: number, speed10 = 30): Promise<void> {
+  await rig.batch(0, [statusHex({ state: IDLE })]);
+  await rig.batch(1, [statusHex({ state: COUNTDOWN })]);
   for (let second = 2; second <= seconds; second += 1) {
-    rig.batch(second, [
+    await rig.batch(second, [
       statusHex({
         state: RUNNING,
         speed10,
@@ -81,9 +79,9 @@ function events(
 }
 
 describe('a walk reported by the phone', () => {
-  it('opens a session when the belt runs, keeps its samples and closes it when the belt stops', () => {
-    walkFor(62);
-    rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 51, steps: 122 })]);
+  it('opens a session when the belt runs, keeps its samples and closes it when the belt stops', async () => {
+    await walkFor(62);
+    await rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 51, steps: 122 })]);
     const sessions = rig.test.store.treadmillSessions.finished(rig.row().id, rig.owner.profile.id);
     expect(sessions).toHaveLength(1);
     const [session] = sessions;
@@ -94,9 +92,9 @@ describe('a walk reported by the phone', () => {
     expect(rig.test.store.treadmillSessions.openIds()).toEqual([]);
   });
 
-  it('announces the start and the finish once each, without the walker’s calories', () => {
-    walkFor(62);
-    rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 51, steps: 122 })]);
+  it('announces the start and the finish once each, without the walker’s calories', async () => {
+    await walkFor(62);
+    await rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 51, steps: 122 })]);
     expect(events('activity').map((details) => details.phase)).toEqual(['started', 'finished']);
     expect(events('activity')[1]).toMatchObject({
       phase: 'finished',
@@ -106,9 +104,9 @@ describe('a walk reported by the phone', () => {
     expect(rig.events.every((event) => !('kcal' in event.details))).toBe(true);
   });
 
-  it('writes the walk to the walker’s health as one exercise session with speed samples', () => {
-    walkFor(62);
-    rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 51, steps: 122 })]);
+  it('writes the walk to the walker’s health as one exercise session with speed samples', async () => {
+    await walkFor(62);
+    await rig.batch(63, [statusHex({ state: STOPPED, time: 61, distance10m: 51, steps: 122 })]);
     const records = rig.test.store.health.records(
       {
         types: ['ExerciseSession', 'Speed'],
@@ -122,39 +120,41 @@ describe('a walk reported by the phone', () => {
     expect(records[0]?.sourceApp).toBe('smarteverything.treadmill');
   });
 
-  it('throws away a run too short to be a session and says so in the log', () => {
-    walkFor(6);
-    rig.batch(7, [statusHex({ state: STOPPED, time: 5 })]);
+  it('throws away a run too short to be a session and says so in the log', async () => {
+    await walkFor(6);
+    await rig.batch(7, [statusHex({ state: STOPPED, time: 5 })]);
     expect(rig.test.store.treadmillSessions.finished(rig.row().id, undefined)).toEqual([]);
     expect(logs.events()).toContain('treadmill.session_discarded');
     expect(events('activity').map((details) => details.phase)).toEqual(['started']);
   });
 
-  it('tells the live page about the belt once a second only while someone watches', () => {
-    walkFor(4);
+  it('tells the live page about the belt once a second only while someone watches', async () => {
+    await walkFor(4);
     expect(rig.notices).toHaveLength(0);
     rig.watched.value = true;
-    const result = rig.batch(5, [statusHex({ state: RUNNING, speed10: 30, time: 4, steps: 8 })]);
+    const result = await rig.batch(5, [
+      statusHex({ state: RUNNING, speed10: 30, time: 4, steps: 8 }),
+    ]);
     expect(result).toEqual({ live: true, accepted: 1 });
     expect(rig.notices).toHaveLength(1);
   });
 
-  it('shows the walker’s body figures to the walker and the owner but not to anyone else', () => {
+  it('shows the walker’s body figures to the walker and the owner but not to anyone else', async () => {
     rig.weigh(rig.owner, 80);
     rig.weigh(rig.member, 45);
     rig.holder.clientId = rig.member.client.id;
     rig.watched.value = true;
-    walkFor(12);
+    await walkFor(12);
     const [owner, member] = noticesNow();
     expect(owner?.frame.body).toMatchObject({ weightKg: 45 });
     expect(member?.frame.body).toMatchObject({ weightKg: 45 });
     expect(owner?.frame.belt.speedKmh).toBe(3);
   });
 
-  it('keeps the walker’s body figures from a member who is not the walker', () => {
+  it('keeps the walker’s body figures from a member who is not the walker', async () => {
     rig.weigh(rig.owner, 80);
     rig.watched.value = true;
-    walkFor(12);
+    await walkFor(12);
     const [owner, member] = noticesNow();
     expect(owner?.frame.body).toMatchObject({ weightKg: 80 });
     expect(member?.frame.body).toBeNull();
@@ -167,8 +167,8 @@ function noticesNow(): (TreadmillLiveNotice | null)[] {
 }
 
 describe('what the belt reports about itself', () => {
-  it('keeps the belt’s state and link in the device state and the speed in the metric history', () => {
-    walkFor(3);
+  it('keeps the belt’s state and link in the device state and the speed in the metric history', async () => {
+    await walkFor(3);
     const latest = (capability: string): unknown =>
       rig.states.filter((update) => update.capability === capability).at(-1)?.value;
     expect(latest('belt_state')).toBe('running');
@@ -178,22 +178,22 @@ describe('what the belt reports about itself', () => {
     );
   });
 
-  it('writes the numbers to the state at most every ten seconds', () => {
-    walkFor(25);
+  it('writes the numbers to the state at most every ten seconds', async () => {
+    await walkFor(25);
     const speedWrites = rig.states.filter((update) => update.capability === 'belt_speed');
     expect(speedWrites.length).toBeGreaterThanOrEqual(2);
     expect(speedWrites.length).toBeLessThanOrEqual(4);
   });
 
-  it('announces each panel button press once', () => {
-    walkFor(4);
-    rig.batch(5, [statusHex({ state: RUNNING, speed10: 30, time: 4, button: 2 })]);
-    rig.batch(6, [statusHex({ state: RUNNING, speed10: 30, time: 5, button: 2 })]);
+  it('announces each panel button press once', async () => {
+    await walkFor(4);
+    await rig.batch(5, [statusHex({ state: RUNNING, speed10: 30, time: 4, button: 2 })]);
+    await rig.batch(6, [statusHex({ state: RUNNING, speed10: 30, time: 5, button: 2 })]);
     expect(rig.events.filter((event) => event.kind === 'button')).toHaveLength(1);
   });
 
-  it('remembers the preferences the pad reports and tells the hub once', () => {
-    rig.batch(1, [prefsHex(0, 0)]);
+  it('remembers the preferences the pad reports and tells the hub once', async () => {
+    await rig.batch(1, [prefsHex(0, 0)]);
     expect(rig.fleet.of(rig.row()).runtime.pad).toMatchObject({
       maxSpeedKmh: 6,
       startSpeedKmh: 0.8,
@@ -205,22 +205,22 @@ describe('what the belt reports about itself', () => {
     expect(rig.observed.at(-1)).toHaveProperty('pad');
   });
 
-  it('announces reaching the pad goal once per session', () => {
-    rig.batch(0, [prefsHex(1, 50)]);
-    walkFor(60, 50);
+  it('announces reaching the pad goal once per session', async () => {
+    await rig.batch(0, [prefsHex(1, 50)]);
+    await walkFor(60, 50);
     const goals = events('activity').filter((details) => details.phase === 'goal_reached');
     expect(goals).toHaveLength(1);
   });
 
-  it('logs a frame it cannot read and goes on', () => {
-    rig.batch(1, ['f8a2010203fd', statusHex({ state: IDLE })]);
+  it('logs a frame it cannot read and goes on', async () => {
+    await rig.batch(1, ['f8a2010203fd', statusHex({ state: IDLE })]);
     expect(logs.events()).toContain('treadmill.frame_unreadable');
     expect(rig.states.some((update) => update.capability === 'belt_state')).toBe(true);
   });
 
-  it('reports a byte it cannot name once', () => {
-    rig.batch(1, [statusHex({ state: 11 })]);
-    rig.batch(2, [statusHex({ state: 11 })]);
+  it('reports a byte it cannot name once', async () => {
+    await rig.batch(1, [statusHex({ state: 11 })]);
+    await rig.batch(2, [statusHex({ state: 11 })]);
     expect(logs.events().filter((event) => event === 'treadmill.unknown_byte')).toHaveLength(1);
   });
 });
@@ -234,15 +234,15 @@ describe('a standard belt that reconnects mid walk', () => {
         [0x2c, 0x01, 0, 0, 0, time, 0, time * 2, 0, 0]
           .map((byte) => byte.toString(16).padStart(2, '0'))
           .join('');
-      const send = (
+      const send = async (
         seconds: number,
         phase: 'linked' | 'connecting',
         frames: readonly [string, string][],
-      ): void => {
+      ): Promise<void> => {
         standard.clock.advanceTo(
           new Date(Date.parse('2026-10-18T10:00:00.000Z') + seconds * 1000).toISOString(),
         );
-        standard.ingest.process(standard.row(), standard.owner.client, {
+        await standard.ingest.process(standard.row(), standard.owner.client, {
           frames: frames.map(([characteristic, hex]) => ({
             at: standard.clock.now().toISOString(),
             characteristic,
@@ -251,13 +251,13 @@ describe('a standard belt that reconnects mid walk', () => {
           link: { phase, rssi: -55, reconnects: 0, detail: null },
         });
       };
-      send(1, 'linked', [
+      await send(1, 'linked', [
         ['2ada', '04'],
         ['2acd', data(1)],
       ]);
-      send(5, 'connecting', []);
-      send(6, 'connecting', [['2ada', '0201']]);
-      send(7, 'linked', [['2acd', data(7)]]);
+      await send(5, 'connecting', []);
+      await send(6, 'connecting', [['2ada', '0201']]);
+      await send(7, 'linked', [['2acd', data(7)]]);
       expect(standard.fleet.of(standard.row()).runtime.machine.state).toBe('running');
       expect(standard.test.store.treadmillSessions.openIds()).toHaveLength(1);
     } finally {
@@ -286,9 +286,9 @@ describe('a walk on the G15 with an incline', () => {
     return session;
   }
 
-  it('keeps the raw belt incline per sample and counts the climb with the scale setting', () => {
-    walk(g15, 60, { kmh: 3.6, incline: 10 });
-    stopBelt(g15, 61, 60);
+  it('keeps the raw belt incline per sample and counts the climb with the scale setting', async () => {
+    await walk(g15, 60, { kmh: 3.6, incline: 10 });
+    await stopBelt(g15, 61, 60);
     const session = finishedSession();
     const samples = g15.test.store.treadmillSessions.samples(session.id);
     expect(samples.length).toBeGreaterThan(55);
@@ -299,25 +299,25 @@ describe('a walk on the G15 with an incline', () => {
     expect(Object.keys(session.inclineSeconds)).toEqual(['10']);
   });
 
-  it('counts a percent scale at the full grade and a levels scale at half a percent per level', () => {
+  it('counts a percent scale at the full grade and a levels scale at half a percent per level', async () => {
     setScale(g15, 'percent');
-    walk(g15, 60, { kmh: 3.6, incline: 10 });
-    stopBelt(g15, 61, 60);
+    await walk(g15, 60, { kmh: 3.6, incline: 10 });
+    await stopBelt(g15, 61, 60);
     expect(finishedSession().climbM).toBeCloseTo(5.9, 1);
   });
 
-  it('puts the live grade into the calories and names the estimate as the source', () => {
+  it('puts the live grade into the calories and names the estimate as the source', async () => {
     setScale(g15, 'percent');
-    walk(g15, 60, { kmh: 3.6, incline: 10 });
-    stopBelt(g15, 61, 60);
+    await walk(g15, 60, { kmh: 3.6, incline: 10 });
+    await stopBelt(g15, 61, 60);
     const steep = finishedSession();
     expect(steep.kcalSource).toBe('estimate');
     expect(steep.kcal).toBeGreaterThan(0);
   });
 
-  it('takes the belt’s own energy first and the grips heart rate before the watch', () => {
+  it('takes the belt’s own energy first and the grips heart rate before the watch', async () => {
     g15.watched.value = true;
-    walk(g15, 30, { kmh: 3.6, incline: 4, beltKcal: 7, heartRate: 120 });
+    await walk(g15, 30, { kmh: 3.6, incline: 4, beltKcal: 7, heartRate: 120 });
     const frame = g15.notices.at(-1)?.notices[0]?.frame;
     expect(frame?.body).toMatchObject({ kcal: 7, kcalSource: 'belt', heartRate: 120 });
     expect(frame?.body?.heartRateSource).toBe('grips');
@@ -326,32 +326,31 @@ describe('a walk on the G15 with an incline', () => {
       inclineGrade: 2,
       inclineScale: 'unconfirmed',
     });
-    stopBelt(g15, 31, 30);
+    await stopBelt(g15, 31, 30);
     const session = finishedSession();
     expect(session.kcalSource).toBe('belt');
     expect(session.kcal).toBe(7);
     expect(session.heartRateSource).toBe('grips');
   });
 
-  it('recomputes the stored climb from the samples when the owner changes the scale', () => {
-    walk(g15, 60, { kmh: 3.6, incline: 10 });
-    stopBelt(g15, 61, 60);
+  it('recomputes the stored climb from the samples when the owner changes the scale', async () => {
+    await walk(g15, 60, { kmh: 3.6, incline: 10 });
+    await stopBelt(g15, 61, 60);
     expect(finishedSession().climbM).toBeCloseTo(2.95, 1);
     const device = setScale(g15, 'percent');
     const settings = entrySettingsOf(g15.fleet.of(device).entry);
-    const changed = recomputeSessions(
-      { store: g15.test.store, health: new TreadmillHealth(g15.test.store) },
-      device.id,
+    const changed = await g15.test.store.host.write('treadmillRecompute', {
+      deviceId: device.id,
       settings,
-      true,
-    );
-    expect(changed).toHaveLength(1);
+      hasIncline: true,
+    });
+    expect(changed).toBe(1);
     expect(finishedSession().climbM).toBeCloseTo(5.9, 1);
   });
 
   it('recomputes stored sessions when the owner changes the scale through the settings action', async () => {
-    walk(g15, 60, { kmh: 3.6, incline: 10 });
-    stopBelt(g15, 61, 60);
+    await walk(g15, 60, { kmh: 3.6, incline: 10 });
+    await stopBelt(g15, 61, 60);
     expect(finishedSession().climbM).toBeCloseTo(2.95, 1);
     await actTreadmill(
       {
@@ -359,7 +358,6 @@ describe('a walk on the G15 with an incline', () => {
         fleet: g15.fleet,
         local: { observe: () => Promise.resolve() },
         bridges: { takeOver: () => Promise.reject(new Error('unused')) },
-        health: new TreadmillHealth(g15.test.store),
         broker: { run: () => Promise.reject(new Error('unused')) },
         holderOf: () => null,
         now: g15.clock.now,
@@ -382,7 +380,7 @@ describe('a walk on the G15 with an incline', () => {
     const bare = await g15Rig();
     try {
       bare.watched.value = true;
-      walk(bare, 30, { kmh: 3.6, incline: 4, heartRate: 120 });
+      await walk(bare, 30, { kmh: 3.6, incline: 4, heartRate: 120 });
       const body = bare.notices.at(-1)?.notices[0]?.frame.body;
       expect(body).toMatchObject({
         heartRate: 120,
@@ -396,17 +394,17 @@ describe('a walk on the G15 with an incline', () => {
     }
   });
 
-  it('shows standby only when the belt reports sleep and says so when the link drops while stopped', () => {
-    feed(g15, 1, [sleepFrame(true), walkFrame({ second: 0, kmh: 0, incline: 0 })]);
+  it('shows standby only when the belt reports sleep and says so when the link drops while stopped', async () => {
+    await feed(g15, 1, [sleepFrame(true), walkFrame({ second: 0, kmh: 0, incline: 0 })]);
     expect(g15.states.filter((update) => update.capability === 'belt_state').at(-1)?.value).toBe(
       'standby',
     );
-    feed(g15, 2, [sleepFrame(false), walkFrame({ second: 0, kmh: 0, incline: 0 })]);
+    await feed(g15, 2, [sleepFrame(false), walkFrame({ second: 0, kmh: 0, incline: 0 })]);
     expect(g15.states.filter((update) => update.capability === 'belt_state').at(-1)?.value).toBe(
       'idle',
     );
-    feed(g15, 3, [], 'lost');
-    const view = readTreadmill(
+    await feed(g15, 3, [], 'lost');
+    const view = await readTreadmill(
       {
         store: g15.test.store,
         fleet: g15.fleet,

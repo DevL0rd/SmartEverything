@@ -1,6 +1,7 @@
 import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../../clock';
 import { BirthdaysFeedKind, type BirthdayFeedStore } from '../birthdays/feed';
+import type { CalendarReader } from '../ical/calendar-reader';
 import { HolidaysFeedKind, type HolidayFeedStore } from '../holidays/feed';
 import { FeedSubscriptions } from '../subscriptions/manager';
 import type { SubscriptionStore } from '../subscriptions/subscription';
@@ -11,6 +12,7 @@ import { FeedRegistry } from './registry';
 export interface FeedServiceOptions {
   readonly store: SubscriptionStore & BirthdayFeedStore & HolidayFeedStore;
   readonly clock: Clock;
+  readonly calendars: CalendarReader;
   readonly log: Logger;
 }
 
@@ -31,6 +33,11 @@ export class FeedService {
   start(): void {
     this.subscriptions.start();
     this.stopBirthdays ??= this.birthdays.watch();
+  }
+
+  async settled(): Promise<void> {
+    await this.subscriptions.settled();
+    await this.birthdays.settled();
   }
 
   stop(): void {

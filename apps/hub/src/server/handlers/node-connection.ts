@@ -7,8 +7,8 @@ export function nodeConnectionRoute(context: ServerContext): RawRoute {
   return {
     method: 'GET',
     path: NODE_CONNECTION_PATH,
-    handle: (request, response): Promise<void> => {
-      const node = context.computerNodes.authenticate(bearerOf(request));
+    handle: async (request, response): Promise<void> => {
+      const node = await context.computerNodes.authenticate(bearerOf(request));
       if (context.connections === undefined)
         throw new ApiError('upstream_failed', 'This hub has no paired connection identity.');
       sendJson(
@@ -19,7 +19,6 @@ export function nodeConnectionRoute(context: ServerContext): RawRoute {
           connection: context.connections.metadata(),
         }),
       );
-      return Promise.resolve();
     },
   };
 }

@@ -28,17 +28,17 @@ type LogRoutes<Name extends ReadName | WriteName> = {
   readonly [Key in Name]: Bound<(typeof E)[Key]>;
 };
 
-function accessOf(context: RuntimeLogContext, caller: Caller): LogAccess {
+function accessOf(caller: Caller): LogAccess {
   if (caller.kind === 'anonymous') {
     return { owner: false, profileId: null };
   }
   return {
     owner: roleOfCaller(caller) === 'owner',
-    profileId: profileIdOf(context.store, caller),
+    profileId: profileIdOf(caller),
   };
 }
 
-function sourceOf(context: RuntimeLogContext, caller: Caller): LogSourceInfo {
+function sourceOf(caller: Caller): LogSourceInfo {
   const client = directClient(caller);
   if (client === undefined) {
     throw new ApiError('forbidden', 'Only a paired app may send its logs.');
@@ -48,7 +48,7 @@ function sourceOf(context: RuntimeLogContext, caller: Caller): LogSourceInfo {
     runtime: 'app',
     platform: client.platform === 'desktop' ? 'web' : client.platform,
     deviceId: client.id,
-    clientId: profileIdOf(context.store, caller),
+    clientId: profileIdOf(caller),
   };
 }
 
@@ -70,9 +70,9 @@ function desktopSourceOf(caller: Caller): LogSourceInfo {
   };
 }
 
-function guarded<T>(operation: () => T): T {
+async function guarded<T>(operation: () => Promise<T>): Promise<T> {
   try {
-    return operation();
+    return await operation();
   } catch (cause) {
     if (cause instanceof Error && cause.name === 'LogAccessError') {
       throw new ApiError('forbidden', 'Only an owner may read the logs of another profile.');
@@ -95,7 +95,7 @@ function writeRoutes(context: RuntimeLogContext, now: () => Date): LogRoutes<Wri
       });
     }),
     ingestRuntimeLogs: bound(E.ingestRuntimeLogs, ({ body, caller }) => {
-      const source = sourceOf(context, caller);
+      const source = sourceOf(caller);
       if (body.clientId !== source.deviceId || body.profileId !== source.clientId) {
         throw new ApiError(
           'conflict',
@@ -104,7 +104,7 @@ function writeRoutes(context: RuntimeLogContext, now: () => Date): LogRoutes<Wri
       }
       return guarded(() =>
         logs.ingest({
-          access: accessOf(context, caller),
+          access: accessOf(caller),
           batch: body,
           source,
           deviceId: source.deviceId,
@@ -114,15 +114,11 @@ function writeRoutes(context: RuntimeLogContext, now: () => Date): LogRoutes<Wri
     }),
     reportRuntimeLogGap: bound(E.reportRuntimeLogGap, ({ body, caller }) =>
       guarded(() =>
-        logs
-          .recordGap(sourceOf(context, caller), body.firstSentAt, body.lastSentAt)
-          .then(() => DONE_REPLY),
+        logs.recordGap(sourceOf(caller), body.firstSentAt, body.lastSentAt).then(() => DONE_REPLY),
       ),
     ),
     dropRuntimeLogs: bound(E.dropRuntimeLogs, ({ query, caller }) =>
-      guarded(() =>
-        logs.drop(accessOf(context, caller), query.before).then((dropped) => ({ dropped })),
-      ),
+      guarded(() => logs.drop(accessOf(caller), query.before).then((dropped) => ({ dropped }))),
     ),
   };
 }
@@ -131,11 +127,11 @@ function readRoutes(context: RuntimeLogContext, now: () => Date): LogRoutes<Read
   const logs = context.logs;
   return {
     searchRuntimeLogs: bound(E.searchRuntimeLogs, ({ query, caller }) =>
-      guarded(() => logs.search(accessOf(context, caller), query)),
+      guarded(() => logs.search(accessOf(caller), query)),
     ),
     readRuntimeLogsAround: bound(E.readRuntimeLogsAround, ({ query, caller }) =>
-      guarded(() => {
-        const around = logs.around(accessOf(context, caller), query);
+      guarded(async () => {
+        const around = await logs.around(accessOf(caller), query);
         if (around === null) {
           throw new ApiError('not_found', 'There is no log record at that moment.');
         }
@@ -143,12 +139,12 @@ function readRoutes(context: RuntimeLogContext, now: () => Date): LogRoutes<Read
       }),
     ),
     readRuntimeLogSources: bound(E.readRuntimeLogSources, ({ caller }) =>
-      guarded(() => logs.sources(accessOf(context, caller))),
+      guarded(() => logs.sources(accessOf(caller))),
     ),
     readRuntimeLogComponents: bound(E.readRuntimeLogComponents, ({ query, caller }) =>
       guarded(() =>
         logs.components(
-          accessOf(context, caller),
+          accessOf(caller),
           sinceOf(query.since, now(), DAY_MS),
           query.levels ?? FAILURE_LEVELS,
         ),
@@ -156,18 +152,14 @@ function readRoutes(context: RuntimeLogContext, now: () => Date): LogRoutes<Read
     ),
     readRuntimeLogSignatures: bound(E.readRuntimeLogSignatures, ({ query, caller }) =>
       guarded(() =>
-        logs.signatures(
-          accessOf(context, caller),
-          sinceOf(query.since, now(), WEEK_MS),
-          query.component,
-        ),
+        logs.signatures(accessOf(caller), sinceOf(query.since, now(), WEEK_MS), query.component),
       ),
     ),
     readRuntimeLogPlatforms: bound(E.readRuntimeLogPlatforms, ({ caller }) =>
-      guarded(() => logs.platforms(accessOf(context, caller))),
+      guarded(() => logs.platforms(accessOf(caller))),
     ),
     readRuntimeLogGaps: bound(E.readRuntimeLogGaps, ({ caller }) =>
-      guarded(() => logs.gaps(accessOf(context, caller))),
+      guarded(() => logs.gaps(accessOf(caller))),
     ),
   };
 }

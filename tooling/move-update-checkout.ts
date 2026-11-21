@@ -88,7 +88,7 @@ export async function moveUpdateCheckout(
   ports: MovePorts,
 ): Promise<{ readonly from: string; readonly to: string }> {
   const to = resolve(input.to);
-  const source = findCheckoutSource(dataLayoutOf(input.data));
+  const source = await findCheckoutSource(dataLayoutOf(input.data));
   if (source === undefined)
     throw new MoveCheckoutError(
       'No update checkout is configured; run tooling/configure-update-source.ts --checkout first.',

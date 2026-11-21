@@ -25,7 +25,7 @@ export async function searchManaged(
   if (container !== undefined && container.chat_id !== context.chat.id)
     throw new ApiError('forbidden', 'Directory search must remain in this chat’s project folder.');
   const directory = container?.path ?? request.directory;
-  const root = projects.ensure(context.chat.id);
+  const root = await projects.ensure(context.chat.id);
   const found =
     directory === undefined ? await scanAreas(root) : await scanDirectory(root, directory);
   const ranked = rankMatches(found, request.query, (path) => ({

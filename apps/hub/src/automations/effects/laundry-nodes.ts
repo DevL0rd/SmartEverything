@@ -78,8 +78,14 @@ interface Machine {
   readonly values: ReturnType<typeof laundryValuesOf>;
 }
 
-function machineOf(store: Store, deviceId: string): Machine {
-  const device = store.devices.byId(deviceId);
+async function machineOf(store: Store, deviceId: string): Promise<Machine> {
+  const device = await store.host.call('devices', 'byId', deviceId);
+  const reported = new Map(
+    (await store.host.call('state', 'ofDevice', device.id)).map((row) => [
+      row.capability,
+      row.value,
+    ]),
+  );
   const presentation = presentDevice(device);
   if (presentation.family !== 'laundry')
     throw new ApiError('invalid_request', `${device.name} is not a washing machine or dryer.`);
@@ -87,7 +93,7 @@ function machineOf(store: Store, deviceId: string): Machine {
   return {
     device,
     keyOf: (role) => presentation.capabilities.find((presented) => presented.role === role)?.key,
-    values: laundryValuesOf(sources, (key) => store.state.value(device.id, key)),
+    values: laundryValuesOf(sources, (key) => reported.get(key)),
   };
 }
 
@@ -159,7 +165,7 @@ function laundryStart(ports: LaundryEffectPorts): EffectHandlers[string] {
     try {
       const program = programOf(ask.program);
       const draft = draftOf(ask);
-      const machine = machineOf(ports.store, ask.machine);
+      const machine = await machineOf(ports.store, ask.machine);
       const blocked = laundryReadiness(machine.values, machine.device.online);
       if (blocked !== null) throw new ApiError('command_refused', blocked);
       const commands = commandsOf(machine, draft);
@@ -182,7 +188,7 @@ function laundryControl(ports: LaundryEffectPorts): EffectHandlers[string] {
     if (!checked.ok) return checked;
     const ask = checked.value;
     try {
-      const machine = machineOf(ports.store, ask.machine);
+      const machine = await machineOf(ports.store, ask.machine);
       const capability = machine.keyOf(CONTROL_ROLES[ask.action]);
       if (capability === undefined)
         throw new ApiError('command_refused', `${machine.device.name} cannot ${ask.action}.`);

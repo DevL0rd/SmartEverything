@@ -47,6 +47,59 @@ const SOURCE = z.strictObject({
 
 const ACCESS = z.strictObject({ owner: z.boolean(), profileId: z.string().nullable() });
 
+const SEARCH = z.strictObject({
+  from: z.string().optional(),
+  to: z.string().optional(),
+  toId: z.int().optional(),
+  level: LOG_LEVEL.optional(),
+  scope: z.string().optional(),
+  component: z.string().optional(),
+  runtime: LOG_RUNTIME.optional(),
+  source: z.string().optional(),
+  deviceIds: z.array(z.string()).readonly().optional(),
+  text: z.string().optional(),
+  signature: z.string().optional(),
+  limit: z.int(),
+});
+
+const AROUND = z.strictObject({
+  id: z.int().optional(),
+  at: z.string().optional(),
+  before: z.int(),
+  after: z.int(),
+  level: LOG_LEVEL.optional(),
+  component: z.string().optional(),
+  runtime: LOG_RUNTIME.optional(),
+  deviceIds: z.array(z.string()).readonly().optional(),
+});
+
+export const LOG_READ = z.discriminatedUnion('method', [
+  z.strictObject({ method: z.literal('search'), access: ACCESS, search: SEARCH }),
+  z.strictObject({ method: z.literal('around'), access: ACCESS, around: AROUND }),
+  z.strictObject({ method: z.literal('sources'), access: ACCESS }),
+  z.strictObject({
+    method: z.literal('components'),
+    access: ACCESS,
+    since: z.string(),
+    levels: z.array(z.string()).readonly(),
+  }),
+  z.strictObject({
+    method: z.literal('signatures'),
+    access: ACCESS,
+    since: z.string(),
+    component: z.string().optional(),
+  }),
+  z.strictObject({ method: z.literal('platforms'), access: ACCESS }),
+  z.strictObject({ method: z.literal('gaps'), access: ACCESS }),
+  z.strictObject({ method: z.literal('clientOf'), logId: z.int() }),
+]);
+
+export type LogRead = z.infer<typeof LOG_READ>;
+
+export const LOG_READ_REQUEST = z.strictObject({ id: z.int(), read: LOG_READ });
+
+export type LogReadRequest = z.infer<typeof LOG_READ_REQUEST>;
+
 export const LOG_REQUEST = z.discriminatedUnion('op', [
   z.strictObject({
     id: z.int(),
@@ -104,6 +157,7 @@ export const LOG_REPLY = z.union([
     ack: RUNTIME_LOG_ACK.nullable(),
   }),
   z.strictObject({ id: z.int(), changed: z.int().nonnegative() }),
+  z.strictObject({ id: z.int(), value: z.unknown() }),
   z.strictObject({ id: z.int(), failure: z.string() }),
   z.strictObject({
     swept: z.record(z.string(), z.int().nonnegative()),

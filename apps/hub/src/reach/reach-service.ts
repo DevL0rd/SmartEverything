@@ -8,7 +8,7 @@ import {
   type Speak,
   type StartConversation,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, messageOf, type Logger } from '@smarteverything/logging';
 import type { PluginSpeakers } from '../plugins/plugin-speakers';
 import type { OutreachAnswer, OutreachAnswering, OutreachDesk } from '../assistant-voice/outreach';
 import type { Clock } from '../clock';
@@ -27,8 +27,7 @@ import type { Asker } from './reach-guards';
 import type { ReachRules } from './reach-rules';
 import { callOpening, outcomeText } from './reach-text';
 import { Ringing, type RingDevice, type RingPlan, type RingTransport } from './ringing';
-import { appOwner, resolveTarget, type ResolvedTarget } from './targets';
-import { messageOf } from '@smarteverything/logging';
+import { resolveTarget, type ResolvedTarget } from './targets';
 
 export type PersonNotice = Pick<NotifyPerson, 'text' | 'image' | 'tag' | 'link' | 'sound'>;
 
@@ -101,12 +100,10 @@ export class ReachService implements OutreachDesk {
   }
 
   start(): void {
-    for (const row of this.options.store.aiOutreach.open()) {
-      this.options.store.aiOutreach.step(row.id, {
-        state: 'failed',
-        detail: 'Stopped by a server restart.',
-      });
-    }
+    background(
+      this.options.store.host.write('retireOutreach', 'Stopped by a server restart.'),
+      'reach.retire_failed',
+    );
     this.hosting.restoreAll();
   }
 
@@ -126,11 +123,11 @@ export class ReachService implements OutreachDesk {
   }
 
   async startConversation(asker: Asker, body: StartConversation): Promise<AiOutreachRow> {
-    const target = resolveTarget(this.options.store, this.options, asker, body.target);
+    const target = await resolveTarget(this.options.store, this.options, asker, body.target);
     if (target.kind === 'app') {
       const device = target.client.platform === 'android' ? 'phone' : 'desktop';
       return this.ring(asker, {
-        personId: appOwner(this.options.store, target.client),
+        personId: target.owner,
         plan: { devices: [device], only: target.client.id },
         how: device,
         reason: body.reason,
@@ -147,12 +144,12 @@ export class ReachService implements OutreachDesk {
       : this.hosting.channel(asker, target.channel, body.reason);
   }
 
-  camera(
+  async camera(
     asker: Asker,
     body: { cameraId: string; reason: string },
     heard?: () => Int16Array,
   ): Promise<AiOutreachRow> {
-    const resolved = resolveTarget(this.options.store, this.options, asker, {
+    const resolved = await resolveTarget(this.options.store, this.options, asker, {
       kind: 'device',
       deviceId: body.cameraId,
     });
@@ -162,12 +159,12 @@ export class ReachService implements OutreachDesk {
     return this.hosting.camera(asker, resolved, body.reason, heard);
   }
 
-  computer(
+  async computer(
     asker: Asker,
     body: { computerId: string; reason: string },
     heard?: () => Int16Array,
   ): Promise<AiOutreachRow> {
-    const device = this.options.store.devices.find(body.computerId);
+    const device = this.options.store.live.home.devices.find(body.computerId);
     if (device?.kind !== 'computer') {
       throw new ReachRefusedError('That device is not a computer the AI may talk through.');
     }
@@ -181,16 +178,16 @@ export class ReachService implements OutreachDesk {
 
   async speak(asker: Asker, body: Speak): Promise<AiOutreachRow> {
     const { store } = this.options;
-    const target = resolveTarget(store, this.options, asker, body.target);
-    const personId = target.kind === 'app' ? appOwner(store, target.client) : asker.profileId;
+    const target = await resolveTarget(store, this.options, asker, body.target);
+    const personId = target.kind === 'app' ? target.owner : asker.profileId;
     if (target.kind === 'app') {
-      this.mayDisturb(asker, personId, false);
+      await this.mayDisturb(asker, personId, false);
       const refusal = this.options.app.refusal(target.client);
       if (refusal !== null) {
         throw new ReachRefusedError(refusal);
       }
     }
-    const row = store.aiOutreach.add({
+    const row = await store.host.call('aiOutreach', 'add', {
       profile_id: personId,
       chat_id: null,
       from_chat_id: asker.chatId,
@@ -208,7 +205,7 @@ export class ReachService implements OutreachDesk {
     const outcome = { returned: false };
     await this.announce(row, target, { clientId: asker.clientId, ...body }, outcome);
     outcome.returned = true;
-    const after = store.aiOutreach.byId(row.id);
+    const after = await store.host.call('aiOutreach', 'byId', row.id);
     if (after.state === 'failed') {
       throw new ReachRefusedError(after.detail ?? SPEECH_FAILED);
     }
@@ -217,7 +214,7 @@ export class ReachService implements OutreachDesk {
 
   async notify(asker: Asker, body: NotifyPerson): Promise<AiOutreachRow> {
     const { store } = this.options;
-    const name = this.mayDisturb(asker, body.personId, body.urgent);
+    const name = await this.mayDisturb(asker, body.personId, body.urgent);
     const { text, image, tag, link, sound } = body;
     const chatId = await this.options.assistant.message(asker, body.personId, {
       text,
@@ -226,7 +223,7 @@ export class ReachService implements OutreachDesk {
       link,
       sound,
     });
-    return store.aiOutreach.add({
+    return store.host.call('aiOutreach', 'add', {
       profile_id: body.personId,
       chat_id: chatId,
       from_chat_id: asker.chatId,
@@ -244,16 +241,16 @@ export class ReachService implements OutreachDesk {
 
   async hangUp(outreachId: string): Promise<AiOutreachRow> {
     const { store } = this.options;
-    const stopped = this.ringing.stop(outreachId);
+    const stopped = await this.ringing.stop(outreachId);
     if (stopped !== null) {
       return stopped;
     }
     const call = this.hosting.call(outreachId);
     if (call !== undefined) {
       await call.end('hung_up');
-      return store.aiOutreach.byId(outreachId);
+      return store.host.call('aiOutreach', 'byId', outreachId);
     }
-    const row = store.aiOutreach.byId(outreachId);
+    const row = await store.host.call('aiOutreach', 'byId', outreachId);
     throw new ReachRefusedError(
       row.state === 'live'
         ? 'This is playing or on their phone or computer; it ends by itself or from inside the call.'
@@ -261,7 +258,7 @@ export class ReachService implements OutreachDesk {
     );
   }
 
-  mute(outreachId: string, muted: boolean): AiOutreachRow {
+  mute(outreachId: string, muted: boolean): Promise<AiOutreachRow> {
     const call = this.hosting.call(outreachId);
     if (call === undefined) {
       throw new ReachRefusedError(
@@ -269,7 +266,7 @@ export class ReachService implements OutreachDesk {
       );
     }
     call.mute(muted);
-    return this.options.store.aiOutreach.byId(outreachId);
+    return this.options.store.host.call('aiOutreach', 'byId', outreachId);
   }
 
   answered(answering: OutreachAnswering): OutreachAnswer {
@@ -278,11 +275,20 @@ export class ReachService implements OutreachDesk {
 
   ended(outreachId: string, reason: CallEnding, summary: string | null): void {
     this.hosting.ended(outreachId);
-    const row = this.options.store.aiOutreach.find(outreachId);
+    background(this.closeLive(outreachId, reason, summary), 'reach.end_failed', { outreachId });
+  }
+
+  private async closeLive(
+    outreachId: string,
+    reason: CallEnding,
+    summary: string | null,
+  ): Promise<void> {
+    const { host } = this.options.store;
+    const row = await host.call('aiOutreach', 'find', outreachId);
     if (row?.state !== 'live') {
       return;
     }
-    const closed = this.options.store.aiOutreach.step(outreachId, {
+    const closed = await host.call('aiOutreach', 'step', outreachId, {
       state: reason === 'failed' ? 'failed' : 'ended',
       detail: summary === null ? null : summary.slice(-2000),
     });
@@ -290,7 +296,7 @@ export class ReachService implements OutreachDesk {
   }
 
   private async ring(asker: Asker, ring: Ring): Promise<AiOutreachRow> {
-    const name = this.mayDisturb(asker, ring.personId, ring.urgent);
+    const name = await this.mayDisturb(asker, ring.personId, ring.urgent);
     return this.ringing.start(ring.plan, {
       profile_id: ring.personId,
       chat_id: this.chatFor(asker, ring.personId),
@@ -313,14 +319,19 @@ export class ReachService implements OutreachDesk {
   ): Promise<void> {
     const { text, priority, volume, voice } = line;
     const { store, log } = this.options;
-    const done = (failure: string | null): void => {
-      store.aiOutreach.step(
+    const settle = async (failure: string | null): Promise<void> => {
+      const settled = await store.host.call(
+        'aiOutreach',
+        'step',
         row.id,
         failure === null ? { state: 'sent' } : { state: 'failed', detail: failure },
       );
       if (failure !== null && outcome.returned) {
-        this.closed(store.aiOutreach.byId(row.id));
+        this.closed(settled);
       }
+    };
+    const done = (failure: string | null): void => {
+      background(settle(failure), 'reach.speak_settle_failed', { outreachId: row.id });
     };
     try {
       if (target.kind === 'plugin') {
@@ -350,9 +361,9 @@ export class ReachService implements OutreachDesk {
     }
   }
 
-  private mayDisturb(asker: Asker, personId: string, urgent: boolean): string {
+  private async mayDisturb(asker: Asker, personId: string, urgent: boolean): Promise<string> {
     ownerOrSelf(asker.role, asker.profileId === personId);
-    const name = this.options.store.profiles.byId(personId).name;
+    const { name } = await this.options.store.host.call('profiles', 'byId', personId);
     const quiet = this.options.rules.quietRefusal(personId, name, urgent);
     if (quiet !== null) {
       throw new ReachRefusedError(quiet);

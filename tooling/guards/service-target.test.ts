@@ -20,6 +20,8 @@ import { elfMachine, highestGlibc, isWasmModule } from '../native-binary.ts';
 import { ServiceRuntimeError } from '../service-runtime.ts';
 import {
   OLDEST_SUPPORTED_GLIBC,
+  OPENVINO_FILES,
+  OPENVINO_PACKAGE,
   PLACES_DATASET,
   SERVICE_TARGET_NAME,
   serviceTarget,
@@ -67,6 +69,9 @@ function bundle(machine = ARM64): void {
   put('node_modules/@snazzah/davey-linux-arm64-gnu/davey.linux-arm64-gnu.node', elf(machine));
   put('node_modules/@anthropic-ai/claude-agent-sdk-linux-arm64/claude', elf(machine));
   put('node_modules/@img/sharp-wasm32/index.cjs', 'module.exports = {};');
+  for (const file of OPENVINO_FILES) {
+    put(join('node_modules', OPENVINO_PACKAGE, 'bin', file), elf(machine));
+  }
   for (const file of ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx']) {
     put(join(WAKE_MODEL_DIRECTORY, file), 'model');
   }
@@ -131,12 +136,17 @@ describe('a bundle for linux-arm64', () => {
     ]);
   });
 
-  it('asks for the arm64 build of the voice and Claude native files', () => {
+  it('asks for the arm64 build of the voice, Claude and OpenVINO native files', () => {
     bundle(X64);
-    expect(problems()).toStrictEqual([
-      'node_modules/@snazzah/davey-linux-arm64-gnu/davey.linux-arm64-gnu.node is built for x64, not arm64',
-      'node_modules/@anthropic-ai/claude-agent-sdk-linux-arm64/claude is built for x64, not arm64',
-    ]);
+    expect([...problems()].sort()).toStrictEqual(
+      [
+        'node_modules/@snazzah/davey-linux-arm64-gnu/davey.linux-arm64-gnu.node is built for x64, not arm64',
+        'node_modules/@anthropic-ai/claude-agent-sdk-linux-arm64/claude is built for x64, not arm64',
+        ...OPENVINO_FILES.map(
+          (file) => `node_modules/${OPENVINO_PACKAGE}/bin/${file} is built for x64, not arm64`,
+        ),
+      ].sort(),
+    );
   });
 
   it('reports the missing Claude binary and the missing arm64 voice addon', () => {

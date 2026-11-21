@@ -19,6 +19,7 @@ import { startConfiguredSource } from '../../src/self-update/source';
 import { testLogger } from '../support/logs';
 import { openStore } from '../../src/store/store';
 import { testLayout } from '../support/test-layout';
+import { testStoreHost } from '../support/store-host';
 
 const RUN = '00000000-0000-4000-8000-000000000001';
 const AT = '2026-11-14T10:00:00.000Z';
@@ -59,15 +60,16 @@ beforeEach(async () => {
   layout = await testLayout(scratch);
   await mkdir(dirname(layout.system.database.file), { recursive: true });
   openStore({
+    host: testStoreHost(),
     path: layout.system.database.file,
     log: testLogger('store'),
     now: () => new Date(AT),
     systemTimeZone: 'UTC',
-    drivePathOf: () => scratch,
+    driveFolders: null,
   }).close();
   deps = {
     layout,
-    publicServer: (): string => 'https://home.example',
+    publicServer: (): Promise<string> => Promise.resolve('https://home.example'),
     finished: (): Promise<never> =>
       Promise.reject(new Error('A refused build must not be awaited.')),
   };

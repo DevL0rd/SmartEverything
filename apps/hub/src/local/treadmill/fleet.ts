@@ -6,9 +6,12 @@ import {
   type TreadmillLinkReport,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
+import type { Unsubscribe } from '../../store/feed';
 import type { Store } from '../../store/store';
 import type { LocalDeviceEntry } from '../../store/repositories/local-devices';
-import { entryConfigOf, identityOfDevice } from './config';
+import { FleetRoster } from '../fleet-roster';
+import { TREADMILL_DRIVER, entryConfigOf, identityOfDevice } from './config';
+import type { WalkerFacts } from './live';
 import { SessionKeeper } from './keeper';
 import { TreadmillRuntime, type Snapshot } from './runtime';
 
@@ -42,7 +45,8 @@ export interface LinkState {
 
 export interface DeviceStateParts {
   readonly deviceId: string;
-  readonly entry: LocalDeviceEntry;
+  readonly roster: FleetRoster;
+  readonly externalId: string;
   readonly keeper: SessionKeeper;
   readonly runtime: TreadmillRuntime;
   readonly link: LinkState;
@@ -60,9 +64,18 @@ function cadenceBetween(first: Mark | undefined, last: Mark): number | null {
   return ((last.steps - first.steps) / (last.timeS - first.timeS)) * 60;
 }
 
+export interface WalkerNow extends WalkerFacts {
+  readonly heartRate: number | null;
+  readonly name: string | null;
+}
+
+const NO_WALKER: WalkerNow = { profileId: null, weightKg: null, heartRate: null, name: null };
+
 export class DeviceState {
   readonly deviceId: string;
-  entry: LocalDeviceEntry;
+  private readonly roster: FleetRoster;
+  private readonly externalId: string;
+  walker: WalkerNow = NO_WALKER;
   readonly runtime: TreadmillRuntime;
   readonly keeper: SessionKeeper;
   readonly link: LinkState;
@@ -83,14 +96,19 @@ export class DeviceState {
 
   constructor(parts: DeviceStateParts) {
     this.deviceId = parts.deviceId;
-    this.entry = parts.entry;
+    this.roster = parts.roster;
+    this.externalId = parts.externalId;
     this.keeper = parts.keeper;
     this.runtime = parts.runtime;
     this.link = parts.link;
   }
 
+  get entry(): LocalDeviceEntry {
+    return this.roster.entryOf(this.externalId);
+  }
+
   useEntry(entry: LocalDeviceEntry): void {
-    this.entry = entry;
+    this.roster.use(entry);
   }
 
   setLink(report: TreadmillLinkReport, at: string): void {
@@ -211,7 +229,7 @@ export class DeviceState {
 }
 
 export interface FleetOptions {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host' | 'feed' | 'settings'>;
   readonly log: Logger;
 }
 
@@ -236,8 +254,36 @@ function isPhase(value: string): value is BeltLinkPhase {
 
 export class Fleet {
   private readonly states = new Map<string, DeviceState>();
+  readonly roster: FleetRoster;
 
-  constructor(private readonly options: FleetOptions) {}
+  constructor(private readonly options: FleetOptions) {
+    this.roster = new FleetRoster({
+      store: options.store,
+      accepts: (entry): boolean => entry.driver === TREADMILL_DRIVER,
+      name: 'treadmill',
+    });
+  }
+
+  async start(): Promise<Unsubscribe> {
+    const unsubscribe = this.roster.follow({
+      added: (device): Promise<void> => {
+        this.of(device);
+        return Promise.resolve();
+      },
+      removed: (deviceId): void => {
+        this.drop(deviceId);
+      },
+    });
+    await this.roster.load();
+    return unsubscribe;
+  }
+
+  async ensure(device: DeviceRow): Promise<DeviceState> {
+    if (!this.roster.has(device.external_id)) {
+      await this.roster.load();
+    }
+    return this.of(device);
+  }
 
   of(device: DeviceRow): DeviceState {
     const known = this.states.get(device.id);
@@ -245,7 +291,7 @@ export class Fleet {
       return known;
     }
     const { store, log } = this.options;
-    const entry = store.localDevices.byExternalId(device.external_id);
+    const entry = this.roster.entryOf(device.external_id);
     const config = entryConfigOf(entry);
     const pad = PAD_PREFERENCES.safeParse(device.details['pad']);
     const runtime = new TreadmillRuntime({
@@ -256,13 +302,18 @@ export class Fleet {
     const keeper = new SessionKeeper({ store, deviceId: device.id, log });
     const created = new DeviceState({
       deviceId: device.id,
-      entry,
+      roster: this.roster,
+      externalId: entry.externalId,
       keeper,
       runtime,
       link: linkOf(device),
     });
     this.states.set(device.id, created);
     return created;
+  }
+
+  device(deviceId: string): DeviceRow | undefined {
+    return this.roster.device(deviceId);
   }
 
   drop(deviceId: string): void {

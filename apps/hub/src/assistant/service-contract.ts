@@ -1,6 +1,5 @@
 import type { z } from 'zod';
 import type {
-  AiUsageRow,
   AI_CHAT_RUNTIME_PROVIDER_NOTICE,
   AssistantStatus,
   ChatActivityNotice,
@@ -43,8 +42,4 @@ export interface TurnRequest {
   readonly title?: string;
   readonly text: string;
   readonly origin: MessageOrigin;
-}
-
-export interface LedgerRollup {
-  readonly rollup: (sink: (row: AiUsageRow, deltaMicros: number) => void) => () => void;
 }

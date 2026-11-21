@@ -148,7 +148,7 @@ export class ComputerDownloads {
   private ask<T>(ticket: Ticket, request: NodeRequest, schema: z.ZodType<T>): Promise<T> {
     const { service, directory } = this.options;
     return guarded(async () => {
-      service.access.require(ticket.deviceId, 'files', ticket.viewer);
+      await service.access.require(ticket.deviceId, 'files', ticket.viewer);
       return schema.parse(await directory.byDevice(ticket.deviceId).call(request));
     });
   }

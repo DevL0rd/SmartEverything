@@ -3,7 +3,6 @@ import type { Logger } from '@smarteverything/logging';
 import type { Clock } from '../../../clock';
 import type { OAuthClientAuth, OAuthTokenRow } from '../../../store/repositories/oauth';
 import type { Store } from '../../../store/store';
-import { grantStillHolds } from '../bearer';
 import { readForm, replyJson, single } from '../respond';
 import {
   ACCESS_TOKEN_PREFIX,
@@ -50,12 +49,11 @@ function required(form: URLSearchParams, name: string): string {
   return value;
 }
 
-function issued(options: TokenOptions, issue: Issue): Record<string, unknown> {
+async function issued(options: TokenOptions, issue: Issue): Promise<Record<string, unknown>> {
   const now = options.clock.now().getTime();
   const access = newSecret(ACCESS_TOKEN_PREFIX);
   const refresh = newSecret(REFRESH_TOKEN_PREFIX);
-  options.store.oauth.forgetExpiredTokens();
-  options.store.oauth.issue([
+  await options.store.host.write('oauthIssue', [
     {
       ...issue,
       tokenHash: hashSecret(access),
@@ -78,15 +76,15 @@ function issued(options: TokenOptions, issue: Issue): Record<string, unknown> {
   };
 }
 
-function exchangeCode(
+async function exchangeCode(
   options: TokenOptions,
   site: Site,
   client: OAuthClientAuth,
   form: URLSearchParams,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   const redemption = options.sessions.redeem(required(form, 'code'));
   if (redemption.kind === 'replayed') {
-    options.store.oauth.revokeFamily(redemption.family);
+    await options.store.host.call('oauth', 'revokeFamily', redemption.family);
     options.log.warn('code.replayed', { clientId: client.row.id });
     throw invalidGrant('This authorization code was already used; its tokens are revoked.');
   }
@@ -115,8 +113,12 @@ function exchangeCode(
   });
 }
 
-function refreshed(options: TokenOptions, client: OAuthClientAuth, token: string): OAuthTokenRow {
-  const row = options.store.oauth.token(hashSecret(token));
+async function refreshed(
+  options: TokenOptions,
+  client: OAuthClientAuth,
+  token: string,
+): Promise<OAuthTokenRow> {
+  const row = await options.store.host.call('oauth', 'token', hashSecret(token));
   if (row?.kind !== 'refresh' || row.client_id !== client.row.id) {
     throw invalidGrant('The refresh token is unknown to this client.');
   }
@@ -132,32 +134,45 @@ function narrowed(row: OAuthTokenRow, asked: string | undefined): readonly strin
   return scopes;
 }
 
-function spend(options: TokenOptions, client: OAuthClientAuth, row: OAuthTokenRow): void {
-  if (!options.store.oauth.useRefreshToken(row.token_hash)) {
-    options.store.oauth.revokeFamily(row.family);
+async function grantStillHolds(store: Pick<Store, 'host'>, token: OAuthTokenRow): Promise<boolean> {
+  const client = await store.host.call('oauth', 'findClient', token.client_id);
+  return (
+    client?.row.revoked_at === null &&
+    client.row.granted_at !== null &&
+    token.created_at >= client.row.granted_at
+  );
+}
+
+async function spend(
+  options: TokenOptions,
+  client: OAuthClientAuth,
+  row: OAuthTokenRow,
+): Promise<void> {
+  if (!(await options.store.host.call('oauth', 'useRefreshToken', row.token_hash))) {
+    await options.store.host.call('oauth', 'revokeFamily', row.family);
     options.log.warn('refresh.replayed', { clientId: client.row.id });
     throw invalidGrant('This refresh token was already used; the connection is revoked.');
   }
   if (Date.parse(row.expires_at) <= options.clock.now().getTime()) {
     throw invalidGrant('The refresh token has expired; connect again.');
   }
-  if (!grantStillHolds(options.store, row)) {
+  if (!(await grantStillHolds(options.store, row))) {
     throw invalidGrant('The owner revoked this assistant; connect again.');
   }
 }
 
-function refresh(
+async function refresh(
   options: TokenOptions,
   site: Site,
   client: OAuthClientAuth,
   form: URLSearchParams,
-): Record<string, unknown> {
-  const row = refreshed(options, client, required(form, 'refresh_token'));
+): Promise<Record<string, unknown>> {
+  const row = await refreshed(options, client, required(form, 'refresh_token'));
   const scopes = narrowed(row, single(form, 'scope'));
   if (resourceOf(site, single(form, 'resource')) !== row.resource) {
     throw invalidGrant('The resource differs from the one authorized.');
   }
-  spend(options, client, row);
+  await spend(options, client, row);
   return issued(options, {
     clientId: client.row.id,
     family: row.family,
@@ -173,7 +188,7 @@ export async function exchangeToken(
 ): Promise<void> {
   const site = siteOf(options.store);
   const form = await readForm(request);
-  const client = authenticateClient(options.store, request, form);
+  const client = await authenticateClient(options.store, request, form);
   const grantType = single(form, 'grant_type');
   if (grantType !== 'authorization_code' && grantType !== 'refresh_token') {
     throw new OAuthError(
@@ -184,8 +199,8 @@ export async function exchangeToken(
   }
   const body =
     grantType === 'authorization_code'
-      ? exchangeCode(options, site, client, form)
-      : refresh(options, site, client, form);
+      ? await exchangeCode(options, site, client, form)
+      : await refresh(options, site, client, form);
   options.log.info('token.issued', { clientId: client.row.id, grantType });
   replyJson(response, 200, body);
 }

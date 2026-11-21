@@ -19,6 +19,7 @@ beforeEach(async () => {
   files = new AssistantFiles({
     layout: hubLayout(rig.opened.directory, {}),
     chat: rig.opened.store.assistantChat,
+    attachments: rig.opened.store.live.attachments,
     now: (): Date => new Date(),
     projects,
   });
@@ -68,6 +69,7 @@ describe('one place for every attachment', () => {
     const v1 = new AssistantFiles({
       layout,
       chat: rig.opened.store.assistantChat,
+      attachments: rig.opened.store.live.attachments,
       now: (): Date => new Date(),
     });
 
@@ -143,6 +145,7 @@ it('cannot attach an expired upload while its bytes are being removed', async ()
   const cleaner = new AssistantFiles({
     layout: hubLayout(directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: (): Date => new Date(Date.parse(expired.created_at) + twoDays),
   });
   const removing = latch();
@@ -178,6 +181,7 @@ it('keeps a partially removed upload unbindable and retries cleanup', async () =
   const cleaner = new AssistantFiles({
     layout: hubLayout(directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: (): Date => new Date(Date.parse(expired.created_at) + twoDays),
   });
   const error = new Error('Attachment metadata removal failed.');

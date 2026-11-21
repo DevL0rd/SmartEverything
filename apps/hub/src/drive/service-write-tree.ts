@@ -1,3 +1,4 @@
+import type { DriveItemWindow } from '../store/repositories/drive-items';
 import { basename } from 'node:path';
 import {
   ApiError,
@@ -5,23 +6,31 @@ import {
   type DriveChangeResult,
   type DriveFolderPlace,
   type DriveItem,
+  type DriveTrashEntry,
 } from '@smarteverything/domain';
-import { announce, folderDraft, identityOf, isoOf, recordItem, type ChangeEnv } from './changes';
-import { itemAccess } from './access';
-import { DriveWriteError, locate, moveWithin, type DriveWriteRoot } from './intents';
+import { folderDraft, recordItem, type ChangeEnv } from './changes';
+import { identityOf, isoOf } from './change-rows';
+import { locate, moveWithin, type DriveWriteRoot } from './intents';
+import { DriveWriteError } from './write-error';
 import { isInside, normalizeRelativePath } from './paths';
 import type { DriveWriteGuard } from './quotas';
 import type { DriveRootLanes } from './root-lanes';
-import { DRIVE_PAGE_SIZE, type DriveReadService } from './service-read';
+import type { DriveReadService } from './service-read';
+import { DRIVE_PAGE_SIZE } from './page-size';
 import {
   copyFile,
   copyLink,
   copySpecial,
   type CopyContext,
   type CopyRoots,
+  type CopyAsk,
+  type CopyTarget,
+  type FolderPlace,
+  madeAlready,
 } from './service-write-copy';
 import type { AlbumEditing } from './service-write-albums';
-import { repathItem, type RepathOp } from './service-write-repath';
+import type { RepathOp } from './service-write-repath';
+import { writeDriveOps } from './units/ops';
 import {
   NameClash,
   changeActorOf,
@@ -48,6 +57,10 @@ export interface TreeDeps {
 
 type ItemChange = Extract<DriveChange, { readonly itemIds: readonly string[] }>;
 
+type NewFolderChange = Extract<DriveChange, { readonly action: 'new_folder' }>;
+
+type CopyChange = Extract<DriveChange, { readonly action: 'copy' }>;
+
 type Outcome = string | null;
 
 function placeIdOf(place: DriveFolderPlace): string {
@@ -67,17 +80,21 @@ export class DriveTreeWriter {
     }
     switch (change.action) {
       case 'new_folder':
-        return this.each([placeIdOf(change.parent)], () =>
-          this.inRoots([this.placeRootOf(caller, change.parent)], () =>
-            this.newFolder(caller, change.parent, change.name),
+        return this.each([placeIdOf(change.parent)], async () =>
+          this.inRoots([await this.placeRootOf(caller, change.parent)], () =>
+            this.newFolder(caller, change),
           ),
         );
       case 'rename':
-        return this.each([change.itemId], (id) =>
-          this.inRoots([this.itemRootOf(caller, id)], () => this.rename(caller, id, change.name)),
+        return this.each([change.itemId], async (id) =>
+          this.inRoots([await this.itemRootOf(caller, id)], () =>
+            this.rename(caller, id, change.name),
+          ),
         );
       case 'keep_source_item':
-        return this.each([change.itemId], (id) => this.lockedCopy(caller, id, change.toFolderId));
+        return this.each([change.itemId], (id) =>
+          this.lockedCopy(caller, { id, toFolderId: change.toFolderId, copyId: undefined }),
+        );
     }
   }
 
@@ -85,13 +102,13 @@ export class DriveTreeWriter {
     const ids = change.itemIds;
     switch (change.action) {
       case 'move':
-        return this.each(ids, (id) =>
-          this.inRoots([this.itemRootOf(caller, id)], () =>
+        return this.each(ids, async (id) =>
+          this.inRoots([await this.itemRootOf(caller, id)], () =>
             this.move(caller, id, change.toFolderId),
           ),
         );
       case 'copy':
-        return this.each(ids, (id) => this.lockedCopy(caller, id, change.toFolderId));
+        return this.copies(caller, change);
       case 'star':
         return this.each(ids, (id) => this.star(caller, id, true));
       case 'unstar':
@@ -99,12 +116,12 @@ export class DriveTreeWriter {
       case 'trash':
         return trashItems(this.deps, caller, ids);
       case 'restore':
-        return this.each(ids, (id) =>
-          this.inRoots([this.trashRootOf(id)], () => this.restore(caller, id)),
+        return this.each(ids, async (id) =>
+          this.inRoots([(await this.trashEntry(id)).rootId], () => this.restore(caller, id)),
         );
       case 'delete_now':
-        return this.each(ids, (id) =>
-          this.inRoots([this.trashRootOf(id)], () => this.deleteNow(caller, id)),
+        return this.each(ids, async (id) =>
+          this.inRoots([(await this.trashEntry(id)).rootId], () => this.deleteNow(caller, id)),
         );
       case 'album_add':
         return this.each(ids, (id) => this.albumAdd(caller, change.albumId, id));
@@ -138,12 +155,8 @@ export class DriveTreeWriter {
     return { done, failed, conflicts };
   }
 
-  private star(caller: DriveCaller, id: string, starred: boolean): Outcome {
-    const { env, read, store } = this.deps;
-    const item = read.readItem(caller, id);
-    if (starred) store.driveStars.star(caller.profileId, id);
-    else store.driveStars.unstar(caller.profileId, id);
-    announce(env, item.rootId, item.parentId, [item]);
+  private async star(caller: DriveCaller, id: string, starred: boolean): Promise<Outcome> {
+    await this.deps.store.host.write('driveStar', { actor: caller, itemId: id, starred });
     return id;
   }
 
@@ -151,34 +164,40 @@ export class DriveTreeWriter {
     return this.deps.lanes.run(rootIds, async () => work());
   }
 
-  private itemRootOf(caller: DriveCaller, id: string): string {
-    return this.deps.read.readItem(caller, id).rootId;
+  private async itemRootOf(caller: DriveCaller, id: string): Promise<string> {
+    return (await this.deps.read.readItem(caller, id)).rootId;
   }
 
-  private placeRootOf(caller: DriveCaller, place: DriveFolderPlace): string {
+  private async placeRootOf(caller: DriveCaller, place: DriveFolderPlace): Promise<string> {
     return place.kind === 'drive' ? place.rootId : this.itemRootOf(caller, place.folderId);
   }
 
-  private trashRootOf(id: string): string {
-    const entry = this.deps.store.driveTrash.find(id);
+  private async trashEntry(id: string): Promise<DriveTrashEntry> {
+    const entry = await this.deps.store.host.call('driveTrash', 'find', id);
     if (entry === undefined) {
       throw new ApiError('not_found', 'There is no such item in the trash.');
     }
-    return entry.rootId;
+    return entry;
   }
 
-  private lockedCopy(caller: DriveCaller, id: string, toFolderId: string): Promise<Outcome> {
-    return this.inRoots([this.itemRootOf(caller, id), this.itemRootOf(caller, toFolderId)], () =>
-      this.copy(caller, id, toFolderId),
+  private copies(caller: DriveCaller, change: CopyChange): Promise<DriveChangeResult> {
+    const copyIds = new Map(change.itemIds.map((id, index) => [id, change.copyIds?.[index]]));
+    return this.each(change.itemIds, (id) =>
+      this.lockedCopy(caller, { id, toFolderId: change.toFolderId, copyId: copyIds.get(id) }),
     );
   }
 
+  private async lockedCopy(caller: DriveCaller, ask: CopyAsk): Promise<Outcome> {
+    const rootIds = [
+      await this.itemRootOf(caller, ask.id),
+      await this.itemRootOf(caller, ask.toFolderId),
+    ];
+    return this.inRoots(rootIds, () => this.copy(caller, ask));
+  }
+
   private async restore(caller: DriveCaller, id: string): Promise<Outcome> {
-    const entry = this.deps.store.driveTrash.find(id);
-    if (entry === undefined) {
-      throw new ApiError('not_found', 'There is no such item in the trash.');
-    }
-    const root = writableRoot(this.deps.read, caller, entry.rootId);
+    const entry = await this.trashEntry(id);
+    const root = await writableRoot(this.deps.read, caller, entry.rootId);
     const restored = await commitRestore(this.deps.env, root, id, changeActorOf(caller));
     if (restored.rescan) {
       this.deps.scan(root.id);
@@ -190,42 +209,40 @@ export class DriveTreeWriter {
     if (caller.via !== 'app') {
       throw new ApiError('forbidden', 'Permanent removal is done in the app, never by the AI.');
     }
-    const entry = this.deps.store.driveTrash.find(id);
-    if (entry === undefined) {
-      throw new ApiError('not_found', 'There is no such item in the trash.');
-    }
-    const drive = writableRoot(this.deps.read, caller, entry.rootId);
+    const entry = await this.trashEntry(id);
+    const drive = await writableRoot(this.deps.read, caller, entry.rootId);
     if (drive.scope === 'home' && !caller.owner && entry.addedByProfileId !== caller.profileId) {
       throw new ApiError('forbidden', 'A member can remove only the trash charged to them.');
     }
     await removeTrashEntry(this.deps.env, entry);
     this.deps.env.purge.rearm();
-    announce(this.deps.env, entry.rootId, null, []);
+    const announce = { rootId: entry.rootId, parentId: null, items: [] };
+    await this.deps.store.host.write('driveAnnounce', announce);
     return null;
   }
 
-  private albumAdd(caller: DriveCaller, albumId: string, id: string): Outcome {
-    this.deps.albums.addItems(albumId, [id], caller);
+  private async albumAdd(caller: DriveCaller, albumId: string, id: string): Promise<Outcome> {
+    await this.deps.albums.addItems(albumId, [id], caller);
     return id;
   }
 
-  private albumRemove(caller: DriveCaller, albumId: string, id: string): Outcome {
-    this.deps.albums.removeItems(albumId, [id], caller);
+  private async albumRemove(caller: DriveCaller, albumId: string, id: string): Promise<Outcome> {
+    await this.deps.albums.removeItems(albumId, [id], caller);
     return id;
   }
 
   private async rename(caller: DriveCaller, id: string, name: string): Promise<Outcome> {
-    const item = this.deps.read.readItem(caller, id);
+    const item = await this.deps.read.readItem(caller, id);
     const parent =
       item.parentId === null
         ? null
-        : this.deps.store.driveItems.byId(item.parentId, caller.profileId);
+        : await this.deps.store.host.call('driveItems', 'byId', item.parentId, caller.profileId);
     return this.relocate(caller, item, { parent, name }, 'rename');
   }
 
   private async move(caller: DriveCaller, id: string, toFolderId: string): Promise<Outcome> {
-    const item = this.deps.read.readItem(caller, id);
-    const parent = this.folderOf(caller, toFolderId);
+    const item = await this.deps.read.readItem(caller, id);
+    const parent = await this.folderOf(caller, toFolderId);
     if (item.rootId !== parent.rootId) {
       throw new ApiError(
         'invalid_request',
@@ -245,20 +262,22 @@ export class DriveTreeWriter {
     op: RepathOp,
   ): Promise<Outcome> {
     const { env, store } = this.deps;
-    const root = writableItemRoot(store, caller, item);
+    const root = await writableItemRoot(store, caller, item);
     const relPath = joined(target.parent, target.name);
     if (relPath === item.relPath) {
       return item.id;
     }
-    this.assertFree(root.id, relPath, caller);
+    await this.assertFree(root.id, relPath, caller);
     await moveWithin(env.files, root, { from: item.relPath, to: relPath, mode: 'keep' });
     try {
-      repathItem(
-        env,
-        item,
-        { parentId: target.parent?.id ?? null, relPath, name: basename(relPath) },
-        { op, actor: changeActorOf(caller) },
-      );
+      await writeDriveOps(store, [
+        {
+          kind: 'repath',
+          itemId: item.id,
+          target: { parentId: target.parent?.id ?? null, relPath, name: basename(relPath) },
+          change: { op, actor: changeActorOf(caller) },
+        },
+      ]);
     } catch (cause) {
       await moveWithin(env.files, root, { from: relPath, to: item.relPath, mode: 'keep' });
       throw cause;
@@ -266,29 +285,26 @@ export class DriveTreeWriter {
     return item.id;
   }
 
-  private async newFolder(
-    caller: DriveCaller,
-    place: DriveFolderPlace,
-    name: string,
-  ): Promise<Outcome> {
-    if (place.kind === 'drive') {
-      const root = writableRoot(this.deps.read, caller, place.rootId);
-      return (await this.makeFolder(caller, root, null, name)).id;
+  private async newFolder(caller: DriveCaller, change: NewFolderChange): Promise<Outcome> {
+    if (change.parent.kind === 'drive') {
+      const root = await writableRoot(this.deps.read, caller, change.parent.rootId);
+      return (await this.makeFolder(caller, root, { ...change, parent: null })).id;
     }
-    const parent = this.folderOf(caller, place.folderId);
-    const root = writableItemRoot(this.deps.store, caller, parent);
-    return (await this.makeFolder(caller, root, parent, name)).id;
+    const parent = await this.folderOf(caller, change.parent.folderId);
+    const root = await writableItemRoot(this.deps.store, caller, parent);
+    return (await this.makeFolder(caller, root, { ...change, parent })).id;
   }
 
   private async makeFolder(
     caller: DriveCaller,
     root: DriveWriteRoot,
-    parent: DriveItem | null,
-    name: string,
+    { parent, name, id }: FolderPlace,
   ): Promise<DriveItem> {
     const { env } = this.deps;
     const relPath = joined(parent, name);
-    this.assertFree(root.id, relPath, caller);
+    const made = await madeAlready(this.deps.store, id, root.id, relPath);
+    if (made !== null) return made;
+    await this.assertFree(root.id, relPath, caller);
     const path = await locate(root, relPath);
     if ((await env.files.stamp(path)) !== null) {
       throw new DriveWriteError('exists', 'A folder or file with that name is already on disk.');
@@ -308,6 +324,7 @@ export class DriveTreeWriter {
           addedAt: env.now().toISOString(),
           outside: false,
           addedByProfileId: caller.profileId,
+          ...(id === undefined ? {} : { id }),
         },
         0,
       ),
@@ -317,10 +334,12 @@ export class DriveTreeWriter {
     });
   }
 
-  private async copy(caller: DriveCaller, id: string, toFolderId: string): Promise<Outcome> {
-    const { read } = this.deps;
-    const item = read.readItem(caller, id);
-    const parent = this.folderOf(caller, toFolderId);
+  private async copy(caller: DriveCaller, ask: CopyAsk): Promise<Outcome> {
+    const { read, store } = this.deps;
+    const item = await read.readItem(caller, ask.id);
+    const parent = await this.folderOf(caller, ask.toFolderId);
+    const made = await madeAlready(store, ask.copyId, parent.rootId, joined(parent, item.name));
+    if (made !== null) return made.id;
     if (
       item.kind === 'folder' &&
       item.rootId === parent.rootId &&
@@ -329,33 +348,33 @@ export class DriveTreeWriter {
       throw new ApiError('invalid_request', 'A folder cannot be copied into itself.');
     }
     const roots = {
-      source: read.rootOfItem(caller, item),
-      root: writableItemRoot(this.deps.store, caller, parent),
+      source: await read.rootOfItem(caller, item),
+      root: await writableItemRoot(this.deps.store, caller, parent),
     };
-    return (await this.copyNode(caller, roots, item, parent)).id;
+    return (await this.copyNode(caller, roots, item, { parent, id: ask.copyId })).id;
   }
 
-  private copyNode(
+  private async copyNode(
     caller: DriveCaller,
     roots: CopyRoots,
     item: DriveItem,
-    parent: DriveItem,
-  ): DriveItem | Promise<DriveItem> {
-    const { store } = this.deps;
-    requireExport(itemAccess(store, caller, store.driveRoots.byId(item.rootId), item), item);
+    target: CopyTarget,
+  ): Promise<DriveItem> {
+    const access = await this.deps.store.host.read('driveItemAccess', { actor: caller, item });
+    requireExport(access, item);
     switch (item.kind) {
       case 'folder':
-        return this.copyFolder(caller, roots, item, parent);
+        return this.copyFolder(caller, roots, item, target);
       case 'link':
-        return copyLink(this.copyContext(caller, roots), { item, target: item.linkTarget }, parent);
+        return copyLink(this.copyContext(caller, roots), { item, target: item.linkTarget }, target);
       case 'special':
-        return copySpecial(this.copyContext(caller, roots), item, parent);
+        return copySpecial(this.copyContext(caller, roots), item, target);
       case 'image':
       case 'video':
       case 'audio':
       case 'document':
       case 'other':
-        return copyFile(this.copyContext(caller, roots), item, parent);
+        return copyFile(this.copyContext(caller, roots), item, target);
     }
   }
 
@@ -366,9 +385,7 @@ export class DriveTreeWriter {
       env: this.deps.env,
       store: this.deps.store,
       guard: this.deps.guard,
-      assertFree: (rootId, relPath, who): void => {
-        this.assertFree(rootId, relPath, who);
-      },
+      assertFree: (rootId, relPath, who) => this.assertFree(rootId, relPath, who),
     };
   }
 
@@ -376,12 +393,12 @@ export class DriveTreeWriter {
     caller: DriveCaller,
     roots: CopyRoots,
     folder: DriveItem,
-    parent: DriveItem,
+    target: CopyTarget,
   ): Promise<DriveItem> {
-    const made = await this.makeFolder(caller, roots.root, parent, folder.name);
+    const made = await this.makeFolder(caller, roots.root, { ...target, name: folder.name });
     let after: string | null = null;
     do {
-      const window = this.deps.store.driveItems.children({
+      const window: DriveItemWindow = await this.deps.store.host.call('driveItems', 'children', {
         rootId: folder.rootId,
         parentId: folder.id,
         after,
@@ -389,23 +406,24 @@ export class DriveTreeWriter {
         viewer: caller.profileId,
       });
       for (const entry of window.entries) {
-        await this.copyNode(caller, roots, entry.item, made);
+        await this.copyNode(caller, roots, entry.item, { parent: made, id: undefined });
       }
       after = window.next;
     } while (after !== null);
     return made;
   }
 
-  private folderOf(caller: DriveCaller, id: string): DriveItem {
-    const item = this.deps.read.readItem(caller, id);
+  private async folderOf(caller: DriveCaller, id: string): Promise<DriveItem> {
+    const item = await this.deps.read.readItem(caller, id);
     if (item.kind !== 'folder') {
       throw new ApiError('invalid_request', 'The destination is not a folder.');
     }
     return item;
   }
 
-  private assertFree(rootId: string, relPath: string, caller: DriveCaller): void {
-    const existing = this.deps.store.driveItems.byPath(rootId, relPath, caller.profileId);
+  private async assertFree(rootId: string, relPath: string, caller: DriveCaller): Promise<void> {
+    const { host } = this.deps.store;
+    const existing = await host.call('driveItems', 'byPath', rootId, relPath, caller.profileId);
     if (existing !== undefined) {
       throw new NameClash(basename(relPath), existing.id);
     }

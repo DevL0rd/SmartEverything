@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { openStore } from '../../src/store/store';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
-import { testStore, type TestStore, unusedDrivePath } from '../support/store';
+import { testStore, type TestStore } from '../support/store';
+import { testStoreHost } from '../support/store-host';
 
 let opened: TestStore;
 let logs: CapturedLogs;
@@ -27,11 +28,12 @@ describe('store schema', () => {
   it('migrates once, records the version and turns on WAL and foreign keys', () => {
     const path = join(opened.directory, 'test.db');
     const again = openStore({
+      host: testStoreHost(),
       path,
       log: testLogger(),
       now: () => new Date('2026-10-09T00:00:00Z'),
       systemTimeZone: 'UTC',
-      drivePathOf: unusedDrivePath,
+      driveFolders: null,
     });
     again.close();
     const database = new DatabaseSync(path);
@@ -60,11 +62,12 @@ describe('store schema', () => {
     database.close();
     expect(() =>
       openStore({
+        host: testStoreHost(),
         path,
         log: testLogger(),
         now: () => new Date(),
         systemTimeZone: 'UTC',
-        drivePathOf: unusedDrivePath,
+        driveFolders: null,
       }),
     ).toThrow(
       `The database is at schema version ${String(HEAD + 1)}, but this server only knows up to ${String(HEAD)}; a newer server wrote it.`,

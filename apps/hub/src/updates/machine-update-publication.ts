@@ -220,7 +220,7 @@ export function machineUpdateUploadRoute(
     method: 'PUT',
     path: MACHINE_UPDATE_UPLOAD_PATH,
     handle: async (request, response, params): Promise<void> => {
-      const caller = authenticate(store, request, 'owner', false);
+      const caller = await authenticate(store, request, 'owner', false);
       assertOwnerRoute(store, caller, {
         access: 'owner',
         method: 'PUT',

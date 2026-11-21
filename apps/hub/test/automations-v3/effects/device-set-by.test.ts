@@ -1,3 +1,4 @@
+import { settleWithHost } from '../../support/host-settle';
 import { ApiError, type DeviceTarget } from '@smarteverything/domain';
 import type { EffectRequest } from '@smarteverything/flow/interpret/frames';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -14,7 +15,7 @@ import { testRun } from './support';
 afterEach(closeSetups);
 
 async function flush(): Promise<void> {
-  for (let turn = 0; turn < 50; turn += 1) await Promise.resolve();
+  await settleWithHost();
 }
 
 function unused(): never {
@@ -80,6 +81,7 @@ async function rig(
       store: home.db.store,
       feed: home.db.store.feed,
       clock,
+      observed: (deviceId, capability) => home.db.store.state.value(deviceId, capability),
     }),
   });
   const target: DeviceTarget = { kind: 'devices', deviceIds: [home.lampId] };

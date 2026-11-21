@@ -26,12 +26,12 @@ const hub = new ToolHub([
   {
     tools: (): readonly HubTool[] => SE_TOOLS.filter((tool) => tool.name === 'browser_control'),
     call: (): Promise<HubToolResult> => Promise.resolve(failure('not called')),
-    validate: (_tool, args, asking): string | null => {
+    validate: (_tool, args, asking): Promise<string | null> => {
       try {
         withCallingChat({ actor: asking ?? null }, SHAPE, args);
-        return null;
+        return Promise.resolve(null);
       } catch (cause) {
-        if (cause instanceof ToolError) return cause.message;
+        if (cause instanceof ToolError) return Promise.resolve(cause.message);
         throw cause;
       }
     },
@@ -42,14 +42,14 @@ const hub = new ToolHub([
 describe('checking a chat tool before it runs', () => {
   const open = { action: { kind: 'open', port: 5173 } };
 
-  it('checks browser_control called through tool_call with the calling chat', () => {
-    expect(hub.check('tool_call', { name: 'browser_control', arguments: open }, caller)).toEqual(
-      expect.objectContaining({ ok: true }),
-    );
+  it('checks browser_control called through tool_call with the calling chat', async () => {
+    expect(
+      await hub.check('tool_call', { name: 'browser_control', arguments: open }, caller),
+    ).toEqual(expect.objectContaining({ ok: true }));
   });
 
-  it('asks for a chat id only when there is no calling chat', () => {
-    const checked = hub.check('browser_control', open);
+  it('asks for a chat id only when there is no calling chat', async () => {
+    const checked = await hub.check('browser_control', open);
     expect(checked.ok ? '' : checked.reason).toContain('chatId is needed');
   });
 });

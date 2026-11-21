@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { READDIR_PAGE } from '../../../src/drive/posix/reads';
+import { READDIR_PAGE } from '../../../src/drive/units/posix';
 import { PosixScope } from '../../../src/drive/posix/env';
 import { create, mkdir, openPosixRig, refusal, symlinkRequest, type PosixRig } from './posix-rig';
 
@@ -57,7 +57,11 @@ describe('attach', () => {
 
 describe('lookup and getattr', () => {
   it('finds a name, answers ENOENT for a missing one and ENOTDIR under a file', async () => {
-    const file = await rig.posix.create(rig.scope, create('a.txt', rig.rootIno, { mode: 0o640 }), new Uint8Array());
+    const file = await rig.posix.create(
+      rig.scope,
+      create('a.txt', rig.rootIno, { mode: 0o640 }),
+      new Uint8Array(),
+    );
     const found = await rig.posix.lookup(rig.scope, { parent: rig.rootIno, name: 'a.txt' });
     expect(found.ino).toBe(file.ino);
     expect(found.attr).toMatchObject({ mode: 0o640, nlink: 1, type: 1, uid: null, gid: null });
@@ -81,7 +85,8 @@ describe('lookup and getattr', () => {
   it('answers ESTALE for an inode that does not exist or belongs to another drive', async () => {
     const other = await rig.posix.create(
       rig.memberScope,
-      create('m.txt', rig.memberScope.rootInode), new Uint8Array(),
+      create('m.txt', rig.memberScope.rootInode),
+      new Uint8Array(),
     );
     expect(await refusal(rig.posix.getattr(rig.scope, 99_999))).toBe('ESTALE');
     expect(await refusal(rig.posix.getattr(rig.scope, other.ino))).toBe('ESTALE');
@@ -229,7 +234,8 @@ describe('access', () => {
   it('lets a member of the home use the Shared Drive', async () => {
     const entry = await rig.posix.create(
       rig.sharedScope,
-      create('shared.txt', rig.sharedScope.rootInode), new Uint8Array(),
+      create('shared.txt', rig.sharedScope.rootInode),
+      new Uint8Array(),
     );
     expect((await rig.posix.getattr(rig.sharedScope, entry.ino)).size).toBe(0);
   });

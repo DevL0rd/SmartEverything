@@ -22,7 +22,12 @@
       "project": ["**/*.ts"]
     },
     "apps/app": {
-      "entry": ["app/**/*.tsx", "*.config.js", "src/**/*.test.ts"],
+      "entry": [
+        "app/**/*.tsx",
+        "*.config.js",
+        "src/**/*.test.ts",
+        "src/features/models/bake/bake-worker.ts"
+      ],
       "project": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "*.css"]
     },
     "packages/domain": {

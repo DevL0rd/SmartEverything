@@ -106,7 +106,6 @@ async function build(withPublicUrl: boolean, calendarOverride?: ProductSync): Pr
     store,
     tokens,
     fetch: google.fetch,
-    now: (): Date => google.clock.now(),
   });
   const runner = new GoogleSyncRunner({
     store,
@@ -260,9 +259,12 @@ describe('sync runner', () => {
     expect(await rig.runner.sync(rig.ann, 'visible')).toBe('backoff');
     expect(calendarLog()).toHaveLength(1);
     rig.sim.advanceTo(new Date(Date.parse(START) + QUOTA_WINDOW_MS).toISOString());
-    await vi.waitFor(() => {
-      expect(calendarLog('reconcile')).toHaveLength(1);
-    });
+    await vi.waitFor(
+      () => {
+        expect(calendarLog('reconcile')).toHaveLength(1);
+      },
+      { timeout: 10_000 },
+    );
     expect(calendarLog('reconcile')[0]?.error).toBeNull();
     expect(rig.sim.pending()).toEqual([]);
   });

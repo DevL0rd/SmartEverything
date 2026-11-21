@@ -56,27 +56,14 @@ describe('the group fsync', () => {
 
 describe('the operation memory', () => {
   const memory = new Map<string, Record<string, unknown>>();
-  const hooks = new Set<() => void>();
-  const transact = (): void => {
-    for (const hook of hooks) hook();
-  };
   const dedupe = new MountDedupe(
     {
-      recall: (placement, id): Record<string, unknown> | undefined =>
-        memory.get(`${placement}${id}`),
-      rememberAll: (entries): void => {
+      recall: (placement, id): Promise<Record<string, unknown> | undefined> =>
+        Promise.resolve(memory.get(`${placement}${id}`)),
+      rememberAll: (entries): Promise<void> => {
         for (const entry of entries) memory.set(`${entry.placementId}${entry.opId}`, entry.result);
+        return Promise.resolve();
       },
-      claim: (claim): void => {
-        const slot = `${claim.placementId}${claim.opId}`;
-        if (!memory.has(slot)) memory.set(slot, { action: claim.action, reply: null });
-      },
-    },
-    (hook) => {
-      hooks.add(hook);
-      return (): void => {
-        hooks.delete(hook);
-      };
     },
     testLogger('drive'),
   );
@@ -118,26 +105,6 @@ describe('the operation memory', () => {
     await dedupe.once('p', { name: 'UNLINK', key }, run, RERUN);
     await dedupe.once('q', { name: 'UNLINK', key }, run, RERUN);
     expect(runs).toBe(2);
-  });
-
-  it('claims the key inside the operation transaction, before the reply is saved', async () => {
-    const key = opKey();
-    const slot = `p${opKeyText(key)}`;
-    let seen: unknown;
-    await dedupe.once(
-      'p',
-      { name: 'UNLINK', key },
-      async () => {
-        await Promise.resolve();
-        transact();
-        seen = memory.get(slot);
-        return {};
-      },
-      RERUN,
-    );
-    expect(seen).toEqual({ action: 'UNLINK', reply: null });
-    transact();
-    expect(memory.get(slot)).toEqual({ action: 'UNLINK', reply: null });
   });
 
   it('rebuilds the reply of a claimed operation whose reply was lost, without running it again', async () => {

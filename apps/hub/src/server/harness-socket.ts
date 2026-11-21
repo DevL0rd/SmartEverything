@@ -1,6 +1,5 @@
 import type { HarnessConnection } from '../harness/directory';
 import { randomUUID } from 'node:crypto';
-import type { IncomingMessage } from 'node:http';
 import type { WebSocket } from 'ws';
 import { ZodError } from 'zod';
 import {
@@ -23,11 +22,11 @@ import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import type { HarnessService } from '../harness/service';
 import type { ComputerNodeAccess } from '../computers/node-access';
-import { bearerOf } from './http';
 import type { RemoteHarness } from './harness-remote';
 import { HarnessResidence, type ResidenceLink } from './harness-residence';
 import { ComputerConnection, ComputerSockets } from './computer-socket';
-import { apiErrorFor, issuesOf } from './errors';
+import { apiErrorFor } from './errors';
+import { issuesOf } from './issues';
 import { withSignal } from './request-signal';
 type RemoteHarnessSubscriptionsControl = RemoteHarness['subscriptions']['control'];
 
@@ -46,13 +45,6 @@ class HarnessSocket extends ComputerConnection implements ResidenceLink {
   configurationSync = false;
   subscriptionControl = false;
 
-  constructor(
-    socket: WebSocket,
-    identity: ComputerNodeRow,
-    readonly token: string | null,
-  ) {
-    super(socket, identity);
-  }
   bind(
     residence: HarnessResidence,
     configurationSync: boolean,
@@ -84,6 +76,8 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
     this.calls = served.calls;
     this.unsubscribe = store.feed.subscribe((change) => {
       if (change.table === 'profiles' || change.table === 'clients') this.revalidate();
+      if (change.table === 'devices' && change.record === null && change.oldRecord !== null)
+        this.revoke(change.oldRecord.id);
     });
   }
   override revoke(deviceId: string): void {
@@ -95,12 +89,8 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
     super.stop();
     for (const residence of [...this.residences.values()]) residence.end();
   }
-  protected open(
-    socket: WebSocket,
-    identity: ComputerNodeRow,
-    request: IncomingMessage,
-  ): HarnessSocket {
-    return new HarnessSocket(socket, identity, bearerOf(request));
+  protected open(socket: WebSocket, identity: ComputerNodeRow): HarnessSocket {
+    return new HarnessSocket(socket, identity);
   }
   protected receive(connection: HarnessSocket, value: unknown): void {
     const residence = connection.residence;
@@ -333,7 +323,6 @@ export class ComputerHarnessSockets extends ComputerSockets<HarnessSocket> {
     const residence = new HarnessResidence(
       this.service,
       { device_id: deviceId, generation: randomUUID(), runtime_instance: instance },
-      this.access,
       () => {
         if (this.residences.get(deviceId) === residence) this.residences.delete(deviceId);
       },

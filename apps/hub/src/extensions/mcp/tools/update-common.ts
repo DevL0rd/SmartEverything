@@ -6,8 +6,8 @@ import { requireUpdateRequester } from './update-requester';
 
 export type KeysContext = Pick<ToolContext, 'store' | 'caller' | 'actor' | 'layout' | 'clock'>;
 
-export function layoutOf(context: Omit<KeysContext, 'clock'>): HubLayout {
-  requireUpdateRequester(context);
+export async function layoutOf(context: Omit<KeysContext, 'clock'>): Promise<HubLayout> {
+  await requireUpdateRequester(context);
   return context.layout;
 }
 

@@ -13,6 +13,7 @@ import {
   fetchFeed,
 } from '../../src/planner/subscriptions/transport';
 import { failureOf } from '../support/feed-rig';
+import { inProcessCalendars } from '../support/ical';
 
 let rig: FeedRig;
 let test: TestStore;
@@ -217,13 +218,22 @@ describe('schedule', () => {
     const collection = rig.subscribe(ownerId, '/family.ics');
     service.stop();
     clock.advanceTo(START);
-    const fresh = new FeedService({ store: test.store, clock, log: testLogger('feeds') });
+    const fresh = new FeedService({
+      store: test.store,
+      clock,
+      calendars: inProcessCalendars,
+      log: testLogger('feeds'),
+    });
     fresh.start();
+    await fresh.settled();
     expect(clock.pending()).toEqual([START]);
     clock.advanceTo(START);
-    await vi.waitFor(() => {
-      expect(rig.rowsOf(collection)).toHaveLength(5);
-    });
+    await vi.waitFor(
+      () => {
+        expect(rig.rowsOf(collection)).toHaveLength(5);
+      },
+      { timeout: 10_000 },
+    );
     fresh.stop();
     expect(clock.pending()).toEqual([]);
   });

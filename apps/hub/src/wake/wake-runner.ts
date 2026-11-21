@@ -1,10 +1,10 @@
 import { leastTrustedOrigin, type PluginOrigin, type WakeAiAction } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { ActionOrigin } from '../automations/automation-ai';
 import type { Cancel, Clock } from '../clock';
 import type { Store } from '../store/store';
-import { wakeRefusal, type WakeRefusalStore } from './wake-refusal';
-import { WakeText, type WakeLines, type WakeNameStore } from './wake-text';
+import type { WakeRefusal } from './wake-refusal';
+import type { WakeLines } from './wake-text';
 import { failureLine } from '@smarteverything/logging';
 
 export const WAKE_GATHER_MS = 1000;
@@ -22,7 +22,7 @@ interface WakeTurns {
 }
 
 export interface WakeRunnerOptions {
-  readonly store: Pick<Store, 'aiWakes'> & WakeNameStore & WakeRefusalStore;
+  readonly store: Pick<Store, 'host'>;
   readonly turns: WakeTurns;
   readonly clock: Pick<Clock, 'now' | 'at'>;
   readonly log: Logger;
@@ -59,21 +59,33 @@ function batchKey(action: WakeAiAction, origin: ActionOrigin): string {
 
 export class WakeRunner {
   private readonly batches = new Map<string, Batch>();
-  private readonly text: WakeText;
 
-  constructor(private readonly options: WakeRunnerOptions) {
-    this.text = new WakeText(options.store);
+  constructor(private readonly options: WakeRunnerOptions) {}
+
+  async wake(action: WakeAiAction, origin: ActionOrigin): Promise<void> {
+    const { refusal, lines } = await this.options.store.host.read('wakeRead', {
+      action,
+      origin,
+      occasion: {
+        automationName: origin.name,
+        signal: origin.signal,
+        instruction: action.instruction,
+        at: this.options.clock.now(),
+        profileId: action.profileId,
+      },
+    });
+    return this.gather({ action, origin, lines }, refusal);
   }
 
-  wake(action: WakeAiAction, origin: ActionOrigin): Promise<void> {
-    const refusal = wakeRefusal(this.options.store, action, origin);
-    const lines = this.text.lines({
-      automationName: origin.name,
-      signal: origin.signal,
-      instruction: action.instruction,
-      at: this.options.clock.now(),
-      profileId: action.profileId,
-    });
+  private gather(
+    wake: {
+      readonly action: WakeAiAction;
+      readonly origin: ActionOrigin;
+      readonly lines: WakeLines;
+    },
+    refusal: WakeRefusal | null,
+  ): Promise<void> {
+    const { action, origin, lines } = wake;
     if (refusal !== null) {
       if (refusal.recorded) {
         this.record(action, origin, lines, {
@@ -188,16 +200,20 @@ export class WakeRunner {
     lines: WakeLines,
     outcome: WakeOutcome,
   ): void {
-    this.options.store.aiWakes.add({
-      profile_id: action.profileId,
-      chat_id: outcome.chatId,
-      automation_id: origin.automationId,
-      automation_name: origin.name,
-      headline: lines.headline,
-      instruction: action.instruction,
-      state: outcome.state,
-      reason: outcome.reason,
-    });
+    background(
+      this.options.store.host.call('aiWakes', 'add', {
+        profile_id: action.profileId,
+        chat_id: outcome.chatId,
+        automation_id: origin.automationId,
+        automation_name: origin.name,
+        headline: lines.headline,
+        instruction: action.instruction,
+        state: outcome.state,
+        reason: outcome.reason,
+      }),
+      'wake.record_failed',
+      { automationId: origin.automationId },
+    );
     this.options.log.info('wake.recorded', {
       automationId: origin.automationId,
       state: outcome.state,

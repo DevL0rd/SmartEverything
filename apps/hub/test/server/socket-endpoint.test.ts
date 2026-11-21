@@ -1,6 +1,5 @@
 import { createServer, type Server } from 'node:http';
 import {
-  ApiError,
   BEARER_PROTOCOL_PREFIX,
   TalkFrameError,
   createClientToken,
@@ -16,6 +15,7 @@ import {
   type SocketSession,
 } from '../../src/server/socket-endpoint';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
+import { refusingUpgrades } from '../support/socket-client';
 import { testStore, type TestStore } from '../support/store';
 import { pause, until } from '../support/wait';
 
@@ -95,16 +95,10 @@ async function start(): Promise<void> {
     log: testLogger('socket'),
     open: session,
   });
-  server.on('upgrade', (request, socket, head) => {
-    try {
-      endpoint.upgrade(request, socket, head);
-    } catch (cause) {
-      if (!(cause instanceof ApiError)) {
-        throw cause;
-      }
-      socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
-    }
-  });
+  server.on(
+    'upgrade',
+    refusingUpgrades((request, socket, head) => endpoint.upgrade(request, socket, head)),
+  );
   base = await listen(server);
 }
 

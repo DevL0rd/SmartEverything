@@ -53,6 +53,7 @@ function sameTransition(current: DrivePlacementStatus, next: DrivePlacementStatu
 export class SessionPlacements {
   private deviceId: string | null = null;
   private unsubscribe: (() => void) | null = null;
+  private tail: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: SessionPlacementsOptions) {}
 
@@ -73,7 +74,21 @@ export class SessionPlacements {
     this.deviceId = null;
   }
 
+  private queue(work: () => Promise<void>): void {
+    this.tail = this.tail.then(work).catch((cause: unknown) => {
+      this.options.log.error('computer.placements_failed', cause);
+    });
+  }
+
+  settled(): Promise<void> {
+    return this.tail;
+  }
+
   received(frame: PlacementStateFrame): void {
+    this.queue(() => this.receive(frame));
+  }
+
+  private async receive(frame: PlacementStateFrame): Promise<void> {
     const { deviceId } = this;
     if (deviceId === null) {
       this.options.log.warn('computer.placement_state_before_hello', {
@@ -82,9 +97,9 @@ export class SessionPlacements {
       return;
     }
     const next = statusOf(frame);
-    const current = this.options.placements
-      .activeFor(deviceId)
-      .find((placement) => placement.id === frame.placementId)?.status;
+    const current = (await this.options.placements.activeFor(deviceId)).find(
+      (placement) => placement.id === frame.placementId,
+    )?.status;
     if (
       current !== undefined &&
       sameTransition(current, next) &&
@@ -92,11 +107,15 @@ export class SessionPlacements {
     ) {
       return;
     }
-    this.write(deviceId, frame.placementId, next);
+    await this.write(deviceId, frame.placementId, next);
   }
 
   private send(deviceId: string): void {
-    const placements = this.options.placements.activeFor(deviceId);
+    this.queue(() => this.sendNow(deviceId));
+  }
+
+  private async sendNow(deviceId: string): Promise<void> {
+    const placements = await this.options.placements.activeFor(deviceId);
     this.options.log.debug('computer.placements_sent', {
       deviceId,
       count: placements.length,
@@ -104,9 +123,13 @@ export class SessionPlacements {
     this.options.send({ type: 'placements', placements });
   }
 
-  private write(deviceId: string, placementId: string, status: DrivePlacementStatus): void {
+  private async write(
+    deviceId: string,
+    placementId: string,
+    status: DrivePlacementStatus,
+  ): Promise<void> {
     try {
-      this.options.placements.writeStatus(deviceId, placementId, status);
+      await this.options.placements.writeStatus(deviceId, placementId, status);
     } catch (cause) {
       if (!(cause instanceof ApiError)) throw cause;
       this.refuse(deviceId, placementId);

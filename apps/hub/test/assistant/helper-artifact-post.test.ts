@@ -51,6 +51,7 @@ beforeEach(async () => {
   files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now,
   });
   log = new ConversationLog(store);
@@ -317,12 +318,12 @@ it('fences a DSH copy after transport abort and rejects a detached writer', asyn
   try {
     const { store } = rig.opened;
     const root = rig.newChat(rig.hub.target);
-    const active = rig.service.prepare(rig.owner, root.id, rig.authority, rig.clientId);
+    const active = await rig.service.prepare(rig.owner, root.id, rig.authority, rig.clientId);
     const principal = rig.service.hostPrincipal(
       rig.owner.profileId,
       rig.service.directory.get(rig.hub.target).host,
     );
-    const session = rig.service.storage.adoptChild(
+    const session = await rig.service.storage.adoptChild(
       DSH_SESSION_HEADER.parse({
         version: 4,
         id: randomUUID(),
@@ -345,6 +346,7 @@ it('fences a DSH copy after transport abort and rejects a detached writer', asyn
     const dshFiles = new AssistantFiles({
       layout: hubLayout(rig.opened.directory, {}),
       chat: store.assistantChat,
+      attachments: store.live.attachments,
       now: (): Date => new Date(),
     });
     const original = await dshFiles.keepBytes({

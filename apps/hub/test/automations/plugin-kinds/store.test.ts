@@ -14,7 +14,9 @@ import { pluginContribution } from '../../../src/automations/plugin-kinds/contri
 import {
   PluginKindStore,
   kindOwnerOf,
+  persistKindBatch,
   persistPluginKinds,
+  type KindWrites,
 } from '../../../src/automations/plugin-kinds/store';
 import { visible } from '../../../src/server/live-visibility';
 import { migrate } from '../../../src/store/migrate';
@@ -52,6 +54,19 @@ function rig(): Rig {
     changes,
     database,
   };
+}
+
+function writesOf(store: PluginKindStore): KindWrites {
+  return async (batch) => {
+    await Promise.resolve();
+    persistKindBatch(store, batch, () => new Set());
+  };
+}
+
+async function written(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
 }
 
 function statusesOf(store: PluginKindStore): Record<string, string> {
@@ -225,10 +240,10 @@ describe('PluginKindStore.switchOff', () => {
 });
 
 describe('persistPluginKinds', () => {
-  it('writes the rows when a plugin syncs and marks them off when it is removed', () => {
+  it('writes the rows when a plugin syncs and marks them off when it is removed', async () => {
     const { store } = rig();
     const catalog = createKindCatalog();
-    const stop = persistPluginKinds(catalog, store, () => new Set());
+    const stop = persistPluginKinds(catalog, writesOf(store));
     syncContribution(
       catalog,
       pluginContribution(
@@ -243,12 +258,14 @@ describe('persistPluginKinds', () => {
       catalog,
       pluginContribution(manifestWith('other', { values: [ONLINE_VALUE], autoTriggers: false })),
     );
+    await written();
     expect(statusesOf(store)).toStrictEqual({
       'plugin.chat_hub.members_online': 'active',
       'plugin.chat_hub.post_message': 'active',
       'plugin.other.members_online': 'active',
     });
     catalog.remove('plugin:chat-hub');
+    await written();
     expect(statusesOf(store)).toStrictEqual({
       'plugin.chat_hub.members_online': 'off',
       'plugin.chat_hub.post_message': 'off',
@@ -264,16 +281,18 @@ describe('persistPluginKinds', () => {
         }),
       ),
     );
+    await written();
     expect(store.forOwner('plugin:chat-hub').map((row) => row.status)).toStrictEqual([
       'active',
       'active',
     ]);
     stop();
     catalog.remove('plugin:other');
+    await written();
     expect(store.forOwner('plugin:other').map((row) => row.status)).toStrictEqual(['active']);
   });
 
-  it('stores what the catalog already holds when it is bound and touches no plugin that has not loaded', () => {
+  it('stores what the catalog already holds when it is bound and touches no plugin that has not loaded', async () => {
     const { store } = rig();
     store.publish('plugin:asleep', valueKinds('asleep'));
     const catalog = createKindCatalog();
@@ -281,15 +300,16 @@ describe('persistPluginKinds', () => {
       catalog,
       pluginContribution(manifestWith('chat-hub', { nodes: [POST_NODE], autoTriggers: false })),
     );
-    persistPluginKinds(catalog, store, () => new Set());
+    persistPluginKinds(catalog, writesOf(store));
+    await written();
     expect(store.forOwner('plugin:chat-hub')).toHaveLength(1);
     expect(store.forOwner('plugin:asleep').map((row) => row.status)).toStrictEqual(['active']);
   });
 
-  it('logs a failed write and keeps the catalog working', () => {
+  it('logs a failed write and keeps the catalog working', async () => {
     const { store, database } = rig();
     const catalog = createKindCatalog();
-    persistPluginKinds(catalog, store, () => new Set());
+    persistPluginKinds(catalog, writesOf(store));
     database.exec('drop table automation_plugin_kinds');
     expect(() => {
       syncContribution(
@@ -297,6 +317,7 @@ describe('persistPluginKinds', () => {
         pluginContribution(manifestWith('chat-hub', { nodes: [POST_NODE] })),
       );
     }).not.toThrow();
+    await written();
     expect(logs.events()).toContain('plugin_kinds.persist_failed');
     expect(catalog.get('plugin.chat_hub.post_message')).toBeDefined();
   });

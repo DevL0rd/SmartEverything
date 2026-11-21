@@ -26,15 +26,9 @@ import {
 } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
 import { entryConfigOf, entrySettingsOf } from './config';
-import type { DeviceState, Fleet } from './fleet';
-import {
-  liveFrameOf,
-  mayShowBody,
-  watchHeartRate,
-  weightOf,
-  type FrameFacts,
-  type WalkerFacts,
-} from './live';
+import type { SessionDetailRead } from './session-units';
+import type { DeviceState, Fleet, WalkerNow } from './fleet';
+import { liveFrameOf, mayShowBody, type FrameFacts } from './live';
 
 type StateView = Extract<TreadmillView, { readonly view: 'state' }>;
 
@@ -51,10 +45,10 @@ export interface Viewer {
 }
 
 export interface ViewDeps {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host' | 'settings'>;
   readonly fleet: Fleet;
   readonly holder: (device: DeviceRow) => WatchBridge | null;
-  readonly walkerOf: (device: DeviceRow) => WalkerFacts;
+  readonly walkerOf: (device: DeviceRow) => Promise<WalkerNow>;
   readonly series: (deviceId: string, capability: string) => MetricSeries;
   readonly now: () => Date;
 }
@@ -78,14 +72,16 @@ function linkDetailOf(state: DeviceState): string | null {
   return SILENT_PHASES.includes(state.link.phase) && stopped ? STANDBY_OR_OFF : state.link.detail;
 }
 
-function linkOf(
-  deps: ViewDeps,
-  device: DeviceRow,
-  state: DeviceState,
-  viewer: Viewer,
-): StateView['link'] {
+interface Seen {
+  readonly device: DeviceRow;
+  readonly state: DeviceState;
+  readonly walker: WalkerNow;
+  readonly viewer: Viewer;
+}
+
+function linkOf(deps: ViewDeps, seen: Seen): StateView['link'] {
+  const { device, state, walker, viewer } = seen;
   const holder = deps.holder(device);
-  const walker = deps.walkerOf(device);
   return {
     phase: state.link.phase,
     holderName: holder?.clientName ?? null,
@@ -95,7 +91,7 @@ function linkOf(
     lastHeardAt: state.link.heardAt,
     detail: linkDetailOf(state),
     walkerProfileId: walker.profileId,
-    walkerName: walker.profileId === null ? null : deps.store.profiles.byId(walker.profileId).name,
+    walkerName: walker.name,
   };
 }
 
@@ -115,30 +111,28 @@ function inclineLimitsOf(
   };
 }
 
+function maintenanceBase(state: DeviceState): string {
+  const since = entrySettingsOf(state.entry).lubricatedAt;
+  return since ?? state.entry.createdAt;
+}
+
 function maintenanceOf(
   deps: ViewDeps,
-  device: DeviceRow,
   state: DeviceState,
+  distanceM: number,
 ): StateView['maintenance'] {
   const settings = entrySettingsOf(state.entry);
-  const since = settings.lubricatedAt;
-  const base = since ?? state.entry.createdAt;
-  const due = Date.parse(base) + settings.lubricationDays * DAY_MS;
+  const due = Date.parse(maintenanceBase(state)) + settings.lubricationDays * DAY_MS;
   return {
-    lubricatedAt: since,
+    lubricatedAt: settings.lubricatedAt,
     dueInDays: Math.ceil((due - deps.now().getTime()) / DAY_MS),
-    beltKmSince: deps.store.treadmillSessions.distanceSince(device.id, base) / 1000,
+    beltKmSince: distanceM / 1000,
   };
 }
 
-function startOf(
-  deps: ViewDeps,
-  device: DeviceRow,
-  state: DeviceState,
-  viewer: Viewer,
-): StateView['start'] {
+function startOf(deps: ViewDeps, seen: Seen): StateView['start'] {
+  const { device, state, walker, viewer } = seen;
   const holder = deps.holder(device);
-  const walker = deps.walkerOf(device);
   const verdict = remoteStartVerdict(entrySettingsOf(state.entry).policy, {
     owner: viewer.role === 'owner',
     walker: walker.profileId === viewer.profileId,
@@ -155,31 +149,43 @@ function recentSpeed(deps: ViewDeps, deviceId: string): StateView['recentSpeed']
     .map((point) => ({ at: point.at, kmh: point.value }));
 }
 
-function lastSessionOf(deps: ViewDeps, device: DeviceRow, viewer: Viewer): TreadmillSession | null {
-  const walker = viewer.role === 'owner' ? undefined : viewer.profileId;
-  return (
-    deps.store.treadmillSessions.page({
-      deviceId: device.id,
-      walkerProfileId: walker,
-      before: undefined,
-      limit: 1,
-    })[0] ?? null
-  );
+function limitsOf(state: DeviceState): StateView['limits'] {
+  const { identity } = state.runtime;
+  const settings = entrySettingsOf(state.entry);
+  return {
+    minKmh: identity.speedMinKmh ?? MIN_BELT_KMH,
+    maxKmh: identity.speedMaxKmh ?? MAX_BELT_KMH,
+    stepKmh: identity.speedStepKmh ?? BELT_STEP_KMH,
+    capKmh: state.runtime.pad.maxSpeedKmh ?? null,
+    remoteCapKmh: settings.policy.remoteStart ? settings.policy.remoteMaxKmh : null,
+    incline: inclineLimitsOf(identity, settings),
+  };
 }
 
-function stateView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): TreadmillView {
+async function stateView(
+  deps: ViewDeps,
+  device: DeviceRow,
+  viewer: Viewer,
+): Promise<TreadmillView> {
   const state = deps.fleet.of(device);
   const config = entryConfigOf(state.entry);
   const settings = entrySettingsOf(state.entry);
-  const walker = deps.walkerOf(device);
+  const [walker, stored] = await Promise.all([
+    deps.walkerOf(device),
+    deps.store.host.read('treadmillMaintenance', {
+      deviceId: device.id,
+      since: maintenanceBase(state),
+      walker: viewer.role === 'owner' ? undefined : viewer.profileId,
+    }),
+  ]);
   const now = deps.now();
-  const identity = state.runtime.identity;
+  const seen: Seen = { device, state, walker, viewer };
   const bodyVisible = mayShowBody({ role: viewer.role }, viewer.profileId, walker.profileId);
   const facts: FrameFacts = {
     state,
     at: now.toISOString(),
     walker,
-    heartRate: bodyVisible ? watchHeartRate(deps.store, walker.profileId, now) : null,
+    heartRate: bodyVisible ? walker.heartRate : null,
     scale: settings.inclineScale,
   };
   return {
@@ -187,25 +193,18 @@ function stateView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): Treadmill
     deviceId: device.id,
     family: config.family,
     model: config.model,
-    link: linkOf(deps, device, state, viewer),
+    link: linkOf(deps, seen),
     frame: liveFrameOf(facts, bodyVisible),
     recentSpeed: recentSpeed(deps, device.id),
-    limits: {
-      minKmh: identity.speedMinKmh ?? MIN_BELT_KMH,
-      maxKmh: identity.speedMaxKmh ?? MAX_BELT_KMH,
-      stepKmh: identity.speedStepKmh ?? BELT_STEP_KMH,
-      capKmh: state.runtime.pad.maxSpeedKmh ?? null,
-      remoteCapKmh: settings.policy.remoteStart ? settings.policy.remoteMaxKmh : null,
-      incline: inclineLimitsOf(identity, settings),
-    },
+    limits: limitsOf(state),
     inclineScale: settings.inclineScale,
     pad: state.runtime.pad,
     fault: state.runtime.fault === null ? null : faultOf(state.runtime.fault, config.family),
-    lastSession: lastSessionOf(deps, device, viewer),
-    start: startOf(deps, device, state, viewer),
+    lastSession: stored.lastSession,
+    start: startOf(deps, seen),
     mayConfigure: viewer.role === 'owner',
     bodyVisible,
-    maintenance: maintenanceOf(deps, device, state),
+    maintenance: maintenanceOf(deps, state, stored.distanceM),
   };
 }
 
@@ -219,18 +218,18 @@ function personFor(viewer: Viewer, personId: string | undefined): string {
   return personId;
 }
 
-function sessionsView(
+async function sessionsView(
   deps: ViewDeps,
   device: DeviceRow,
   viewer: Viewer,
   query: TreadmillReadQuery,
-): TreadmillView {
+): Promise<TreadmillView> {
   const limit = query.limit ?? 50;
   const walker =
     viewer.role === 'owner' && query.personId === undefined
       ? undefined
       : personFor(viewer, query.personId);
-  const rows = deps.store.treadmillSessions.page({
+  const rows = await deps.store.host.call('treadmillSessions', 'page', {
     deviceId: device.id,
     walkerProfileId: walker,
     before: query.before,
@@ -263,9 +262,8 @@ function segmentsOf(samples: readonly SessionSample[]): SessionSegment[] {
   return segments;
 }
 
-function detailOf(deps: ViewDeps, session: TreadmillSession): SessionDetail {
-  const samples = deps.store.treadmillSessions.samples(session.id);
-  const weight = weightOf(deps.store, session.walkerProfileId);
+function detailOf(read: SessionDetailRead): SessionDetail {
+  const { session, samples, weightKg: weight } = read;
   const minutes = session.activeSeconds / 60;
   return {
     session,
@@ -281,32 +279,34 @@ function detailOf(deps: ViewDeps, session: TreadmillSession): SessionDetail {
   };
 }
 
-function sessionView(deps: ViewDeps, viewer: Viewer, query: TreadmillReadQuery): TreadmillView {
+async function sessionView(
+  deps: ViewDeps,
+  viewer: Viewer,
+  query: TreadmillReadQuery,
+): Promise<TreadmillView> {
   if (query.sessionId === undefined) {
     throw new ApiError('invalid_request', 'Reading a session needs its sessionId.');
   }
-  const session = deps.store.treadmillSessions.byId(query.sessionId);
-  if (!visibleTo(viewer, session)) {
+  const read = await deps.store.host.read('treadmillSessionDetail', query.sessionId);
+  if (!visibleTo(viewer, read.session)) {
     throw new ApiError('forbidden', 'This session belongs to another person.');
   }
-  return {
-    view: 'session',
-    detail: detailOf(deps, session),
-    walkerName:
-      session.walkerProfileId === null
-        ? null
-        : deps.store.profiles.byId(session.walkerProfileId).name,
-  };
+  return { view: 'session', detail: detailOf(read), walkerName: read.walkerName };
 }
 
-function statsView(
+async function statsView(
   deps: ViewDeps,
   device: DeviceRow,
   viewer: Viewer,
   query: TreadmillReadQuery,
-): TreadmillView {
+): Promise<TreadmillView> {
   const profileId = personFor(viewer, query.personId);
-  const sessions = deps.store.treadmillSessions.finished(device.id, profileId);
+  const sessions = await deps.store.host.call(
+    'treadmillSessions',
+    'finished',
+    device.id,
+    profileId,
+  );
   const today = localDay(deps, deps.now());
   const settings = entrySettingsOf(deps.fleet.of(device).entry);
   const stats = computeStats({
@@ -333,15 +333,20 @@ function statsView(
   };
 }
 
-function settingsView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): TreadmillView {
+async function settingsView(
+  deps: ViewDeps,
+  device: DeviceRow,
+  viewer: Viewer,
+): Promise<TreadmillView> {
   const state = deps.fleet.of(device);
   const owner = viewer.role === 'owner';
+  const walker = await deps.walkerOf(device);
   return {
     view: 'settings',
     settings: owner ? entrySettingsOf(state.entry) : null,
     pad: owner ? state.runtime.pad : null,
     goals: goalsOf(entrySettingsOf(state.entry), viewer.profileId),
-    walkerProfileId: deps.walkerOf(device).profileId,
+    walkerProfileId: walker.profileId,
     mayConfigure: owner,
   };
 }
@@ -354,18 +359,23 @@ function recordsView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): Treadmi
   return { view: 'records', remaining: state.padRecordsRemaining, records: [...state.padRecords] };
 }
 
-function diagnosticsView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): TreadmillView {
+async function diagnosticsView(
+  deps: ViewDeps,
+  device: DeviceRow,
+  viewer: Viewer,
+): Promise<TreadmillView> {
   if (viewer.role !== 'owner') {
     throw new ApiError('forbidden', 'Only the owner reads the treadmill diagnostics.');
   }
   const state = deps.fleet.of(device);
   const config = entryConfigOf(state.entry);
+  const walker = await deps.walkerOf(device);
   return {
     view: 'diagnostics',
     family: config.family,
     identity: state.runtime.identity,
     gatt: config.gatt,
-    link: linkOf(deps, device, state, viewer),
+    link: linkOf(deps, { device, state, walker, viewer }),
     latencyMs: state.latencyMs,
     lastError: state.lastError,
     padRecordsRemaining: state.padRecordsRemaining,
@@ -373,12 +383,12 @@ function diagnosticsView(deps: ViewDeps, device: DeviceRow, viewer: Viewer): Tre
   };
 }
 
-export function readTreadmill(
+export async function readTreadmill(
   deps: ViewDeps,
   device: DeviceRow,
   viewer: Viewer,
   query: TreadmillReadQuery,
-): TreadmillView {
+): Promise<TreadmillView> {
   switch (query.view) {
     case 'state':
       return stateView(deps, device, viewer);

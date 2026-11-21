@@ -112,10 +112,10 @@ export function phoneActionOfCommand(capability: string, value: JsonValue): Phon
 }
 
 export interface PhoneDriverOptions {
-  readonly store: Pick<Store, 'devices'>;
+  readonly store: Pick<Store, 'host'>;
   readonly actions: Pick<PhoneActionBroker, 'run'>;
   readonly phones: Pick<PhoneNodes, 'recordAction'>;
-  readonly originOf: (commandId: string) => PhoneActionOrigin;
+  readonly originOf: (commandId: string) => Promise<PhoneActionOrigin>;
   readonly now: () => Date;
 }
 
@@ -141,13 +141,18 @@ export function phoneDriver(options: PhoneDriverOptions): DeviceDriver {
       if (clientId === null) {
         throw new CommandRefusedError(command.capability, `${command.externalId} is not a phone`);
       }
-      const device = options.store.devices.byExternal('local', command.externalId);
+      const device = await options.store.host.call(
+        'devices',
+        'byExternal',
+        'local',
+        command.externalId,
+      );
       if (device === undefined) {
         throw new CommandRefusedError(command.capability, 'this phone is no longer paired');
       }
       assertReady(command, device);
       const action = phoneActionOfCommand(command.capability, command.value);
-      const origin = options.originOf(command.commandId);
+      const origin = await options.originOf(command.commandId);
       const result = await options.actions.run(
         { clientId, name: device.display_name ?? device.name },
         action,

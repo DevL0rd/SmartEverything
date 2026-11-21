@@ -2,7 +2,7 @@ import { microsOfUsd, type UsageEntry } from '@smarteverything/domain';
 import { tokenMeters } from '../ledger/media-notes';
 import type { OrUsage } from './wire';
 
-export type PhotosMeter = (entry: UsageEntry) => void;
+export type PhotosMeter = (entry: UsageEntry) => Promise<void>;
 
 export interface PhotosCharge {
   readonly profileId: string;

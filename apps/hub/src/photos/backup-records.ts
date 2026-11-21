@@ -1,0 +1,372 @@
+import {
+  ApiError,
+  BACKUP_DEVICE,
+  BACKUP_SETTINGS,
+  type BackupDevice,
+  type BackupCheck,
+  type BackupHave,
+  type BackupHaveResult,
+  type BackupRegister,
+  type BackupState,
+  type DriveItem,
+  type PhotoFolderCopies,
+  type PhotoFolderCopiesRequest,
+  type PhotoFolderOrigin,
+  type PhotoOrigins,
+  type PhotoOriginsRequest,
+} from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
+import { z } from 'zod';
+import { isFileItem } from '../drive/file-item';
+import { personalDrive } from '../drive/spaces';
+import { storeUnit } from '../store/host/unit';
+import {
+  DriveBackupRepository,
+  type DriveBackupDeviceRow,
+} from '../store/repositories/drive-backup';
+import type { DevicesRepository } from '../store/repositories/devices';
+import { inList, type Sql } from '../store/sql';
+import type { Store } from '../store/store';
+import { folderCopiesOf } from './folder-copies';
+import { PhotoFolderStore } from './folder-store';
+import { LOCAL_MONTH } from './library';
+import { PHOTOS_FOLDER } from './membership';
+
+export interface RecordsStore extends Pick<Store, 'write' | 'feed' | 'driveRoots' | 'driveFeed'> {
+  readonly driveBackup: DriveBackupRepository;
+  readonly devices: Pick<DevicesRepository, 'find'>;
+}
+
+export interface RecordsEnv {
+  readonly store: RecordsStore;
+  readonly sql: Sql;
+  readonly log: Logger;
+  readonly now: () => Date;
+}
+
+const HELD = z.strictObject({ id: z.string(), sha256: z.string() });
+
+const MOMENT_AT = z.strictObject({ at: z.string().nullable() });
+
+const BYTES_LEFT = z.strictObject({ left: z.int().nonnegative() });
+
+function asRow(row: DriveBackupDeviceRow): BackupDevice {
+  return BACKUP_DEVICE.parse({
+    id: row.id,
+    profileId: row.profile_id,
+    deviceId: row.device_id,
+    name: row.name,
+    platform: row.platform,
+    lastSeenAt: row.last_seen_at,
+    settings: BACKUP_SETTINGS.parse(row.settings),
+  });
+}
+
+export class BackupRecords {
+  constructor(private readonly env: RecordsEnv) {}
+
+  touch(device: DriveBackupDeviceRow): void {
+    this.env.store.driveBackup.touchDevice(device.id, this.env.now().toISOString());
+  }
+
+  registerDevice(profileId: string, input: BackupRegister): BackupDevice {
+    const { store } = this.env;
+    if (store.devices.find(input.deviceId) === undefined) {
+      throw new ApiError('not_found', 'The hub does not know this phone.');
+    }
+    const existing = store.driveBackup.findDeviceByHubDevice(input.deviceId);
+    if (existing !== undefined && existing.profile_id !== profileId) {
+      throw new ApiError('conflict', 'This phone already backs up for another person.');
+    }
+    const seenAt = this.env.now().toISOString();
+    const row = store.write(() => {
+      const device =
+        existing === undefined
+          ? store.driveBackup.registerDevice({
+              profile_id: profileId,
+              device_id: input.deviceId,
+              name: input.name,
+              platform: input.platform,
+              last_seen_at: seenAt,
+              settings: input.settings,
+            })
+          : store.driveBackup.saveSettings(existing.id, input.settings);
+      store.driveBackup.touchDevice(device.id, seenAt);
+      this.announceProfile(profileId);
+      return device;
+    });
+    this.env.log.info('photos_backup.registered', {
+      backupDeviceId: row.id,
+      platform: row.platform,
+    });
+    return asRow({ ...row, last_seen_at: seenAt });
+  }
+
+  lookupHashes(profileId: string, input: BackupHave): BackupHaveResult {
+    this.deviceOf(profileId, input.deviceId);
+    const held = this.heldItems(
+      profileId,
+      input.assets.map((asset) => asset.sha256),
+    );
+    const have: { localId: string; itemId: string }[] = [];
+    const missing: string[] = [];
+    for (const asset of input.assets) {
+      const itemId = held.get(asset.sha256);
+      if (itemId === undefined) missing.push(asset.localId);
+      else have.push({ localId: asset.localId, itemId });
+    }
+    return { have, missing };
+  }
+
+  checkHashes(profileId: string, input: BackupCheck): BackupHaveResult {
+    const device = this.deviceOf(profileId, input.deviceId);
+    const now = this.env.now().toISOString();
+    const held = this.heldItems(
+      profileId,
+      input.assets.map((asset) => asset.sha256),
+    );
+    const have: { localId: string; itemId: string }[] = [];
+    const missing: string[] = [];
+    const folders = new PhotoFolderStore(this.env.sql);
+    this.env.store.write(() => {
+      this.env.store.driveBackup.touchDevice(device.id, now);
+      for (const asset of input.assets) {
+        const itemId = held.get(asset.sha256) ?? null;
+        this.env.store.driveBackup.saveAsset({
+          backup_device_id: device.id,
+          local_id: asset.localId,
+          item_id: itemId,
+          sha256: asset.sha256,
+          state: itemId === null ? 'uploading' : 'verified',
+          at: now,
+        });
+        folders.saveOrigin(device.id, asset.localId, asset.folder);
+        if (itemId === null) {
+          missing.push(asset.localId);
+        } else {
+          have.push({ localId: asset.localId, itemId });
+        }
+      }
+      this.announceProfile(
+        profileId,
+        have.map((asset) => asset.itemId),
+      );
+    });
+    return { have, missing };
+  }
+
+  origins(profileId: string, input: PhotoOriginsRequest): PhotoOrigins {
+    const device = this.env.store.driveBackup.findDeviceByHubDevice(input.deviceId);
+    const found =
+      device?.profile_id === profileId
+        ? new PhotoFolderStore(this.env.sql).originsOf(device.id, input.itemIds)
+        : new Map<string, PhotoFolderOrigin>();
+    return {
+      origins: input.itemIds.map((itemId) => ({ itemId, folder: found.get(itemId) ?? null })),
+    };
+  }
+
+  folderCopies(profileId: string, input: PhotoFolderCopiesRequest): PhotoFolderCopies {
+    const device = this.deviceOf(profileId, input.deviceId);
+    return folderCopiesOf(this.env.sql, { profileId, backupDeviceId: device.id }, input);
+  }
+
+  settleItem(item: DriveItem): number {
+    if (!isFileItem(item) || item.sha256 === null || item.integrity !== 'ok') {
+      return 0;
+    }
+    const { driveBackup, driveRoots } = this.env.store;
+    const root = driveRoots.find(item.rootId);
+    const now = this.env.now().toISOString();
+    const waiting = driveBackup
+      .withHashes([item.sha256])
+      .filter((asset) => asset.state !== 'verified')
+      .filter((asset) => {
+        const owner = driveBackup.deviceById(asset.backup_device_id).profile_id;
+        return root !== undefined && (root.scope === 'home' || root.ownerProfileId === owner);
+      });
+    this.env.store.write(() => {
+      for (const asset of waiting) {
+        driveBackup.saveAsset({ ...asset, item_id: item.id, state: 'verified', at: now });
+      }
+      const owners = new Set(
+        waiting.map((asset) => driveBackup.deviceById(asset.backup_device_id).profile_id),
+      );
+      for (const owner of owners) this.announceProfile(owner, [item.id]);
+    });
+    return waiting.length;
+  }
+
+  state(profileId: string): BackupState {
+    const devices = this.env.store.driveBackup.devicesOf(profileId).map((row) => {
+      const counts = new Map(
+        this.env.store.driveBackup.coverage(row.id).map((entry) => [entry.state, entry.total]),
+      );
+      return {
+        device: asRow(row),
+        backedUp: counts.get('verified') ?? 0,
+        pending: counts.get('uploaded') ?? 0,
+        uploading: counts.get('uploading') ?? 0,
+        failed: counts.get('failed') ?? 0,
+        lastBackupAt: this.lastBackupAt(row.id),
+      };
+    });
+    return { devices, bytesLeft: this.bytesLeft(profileId), targetFolder: PHOTOS_FOLDER };
+  }
+
+  private announceProfile(profileId: string, itemIds: readonly string[] = []): void {
+    const filter = inList('i.id', 'items', itemIds);
+    const items = this.env.sql.all(
+      z.strictObject({ root_id: z.string(), month: z.string().nullable() }),
+      `select distinct i.root_id, ${LOCAL_MONTH} as month from drive_items i
+       left join drive_media m on m.item_id = i.id where ${filter.text}`,
+      filter.parameters,
+    );
+    const drive = personalDrive(this.env.store, profileId);
+    this.env.store.feed.notice({
+      type: 'drive_changed',
+      rootIds: [...new Set([drive.id, ...items.map((item) => item.root_id)])],
+      folderIds: [],
+      albumIds: [],
+      months: [
+        ...new Set(items.flatMap((item) => (item.month === null ? [] : [item.month]))),
+      ].sort(),
+      cursor: this.env.store.driveFeed.latestSeq(),
+    });
+  }
+
+  deviceOf(profileId: string, hubDeviceId: string): DriveBackupDeviceRow {
+    const row = this.env.store.driveBackup.findDeviceByHubDevice(hubDeviceId);
+    if (row?.profile_id !== profileId) {
+      throw new ApiError('not_found', 'This phone is not registered for backup.');
+    }
+    return row;
+  }
+
+  private heldItems(profileId: string, hashes: readonly string[]): Map<string, string> {
+    const filter = inList('i.sha256', 'hashes', [...new Set(hashes)]);
+    const rows = this.env.sql.all(
+      HELD,
+      `select i.id, i.sha256 from drive_items i join drive_roots r on r.id = i.root_id
+       where ${filter.text} and i.kind <> 'folder' and i.integrity = 'ok'
+         and (r.scope = 'home' or r.owner_profile_id = $profileId)
+       order by i.added_at, i.id`,
+      { ...filter.parameters, profileId },
+    );
+    const held = new Map<string, string>();
+    for (const row of rows) {
+      if (!held.has(row.sha256)) {
+        held.set(row.sha256, row.id);
+      }
+    }
+    return held;
+  }
+
+  private bytesLeft(profileId: string): number {
+    return (
+      this.env.sql.get(
+        BYTES_LEFT,
+        `select coalesce(sum(u.length - u.offset), 0) as left
+           from drive_uploads u join drive_items f on f.id = u.target_id
+          where u.profile_id = $profileId and u.state = 'open' and u.target_kind = 'folder'
+            and f.rel_path = $folder`,
+        {
+          profileId,
+          folder: PHOTOS_FOLDER,
+        },
+      )?.left ?? 0
+    );
+  }
+
+  private lastBackupAt(backupDeviceId: string): string | null {
+    return (
+      this.env.sql.get(
+        MOMENT_AT,
+        `select max(at) as at from drive_backup_assets
+          where backup_device_id = $backupDeviceId and state = 'verified'`,
+        { backupDeviceId },
+      )?.at ?? null
+    );
+  }
+}
+
+const log = new Logger('hub.photos');
+
+function recordsOf(store: Store): BackupRecords {
+  return new BackupRecords({
+    store: {
+      write: store.write,
+      feed: store.feed,
+      driveRoots: store.driveRoots,
+      driveFeed: store.driveFeed,
+      devices: store.devices,
+      driveBackup: new DriveBackupRepository(store.context),
+    },
+    sql: store.context.sql,
+    log,
+    now: (): Date => store.now(),
+  });
+}
+
+export interface OfDevice<I> {
+  readonly profileId: string;
+  readonly request: I;
+}
+
+export const PHOTO_BACKUP_REGISTER_UNIT = storeUnit((store, input: OfDevice<BackupRegister>) =>
+  recordsOf(store).registerDevice(input.profileId, input.request),
+);
+
+export const PHOTO_BACKUP_LOOKUP_UNIT = storeUnit((store, input: OfDevice<BackupHave>) =>
+  recordsOf(store).lookupHashes(input.profileId, input.request),
+);
+
+export const PHOTO_BACKUP_CHECK_UNIT = storeUnit((store, input: OfDevice<BackupCheck>) =>
+  recordsOf(store).checkHashes(input.profileId, input.request),
+);
+
+export const PHOTO_BACKUP_ORIGINS_UNIT = storeUnit((store, input: OfDevice<PhotoOriginsRequest>) =>
+  recordsOf(store).origins(input.profileId, input.request),
+);
+
+export const PHOTO_BACKUP_COPIES_UNIT = storeUnit(
+  (store, input: OfDevice<PhotoFolderCopiesRequest>) =>
+    recordsOf(store).folderCopies(input.profileId, input.request),
+);
+
+export const PHOTO_BACKUP_STATE_UNIT = storeUnit((store, input: { readonly profileId: string }) =>
+  recordsOf(store).state(input.profileId),
+);
+
+export interface BackupDeviceFacts {
+  readonly kind: string | null;
+  readonly owned: boolean;
+}
+
+export const PHOTO_BACKUP_DEVICE_UNIT = storeUnit(
+  (
+    store,
+    input: { readonly deviceId: string; readonly clientId: string; readonly profileId: string },
+  ): BackupDeviceFacts => {
+    const device = store.devices.find(input.deviceId);
+    const phoneOwner =
+      device?.kind === 'phone' &&
+      device.details['clientId'] === input.clientId &&
+      device.details['profileId'] === input.profileId;
+    const computerOwner =
+      device?.kind === 'computer' &&
+      store.computerNodes.ownsWindow(input.deviceId, input.clientId, input.profileId);
+    return { kind: device?.kind ?? null, owned: phoneOwner || computerOwner };
+  },
+);
+
+export const PHOTO_BACKUP_TOUCH_UNIT = storeUnit(
+  (store, input: { readonly profileId: string; readonly deviceId: string }): void => {
+    const records = recordsOf(store);
+    records.touch(records.deviceOf(input.profileId, input.deviceId));
+  },
+);
+
+export const PHOTO_BACKUP_SETTLE_UNIT = storeUnit((store, input: { readonly item: DriveItem }) =>
+  recordsOf(store).settleItem(input.item),
+);

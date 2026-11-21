@@ -5,15 +5,14 @@ import {
   cameraQuietHours,
   inQuietHours,
   type CameraNotificationsPref,
-  type ClientPrefRead,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { CameraNotice } from './camera-notice';
+import type { PushClient } from './push-units';
 
 const MINUTE_MS = 60_000;
 
 export interface CameraGateDeps {
-  readonly prefOf: (clientId: string) => ClientPrefRead<CameraNotificationsPref>;
   readonly now: () => Date;
   readonly timeZone: () => string;
   readonly log: Logger;
@@ -37,8 +36,9 @@ export class CameraGate {
 
   constructor(private readonly deps: CameraGateDeps) {}
 
-  admit(clientId: string, notice: CameraNotice): boolean {
-    const read = this.deps.prefOf(clientId);
+  admit(client: PushClient, notice: CameraNotice): boolean {
+    const { clientId } = client;
+    const read = client.cameraNotifications;
     if (read.status === 'invalid') {
       this.deps.log.warn('push.camera_notifications_unreadable', {
         clientId,

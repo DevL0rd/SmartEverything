@@ -72,10 +72,9 @@ function refused(error: z.ZodError): OAuthError {
   );
 }
 
-function makeRoom(store: Store, clock: Clock): void {
+async function makeRoom(store: Store, clock: Clock): Promise<void> {
   const since = new Date(clock.now().getTime() - UNAPPROVED_LIFETIME_MS).toISOString();
-  store.oauth.forgetUnapprovedBefore(since);
-  if (store.oauth.unapprovedSince(since) >= MOST_UNAPPROVED) {
+  if ((await store.host.write('oauthMakeRoom', since)) >= MOST_UNAPPROVED) {
     throw new OAuthError(
       429,
       'temporarily_unavailable',
@@ -98,11 +97,11 @@ export async function registerClient(
   if (!parsed.success) {
     throw refused(parsed.error);
   }
-  makeRoom(store, clock);
+  await makeRoom(store, clock);
   const registration = parsed.data;
   const method = registration.token_endpoint_auth_method;
   const secret = method === 'none' ? null : newSecret(CLIENT_SECRET_PREFIX);
-  const row = store.oauth.register({
+  const row = await store.host.call('oauth', 'register', {
     name: nameOf(registration),
     uri: registration.client_uri ?? null,
     logoUri: registration.logo_uri ?? null,

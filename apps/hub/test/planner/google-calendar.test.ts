@@ -85,7 +85,6 @@ async function build(calendars: readonly CalendarSpec[] = []): Promise<Rig> {
     store,
     tokens,
     fetch: google.fetch,
-    now: (): Date => google.clock.now(),
   });
   return { tokens, google, test, ann, sync };
 }
@@ -554,7 +553,6 @@ describe('conflicts', () => {
       store: rig.test.store,
       tokens: rig.tokens,
       fetch: racing,
-      now: (): Date => rig.google.clock.now(),
     });
     await sync.sync(rig.ann, 'manual');
     expect(remote().get(String(event['id']))).toMatchObject({

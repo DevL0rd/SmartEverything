@@ -166,3 +166,46 @@ describe('spec refresh on firmware change', () => {
     expect(logs.events()).toContain('miot_spec.firmware_changed');
   });
 });
+
+describe('specs for many devices at once', () => {
+  function indexed(): SpecStore {
+    return new SpecStore({
+      baseUrl: 'https://spec.test',
+      directory,
+      log: testLogger('spec-store'),
+      fetch: (url): Promise<Response> => {
+        requests.push(url);
+        return Promise.resolve(
+          Response.json(
+            url.includes('/instances')
+              ? { instances: [{ model: MODEL, version: 1, type: TYPE }] }
+              : served,
+          ),
+        );
+      },
+    });
+  }
+
+  it('downloads the index and each spec once for devices that look them up together', async () => {
+    const specs = indexed();
+    const found = await Promise.all([
+      specs.specFor(MODEL, null),
+      specs.specFor(MODEL, null),
+      specs.specFor(MODEL, TYPE),
+    ]);
+    expect(found).toStrictEqual([parsed(spec()), parsed(spec()), parsed(spec())]);
+    expect(requests.filter((url) => url.includes('/instances'))).toHaveLength(1);
+    expect(requests.filter((url) => url.includes('/instance?'))).toHaveLength(1);
+  });
+
+  it('refuses every model the released index does not hold, after one fresh download', async () => {
+    await indexed().specFor(MODEL, null);
+    const specs = indexed();
+    const missing = await Promise.allSettled([
+      specs.specFor('acme.light.one', null),
+      specs.specFor('acme.light.two', null),
+    ]);
+    expect(missing.map((result) => result.status)).toStrictEqual(['rejected', 'rejected']);
+    expect(requests.filter((url) => url.includes('/instances'))).toHaveLength(2);
+  });
+});

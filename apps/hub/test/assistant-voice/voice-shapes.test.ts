@@ -122,22 +122,22 @@ function reach(): { store: TestStore['store']; actor: null } {
   return { store: opened.store, actor: null };
 }
 
-function chatDevices(args: Json): Json {
+async function chatDevices(args: Json): Promise<Json> {
   return listDevices(reach(), DEVICE_FILTER.parse(args));
 }
 
-function chatAutomations(args: Json): Json {
+async function chatAutomations(args: Json): Promise<Json> {
   return listAutomations(reach(), AUTOMATION_FILTER.parse(args));
 }
 
-function voiceFind(args: Json): Json {
+async function voiceFind(args: Json): Promise<Json> {
   const asked = voiceArgumentsOf('device_find', args);
-  return voiceResponseOf('device_find', asked, chatDevices(asked));
+  return voiceResponseOf('device_find', asked, await chatDevices(asked));
 }
 
-function voiceAutomations(args: Json): Json {
+async function voiceAutomations(args: Json): Promise<Json> {
   const call = voiceArgumentsOf('tool_call', { name: 'automation_read', arguments: args });
-  return voiceResponseOf('tool_call', call, chatAutomations(INNER.parse(call).arguments));
+  return voiceResponseOf('tool_call', call, await chatAutomations(INNER.parse(call).arguments));
 }
 
 function rows(result: Json, key: string): Record<string, unknown>[] {
@@ -149,18 +149,18 @@ function size(result: unknown): number {
 }
 
 describe('voice tool results for a home of 72 devices and 37 automations', () => {
-  it('keeps the full device list for text chats', () => {
-    const full = chatDevices({});
+  it('keeps the full device list for text chats', async () => {
+    const full = await chatDevices({});
     expect(rows(full, 'devices')).toHaveLength(DEVICE_COUNT);
     expect(full['more']).toBeUndefined();
     expect(size(full)).toBeGreaterThan(VOICE_BUDGET * 3);
   });
 
-  it('pages device_find in a bounded summary and every page together covers the home', () => {
+  it('pages device_find in a bounded summary and every page together covers the home', async () => {
     const seen = new Set<unknown>();
     let cursor: string | undefined = '0';
     while (cursor !== undefined) {
-      const page = voiceFind({ cursor });
+      const page = await voiceFind({ cursor });
       expect(size(page)).toBeLessThan(VOICE_BUDGET);
       for (const device of rows(page, 'devices')) {
         expect(Object.keys(device).sort()).toEqual(['family', 'id', 'name', 'online', 'room']);
@@ -176,15 +176,15 @@ describe('voice tool results for a home of 72 devices and 37 automations', () =>
     expect(seen.size).toBe(DEVICE_COUNT);
   });
 
-  it('never sends more than a voice page even when the model asks for everything', () => {
-    const page = voiceFind({ limit: 500 });
+  it('never sends more than a voice page even when the model asks for everything', async () => {
+    const page = await voiceFind({ limit: 500 });
     expect(rows(page, 'devices')).toHaveLength(VOICE_PAGE);
     expect(size(page)).toBeLessThan(VOICE_BUDGET);
   });
 
-  it('finds a device by name with its id and capability keys for control', () => {
+  it('finds a device by name with its id and capability keys for control', async () => {
     const wanted = at(devices, 10);
-    const found = voiceFind({ search: wanted.name });
+    const found = await voiceFind({ search: wanted.name });
     const [device] = rows(found, 'devices');
     expect(device).toMatchObject({ id: wanted.id, name: wanted.name, room: 'Dining room' });
     expect(device?.['capabilities']).toContain('raw:brightness_level');
@@ -192,8 +192,8 @@ describe('voice tool results for a home of 72 devices and 37 automations', () =>
     expect(size(found)).toBeLessThan(VOICE_BUDGET);
   });
 
-  it('lists automations in a bounded summary that says more are available', () => {
-    const listed = voiceAutomations({});
+  it('lists automations in a bounded summary that says more are available', async () => {
+    const listed = await voiceAutomations({});
     expect(size(listed)).toBeLessThan(VOICE_BUDGET);
     expect(rows(listed, 'automations')).toHaveLength(VOICE_PAGE);
     expect(listed['more']).toMatchObject({
@@ -203,8 +203,8 @@ describe('voice tool results for a home of 72 devices and 37 automations', () =>
     expect(rows(listed, 'automations')[0]).not.toHaveProperty('definition');
   });
 
-  it('lists the automations of one room with their names and on state', () => {
-    const listed = voiceAutomations({ rooms: ['Kitchen'] });
+  it('lists the automations of one room with their names and on state', async () => {
+    const listed = await voiceAutomations({ rooms: ['Kitchen'] });
     const automations = rows(listed, 'automations');
     expect(automations.length).toBeGreaterThan(0);
     for (const automation of automations) {
@@ -215,23 +215,23 @@ describe('voice tool results for a home of 72 devices and 37 automations', () =>
     expect(size(listed)).toBeLessThan(VOICE_BUDGET);
   });
 
-  it('gives one automation in full when asked for it by id', () => {
+  it('gives one automation in full when asked for it by id', async () => {
     const [first] = opened.store.automations.list();
-    const listed = voiceAutomations({ automationId: first?.id });
+    const listed = await voiceAutomations({ automationId: first?.id });
     const [automation] = rows(listed, 'automations');
     expect(automation).toMatchObject({ id: first?.id, definition: first?.definition });
     expect(size(listed)).toBeLessThan(VOICE_BUDGET);
   });
 
-  it('keeps the full automation records for text chats', () => {
-    const full = chatAutomations({});
+  it('keeps the full automation records for text chats', async () => {
+    const full = await chatAutomations({});
     expect(rows(full, 'automations')).toHaveLength(AUTOMATION_COUNT);
     expect(rows(full, 'automations')[0]).toHaveProperty('definition');
   });
 
-  it('never reaches the last-resort size guard on these calls', () => {
-    voiceFind({});
-    voiceAutomations({});
+  it('never reaches the last-resort size guard on these calls', async () => {
+    await voiceFind({});
+    await voiceAutomations({});
     expect(logs.events()).not.toContain('voice.result_over_guard');
   });
 

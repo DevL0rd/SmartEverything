@@ -34,7 +34,7 @@ let deps: DriveVersionFiles;
 let member: string;
 let other: string;
 
-function refuse(): ComputerNodeRow {
+function refuse(): Promise<ComputerNodeRow> {
   throw new ApiError('unauthorized', 'no nodes here');
 }
 

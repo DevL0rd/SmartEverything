@@ -21,7 +21,7 @@ export async function removeConversationMessages(
     admitChatExecution(chat);
     const engine = deps.engines.forMutation(chat, owner.role);
     await engine?.historyChanged(chat, owner);
-    engine?.historyRemoved?.(
+    await engine?.historyRemoved?.(
       chat,
       history.filter((row) => row.chat_id === chat.id),
     );

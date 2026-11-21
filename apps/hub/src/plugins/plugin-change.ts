@@ -101,7 +101,7 @@ export async function applyChange(
 ): Promise<AppliedChange> {
   const split = checkedSettings(row, change, deps);
   const secretsChanged = split === null ? false : await saveSecrets(deps, row.id, split.secrets);
-  const updated = deps.store.plugins.update(row.id, {
+  const updated = await deps.store.host.call('plugins', 'update', row.id, {
     enabled: change.enabled,
     trusted: change.trusted,
     toolSwitches:

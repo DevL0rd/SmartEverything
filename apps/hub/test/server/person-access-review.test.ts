@@ -70,9 +70,9 @@ function raw(work: (database: DatabaseSync) => void): void {
   }
 }
 
-function refusal(work: () => unknown): ApiError {
+async function refusedAsync(work: () => Promise<unknown>): Promise<ApiError> {
   try {
-    work();
+    await work();
   } catch (error) {
     if (error instanceof ApiError) return error;
     throw error;
@@ -96,14 +96,14 @@ afterEach(async () => {
 });
 
 describe('a bad or missing access row', () => {
-  it('never locks the owner devices out, whatever the stored limits look like', () => {
+  it('never locks the owner devices out, whatever the stored limits look like', async () => {
     const owner = pair('owner', ownerPerson);
     raw((database) => {
       database.exec(
         `update person_access set scopes = '{"areas":["gone"],"extra":1}', conditions = '{"x":1}', budget = '{"daily":"x"}'`,
       );
     });
-    const resolved = clientForToken(opened.store, owner.token, HOME);
+    const resolved = await clientForToken(opened.store, owner.token, HOME);
     expect(resolved.role).toBe('owner');
     expect(opened.store.personAccess.standing(ownerPerson)).toMatchObject({
       known: true,
@@ -111,24 +111,26 @@ describe('a bad or missing access row', () => {
     });
   });
 
-  it('lets a member keep working while only its limits are unreadable', () => {
+  it('lets a member keep working while only its limits are unreadable', async () => {
     const kid = person('Kid', { role: 'member', template: 'child' });
     const phone = pair('member', kid.id);
     raw((database) => {
       database.exec(`update person_access set scopes = '{"areas":"all"}' where role = 'member'`);
     });
-    expect(clientForToken(opened.store, phone.token, HOME).role).toBe('member');
+    expect((await clientForToken(opened.store, phone.token, HOME)).role).toBe('member');
   });
 
-  it('keeps an owner device an owner and refuses a member device when the row is gone', () => {
+  it('keeps an owner device an owner and refuses a member device when the row is gone', async () => {
     const kid = person('Kid', { role: 'member', template: 'child' });
     const phone = pair('member', kid.id);
     const viewer = pair('owner', kid.id, 'Viewer');
     raw((database) => {
       database.exec(`delete from person_access where role = 'member'`);
     });
-    expect(clientForToken(opened.store, viewer.token, HOME).id).toBe(viewer.client.id);
-    expect(refusal(() => clientForToken(opened.store, phone.token, HOME)).code).toBe('forbidden');
+    expect((await clientForToken(opened.store, viewer.token, HOME)).id).toBe(viewer.client.id);
+    expect((await refusedAsync(() => clientForToken(opened.store, phone.token, HOME))).code).toBe(
+      'forbidden',
+    );
     expect(opened.store.personAccess.standing(kid.id)).toStrictEqual({
       known: false,
       reason: 'missing',
@@ -176,7 +178,7 @@ describe('repairing areas that no longer exist', () => {
 });
 
 describe('the expiry sweep', () => {
-  it('still unpairs an ended guest whose stored limits cannot be read', () => {
+  it('still unpairs an ended guest whose stored limits cannot be read', async () => {
     const guest = person('Guest', {
       role: 'guest',
       template: 'guest',
@@ -186,13 +188,16 @@ describe('the expiry sweep', () => {
     raw((database) => {
       database.exec(`update person_access set scopes = '{"areas":3}' where role = 'guest'`);
     });
-    new AccessLifecycle({
+    const lifecycle = new AccessLifecycle({
       store: opened.store,
       now: (): Date => moment,
       clientRemoved: (): void => undefined,
       clientPaused: (): void => undefined,
-      lapseGrants: (): void => undefined,
-    }).sweep();
+      lapseGrants: (): Promise<void> => Promise.resolve(),
+    });
+    lifecycle.start();
+    await lifecycle.idle();
+    lifecycle.stop();
     expect(opened.store.clients.list().map((client) => client.id)).not.toContain(phone.client.id);
   });
 });
@@ -225,38 +230,40 @@ describe('the list of areas', () => {
 describe('the schedule of a person', () => {
   const window = { from: '09:00', to: '11:00', urgent: false };
 
-  it('pauses a member device inside the window, audits it, and lets it back in outside', () => {
+  it('pauses a member device inside the window, audits it, and lets it back in outside', async () => {
     const kid = person('Kid', {
       role: 'member',
       template: 'child',
       conditions: { home_only: false, schedule: window },
     });
     const phone = pair('member', kid.id);
-    expect(refusal(() => clientForToken(opened.store, phone.token, HOME)).code).toBe('forbidden');
-    expect(opened.store.accessAudit.list(5)).toMatchObject([
+    expect((await refusedAsync(() => clientForToken(opened.store, phone.token, HOME))).code).toBe(
+      'forbidden',
+    );
+    expect(await opened.store.host.call('accessAudit', 'list', 5)).toMatchObject([
       { kind: 'refused_condition', client_id: phone.client.id },
     ]);
     moment = new Date('2026-10-18T11:00:00.000Z');
-    expect(clientForToken(opened.store, phone.token, HOME).id).toBe(phone.client.id);
+    expect((await clientForToken(opened.store, phone.token, HOME)).id).toBe(phone.client.id);
   });
 
-  it('keeps the read-only status visible and never binds an owner person or an owner device', () => {
+  it('keeps the read-only status visible and never binds an owner person or an owner device', async () => {
     const kid = person('Kid', {
       role: 'member',
       template: 'child',
       conditions: { home_only: false, schedule: window },
     });
     const phone = pair('member', kid.id);
-    expect(clientForToken(opened.store, phone.token, { ...HOME, statusOnly: true }).role).toBe(
-      'member',
-    );
+    expect(
+      (await clientForToken(opened.store, phone.token, { ...HOME, statusOnly: true })).role,
+    ).toBe('member');
     const owner = pair('owner', ownerPerson);
     opened.store.personAccess.change(ownerPerson, {
       conditions: { home_only: false, schedule: window },
     });
-    expect(clientForToken(opened.store, owner.token, HOME).role).toBe('owner');
+    expect((await clientForToken(opened.store, owner.token, HOME)).role).toBe('owner');
     opened.store.clients.useProfile(owner.client.id, kid.id);
-    expect(clientForToken(opened.store, owner.token, HOME).role).toBe('member');
+    expect((await clientForToken(opened.store, owner.token, HOME)).role).toBe('member');
   });
 });
 
@@ -301,10 +308,10 @@ describe('revoking and expiring', () => {
     owner = desktop;
   });
 
-  it('withdraws the pairing codes still open for the person and closes every kind of socket', () => {
+  it('withdraws the pairing codes still open for the person and closes every kind of socket', async () => {
     const kid = person('Kid', { role: 'member', template: 'child' });
     const phone = pair('member', kid.id);
-    const { code } = access.startPairing('member', owner.id, kid.id);
+    const { code } = await access.startPairing('member', owner.id, kid.id);
     const closed: number[] = [];
     clientSocketsOf(opened.store).track(phone.client.id, {
       close: (closeCode): void => {
@@ -312,28 +319,28 @@ describe('revoking and expiring', () => {
       },
       once: (): void => undefined,
     });
-    new AccessLifecycle({
+    await new AccessLifecycle({
       store: opened.store,
       now: (): Date => moment,
       clientRemoved: (): void => undefined,
       clientPaused: (): void => undefined,
-      lapseGrants: (): void => undefined,
+      lapseGrants: (): Promise<void> => Promise.resolve(),
     }).revoke(kid.id, owner.id);
     expect(closed).toStrictEqual([4001]);
-    expect(
-      refusal(() => access.claim({ code, name: 'Late', platform: 'android', remote: 'phone' }))
-        .code,
-    ).toBe('pairing_code_invalid');
+    const late = await refusedAsync(() =>
+      access.claim({ code, name: 'Late', platform: 'android', remote: 'phone' }),
+    );
+    expect(late.code).toBe('pairing_code_invalid');
   });
 
-  it('asks a changed person for a new code when an owner pairing outlived the owner role', () => {
+  it('asks a changed person for a new code when an owner pairing outlived the owner role', async () => {
     const partner = person('Partner', { role: 'owner', template: 'owner' });
-    const { code } = access.startPairing('owner', owner.id, partner.id);
+    const { code } = await access.startPairing('owner', owner.id, partner.id);
     opened.store.personAccess.change(partner.id, { role: 'member' });
-    expect(
-      refusal(() => access.claim({ code, name: 'Tablet', platform: 'android', remote: 'tablet' }))
-        .code,
-    ).toBe('conflict');
+    const late = await refusedAsync(() =>
+      access.claim({ code, name: 'Tablet', platform: 'android', remote: 'tablet' }),
+    );
+    expect(late.code).toBe('conflict');
   });
 
   it('closes tracked sockets of a device that is removed', () => {

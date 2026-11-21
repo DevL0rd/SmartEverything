@@ -7,6 +7,7 @@ import type { Operations } from '../server/operations';
 import { recordingPathIn } from '../services';
 import type { ReleasePublications } from '../self-update/release-publications';
 import type { ReleaseSecrets } from '../extensions/mcp/tools/registry';
+import type { CalendarReader } from '../planner/ical/calendar-reader';
 import type { Store } from '../store/store';
 import type { MediaNotes } from '../transcripts/media-notes';
 import { SeTools } from './se-tools';
@@ -22,6 +23,7 @@ export interface ToolHubOptions {
   readonly layout: HubLayout;
   readonly clock: Clock;
   readonly mediaNotes: MediaNotes;
+  readonly calendars: CalendarReader;
   readonly log: Logger;
 }
 
@@ -56,6 +58,7 @@ export function createToolHub(options: ToolHubOptions): ToolHub {
           actor: null,
           layout: options.layout,
           mediaNotes: options.mediaNotes,
+          calendars: options.calendars,
         },
         deviceName: (id): string | null => deviceLabel(store, id),
         log: options.log,

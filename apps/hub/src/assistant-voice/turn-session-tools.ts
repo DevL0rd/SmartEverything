@@ -65,7 +65,7 @@ export class TurnTools {
       return false;
     }
     if (live === call.session) {
-      const scheduling = timingOf(kit.store.assistantChat.settings().voice);
+      const scheduling = timingOf(kit.store.live.home.assistant.read().voice);
       live.toolResult(call.id, call.name, { update: text }, { scheduling, more: true });
     } else {
       live.text(`[Task update] ${text}`, true);
@@ -113,7 +113,7 @@ export class TurnTools {
   ): void {
     const { kit, record, renewal, watchdog, session, now } = this.ports;
     const live = session();
-    const scheduling = own?.delivery ?? timingOf(kit.store.assistantChat.settings().voice);
+    const scheduling = own?.delivery ?? timingOf(kit.store.live.home.assistant.read().voice);
     const to = { session: live, record, scheduling };
     if (live === asked) {
       deliverToolAnswer(to, call, answer);

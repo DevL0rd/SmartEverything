@@ -1,5 +1,5 @@
 import type { DeviceEvent, EventKind, JsonValue } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import type { NoteLogger } from '../unit-notes';
 import type { DrinkItem } from './drinks';
 
 const EVENTS_PER_SYNC = 20;
@@ -14,7 +14,7 @@ export class EventBatch {
 
   constructor(
     private readonly externalId: string,
-    private readonly log: Logger,
+    private readonly log: NoteLogger,
   ) {}
 
   add(

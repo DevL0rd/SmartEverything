@@ -30,7 +30,7 @@ export interface ProductSync {
 export type SyncListener = (profileId: string) => Promise<void>;
 
 export interface GoogleSyncRunnerOptions {
-  readonly store: Pick<Store, 'googleAccounts' | 'plannerCollections' | 'plannerItems' | 'feed'>;
+  readonly store: Pick<Store, 'host' | 'feed'>;
   readonly calendar: ProductSync;
   readonly tasks: ProductSync;
   readonly clock: Pick<Clock, 'now' | 'at'>;
@@ -64,14 +64,15 @@ export class GoogleSyncRunner {
   private readonly strikes = new Map<string, number>();
   private readonly listeners = new Set<SyncListener>();
   private unsubscribe: (() => void) | null = null;
+  private reconciling: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: GoogleSyncRunnerOptions) {}
 
   start(): void {
     this.unsubscribe = this.options.store.feed.subscribe((change) => {
-      this.follow(change);
+      background(this.follow(change), 'google.sync_failed');
     });
-    this.reconcile();
+    this.startReconcile();
   }
 
   stop(): void {
@@ -82,7 +83,16 @@ export class GoogleSyncRunner {
   }
 
   resumed(): void {
-    this.reconcile();
+    this.startReconcile();
+  }
+
+  private startReconcile(): void {
+    const listed = this.reconcile();
+    this.reconciling = listed.then(
+      () => undefined,
+      () => undefined,
+    );
+    background(listed, 'google.sync_failed');
   }
 
   forget(profileId: string): void {
@@ -102,7 +112,12 @@ export class GoogleSyncRunner {
     await this.sync(item.profile_id, 'ring');
   };
 
-  sync(profileId: string, trigger: GoogleSyncTrigger): Promise<GoogleSyncOutcome> {
+  async sync(profileId: string, trigger: GoogleSyncTrigger): Promise<GoogleSyncOutcome> {
+    await this.reconciling;
+    return this.flight(profileId, trigger);
+  }
+
+  private flight(profileId: string, trigger: GoogleSyncTrigger): Promise<GoogleSyncOutcome> {
     const running = this.flights.get(profileId);
     if (running !== undefined) return running;
     const flight = this.fly(profileId, trigger).finally(() => {
@@ -112,34 +127,42 @@ export class GoogleSyncRunner {
     return flight;
   }
 
-  private reconcile(): void {
-    for (const account of this.options.store.googleAccounts.list()) {
+  private async reconcile(): Promise<void> {
+    for (const account of await this.options.store.host.call('googleAccounts', 'list')) {
       if (account.status !== 'linked') continue;
-      background(this.sync(account.profile_id, 'reconcile'), 'google.sync_failed', {
+      background(this.flight(account.profile_id, 'reconcile'), 'google.sync_failed', {
         profileId: account.profile_id,
       });
     }
   }
 
-  private follow(change: LiveChange): void {
+  private async follow(change: LiveChange): Promise<void> {
     if (change.table === 'planner_guests') {
       const guest = change.record ?? change.oldRecord;
       const item =
-        guest === null ? undefined : this.options.store.plannerItems.findAny(guest.item_id);
-      if (item !== undefined) this.followItem(item);
+        guest === null
+          ? undefined
+          : await this.options.store.host.call('plannerItems', 'findAny', guest.item_id);
+      if (item !== undefined) await this.followItem(item);
       return;
     }
     if (change.table !== 'planner_items') return;
     const row = change.record ?? change.oldRecord;
-    if (row !== null) this.followItem(row);
+    if (row !== null) await this.followItem(row);
   }
 
-  private followItem(row: PlannerItemRow): void {
+  private async followItem(row: PlannerItemRow): Promise<void> {
     if (this.flights.has(row.profile_id)) return;
-    const collection = this.options.store.plannerCollections.find(
-      row.collection_id,
-      row.profile_id,
-    );
+    const collection =
+      row.google === null
+        ? await this.options.store.host.call(
+            'plannerCollections',
+            'find',
+            row.collection_id,
+            row.profile_id,
+          )
+        : undefined;
+    if (this.flights.has(row.profile_id)) return;
     if (row.google === null && (collection?.google ?? null) === null) return;
     background(this.sync(row.profile_id, 'change'), 'google.sync_failed', {
       profileId: row.profile_id,
@@ -147,14 +170,14 @@ export class GoogleSyncRunner {
   }
 
   private async fly(profileId: string, trigger: GoogleSyncTrigger): Promise<GoogleSyncOutcome> {
-    const account = this.options.store.googleAccounts.find(profileId);
+    const account = await this.options.store.host.call('googleAccounts', 'find', profileId);
     if (account?.status !== 'linked') return 'unlinked';
     if (this.waiting.has(profileId)) {
       log.info('google.sync_deferred', { profileId, trigger });
       return 'backoff';
     }
     const failures = await this.runProducts(profileId, trigger, account);
-    this.settle(profileId, failures);
+    await this.settle(profileId, failures);
     await this.announce(profileId);
     return failures.length === 0 ? 'synced' : 'failed';
   }
@@ -185,18 +208,17 @@ export class GoogleSyncRunner {
     log.error('google.sync_failed', cause, { profileId, product });
   }
 
-  private settle(profileId: string, failures: readonly ProductFailure[]): void {
+  private async settle(profileId: string, failures: readonly ProductFailure[]): Promise<void> {
     if (failures.some((failure) => rateLimited(failure.cause))) this.backOff(profileId);
     else if (failures.length === 0) this.strikes.delete(profileId);
-    const { googleAccounts } = this.options.store;
-    if (googleAccounts.find(profileId)?.status !== 'linked') return;
     const [first] = failures;
-    googleAccounts.update(
+    await this.options.store.host.write('settleGoogleSync', {
       profileId,
-      first === undefined
-        ? { last_sync_at: this.options.clock.now().toISOString(), last_error: null }
-        : { last_error: failureMessage(first.cause) },
-    );
+      change:
+        first === undefined
+          ? { last_sync_at: this.options.clock.now().toISOString(), last_error: null }
+          : { last_error: failureMessage(first.cause) },
+    });
   }
 
   private backOff(profileId: string): void {

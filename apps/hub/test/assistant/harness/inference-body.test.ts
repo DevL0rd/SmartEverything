@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { INFERENCE } from '../../../src/harness/transport';
+import { INFERENCE } from '../../../src/harness/inference-request';
 
 function body(messages: number, tools: number, request: Record<string, unknown> = {}): unknown {
   return {

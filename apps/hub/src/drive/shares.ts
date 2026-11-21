@@ -23,16 +23,8 @@ import { linkExpiry } from '../server/media-links';
 import type { DriveItemWindow } from '../store/repositories/drive-items';
 import type { Store } from '../store/store';
 import { decodeCursor, encodeCursor } from './search';
-import { readDriveSettings } from './settings';
 import { VIEW_ONLY_REASON } from './sharing/export-guard';
-import {
-  canRead,
-  canShare,
-  itemAccess,
-  inLockedFolder,
-  type DriveActor,
-  type ItemAccess,
-} from './access';
+import type { DriveActor } from './access';
 
 const log = new Logger('hub.drive');
 
@@ -67,10 +59,7 @@ export interface ShareActor extends DriveActor {
 }
 
 export interface SharesEnv {
-  readonly store: Pick<
-    Store,
-    'driveShares' | 'driveItems' | 'driveRoots' | 'driveGrants' | 'driveAlbums' | 'settingsKv'
-  >;
+  readonly store: Pick<Store, 'host'>;
   readonly origin: () => ShareOrigin;
   readonly now: () => Date;
 }
@@ -105,8 +94,8 @@ export interface ShareLink {
   readonly expiresAt: string;
 }
 
-export function shareOriginOf(store: Pick<Store, 'settings'>, local: string): ShareOrigin {
-  const publicUrl = store.settings.read().public_url;
+export function shareOriginOf(store: Pick<Store, 'live'>, local: string): ShareOrigin {
+  const publicUrl = store.live.home.settings.read().public_url;
   return publicUrl === null ? { url: local, public: false } : { url: publicUrl, public: true };
 }
 
@@ -174,8 +163,11 @@ export class DriveShares {
   }
 
   async create(actor: ShareActor, input: DriveShareCreate): Promise<DriveShareCreated> {
-    const target = this.target(actor, input);
-    if (!this.linksAllowed(actor)) {
+    const { target, linksAllowed } = await this.env.store.host.read('driveShareTarget', {
+      actor,
+      create: input,
+    });
+    if (!linksAllowed) {
       throw new ApiError('forbidden', 'The owner has not allowed members to share links.');
     }
     if (target.kind === 'item' && target.item.locked && input.permission === 'download') {
@@ -189,7 +181,7 @@ export class DriveShares {
       throw new ApiError('invalid_request', 'The expiry must be in the future.');
     }
     const token = randomBytes(TOKEN_BYTES).toString('base64url');
-    const share = this.env.store.driveShares.insert({
+    const share = await this.env.store.host.call('driveShares', 'insert', {
       id: randomUUID(),
       ...(target.kind === 'item'
         ? { itemId: target.item.id }
@@ -218,81 +210,35 @@ export class DriveShares {
     });
   }
 
-  private target(
-    actor: ShareActor,
-    input: DriveShareCreate,
-  ):
-    | { readonly kind: 'item'; readonly item: DriveItem }
-    | { readonly kind: 'album'; readonly album: DriveAlbum } {
-    if (input.albumId !== undefined) {
-      const album = this.env.store.driveAlbums.find(input.albumId);
-      if (
-        album?.surface !== 'photos' ||
-        album.kind !== 'manual' ||
-        album.ownerProfileId !== actor.profileId
-      ) {
-        throw new ApiError('not_found', 'There is no such album of this person to share.');
-      }
-      if (this.env.store.driveAlbums.contributions.unexposedCount(album.id) > 0) {
-        throw new ApiError(
-          'invalid_request',
-          'This album holds photos that belong to someone else, so it cannot be shared.',
-        );
-      }
-      return { kind: 'album', album };
-    }
-    if (input.itemId === undefined) {
-      throw new ApiError('invalid_request', 'Name an item or an album to share.');
-    }
-    const item = this.visibleItem(actor, input.itemId);
-    if (!canShare(this.accessTo(actor, item))) {
-      throw new ApiError('forbidden', 'Only the person whose drive this is can share it.');
-    }
-    return { kind: 'item', item };
+  linksAllowed(actor: ShareActor): Promise<boolean> {
+    return this.env.store.host.read('driveShareLinksAllowed', actor);
   }
 
-  linksAllowed(actor: ShareActor): boolean {
-    return actor.owner || readDriveSettings(this.env.store).membersMayShare;
+  list(actor: DriveActor, itemId: string): Promise<DriveShare[]> {
+    return this.env.store.host.read('driveSharesOfItem', { actor, itemId });
   }
 
-  list(actor: DriveActor, itemId: string): DriveShare[] {
-    const item = this.visibleItem(actor, itemId);
-    const sharedDrive = this.env.store.driveRoots.byId(item.rootId).scope === 'home';
-    return this.env.store.driveShares
-      .forItem(itemId)
-      .filter((share) => sharedDrive || share.createdBy === actor.profileId);
-  }
-
-  revoke(actor: DriveActor, shareId: string): DriveShare {
-    const share = this.env.store.driveShares.find(shareId);
-    const itemId = share?.itemId ?? null;
-    const item = itemId === null ? undefined : this.env.store.driveItems.find(itemId, null);
-    const sharedDrive =
-      item !== undefined && this.env.store.driveRoots.byId(item.rootId).scope === 'home';
-    if (share === undefined || !(sharedDrive || share.createdBy === actor.profileId)) {
-      throw new ApiError('not_found', 'There is no such share link for this caller.');
-    }
-    const revoked = this.env.store.driveShares.revoke(share.id, this.env.now().toISOString());
-    log.info('drive_share.revoked', { shareId: share.id, by: actor.profileId });
+  async revoke(actor: DriveActor, shareId: string): Promise<DriveShare> {
+    const revoked = await this.env.store.host.write('driveShareRevoke', {
+      actor,
+      shareId,
+      at: this.env.now().toISOString(),
+    });
+    log.info('drive_share.revoked', { shareId: revoked.id, by: actor.profileId });
     return revoked;
   }
 
-  open(token: string): ShareAccess {
+  async open(token: string): Promise<ShareAccess> {
     const parsed = TOKEN.safeParse(token);
-    const record = parsed.success
-      ? this.env.store.driveShares.byTokenHash(hashToken(parsed.data))
-      : undefined;
-    if (record === undefined || this.lapsed(record.share)) throw unavailable();
-    const { share, passwordHash } = record;
-    if (share.albumId !== null) {
-      const album = this.env.store.driveAlbums.find(share.albumId);
-      if (album === undefined) throw unavailable();
-      return { kind: 'album', share, passwordHash, entryId: album.id, album };
-    }
-    const item =
-      share.itemId === null ? undefined : this.env.store.driveItems.find(share.itemId, null);
-    if (item === undefined || inLockedFolder(item)) throw unavailable();
-    return { kind: 'item', share, passwordHash, entryId: item.id, item };
+    if (!parsed.success) throw unavailable();
+    const opened = await this.env.store.host.read('driveShareOpen', {
+      tokenHash: hashToken(parsed.data),
+    });
+    if (opened.kind === 'unavailable' || this.lapsed(opened.share)) throw unavailable();
+    const { share, passwordHash } = opened;
+    return opened.kind === 'album'
+      ? { kind: 'album', share, passwordHash, entryId: opened.album.id, album: opened.album }
+      : { kind: 'item', share, passwordHash, entryId: opened.item.id, item: opened.item };
   }
 
   private lapsed(share: DriveShare): boolean {
@@ -300,58 +246,45 @@ export class DriveShares {
     return share.revokedAt !== null || expired;
   }
 
-  within(access: ShareAccess, itemId: string): DriveItem {
-    if (access.kind === 'album') return this.inAlbum(access.album, itemId);
-    const { item } = access;
-    if (itemId === item.id) return item;
-    const child = this.env.store.driveItems.find(itemId, null);
-    const inside =
-      child !== undefined &&
-      item.kind === 'folder' &&
-      child.rootId === item.rootId &&
-      !inLockedFolder(child) &&
-      child.relPath.startsWith(`${item.relPath}/`);
-    if (!inside) throw unavailable();
-    return child;
-  }
-
-  private inAlbum(album: DriveAlbum, itemId: string): DriveItem {
-    const item = this.env.store.driveItems.find(itemId, null);
-    const member = this.env.store.driveAlbums.contributions.exposes(album.id, itemId);
-    if (item === undefined || item.kind === 'folder' || !member || inLockedFolder(item)) {
-      throw unavailable();
-    }
-    return item;
-  }
-
-  rootPathOf(item: DriveItem): string {
-    const root = this.env.store.driveRoots.find(item.rootId);
-    if (root === undefined) throw unavailable();
-    return root.path;
-  }
-
-  albumItems(album: DriveAlbum, after: string | null, limit: number): AlbumShareWindow {
-    const cursor = after === null ? null : decodeCursor(ALBUM_AFTER, after);
-    const window = this.env.store.driveAlbums.members(album.id, cursor, limit);
-    const items = window.members.flatMap((member) => {
-      const item = this.env.store.driveItems.find(member.itemId, null);
-      return item === undefined ||
-        item.kind === 'folder' ||
-        inLockedFolder(item) ||
-        !this.env.store.driveAlbums.contributions.exposes(album.id, item.id)
-        ? []
-        : [item];
+  async within(access: ShareAccess, itemId: string): Promise<DriveItem> {
+    if (access.kind === 'item' && itemId === access.item.id) return access.item;
+    const found = await this.env.store.host.read('driveShareWithin', {
+      entry:
+        access.kind === 'album'
+          ? { kind: 'album', albumId: access.album.id }
+          : { kind: 'item', item: access.item },
+      itemId,
     });
-    return { items, next: window.next === null ? null : encodeCursor(window.next) };
+    if (found === null) throw unavailable();
+    return found;
   }
 
-  children(folder: DriveItem, after: string | null, limit: number): DriveItemWindow {
-    return this.env.store.driveItems.children({
+  async rootPathOf(item: DriveItem): Promise<string> {
+    const path = await this.env.store.host.read('driveShareRootPath', { rootId: item.rootId });
+    if (path === null) throw unavailable();
+    return path;
+  }
+
+  async albumItems(
+    album: DriveAlbum,
+    after: string | null,
+    limit: number,
+  ): Promise<AlbumShareWindow> {
+    const cursor = after === null ? null : decodeCursor(ALBUM_AFTER, after);
+    const window = await this.env.store.host.read('driveShareAlbumItems', {
+      albumId: album.id,
+      after: cursor,
+      limit,
+    });
+    return { items: window.items, next: window.next === null ? null : encodeCursor(window.next) };
+  }
+
+  children(folder: DriveItem, after: string | null, limit: number): Promise<DriveItemWindow> {
+    return this.env.store.host.read('driveShareChildren', {
       rootId: folder.rootId,
       parentId: folder.id,
       after,
       limit,
-      viewer: null,
     });
   }
 
@@ -373,8 +306,14 @@ export class DriveShares {
     }
   }
 
-  record(access: ShareAccess, kind: 'open' | 'download'): void {
-    this.env.store.driveShares.recordEvent(access.share.id, kind, this.env.now().toISOString());
+  async record(access: ShareAccess, kind: 'open' | 'download'): Promise<void> {
+    await this.env.store.host.call(
+      'driveShares',
+      'recordEvent',
+      access.share.id,
+      kind,
+      this.env.now().toISOString(),
+    );
   }
 
   link(access: ShareAccess, token: string, itemId: string): ShareLink {
@@ -403,18 +342,6 @@ export class DriveShares {
     if (!timingSafeEqual(expected, Buffer.from(signature, 'hex'))) {
       throw new ApiError('unauthorized', 'This link was not signed for this item.');
     }
-  }
-
-  private accessTo(actor: DriveActor, item: DriveItem): ItemAccess {
-    return itemAccess(this.env.store, actor, this.env.store.driveRoots.byId(item.rootId), item);
-  }
-
-  private visibleItem(actor: DriveActor, itemId: string): DriveItem {
-    const item = this.env.store.driveItems.find(itemId, actor.profileId);
-    if (item === undefined || inLockedFolder(item) || !canRead(this.accessTo(actor, item))) {
-      throw new ApiError('not_found', 'There is no such file or folder for this caller.');
-    }
-    return item;
   }
 
   private sign(shareId: string, itemId: string, expires: number): string {

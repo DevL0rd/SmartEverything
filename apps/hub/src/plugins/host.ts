@@ -10,7 +10,7 @@ import {
   type JsonValue,
   type PluginRow,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import { failure, type HubToolResult, type ToolCaller } from '../ai-tools/hub-tool';
 import type { HubLayout } from '../data-layout';
 import type { Store } from '../store/store';
@@ -51,12 +51,23 @@ export interface RunningTool {
 export class PluginHost {
   private readonly slots = new Map<string, PluginSlot>();
   private readonly listeners = new Set<() => void>();
+  private readonly rows = new Map<string, PluginRow>();
 
-  constructor(private readonly options: PluginHostOptions) {}
+  constructor(private readonly options: PluginHostOptions) {
+    options.store.feed.subscribe((change) => {
+      if (change.table !== 'plugins') return;
+      const id = (change.record ?? change.oldRecord)?.id;
+      if (id === undefined || !this.rows.has(id)) return;
+      if (change.record === null) this.rows.delete(id);
+      else this.rows.set(id, change.record);
+    });
+  }
 
   async boot(): Promise<void> {
-    this.syncBuiltins();
-    const enabled = this.options.store.plugins.list().filter((row) => row.enabled);
+    await this.syncBuiltins();
+    const enabled = (await this.options.store.host.call('plugins', 'list')).filter(
+      (row) => row.enabled,
+    );
     await Promise.all(enabled.map((row) => this.launch(row.id)));
   }
 
@@ -66,15 +77,15 @@ export class PluginHost {
 
   async launch(id: string): Promise<void> {
     await this.halt(id);
-    const row = this.options.store.plugins.byId(id);
+    const row = await this.options.store.host.call('plugins', 'byId', id);
+    this.rows.set(id, row);
     const data = this.dataOf(id);
     await mkdir(data, { recursive: true, mode: 0o700 });
     const log = pluginLogger(this.options.log, id);
     const slot = new PluginSlot({
       id,
       log,
-      factory: (sinks): PluginRuntime =>
-        this.runtimeOf(this.options.store.plugins.byId(id), data, sinks),
+      factory: (sinks): PluginRuntime => this.runtimeOf(this.current(id), data, sinks),
       contributions: (log): Contributions =>
         contributionsOf(
           { ...this.options.contributions, store: this.options.store },
@@ -82,7 +93,11 @@ export class PluginHost {
           log,
         ),
       status: (status, detail): void => {
-        this.options.store.plugins.update(id, { status, statusDetail: detail });
+        background(
+          this.options.store.host.call('plugins', 'update', id, { status, statusDetail: detail }),
+          'plugin.status_save_failed',
+          { plugin: id },
+        );
         log.info('plugin.status', {
           plugin: id,
           status,
@@ -96,6 +111,7 @@ export class PluginHost {
     });
     this.slots.set(id, slot);
     await slot.start();
+    await this.options.store.host.call('plugins', 'byId', id);
     this.changed();
   }
 
@@ -103,11 +119,13 @@ export class PluginHost {
     const slot = this.slots.get(id);
     this.slots.delete(id);
     await slot?.stop();
-    this.options.store.plugins.dropToken(id);
+    this.rows.delete(id);
+    const { host } = this.options.store;
+    await host.call('plugins', 'dropToken', id);
     resetPluginCallAuthority(this.options.store, id);
-    const row = this.options.store.plugins.find(id);
+    const row = await host.call('plugins', 'find', id);
     if (row !== undefined && !row.enabled && row.status !== 'disabled') {
-      this.options.store.plugins.update(id, { status: 'disabled', statusDetail: null });
+      await host.call('plugins', 'update', id, { status: 'disabled', statusDetail: null });
     }
   }
 
@@ -125,7 +143,7 @@ export class PluginHost {
 
   running(): RunningTool[] {
     return [...this.slots.entries()].flatMap(([id, slot]) => {
-      const plugin = this.options.store.plugins.find(id);
+      const plugin = this.rows.get(id);
       if (plugin === undefined) {
         return [];
       }
@@ -136,27 +154,25 @@ export class PluginHost {
     });
   }
 
-  call(
+  async call(
     pluginId: string,
     tool: string,
     args: Readonly<Record<string, unknown>>,
     caller: ToolCaller,
   ): Promise<HubToolResult> {
     const slot = this.slots.get(pluginId);
-    if (slot === undefined) return Promise.resolve(failure('That plugin is switched off'));
+    if (slot === undefined) return failure('That plugin is switched off');
     const authority = caller.authority ?? currentExecutionAuthority();
     if (authority === undefined) return slot.call(tool, args, caller);
-    const plugin = this.options.store.plugins.byId(pluginId);
+    const plugin = await this.options.store.host.call('plugins', 'byId', pluginId);
     if (
       hubOriginated(authority) &&
       plugin.source !== 'builtin' &&
       localPluginTransport(plugin.manifest.mcp, this.options.mcpUrl())
     )
-      return Promise.reject(
-        new ApiError(
-          'forbidden',
-          'Hub conversations cannot invoke an external local process whose OS effects cannot enforce the initiating restriction.',
-        ),
+      throw new ApiError(
+        'forbidden',
+        'Hub conversations cannot invoke an external local process whose OS effects cannot enforce the initiating restriction.',
       );
     return withPluginCallAuthority(this.options.store, pluginId, authority, () =>
       slot.call(tool, args, caller),
@@ -181,20 +197,17 @@ export class PluginHost {
     });
   }
 
-  private syncBuiltins(): void {
-    for (const plugin of this.options.builtins) {
-      const manifest = PLUGIN_MANIFEST.parse(plugin.manifest);
-      if (this.options.store.plugins.find(manifest.id) === undefined) {
-        this.options.store.plugins.create({
-          manifest,
-          source: 'builtin',
-          location: null,
-          trusted: true,
-        });
-      } else {
-        this.options.store.plugins.update(manifest.id, { manifest });
-      }
-    }
+  private async syncBuiltins(): Promise<void> {
+    await this.options.store.host.write(
+      'pluginBuiltinsSync',
+      this.options.builtins.map((plugin) => PLUGIN_MANIFEST.parse(plugin.manifest)),
+    );
+  }
+
+  private current(id: string): PluginRow {
+    const row = this.rows.get(id);
+    if (row === undefined) throw new ApiError('not_found', `The plugin ${id} is not launched.`);
+    return row;
   }
 
   private builtinOf(id: string): BuiltinPlugin | undefined {
@@ -225,11 +238,15 @@ export class PluginHost {
     );
   }
 
-  private connect(row: PluginRow, data: string): Connection {
+  private async connect(row: PluginRow, data: string): Promise<Connection> {
     const connection = connectionFor(row.manifest, {
       row,
       values: { home: homedir(), data, secret: (name) => this.options.secrets.get(row.id, name) },
-      callback: callbackFor(this.options.store, row, `${this.options.mcpUrl()}${MCP_PATHS.mcp}`),
+      callback: await callbackFor(
+        this.options.store,
+        row,
+        `${this.options.mcpUrl()}${MCP_PATHS.mcp}`,
+      ),
     });
     if (connection === null) {
       throw new Error(`${row.manifest.name} has no MCP server to start`);

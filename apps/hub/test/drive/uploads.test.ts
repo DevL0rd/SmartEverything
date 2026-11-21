@@ -35,13 +35,13 @@ import {
 import { isMissing } from '../../src/fs-util';
 import { nodeFiles, stageBytes } from '../../src/drive/versions';
 import { BackupService } from '../../src/photos/backup';
+import { BackupRecords } from '../../src/photos/backup-records';
 import { DriveBackupRepository } from '../../src/store/repositories/drive-backup';
 import { captureLogs, testLogger } from '../support/logs';
 import type { TestStore } from '../support/store';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
 import { driveTestStore } from './spaces-fixture';
 import { DriveActivity } from '../../src/drive/activity';
-import { WriteBatch } from '../../src/drive/write-batch';
 import { status } from './placement-fixture';
 
 const START = new Date('2026-11-07T00:00:00.000Z');
@@ -59,7 +59,6 @@ let robin = '';
 let sam = '';
 let server: http.Server;
 let activity: DriveActivity;
-let batch: WriteBatch;
 let origin = '';
 let nextIno = 1;
 let callers: Map<string, TusCaller>;
@@ -86,7 +85,7 @@ function caller(profileId: string, clientId: string): TusCaller {
 
 async function startServer(
   writeAt: PositionalWrite = writeAtPosition,
-  completed: (item: DriveItem) => void = (): void => undefined,
+  completed: (item: DriveItem) => Promise<void> = (): Promise<void> => Promise.resolve(),
 ): Promise<TusUploads> {
   const env: TusEnv = {
     ...changeEnv(),
@@ -94,11 +93,10 @@ async function startServer(
     completed,
     activity,
     hasher,
-    settle: batch.write,
     space: () => Promise.resolve({ totalBytes: 1e12, freeBytes: 1e12 }),
     authenticate: (request) => {
       const token = /^Bearer (\S+)$/.exec(request.headers.authorization ?? '')?.[1] ?? '';
-      return callers.get(token) ?? null;
+      return Promise.resolve(callers.get(token) ?? null);
     },
   };
   const uploads = new TusUploads(env, writeAt);
@@ -233,14 +231,20 @@ async function interrupted(location: string, payload: Buffer, sent: number): Pro
   await new Promise((resolve) => setTimeout(resolve, 150));
 }
 
-function registeredBackup(): { readonly service: BackupService; readonly phoneId: string } {
+function registeredBackup(): {
+  readonly service: BackupService;
+  readonly records: BackupRecords;
+  readonly phoneId: string;
+} {
   opened.store.driveRoots.insert(personalDriveRoot(randomUUID(), robin));
   const backups = new DriveBackupRepository(opened.store.context);
-  const service = new BackupService({
+  const env = {
     ...changeEnv(),
     store: { ...opened.store, driveBackup: backups },
     sql: opened.store.context.sql,
-  });
+  };
+  const service = new BackupService(env);
+  const records = new BackupRecords(env);
   const [phone] = opened.store.devices.upsert([
     {
       provider: 'local',
@@ -258,7 +262,7 @@ function registeredBackup(): { readonly service: BackupService; readonly phoneId
     },
   ]);
   if (phone === undefined) throw new Error('missing fake phone');
-  service.registerDevice(robin, {
+  records.registerDevice(robin, {
     deviceId: phone.id,
     name: 'Phone',
     platform: 'android',
@@ -270,7 +274,7 @@ function registeredBackup(): { readonly service: BackupService; readonly phoneId
       includeVideos: true,
     },
   });
-  return { service, phoneId: phone.id };
+  return { service, records, phoneId: phone.id };
 }
 
 beforeAll(async () => {
@@ -289,7 +293,6 @@ beforeEach(async () => {
   activity = new DriveActivity();
   clock = START;
   opened = await driveTestStore();
-  batch = new WriteBatch(opened.store, testLogger());
   base = await realpath(await mkdtemp(join(tmpdir(), 'hub-drive-uploads-')));
   dir = opened.layout.home.drive;
   await mkdir(join(dir, 'Uploads'), { recursive: true });
@@ -312,7 +315,7 @@ beforeEach(async () => {
     ['robin-phone', caller(robin, client('Robin phone', 'c'))],
     ['sam', caller(sam, client('Sam phone', 'd'))],
   ]);
-  const folder = recordItem(changeEnv(), {
+  const folder = await recordItem(changeEnv(), {
     draft: folderDraft(
       {
         rootId,
@@ -847,12 +850,11 @@ describe('quota and free space', () => {
     const env: TusEnv = {
       ...changeEnv(),
       store: opened.store,
-      completed: (): void => undefined,
+      completed: (): Promise<void> => Promise.resolve(),
       activity,
       hasher,
-      settle: batch.write,
       space: () => Promise.resolve({ totalBytes: 100, freeBytes: 5 }),
-      authenticate: () => callers.get('robin') ?? null,
+      authenticate: () => Promise.resolve(callers.get('robin') ?? null),
     };
     const uploads = new TusUploads(env);
     server = http.createServer((request, response) => {
@@ -903,12 +905,11 @@ describe('quota and free space', () => {
     const env: TusEnv = {
       ...failing,
       store: opened.store,
-      completed: (): void => undefined,
+      completed: (): Promise<void> => Promise.resolve(),
       activity,
       hasher,
-      settle: batch.write,
       space: () => Promise.resolve({ totalBytes: 1e12, freeBytes: 1e12 }),
-      authenticate: () => callers.get('robin') ?? null,
+      authenticate: () => Promise.resolve(callers.get('robin') ?? null),
     };
     const uploads = new TusUploads(env);
     server = http.createServer((request, response) => {
@@ -933,7 +934,9 @@ describe('expiry and termination', () => {
     expect(new Date(created.headers.get('upload-expires') ?? '').getTime()).toBe(
       START.getTime() + 2 * DAY_MS,
     );
-    expect(uploads.soonestExpiry()).toBe(new Date(START.getTime() + 2 * DAY_MS).toISOString());
+    expect(await uploads.soonestExpiry()).toBe(
+      new Date(START.getTime() + 2 * DAY_MS).toISOString(),
+    );
     expect(await uploads.sweepExpired()).toBe(0);
     clock = new Date(START.getTime() + 2 * DAY_MS + 1);
     expect((await head(location)).status).toBe(404);
@@ -969,7 +972,7 @@ describe('recovery of the partial file', () => {
 
 describe('camera roll backup through tus', () => {
   it('settles the actual committed hash and repeats a backup without sending bytes', async () => {
-    const { service, phoneId } = registeredBackup();
+    const { service, records, phoneId } = registeredBackup();
     const assets = [
       {
         localId: 'content://photo',
@@ -977,25 +980,25 @@ describe('camera roll backup through tus', () => {
         folder: null,
       },
     ];
-    expect(service.checkHashes(robin, { deviceId: phoneId, assets }).missing).toEqual([
+    expect(records.checkHashes(robin, { deviceId: phoneId, assets }).missing).toEqual([
       'content://photo',
     ]);
-    await startServer(writeAtPosition, (item): void => {
-      service.settleItem(item);
+    await startServer(writeAtPosition, async (item): Promise<void> => {
+      await service.settle(item);
     });
     const location = await open(5, 'photo.jpg');
     const rejected = await patch(location, 0, 'other', {
       extra: { 'Upload-Checksum': `sha256 ${sha('photo')}` },
     });
     expect(rejected.status).toBe(460);
-    expect(service.state(robin).devices[0]?.backedUp).toBe(0);
+    expect(records.state(robin).devices[0]?.backedUp).toBe(0);
     const response = await patch(location, 0, 'photo', {
       extra: { 'Upload-Checksum': `sha256 ${sha('photo')}` },
     });
     expect(response.status).toBe(204);
     const itemId = response.headers.get('upload-item-id');
-    expect(service.state(robin).devices[0]).toMatchObject({ backedUp: 1, uploading: 0 });
-    expect(service.checkHashes(robin, { deviceId: phoneId, assets })).toEqual({
+    expect(records.state(robin).devices[0]).toMatchObject({ backedUp: 1, uploading: 0 });
+    expect(records.checkHashes(robin, { deviceId: phoneId, assets })).toEqual({
       have: [{ localId: 'content://photo', itemId }],
       missing: [],
     });

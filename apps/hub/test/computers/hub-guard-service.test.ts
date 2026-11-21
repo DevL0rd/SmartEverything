@@ -6,7 +6,7 @@ import {
   type HubFrame,
   type NodeRequest,
 } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ComputerDirectory } from '../../src/computers/computer-directory';
 import { ComputerService } from '../../src/computers/computer-service';
 import type { Caller } from '../../src/server/auth';
@@ -141,7 +141,12 @@ describe('hub guard through the computer service', () => {
       { caller: person, deviceId, request: STOP_HUB, confirmed: true },
       z.unknown(),
     );
-    expect(requests(sent)).toHaveLength(1);
+    await vi.waitFor(
+      () => {
+        expect(requests(sent)).toHaveLength(1);
+      },
+      { timeout: 10_000 },
+    );
     reply();
     await expect(done).resolves.toBeNull();
   });
@@ -153,7 +158,12 @@ describe('hub guard through the computer service', () => {
       { caller: assistant, deviceId, request: { verb: 'signal', pid: 7, signal: 'end' } },
       z.unknown(),
     );
-    expect(requests(sent)).toHaveLength(1);
+    await vi.waitFor(
+      () => {
+        expect(requests(sent)).toHaveLength(1);
+      },
+      { timeout: 10_000 },
+    );
     reply();
     await expect(done).resolves.toBeNull();
   });

@@ -8,6 +8,7 @@ import {
   tierOfViewer,
   type PhoneViewer,
 } from '../../src/phones/phone-detail';
+import { PhoneDetailCopy, PhoneDetailsNotLoadedError } from '../../src/phones/phone-detail-copy';
 import type { PhoneTarget } from '../../src/phones/phone-nodes';
 import { captureLogs } from '../support/logs';
 import {
@@ -63,7 +64,7 @@ describe('who sees which tier of a phone', () => {
 
 describe('reading phone detail', () => {
   it('gives the person everything, including apps, titles and the Wi-Fi name', () => {
-    const detail = readPhoneDetail(test.store, target, viewer(dana), undefined);
+    const detail = readPhoneDetail(test.store.phoneDetails, target, viewer(dana), undefined);
     expect(detail.network?.wifi?.ssid).toBe('Home');
     expect(detail.notifications?.items?.[0]?.title).toBe('Hello');
     expect(detail.apps?.installed).toHaveLength(2);
@@ -71,7 +72,7 @@ describe('reading phone detail', () => {
   });
 
   it('gives the owner the totals of another person’s phone', () => {
-    const detail = readPhoneDetail(test.store, target, viewer(owner), undefined);
+    const detail = readPhoneDetail(test.store.phoneDetails, target, viewer(owner), undefined);
     expect(detail.apps).toMatchObject({ installedCount: 2 });
     expect(detail.notifications).toMatchObject({ count: 4 });
     expect(detail.network?.data?.today.wifiBytes).toBe(1e9);
@@ -79,7 +80,7 @@ describe('reading phone detail', () => {
   });
 
   it('keeps from the owner what belongs to the phone’s own person alone', () => {
-    const detail = readPhoneDetail(test.store, target, viewer(owner), undefined);
+    const detail = readPhoneDetail(test.store.phoneDetails, target, viewer(owner), undefined);
     expect(detail.apps).toMatchObject({ installed: [], usage: [], front: null });
     expect(detail.notifications).toMatchObject({ apps: [], items: null });
     expect(detail.network?.wifi?.ssid).toBeNull();
@@ -88,7 +89,7 @@ describe('reading phone detail', () => {
   });
 
   it('gives another member only power, alarm, sound levels, screen settings and signal', () => {
-    const detail = readPhoneDetail(test.store, target, viewer(sam), undefined);
+    const detail = readPhoneDetail(test.store.phoneDetails, target, viewer(sam), undefined);
     expect(Object.keys(detail).sort()).toEqual(['alarm', 'network', 'power', 'screen', 'sound']);
     expect(detail.screen?.usage).toBeNull();
     expect(detail.network?.data).toBeNull();
@@ -96,12 +97,12 @@ describe('reading phone detail', () => {
   });
 
   it('shows the owner and a member the plain on and off settings without any name', () => {
-    const owned = readPhoneDetail(test.store, target, viewer(owner), undefined);
+    const owned = readPhoneDetail(test.store.phoneDetails, target, viewer(owner), undefined);
     expect(owned.network).toMatchObject({ wifiOn: true, locationOn: true, airplane: false });
     expect(owned.connections?.bluetoothOn).toBe(true);
     expect(owned.screen?.autoRotate).toBe(true);
     expect(owned.sound).toMatchObject({ hapticFeedback: true, touchSounds: false });
-    const member = readPhoneDetail(test.store, target, viewer(sam), undefined);
+    const member = readPhoneDetail(test.store.phoneDetails, target, viewer(sam), undefined);
     expect(member.network).toMatchObject({ wifiOn: true, locationOn: true });
     expect(member.network?.wifi?.ssid).toBeNull();
     expect(member.screen?.autoRotate).toBe(true);
@@ -109,7 +110,10 @@ describe('reading phone detail', () => {
   });
 
   it('returns only the sections asked for, still cut to the viewer', () => {
-    const detail = readPhoneDetail(test.store, target, viewer(owner), ['power', 'apps']);
+    const detail = readPhoneDetail(test.store.phoneDetails, target, viewer(owner), [
+      'power',
+      'apps',
+    ]);
     expect(Object.keys(detail).sort()).toEqual(['apps', 'power']);
     expect(detail.apps?.installed).toEqual([]);
   });
@@ -121,7 +125,7 @@ describe('reading phone detail', () => {
       name: 'Sam phone',
     });
     const quiet = { ...target, deviceId: other.device.id };
-    expect(readPhoneDetail(test.store, quiet, viewer(dana), undefined)).toEqual({});
+    expect(readPhoneDetail(test.store.phoneDetails, quiet, viewer(dana), undefined)).toEqual({});
   });
 });
 
@@ -131,7 +135,7 @@ describe('live detail notices', () => {
       target.deviceId,
       stampPhoneDetail({ alarm: { nextAt: null, appLabel: null } }, '2026-10-18T10:07:00.000Z'),
     );
-    const notice = detailKeyframe(test.store, target, viewer(dana));
+    const notice = detailKeyframe(test.store.phoneDetails, target, viewer(dana));
     expect(notice).toMatchObject({ type: 'phone_detail', deviceId: target.deviceId });
     expect(notice?.parts.power).toMatchObject({ level: 62, at: REPORT_AT });
     expect(notice?.parts.alarm).toEqual({
@@ -148,12 +152,16 @@ describe('live detail notices', () => {
       name: 'Sam phone',
     });
     expect(
-      detailKeyframe(test.store, { ...target, deviceId: quiet.device.id }, viewer(dana)),
+      detailKeyframe(
+        test.store.phoneDetails,
+        { ...target, deviceId: quiet.device.id },
+        viewer(dana),
+      ),
     ).toBeNull();
   });
 
   it('cuts the opening notice for another member the same way as a read', () => {
-    const notice = detailKeyframe(test.store, target, viewer(sam));
+    const notice = detailKeyframe(test.store.phoneDetails, target, viewer(sam));
     expect(Object.keys(notice?.parts ?? {}).sort()).toEqual([
       'alarm',
       'network',
@@ -181,5 +189,21 @@ describe('live detail notices', () => {
       items: null,
     });
     expect(detailNotice(target, change, viewer(sam))).toBeNull();
+  });
+});
+
+describe('the main copy of phone detail', () => {
+  it('loads the stored detail, follows merges and forgets a removed phone', async () => {
+    const copy = new PhoneDetailCopy(test.store);
+    expect(() => copy.read(target.deviceId)).toThrow(PhoneDetailsNotLoadedError);
+    await copy.load();
+    expect(copy.read(target.deviceId)).toEqual(test.store.phoneDetails.read(target.deviceId));
+    const alarm = stampPhoneDetail({ alarm: { nextAt: null, appLabel: 'Clock' } }, REPORT_AT);
+    test.store.phoneDetails.merge(target.deviceId, alarm);
+    copy.merged(target.deviceId, alarm);
+    expect(copy.read(target.deviceId)).toEqual(test.store.phoneDetails.read(target.deviceId));
+    test.store.devices.remove([target.deviceId]);
+    expect(copy.read(target.deviceId)).toEqual({});
+    copy.stop();
   });
 });

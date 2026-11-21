@@ -14,7 +14,10 @@ function isWebp(bytes: Uint8Array): boolean {
   return text(RIFF_AT) === RIFF && text(FORMAT_AT) === WEBP;
 }
 
-export function savePhoneIcon(store: Pick<Store, 'phoneIcons'>, upload: PhoneIconUpload): void {
+export async function savePhoneIcon(
+  store: Pick<Store, 'host'>,
+  upload: PhoneIconUpload,
+): Promise<void> {
   const bytes = Buffer.from(upload.webpBase64, 'base64');
   if (createHash('sha256').update(bytes).digest('hex') !== upload.hash) {
     throw new ApiError('invalid_request', 'The icon does not match its hash.');
@@ -22,11 +25,14 @@ export function savePhoneIcon(store: Pick<Store, 'phoneIcons'>, upload: PhoneIco
   if (!isWebp(bytes)) {
     throw new ApiError('invalid_request', 'The icon is not a WebP image.');
   }
-  store.phoneIcons.save(upload.hash, bytes);
+  await store.host.call('phoneIcons', 'save', upload.hash, new Uint8Array(bytes));
 }
 
-export function readPhoneIcon(store: Pick<Store, 'phoneIcons'>, hash: string): PhoneIconUpload {
-  const bytes = store.phoneIcons.find(hash);
+export async function readPhoneIcon(
+  store: Pick<Store, 'host'>,
+  hash: string,
+): Promise<PhoneIconUpload> {
+  const bytes = await store.host.call('phoneIcons', 'find', hash);
   if (bytes === undefined) {
     throw new ApiError('not_found', 'The hub has no icon with this hash.');
   }

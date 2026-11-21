@@ -12,49 +12,11 @@ import {
   type TreadmillLiveNotice,
   type TreadmillReading,
 } from '@smarteverything/domain';
-import type { Store } from '../../store/store';
 import type { DeviceState } from './fleet';
-
-const HEART_RATE_FRESH_MS = 120_000;
 
 export interface WalkerFacts {
   readonly profileId: string | null;
   readonly weightKg: number | null;
-}
-
-export function weightOf(
-  store: Pick<Store, 'bodyReadings'>,
-  profileId: string | null,
-): number | null {
-  if (profileId === null) {
-    return null;
-  }
-  return store.bodyReadings
-    .ofProfile(profileId)
-    .reduce<number | null>((latest, reading) => reading.weight_kg ?? latest, null);
-}
-
-export function watchHeartRate(
-  store: Pick<Store, 'devices'>,
-  profileId: string | null,
-  now: Date,
-): number | null {
-  if (profileId === null) {
-    return null;
-  }
-  const watch = store.devices
-    .list()
-    .find(
-      (device) =>
-        device.provider === 'local' &&
-        device.external_id.startsWith('xiaomi_watch:') &&
-        device.details['profileId'] === profileId,
-    );
-  const rate = watch?.details['heartRate'];
-  const reported = watch?.details['reportedAt'];
-  const fresh =
-    typeof reported === 'string' && now.getTime() - Date.parse(reported) < HEART_RATE_FRESH_MS;
-  return typeof rate === 'number' && rate > 0 && fresh ? rate : null;
 }
 
 export function mayShowBody(
@@ -83,15 +45,13 @@ export function shownState(state: BeltState, runtime: DeviceState['runtime']): B
 }
 
 export function heartSourceOf(
-  store: Pick<Store, 'devices'>,
   state: Pick<DeviceState, 'runtime'>,
-  profileId: string | null,
-  now: Date,
+  watchRate: number | null,
 ): HeartRateSource | null {
   if (positive(state.runtime.machine.live.heartRate) !== null) {
     return 'grips';
   }
-  return watchHeartRate(store, profileId, now) === null ? null : 'watch';
+  return watchRate === null ? null : 'watch';
 }
 
 function inclineOf(

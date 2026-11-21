@@ -1,6 +1,6 @@
 import { irAppliancesOf } from './ir-appliance-wiring';
 import { homeMapOf } from '../home-map/home-map-hub';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import { BrowserService } from '../browser/service';
 import { createImageRuntime, type ImageRuntime } from './image-wiring';
 import { ComputerAiDirectory } from '../computers/ai-directory';
@@ -43,7 +43,7 @@ import { ReleasePublications } from '../self-update/release-publications';
 
 export function statusOf(options: BuildOptions): {
   status: () => HubStatus;
-  publicStatus: () => PublicStatus;
+  publicStatus: () => Promise<PublicStatus>;
 } {
   const startedAt = options.clock.now();
   return {
@@ -52,8 +52,8 @@ export function statusOf(options: BuildOptions): {
       startedAt: startedAt.toISOString(),
       cameras: options.core.supervisor.isRunning() ? 'running' : 'stopped',
     }),
-    publicStatus: (): PublicStatus => {
-      const settings = options.store.settings.read();
+    publicStatus: async (): Promise<PublicStatus> => {
+      const settings = await options.store.host.read('hubSettings', null);
       return {
         service: 'smarteverything',
         version: options.version,
@@ -124,9 +124,15 @@ function accessOf(options: BuildOptions, live: LiveHub, talk: TalkService): Acce
     alerts: options.alerts,
     scopesChanged: (profileId): void => {
       talk.accessChanged();
-      for (const client of options.store.clients.list()) {
-        if (client.profile_id === profileId) live.reconnectClient(client.id);
-      }
+      background(
+        options.store.host.call('clients', 'list').then((clients) => {
+          for (const client of clients) {
+            if (client.profile_id === profileId) live.reconnectClient(client.id);
+          }
+        }),
+        'access.reconnect_failed',
+        { profileId },
+      );
     },
   });
 }
@@ -136,14 +142,14 @@ function modalitiesOf(store: Store, file: StoredAttachment): readonly string[] |
   const chat = store.aiChats.chat(store.assistantChat.message(file.message_id).chat_id);
   if (chat.engine.kind !== 'dsh') return null;
   const model = chat.engine.model;
-  return store.aiModels.all().find((row) => row.id === model)?.input_modalities ?? null;
+  return store.live.aiModels.row(model)?.input_modalities ?? null;
 }
 
 function outboundOf(
   options: BuildOptions,
 ): Pick<ServerContext, 'weather' | 'exchangeRates' | 'openRouter' | 'places' | 'mediaNotes'> {
   const openRouter = createOpenRouter({
-    models: options.store.aiModels,
+    models: options.store.live.aiModels,
     secrets: options.secrets,
     clock: options.clock,
     fetch: options.fetch,
@@ -154,7 +160,7 @@ function outboundOf(
       provider: new OpenRouterMediaNotes(openRouter.client, options.layout.tmp),
       transcriptionProvider: new OpenRouterTranscription(openRouter.client, options.layout.tmp),
       chat: options.store.assistantChat,
-      ledger: options.store.ledger,
+      ledger: options.store.host,
       filesRoot: options.layout.system.ai.assistant,
       describeImages: (): boolean => options.store.assistantChat.settings().describe_images,
       inputModalities: (file) => modalitiesOf(options.store, file),
@@ -187,7 +193,6 @@ export function contextOf(options: BuildOptions, live: LiveHub, statuses: Status
   const outbound = outboundOf(options);
   const harness = harnessOf(options, live, outbound.openRouter);
   const assistant = assistantOf(options, live, computers.computerAi);
-  assistant.attachLedger(options.store.ledger);
   assistant.attachMediaNotes(outbound.mediaNotes);
   const talk = talkOf(options, live);
   const pushCommands = pushChannelOf(live);

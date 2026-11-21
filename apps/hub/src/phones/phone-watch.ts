@@ -5,23 +5,23 @@ import { detailKeyframe, phoneViewerOfClient, tierOfViewer } from './phone-detai
 import type { PhoneNodes } from './phone-nodes';
 
 export function phoneWatchSource(
-  store: Pick<Store, 'devices' | 'phoneDetails' | 'profiles'>,
-  phones: Pick<PhoneNodes, 'target'>,
+  store: Pick<Store, 'live' | 'profiles'>,
+  phones: Pick<PhoneNodes, 'target' | 'details'>,
   viewers: Pick<Viewers<DeviceDetail>, 'hold' | 'release'>,
 ): WatchSource {
   return {
     viewers,
     allowed: (client, deviceId): boolean => {
-      const device = store.devices.find(deviceId);
+      const device = store.live.home.devices.find(deviceId);
       return (
         device?.kind === 'phone' &&
         tierOfViewer(phones.target(device), phoneViewerOfClient(store, client)) !== 'member'
       );
     },
     keyframe: (deviceId, client): WatchNotice | null => {
-      const device = store.devices.find(deviceId);
+      const device = store.live.home.devices.find(deviceId);
       return device?.kind === 'phone'
-        ? detailKeyframe(store, phones.target(device), phoneViewerOfClient(store, client))
+        ? detailKeyframe(phones.details, phones.target(device), phoneViewerOfClient(store, client))
         : null;
     },
   };

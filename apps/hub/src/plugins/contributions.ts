@@ -4,6 +4,7 @@ import {
   type InboundMessage,
   type PluginManifest,
 } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
 import type { SignalBus } from '../signals/bus';
 import type { Store } from '../store/store';
 import type { ContributionSinks } from './runtime';
@@ -48,6 +49,49 @@ function eventSink(
   };
 }
 
+function dataSink(
+  options: ContributionOptions,
+  manifest: PluginManifest,
+  log: (line: string) => void,
+): ContributionSinks['data'] {
+  const { store } = options;
+  const id = manifest.id;
+  const { data } = manifest.contributes;
+  return (point): void => {
+    const stream = data.find((declared) => declared.stream === point.stream);
+    if (stream === undefined) {
+      log(`Ignored data for ${point.stream}: the manifest does not declare that stream`);
+      return;
+    }
+    if (stream.live) store.live.pluginStreams.publish(id, point);
+    else
+      background(
+        store.host.call('pluginData', 'publish', id, point, stream.history),
+        'plugin.data_save_failed',
+        { pluginId: id, stream: point.stream },
+      );
+  };
+}
+
+function viewerDataSink(
+  options: ContributionOptions,
+  manifest: PluginManifest,
+  log: (line: string) => void,
+): ContributionSinks['viewerData'] {
+  const id = manifest.id;
+  const { data } = manifest.contributes;
+  return (point, deviceId): void => {
+    const stream = data.find((declared) => declared.stream === point.stream);
+    if (stream?.live !== true) {
+      log(
+        `Ignored viewer data for ${point.stream}: the manifest does not declare it as a live stream`,
+      );
+      return;
+    }
+    options.store.live.pluginStreams.publishToViewers(id, point, deviceId);
+  };
+}
+
 export function contributionsOf(
   options: ContributionOptions,
   manifest: PluginManifest,
@@ -57,11 +101,16 @@ export function contributionsOf(
   const { data, events } = manifest.contributes;
   const unregister =
     events.length > 0 ? options.signals.register(pluginSignalSpec(manifest)) : null;
-  const saveLive = (): void => {
-    options.store.pluginData.saveLive(id);
+  const { store } = options;
+  const saveLive = (stopping: boolean): void => {
+    background(store.live.pluginStreams.save(id, stopping), 'plugin.live_save_failed', {
+      pluginId: id,
+    });
   };
   const saver = data.some((stream) => stream.live)
-    ? setInterval(saveLive, LIVE_SAVE_EVERY_MS)
+    ? setInterval(() => {
+        saveLive(false);
+      }, LIVE_SAVE_EVERY_MS)
     : null;
   saver?.unref();
   return {
@@ -73,25 +122,22 @@ export function contributionsOf(
         }
         options.inbound(id, message);
       },
-      data: (point): void => {
-        const stream = data.find((declared) => declared.stream === point.stream);
-        if (stream === undefined) {
-          log(`Ignored data for ${point.stream}: the manifest does not declare that stream`);
-          return;
-        }
-        if (stream.live) options.store.pluginData.publishLive(id, point);
-        else options.store.pluginData.publish(id, point, stream.history);
-      },
+      data: dataSink(options, manifest, log),
+      viewerData: viewerDataSink(options, manifest, log),
       event: eventSink(options, manifest, log),
       search: (entries): void => {
-        options.store.pluginData.replaceSearch(id, entries);
+        background(
+          store.host.call('pluginData', 'replaceSearch', id, entries),
+          'plugin.search_save_failed',
+          { pluginId: id },
+        );
       },
     },
     stop: (): void => {
       unregister?.();
       if (saver === null) return;
       clearInterval(saver);
-      saveLive();
+      saveLive(true);
     },
   };
 }

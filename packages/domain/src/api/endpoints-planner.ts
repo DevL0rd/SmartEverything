@@ -121,10 +121,13 @@ export const PLANNER_ENDPOINTS = {
     method: 'POST',
     path: '/api/planner/collections',
     access: 'member',
-    summary: 'Add a calendar or a list',
+    summary:
+      'Add a calendar or a list; repeating a create with the same client id returns the one already made',
     params: NOTHING,
     query: PLANNER_PERSON_QUERY,
-    body: PLANNER_COLLECTION_CREATE,
+    body: PLANNER_COLLECTION_CREATE.extend({
+      id: ID.optional().describe('Id the client generated for the new calendar or list'),
+    }),
     response: PLANNER_COLLECTION_ROW,
   }),
   updatePlannerCollection: endpoint({

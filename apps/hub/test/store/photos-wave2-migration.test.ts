@@ -10,7 +10,7 @@ import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-14T00:00:00.000Z';
 
@@ -130,7 +130,7 @@ beforeEach(() => {
   role(owner, 'owner');
   role(member, 'member');
   role(bare, 'member');
-  const roots = new DriveRootsRepository(context, drivePathOf);
+  const roots = new DriveRootsRepository(context, driveFolders);
   roots.insert(sharedDriveRoot(SHARED));
   roots.insert(personalDriveRoot(OWNER_ROOT, owner));
   roots.insert(personalDriveRoot(MEMBER_ROOT, member));
@@ -194,6 +194,9 @@ describe('migrating Photos to wave 2', () => {
       'photo_analysis',
       'photo_archive',
       'photo_asset_folders',
+      'photo_description_backlog',
+      'photo_descriptions',
+      'photo_device_zones',
       'photo_edits',
       'photo_embeddings',
       'photo_faces',

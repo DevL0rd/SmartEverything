@@ -2,9 +2,11 @@ import { RENAME_FLAGS, type RequestMeta } from '@smarteverything/domain/drive-mo
 import { posix } from './errors';
 import { checkName, checkNewPath } from './names';
 import { touchDirectory } from './records';
+import { writeDriveOps } from '../units/ops';
 import { RenameMoves, requireNotInside, type Destination } from './rename-moves';
 import type { PosixEnv, PosixScope } from './env';
-import type { PosixChild, PosixNode, PosixNodes } from './nodes';
+import type { PosixChild, PosixNode } from '../units/posix';
+import type { PosixNodes } from './nodes';
 import type { PosixRemove } from './remove';
 
 export type RenameRequest = RequestMeta<'RENAME'>;
@@ -37,30 +39,24 @@ export class PosixRename {
     this.moves = new RenameMoves(env, nodes);
   }
 
-  private directoryOf(scope: PosixScope, ino: number): PosixNode {
-    const node = this.nodes.crossing(scope, ino);
-    if (node.inode.type !== 'dir') throw posix('ENOTDIR', 'That is not a folder.');
-    return node;
-  }
-
-  private resolve(scope: PosixScope, request: RenameRequest): Resolved {
+  private async resolve(scope: PosixScope, request: RenameRequest): Promise<Resolved> {
     checkName(request.name);
     checkName(request.newName);
-    const from = this.directoryOf(scope, request.parent);
-    const to = this.directoryOf(scope, request.newParent);
+    const named = await this.nodes.childIn(scope, request.parent, request.name, true);
+    const renamed = await this.nodes.childIn(scope, request.newParent, request.newName, true);
+    const { parent: from, child: source } = named;
+    const { parent: to, child: target } = renamed;
     this.nodes.writable(from);
     this.nodes.writable(to);
-    const source = this.nodes.childOf(scope, from, request.name);
     if (source === undefined) throw posix('ENOENT', `${request.name} does not exist.`);
     const relPath = this.nodes.relPathOf(to, request.newName);
     checkNewPath(relPath);
-    const target = this.nodes.childOf(scope, to, request.newName);
     return { from, to, source, target, destination: { parent: to, relPath } };
   }
 
   async rename(scope: PosixScope, request: RenameRequest): Promise<void> {
     const { exchange, noReplace } = flagsOf(request.flags);
-    const resolved = this.resolve(scope, request);
+    const resolved = await this.resolve(scope, request);
     const { source, target } = resolved;
     if (source.inode.id === target?.inode.id) return;
     if (source.inode.type === 'dir') requireNotInside(source, resolved.to);
@@ -71,9 +67,10 @@ export class PosixRename {
     if (target !== undefined && noReplace)
       throw posix('EEXIST', `${request.newName} already exists.`);
     await this.place(scope, resolved);
-    touchDirectory(this.env.change, resolved.from);
+    const touches = [touchDirectory(this.env.change, resolved.from)];
     if (resolved.to.inode.id !== resolved.from.inode.id)
-      touchDirectory(this.env.change, resolved.to);
+      touches.push(touchDirectory(this.env.change, resolved.to));
+    await writeDriveOps(this.env.change.store, touches);
   }
 
   private async exchange(scope: PosixScope, resolved: Resolved): Promise<void> {
@@ -94,28 +91,27 @@ export class PosixRename {
       throw posix('ENOTDIR', 'A folder cannot replace a file.');
     if (!directory && target.inode.type === 'dir')
       throw posix('EISDIR', 'A file cannot replace a folder.');
-    if (directory) this.remove.requireEmpty(scope, target);
-    if (this.replaceable(source, target)) {
+    if (directory) await this.remove.requireEmpty(scope, target);
+    if (await this.replaceable(source, target)) {
       await this.moves.replace(scope, source, target);
       return;
     }
     const dropped = await this.remove.stage(scope, target);
     try {
-      await this.moves.move(scope, source, destination, dropped.record);
+      await this.moves.move(scope, source, destination, dropped.ops);
     } catch (cause) {
       await dropped.undo();
       throw cause;
     }
   }
 
-  private replaceable(source: PosixChild, target: PosixChild): boolean {
-    const names = this.env.change.store.driveInodes;
+  private async replaceable(source: PosixChild, target: PosixChild): Promise<boolean> {
+    if (source.inode.type !== 'file' || target.inode.type !== 'file') return false;
+    if (this.env.holds(target.inode.id)) return false;
+    const { host } = this.env.change.store;
     return (
-      source.inode.type === 'file' &&
-      target.inode.type === 'file' &&
-      names.names(source.inode.id).length === 1 &&
-      names.names(target.inode.id).length === 1 &&
-      !this.env.holds(target.inode.id)
+      (await host.call('driveInodes', 'names', source.inode.id)).length === 1 &&
+      (await host.call('driveInodes', 'names', target.inode.id)).length === 1
     );
   }
 }

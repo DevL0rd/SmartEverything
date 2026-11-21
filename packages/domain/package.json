@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "sideEffects": false,
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -11,6 +12,7 @@
     "./markdown": "./src/markdown.ts",
     "./app-identity": "./src/app-identity.ts",
     "./drive-sync": "./src/drive/sync/index.ts",
+    "./drive-settings": "./src/drive/settings.ts",
     "./drive-mount": "./src/drive/mount/index.ts",
     "./assistant-voice-copy": "./src/assistant-voice-copy.ts",
     "./node/harness-frames": "./src/node/harness-frames.ts",

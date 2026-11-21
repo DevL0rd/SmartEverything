@@ -1,11 +1,12 @@
 import { ApiError, type DriveConflict } from '@smarteverything/domain';
 import type { DriveActor } from '../../drive/access';
-import { DRIVE_PAGE_SIZE, type DriveReadService } from '../../drive/service-read';
+import type { DriveReadService } from '../../drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
 import type { DuplicatesService } from '../../photos/duplicates';
 import type { Store } from '../../store/store';
 import type { DriveDuplicateGroup, DriveListings, DrivePage } from './drive-services';
 
-type ListingStore = Pick<Store, 'driveShares' | 'driveConflicts'>;
+type ListingStore = Pick<Store, 'host'>;
 
 function pageOf<T extends { readonly id: string }>(rows: readonly T[]): DrivePage<T> {
   const items = rows.slice(0, DRIVE_PAGE_SIZE);
@@ -20,36 +21,25 @@ function unknownCursor(): ApiError {
   return new ApiError('invalid_request', 'The cursor is not one this list gave out.');
 }
 
-function shareAfter(
-  store: ListingStore,
-  actor: DriveActor,
-  cursor: string | undefined,
-): { readonly at: string; readonly id: string } | null {
-  if (cursor === undefined) return null;
-  const share = store.driveShares.find(cursor);
-  if (share?.createdBy !== actor.profileId) throw unknownCursor();
-  return { at: store.driveShares.createdAt(cursor), id: cursor };
-}
-
-function conflictAfter(
+async function conflictAfter(
   store: ListingStore,
   rootIds: readonly string[],
   cursor: string | undefined,
-): { readonly at: string; readonly id: string } | null {
+): Promise<{ readonly at: string; readonly id: string } | null> {
   if (cursor === undefined) return null;
-  const conflict = store.driveConflicts.find(cursor);
+  const conflict = await store.host.call('driveConflicts', 'find', cursor);
   if (conflict === undefined || !rootIds.includes(conflict.rootId)) throw unknownCursor();
   return { at: conflict.at, id: conflict.id };
 }
 
-function visibleRootIds(
+async function visibleRootIds(
   read: DriveReadService,
   actor: DriveActor,
   rootId: string | undefined,
-): readonly string[] {
+): Promise<readonly string[]> {
   return rootId === undefined
-    ? read.listRoots(actor).map((root) => root.id)
-    : [read.rootFor(actor, rootId).id];
+    ? (await read.listRoots(actor)).map((root) => root.id)
+    : [(await read.rootFor(actor, rootId)).id];
 }
 
 export interface ListingSources {
@@ -61,29 +51,33 @@ export interface ListingSources {
 export function driveListings(sources: ListingSources): DriveListings {
   const { store, read, duplicates } = sources;
   return {
-    shares: (actor, query) =>
+    shares: async (actor, query) =>
       pageOf(
-        store.driveShares.madeBy({
-          createdBy: actor.profileId,
+        await store.host.read('driveSharesMadeBy', {
+          actor,
           itemId: query.itemId,
           albumId: query.albumId,
-          after: shareAfter(store, actor, query.cursor),
+          cursor: query.cursor,
           limit: DRIVE_PAGE_SIZE + 1,
         }),
       ),
-    conflicts: (actor, query): DrivePage<DriveConflict> => {
-      const rootIds = visibleRootIds(read, actor, query.rootId);
+    conflicts: async (actor, query): Promise<DrivePage<DriveConflict>> => {
+      const rootIds = await visibleRootIds(read, actor, query.rootId);
       return pageOf(
-        store.driveConflicts.page({
+        await store.host.call('driveConflicts', 'page', {
           rootIds,
-          after: conflictAfter(store, rootIds, query.cursor),
+          after: await conflictAfter(store, rootIds, query.cursor),
           limit: DRIVE_PAGE_SIZE + 1,
         }),
       );
     },
-    duplicates: (actor, query): DrivePage<DriveDuplicateGroup> => {
-      if (query.rootId !== undefined) read.rootFor(actor, query.rootId);
-      const page = duplicates.groups(actor, { media: false, rootId: query.rootId }, query.cursor);
+    duplicates: async (actor, query): Promise<DrivePage<DriveDuplicateGroup>> => {
+      if (query.rootId !== undefined) await read.rootFor(actor, query.rootId);
+      const page = await duplicates.groups(
+        actor,
+        { media: false, rootId: query.rootId },
+        query.cursor,
+      );
       return {
         items: page.groups.map(({ sha256, bytes, items }) => ({ sha256, bytes, items })),
         next: page.next,

@@ -99,12 +99,12 @@ function appUpdateEndpoints(parts: Endpoints): ExtensionRouteTable {
     readAppUpdateKey: bound(E.readAppUpdateKey, ({ caller }) =>
       appUpdateKeyOf(context.store, caller),
     ),
-    readAndroidAppBuild: bound(E.readAndroidAppBuild, ({ params }) => {
-      const client = context.store.clients.find(params.clientId);
+    readAndroidAppBuild: bound(E.readAndroidAppBuild, async ({ params }) => {
+      const client = await context.store.host.call('clients', 'find', params.clientId);
       return client === undefined ? null : builds.read(client);
     }),
-    readAndroidAppBuilds: bound(E.readAndroidAppBuilds, () => [
-      ...builds.paired(context.store.clients.list()),
+    readAndroidAppBuilds: bound(E.readAndroidAppBuilds, async () => [
+      ...builds.paired(await context.store.host.call('clients', 'list')),
     ]),
     reportAndroidAppBuild: bound(E.reportAndroidAppBuild, ({ body, caller }) => {
       builds.report(caller, body, context.store.now());

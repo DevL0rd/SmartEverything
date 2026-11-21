@@ -70,11 +70,9 @@ export class CommandIssuer {
         value: command.value,
         source,
       })),
-      (inserted) => {
-        run.commands(inserted);
-        commandMetadata(store).stamp(inserted, metadata, clock.now().getTime());
-      },
+      run.runId,
     );
+    commandMetadata(store).stamp(rows, metadata, clock.now().getTime());
     try {
       admitRun(run);
     } catch (cause) {
@@ -107,7 +105,7 @@ export class CommandIssuer {
     await awaitConfirmations({
       store,
       clock,
-      rows: rows.map((row) => store.commands.byId(row.id)),
+      rows: await Promise.all(rows.map((row) => store.host.call('commands', 'byId', row.id))),
       sentAt: Math.min(...rows.map((row) => Date.parse(row.created_at))),
       run,
     });

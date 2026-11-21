@@ -1,5 +1,6 @@
 import type { DeviceLogEntry } from '@smarteverything/domain';
 import { DEVICE_LOG_SOURCES } from './sources';
+import { storeUnit } from '../../store/host/unit';
 import type { LogRequest, LogStore } from './types';
 
 export function readDeviceLog(store: LogStore, request: LogRequest): DeviceLogEntry[] {
@@ -7,3 +8,7 @@ export function readDeviceLog(store: LogStore, request: LogRequest): DeviceLogEn
     .sort((left, right) => Date.parse(right.at) - Date.parse(left.at))
     .slice(0, request.limit);
 }
+
+export const DEVICE_LOG_UNIT = storeUnit((store, request: LogRequest) =>
+  readDeviceLog(store, request),
+);

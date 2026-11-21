@@ -9,7 +9,6 @@ import {
 import { z } from 'zod';
 import { importIcs as importCalendarText } from '../../../planner/ical/import';
 import { IcalParseError } from '../../../planner/ical/model';
-import { resolveCollection } from '../../../planner/sharing/visibility';
 import { operate, profileFor, type OperatingContext } from './acting';
 import { ToolError, type ToolContext } from './registry';
 import { selection, type Selection } from './selected-tool';
@@ -116,25 +115,31 @@ export function feedRefresh(): Selection {
   });
 }
 
-type TimedContext = OperatingContext & Pick<ToolContext, 'clock'>;
+type ImportingContext = OperatingContext & Pick<ToolContext, 'clock' | 'calendars'>;
 
-function timed(context: OperatingContext): context is TimedContext {
-  return 'clock' in context;
+function importing(context: OperatingContext): context is ImportingContext {
+  return 'clock' in context && 'calendars' in context;
 }
 
 export function importIcs(): Selection {
   return selection({
     input: z.strictObject({ collectionId: FIELDS.collectionId, ics: FIELDS.ics }),
-    run: (context, input, as) => {
-      if (!timed(context)) throw new ToolError('This tool has no clock to import with');
+    run: async (context, input, as) => {
+      if (!importing(context)) {
+        throw new ToolError('This tool has no clock and calendar reader to import with');
+      }
       const { store } = context;
-      const profileId = profileFor(context, as);
-      const collection = resolveCollection(store, profileId, input.collectionId, 'write');
+      const profileId = await profileFor(context, as);
+      const collection = await store.host.read('plannerCollectionResolve', {
+        profileId,
+        collectionId: input.collectionId,
+        need: 'write',
+      });
       if (collection.source === 'feed') {
         throw new ToolError('A subscribed calendar cannot be imported into.');
       }
       try {
-        return importCalendarText(store, () => context.clock.now(), {
+        return await importCalendarText(store, context.calendars, () => context.clock.now(), {
           profileId,
           collectionId: collection.id,
           text: input.ics,

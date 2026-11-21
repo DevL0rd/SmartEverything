@@ -78,12 +78,13 @@ function backTo(
   return url.toString();
 }
 
-function registered(
+async function registered(
   store: Store,
   clientId: string | undefined,
   redirectUri: string | undefined,
-): OAuthClientAuth | string {
-  const client = clientId === undefined ? undefined : store.oauth.findClient(clientId);
+): Promise<OAuthClientAuth | string> {
+  const client =
+    clientId === undefined ? undefined : await store.host.call('oauth', 'findClient', clientId);
   if (client === undefined) {
     return 'This assistant is not registered with this server, or its registration expired.';
   }
@@ -132,7 +133,7 @@ function askOwner(
   options.log.info('consent.requested', { clientId: client.row.id, replaced: replaced.length });
 }
 
-export function showConsent(
+export async function showConsent(
   options: AuthorizeOptions,
   request: IncomingMessage,
   response: ServerResponse,
@@ -140,10 +141,10 @@ export function showConsent(
   const site = siteOf(options.store);
   const query = new URL(request.url ?? '/', site.issuer).searchParams;
   const redirectUri = single(query, 'redirect_uri');
-  const client = registered(options.store, single(query, 'client_id'), redirectUri);
+  const client = await registered(options.store, single(query, 'client_id'), redirectUri);
   if (typeof client === 'string' || redirectUri === undefined) {
     sendProblem(response, 400, typeof client === 'string' ? client : 'redirect_uri is missing.');
-    return Promise.resolve();
+    return;
   }
   const fixed = { clientId: client.row.id, redirectUri, state: single(query, 'state') ?? null };
   let grant: Grant;
@@ -157,19 +158,18 @@ export function showConsent(
       response,
       backTo(site, fixed, { error: cause.error, error_description: cause.message }),
     );
-    return Promise.resolve();
+    return;
   }
   const pending = options.sessions.open(grant);
   askOwner(options, site, pending, client);
   sendConsent(response, 200, viewOf(options, pending, client, null));
-  return Promise.resolve();
 }
 
-function conclude(
+async function conclude(
   options: AuthorizeOptions,
   pending: PendingRequest,
   decision: McpConsentDecision,
-): string {
+): Promise<string> {
   const site = siteOf(options.store);
   options.sessions.close(pending.id);
   if (decision === 'deny') {
@@ -178,18 +178,18 @@ function conclude(
     options.log.info('grant.denied', { clientId: pending.clientId });
     return location;
   }
-  options.store.oauth.grant(pending.clientId, pending.scopes);
+  await options.store.host.call('oauth', 'grant', pending.clientId, pending.scopes);
   const location = backTo(site, pending, { code: options.sessions.issueCode(pending) });
   options.consents.settle(pending.id, { outcome: 'allowed', location });
   options.log.info('grant.approved', { clientId: pending.clientId });
   return location;
 }
 
-export function decideInApp(
+export async function decideInApp(
   options: AuthorizeOptions,
   consentId: string,
   decision: McpConsentDecision,
-): void {
+): Promise<void> {
   const pageId = options.consents.pageOf(consentId);
   const pending = pageId === undefined ? undefined : options.sessions.find(pageId);
   if (pending === undefined) {
@@ -201,7 +201,7 @@ export function decideInApp(
       'This assistant is no longer waiting: it was answered, expired or replaced by a newer request.',
     );
   }
-  conclude(options, pending, decision);
+  await conclude(options, pending, decision);
 }
 
 export async function decideConsent(
@@ -213,25 +213,27 @@ export async function decideConsent(
   const requestId = single(form, 'request');
   const pending = requestId === undefined ? undefined : options.sessions.find(requestId);
   const client =
-    pending === undefined ? undefined : options.store.oauth.findClient(pending.clientId);
+    pending === undefined
+      ? undefined
+      : await options.store.host.call('oauth', 'findClient', pending.clientId);
   if (pending === undefined || client === undefined) {
     sendProblem(response, 400, 'This approval page expired or was already used.');
     return;
   }
   const decision = single(form, 'decision');
   if (decision === 'deny') {
-    redirect(response, conclude(options, pending, 'deny'));
+    redirect(response, await conclude(options, pending, 'deny'));
     return;
   }
   if (decision !== 'approve') {
     sendConsent(response, 400, viewOf(options, pending, client, 'Choose Approve or Deny.'));
     return;
   }
-  const outcome = options.approvals.check(single(form, 'approval') ?? '');
+  const outcome = await options.approvals.check(single(form, 'approval') ?? '');
   if (!outcome.approved) {
     options.log.warn('approval.refused', { clientId: pending.clientId });
     sendConsent(response, 403, viewOf(options, pending, client, outcome.reason));
     return;
   }
-  redirect(response, conclude(options, pending, 'allow'));
+  redirect(response, await conclude(options, pending, 'allow'));
 }

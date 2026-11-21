@@ -3,8 +3,7 @@ import type { AutomationRunRecord } from '@smarteverything/domain';
 import { restoreRunState } from '@smarteverything/flow/state/run-state';
 import type { RunState } from '@smarteverything/flow/state/run-state';
 import type { Clock } from '../../clock';
-import type { AutomationPlansRepository } from '../../store/repositories/automation-plans';
-import type { AutomationRunRecordsRepository } from '../../store/repositories/automation-run-records';
+import type { RunLedger } from '../run-ledger';
 import type { RunStart } from './ports';
 
 class RunResumeError extends Error {
@@ -12,8 +11,8 @@ class RunResumeError extends Error {
 }
 
 export interface ResumePorts {
-  readonly records: Pick<AutomationRunRecordsRepository, 'update'>;
-  readonly plans: Pick<AutomationPlansRepository, 'has'>;
+  readonly runs: Pick<RunLedger, 'update'>;
+  readonly plans: { readonly has: (hash: string) => boolean };
   readonly clock: Pick<Clock, 'now'>;
   readonly enabled: (automationId: string) => boolean;
   readonly rebuild: (state: RunState, record: AutomationRunRecord) => RunStart;
@@ -24,6 +23,10 @@ export interface ResumeTarget {
   readonly cancel: (runId: string, reason: 'disabled') => boolean;
   readonly kept: (runId: string) => void;
 }
+
+export type Restored =
+  | { readonly kind: 'state'; readonly record: AutomationRunRecord; readonly state: RunState }
+  | { readonly kind: 'unreadable'; readonly record: AutomationRunRecord; readonly error: string };
 
 export type Resumed =
   | { readonly kind: 'resumed'; readonly runId: string }
@@ -49,7 +52,7 @@ function checkedPlans(state: RunState, ports: Pick<ResumePorts, 'plans'>): void 
 }
 
 function interrupt(record: AutomationRunRecord, error: string, ports: ResumePorts): Resumed {
-  ports.records.update(record.id, {
+  ports.runs.update(record.id, {
     status: 'interrupted',
     current_node: null,
     error,
@@ -61,22 +64,24 @@ function interrupt(record: AutomationRunRecord, error: string, ports: ResumePort
   return { kind: 'interrupted', runId: record.id, error };
 }
 
-function restart(record: AutomationRunRecord, ports: ResumePorts): RunStart {
-  const state = restoredState(record);
-  if (state.wait === undefined)
-    throw new RunResumeError('The run was waiting but its saved state holds no wait.');
-  checkedPlans(state, ports);
-  return ports.rebuild(state, record);
+export function restoredRun(record: AutomationRunRecord): Restored {
+  try {
+    const state = restoredState(record);
+    if (state.wait === undefined)
+      throw new RunResumeError('The run was waiting but its saved state holds no wait.');
+    return { kind: 'state', record, state };
+  } catch (cause) {
+    return { kind: 'unreadable', record, error: failureLine(cause) };
+  }
 }
 
-export function resumeRun(
-  record: AutomationRunRecord,
-  ports: ResumePorts,
-  target: ResumeTarget,
-): Resumed {
+export function resumeRun(restored: Restored, ports: ResumePorts, target: ResumeTarget): Resumed {
+  const { record } = restored;
+  if (restored.kind === 'unreadable') return interrupt(record, restored.error, ports);
   let start: RunStart;
   try {
-    start = restart(record, ports);
+    checkedPlans(restored.state, ports);
+    start = ports.rebuild(restored.state, record);
   } catch (cause) {
     return interrupt(record, failureLine(cause), ports);
   }

@@ -35,7 +35,7 @@ function hub(
   answer: (call: Call) => Record<string, unknown> = () => ({ result: {} }),
 ): Pick<ToolHub, 'check' | 'call'> {
   return {
-    check: (): ToolCheck => ({ ok: true, tool: TOOL }),
+    check: (): Promise<ToolCheck> => Promise.resolve({ ok: true, tool: TOOL }),
     call: (name, args): Promise<HubToolResult> => {
       const call: Call = { name, args };
       calls.push(call);
@@ -58,7 +58,7 @@ describe('tool effect', () => {
 
   it('turns a refused or failed tool into one error', async () => {
     const refusing: Pick<ToolHub, 'check' | 'call'> = {
-      check: (): ToolCheck => ({ ok: false, reason: 'no such tool' }),
+      check: (): Promise<ToolCheck> => Promise.resolve({ ok: false, reason: 'no such tool' }),
       call: () => Promise.reject(new Error('unreachable')),
     };
     await expect(
@@ -176,7 +176,7 @@ describe('assistant wake effect', () => {
           return new Promise(() => undefined);
         },
         tools: {
-          check: (): ToolCheck => ({ ok: false, reason: 'unused' }),
+          check: (): Promise<ToolCheck> => Promise.resolve({ ok: false, reason: 'unused' }),
           call: () => Promise.reject(new Error('unused')),
         },
         stop: (): void => undefined,

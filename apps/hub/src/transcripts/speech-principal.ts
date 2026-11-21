@@ -40,7 +40,7 @@ export function speechPrincipal(store: Store, caller: Caller): SpeechPrincipal {
   const principal = SPEECH_PRINCIPAL.parse({
     ...origin,
     clientId: client.id,
-    profileId: profileIdOf(store, caller),
+    profileId: profileIdOf(caller),
     role: owner ? 'owner' : 'member',
     clientRole: client.role,
     authorities,

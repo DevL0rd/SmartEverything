@@ -30,43 +30,36 @@ const patchOf = (body: UpdateBody): HomeMapPatch => ({
   ...(body.position === undefined ? {} : { position: body.position }),
 });
 
-export const homeMapSetRoutes = ({ homeMap, store }: HomeMapSetServices) =>
+export const homeMapSetRoutes = ({ homeMap }: HomeMapSetServices) =>
   ({
     listHomeMaps: bound(E.listHomeMaps, () => homeMap.set.list()),
     createHomeMap: bound(E.createHomeMap, ({ body, caller }) =>
-      homeMap.set.create(body.name, homeMapActorOf(store, caller)),
+      homeMap.set.create(body.name, homeMapActorOf(caller)),
     ),
     updateHomeMap: bound(E.updateHomeMap, ({ params, body, caller }) =>
-      homeMap.set.update(params.mapId, patchOf(body), homeMapActorOf(store, caller)),
+      homeMap.set.update(params.mapId, patchOf(body), homeMapActorOf(caller)),
     ),
-    deleteHomeMap: bound(E.deleteHomeMap, ({ params }) => {
-      homeMap.set.remove(params.mapId);
+    deleteHomeMap: bound(E.deleteHomeMap, async ({ params }) => {
+      await homeMap.set.remove(params.mapId);
       return { ok: true } as const;
     }),
     listHomeMapVersions: bound(E.listHomeMapVersions, ({ params }) =>
       homeMap.versions.list(params.mapId),
     ),
     saveHomeMapVersion: bound(E.saveHomeMapVersion, ({ params, body, caller }) =>
-      homeMap.versions.save(params.mapId, body.name, homeMapActorOf(store, caller)),
+      homeMap.versions.save(params.mapId, body.name, homeMapActorOf(caller)),
     ),
-    restoreHomeMapVersion: bound(E.restoreHomeMapVersion, ({ params, caller }) => ({
-      revision: homeMap.versions.restore(
-        params.mapId,
-        params.versionId,
-        homeMapActorOf(store, caller),
+    restoreHomeMapVersion: bound(E.restoreHomeMapVersion, async ({ params, caller }) => ({
+      revision: (
+        await homeMap.versions.restore(params.mapId, params.versionId, homeMapActorOf(caller))
       ).revision,
     })),
-    resetHomeMapToSource: bound(E.resetHomeMapToSource, ({ params, body, caller }) => ({
-      revision: homeMap.reset.reset(params.mapId, homeMapActorOf(store, caller), body.sourceId)
+    resetHomeMapToSource: bound(E.resetHomeMapToSource, async ({ params, body, caller }) => ({
+      revision: (await homeMap.reset.reset(params.mapId, homeMapActorOf(caller), body.sourceId))
         .revision,
     })),
     listRobotMapFeeds: bound(E.listRobotMapFeeds, () => homeMap.feeds.list()),
     setRobotMapFeed: bound(E.setRobotMapFeed, ({ params, body, caller }) =>
-      homeMap.feeds.setFeed(
-        params.deviceId,
-        params.robotMapId,
-        body,
-        homeMapActorOf(store, caller),
-      ),
+      homeMap.feeds.setFeed(params.deviceId, params.robotMapId, body, homeMapActorOf(caller)),
     ),
   }) as const;

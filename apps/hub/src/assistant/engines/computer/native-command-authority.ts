@@ -43,11 +43,7 @@ export function commandAuthority(
     },
   };
 }
-export function manualCommandCaller(
-  deps: ComputerRunnerDeps,
-  chat: AiChatRow,
-  input: AiNativeCommandWrite,
-): ToolCaller & { readonly authority: ConversationAuthority } {
+export function assertManualBinding(chat: AiChatRow, input: AiNativeCommandWrite): void {
   if (
     chat.engine.kind !== input.scope.runtime ||
     chat.engine.device_id !== input.scope.device_id ||
@@ -58,6 +54,14 @@ export function manualCommandCaller(
       'forbidden',
       'The manual command no longer belongs to the current native chat binding.',
     );
+}
+
+export function manualCommandCaller(
+  deps: ComputerRunnerDeps,
+  chat: AiChatRow,
+  input: AiNativeCommandWrite,
+): ToolCaller & { readonly authority: ConversationAuthority } {
+  assertManualBinding(chat, input);
   const { caller } = commandAuthority(deps, chat, input.scope);
   const event = deps.store.assistantEvents.event(input.operation_id);
   if (

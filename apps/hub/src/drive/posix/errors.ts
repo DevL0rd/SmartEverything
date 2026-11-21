@@ -2,11 +2,11 @@ import { ApiError } from '@smarteverything/domain';
 import type { DriveMountErrorName } from '@smarteverything/domain/drive-mount';
 import { fsCode } from '../../fs-code';
 import { DataSpaceError } from '../data-space';
-import { DriveWriteError } from '../intents';
+import { DriveWriteError } from '../write-error';
 import { DrivePathError, type DrivePathFailure } from '../paths';
 import { DriveFileTooLargeError, DriveFreeSpaceError, DriveQuotaExceededError } from '../quotas';
 import { RootMarkerError } from '../root-marker';
-import type { DriveWriteFailure } from '../intents';
+import type { DriveWriteFailure } from '../write-error';
 
 export class PosixError extends Error {
   override readonly name = 'PosixError';

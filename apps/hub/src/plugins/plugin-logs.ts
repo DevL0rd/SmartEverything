@@ -24,11 +24,11 @@ function logLine(row: RuntimeLogRow): PluginLogLine {
   return { at: row.at, line };
 }
 
-export function readPluginLines(
+export async function readPluginLines(
   logs: Pick<LogStore, 'search'>,
   id: string,
-): readonly PluginLogLine[] {
-  const page = logs.search(
+): Promise<PluginLogLine[]> {
+  const page = await logs.search(
     { owner: true, profileId: null },
     { source: pluginSource(id), limit: PLUGIN_LOG_PAGE },
   );

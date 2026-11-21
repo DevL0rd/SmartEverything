@@ -69,14 +69,18 @@ interface Killed {
   readonly delivery: string;
   readonly question: AssistantMessageRow;
   readonly finished: boolean[];
-  readonly recover: () => void;
+  readonly recover: () => Promise<void>;
   readonly store: Rig['opened']['store'];
 }
 
-function killedMidReply(answered: string | null, persisted: string, received = true): Killed {
+async function killedMidReply(
+  answered: string | null,
+  persisted: string,
+  received = true,
+): Promise<Killed> {
   const { store } = rig.opened;
   const chat = rig.newChat(rig.hub.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   const question = addMessage(rig, chat.id, { role: 'person', text: 'work' });
   const reply = addMessage(rig, chat.id, { role: 'responder', text: '' });
   store.assistantChat.updateMessage(reply.id, { model: 'model-a', state: 'working' });
@@ -96,7 +100,7 @@ function killedMidReply(answered: string | null, persisted: string, received = t
     rig.owner.profileId,
     rig.service.directory.get(rig.hub.target).host,
   );
-  store.dshSessions.append(
+  await store.live.dshSessions.append(
     {
       claim: open.claim,
       operation_id: randomUUID(),
@@ -107,23 +111,27 @@ function killedMidReply(answered: string | null, persisted: string, received = t
     principal,
   );
   const conversation = new ConversationLog(store);
-  conversation.progress(reply.id, persisted, { kind: 'chat_timeline', version: 1, parts: [] });
+  await conversation.progress(reply.id, persisted, {
+    kind: 'chat_timeline',
+    version: 1,
+    parts: [],
+  });
   const finished: boolean[] = [];
-  const recover = (): void => {
-    reconcileNativeReplies(
-      projectorOf(rig, (_event, _text, ok): void => {
-        finished.push(ok);
-      }),
-    );
+  const recover = async (): Promise<void> => {
+    const projector = projectorOf(rig, (_event, _text, ok): void => {
+      finished.push(ok);
+    });
+    await reconcileNativeReplies(projector);
+    await projector.settled();
   };
   return { reply, delivery, question, finished, recover, store };
 }
 
 describe('a reply cut off when the hub stopped mid-stream', () => {
-  it('keeps the text saved at the last boundary when the native log has no answer yet', () => {
-    const killed = killedMidReply(null, 'Looking around.');
+  it('keeps the text saved at the last boundary when the native log has no answer yet', async () => {
+    const killed = await killedMidReply(null, 'Looking around.');
 
-    killed.recover();
+    await killed.recover();
 
     const row = killed.store.assistantChat.message(killed.reply.id);
     expect(row.text).toBe('Looking around.');
@@ -132,19 +140,19 @@ describe('a reply cut off when the hub stopped mid-stream', () => {
     expect(killed.finished).toStrictEqual([false]);
   });
 
-  it('takes the finished steps from the native log when it has them', () => {
-    const killed = killedMidReply('Step one is done.', 'Step one');
+  it('takes the finished steps from the native log when it has them', async () => {
+    const killed = await killedMidReply('Step one is done.', 'Step one');
 
-    killed.recover();
+    await killed.recover();
 
     expect(killed.store.assistantChat.message(killed.reply.id).text).toBe('Step one is done.');
   });
 
-  it('settles the delivery once, so a second start does not repeat the reply', () => {
-    const killed = killedMidReply('Step one is done.', 'Step one');
+  it('settles the delivery once, so a second start does not repeat the reply', async () => {
+    const killed = await killedMidReply('Step one is done.', 'Step one');
 
-    killed.recover();
-    killed.recover();
+    await killed.recover();
+    await killed.recover();
 
     expect(killed.finished).toStrictEqual([false]);
     expect(killed.store.harnessDeliveries.find(killed.delivery)?.state).toBe('unknown');
@@ -152,8 +160,8 @@ describe('a reply cut off when the hub stopped mid-stream', () => {
 });
 
 describe('a message the hub admitted but never got to the host before it stopped', () => {
-  it('goes back to the queue to be delivered after the restart instead of failing', () => {
-    const killed = killedMidReply(null, '', false);
+  it('goes back to the queue to be delivered after the restart instead of failing', async () => {
+    const killed = await killedMidReply(null, '', false);
     killed.store.assistantChat.updateMessage(killed.question.id, {
       state: 'failed',
       reason: 'The hub restarted.',
@@ -162,7 +170,7 @@ describe('a message the hub admitted but never got to the host before it stopped
     killed.store.assistantEvents.mark(killed.delivery, 'delivered_at');
     killed.store.assistantEvents.mark(killed.delivery, 'answered_at');
 
-    killed.recover();
+    await killed.recover();
 
     expect(killed.store.harnessDeliveries.find(killed.delivery)).toBeUndefined();
     expect(killed.store.assistantEvents.pending().map((event) => event.id)).toContain(

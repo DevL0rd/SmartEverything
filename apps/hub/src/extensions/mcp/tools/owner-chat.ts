@@ -51,6 +51,7 @@ async function share(
   const files = new AssistantFiles({
     layout: context.layout,
     chat: context.store.assistantChat,
+    attachments: context.store.live.attachments,
     now: (): Date => context.clock.now(),
   });
   files.attachMediaNotes(context.mediaNotes);

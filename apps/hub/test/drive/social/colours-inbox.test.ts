@@ -16,7 +16,7 @@ let colours: DriveFolderColours;
 
 beforeEach(async () => {
   social = await openSocial();
-  colours = new DriveFolderColours({ store: social.opened.store, read: social.read });
+  colours = new DriveFolderColours({ store: social.opened.store });
 });
 
 afterEach(async () => {
@@ -24,9 +24,9 @@ afterEach(async () => {
 });
 
 describe('folder colours', () => {
-  it('colours a folder for the viewer only', () => {
+  it('colours a folder for the viewer only', async () => {
     share(social, TRIP, social.robin, 'view');
-    expect(colours.set(social.robin, { itemId: TRIP, colour: 'viz-3' })).toMatchObject({
+    expect(await colours.set(social.robin, { itemId: TRIP, colour: 'viz-3' })).toMatchObject({
       colour: 'viz-3',
     });
     expect(social.opened.store.driveItems.byId(TRIP, social.sam.profileId)).toMatchObject({
@@ -37,20 +37,22 @@ describe('folder colours', () => {
     });
   });
 
-  it('clears a colour and refuses files and folders the viewer cannot open', () => {
-    colours.set(social.robin, { itemId: ROBIN_FOLDER, colour: 'viz-1' });
-    expect(colours.set(social.robin, { itemId: ROBIN_FOLDER, colour: null })).toMatchObject({
+  it('clears a colour and refuses files and folders the viewer cannot open', async () => {
+    await colours.set(social.robin, { itemId: ROBIN_FOLDER, colour: 'viz-1' });
+    expect(await colours.set(social.robin, { itemId: ROBIN_FOLDER, colour: null })).toMatchObject({
       colour: null,
     });
-    expect(() => colours.set(social.robin, { itemId: ROBIN_FILE, colour: 'viz-1' })).toThrow(
-      /Only a folder/,
+    await expect(
+      colours.set(social.robin, { itemId: ROBIN_FILE, colour: 'viz-1' }),
+    ).rejects.toThrow(/Only a folder/);
+    await expect(colours.set(social.robin, { itemId: TRIP, colour: 'viz-1' })).rejects.toThrow(
+      /no such/,
     );
-    expect(() => colours.set(social.robin, { itemId: TRIP, colour: 'viz-1' })).toThrow(/no such/);
   });
 });
 
 describe('the Drive inbox', () => {
-  it('lists newest first, pages, and marks read only the caller’s own rows', () => {
+  it('lists newest first, pages, and marks read only the caller’s own rows', async () => {
     const { store } = social.opened;
     for (const itemId of [TRIP, TRIP_FILE, ROBIN_FILE]) {
       store.driveNotifications.add({
@@ -71,12 +73,12 @@ describe('the Drive inbox', () => {
       refId: null,
     }).notification;
     const inbox = new DriveInbox(store);
-    const page = inbox.list(social.robin, undefined);
+    const page = await inbox.list(social.robin, undefined);
     expect(page.items).toHaveLength(3);
-    inbox.markRead(social.robin, { ids: [other.id, page.items[0]?.id ?? ''] });
+    await inbox.markRead(social.robin, { ids: [other.id, page.items[0]?.id ?? ''] });
     expect(store.driveNotifications.unreadCount(social.robin.profileId)).toBe(2);
     expect(store.driveNotifications.unreadCount(social.sam.profileId)).toBe(1);
-    inbox.markRead(social.robin, { all: true });
+    await inbox.markRead(social.robin, { all: true });
     expect(store.driveNotifications.unreadCount(social.robin.profileId)).toBe(0);
   });
 });

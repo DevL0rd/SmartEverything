@@ -10,13 +10,11 @@ import {
   type NodeDemand,
   type NodeHello,
   type NodeRequest,
-  type ProcessesUpdate,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import { background } from '@smarteverything/logging';
 import { appEventsOf, type AppEventsWatch } from './app-events-watch';
-import type { ComputerCollector } from './collectors/collector';
-import { Sampler } from './collectors/sampler';
+import type { MetricsFactory, NodeMetrics } from './metrics/node-metrics';
 import {
   earHostFeatures,
   isRelay,
@@ -42,7 +40,7 @@ const HUB_OWNER = 'hub';
 const DESKTOP_FEATURES: readonly ComputerFeature[] = ['processes', 'files', 'capture'];
 
 export interface ComputerNodeOptions {
-  readonly collector: ComputerCollector;
+  readonly metrics: MetricsFactory;
   readonly controls: ComputerControls;
   readonly link: NodeLink;
   readonly now: () => Date;
@@ -65,7 +63,7 @@ export class ComputerNode {
   private window = '';
   private requests = 0;
   private readonly handler: NodeRequestHandler;
-  private readonly sampler: Sampler;
+  private readonly metrics: NodeMetrics;
   private readonly states: StateWatch;
   private readonly folders: FolderWatch;
   private readonly apps: AppEventsWatch;
@@ -77,11 +75,8 @@ export class ComputerNode {
   constructor(private readonly options: ComputerNodeOptions) {
     this.policy = options.history ?? DEFAULT_HISTORY_POLICY;
     this.handler = new NodeRequestHandler(options.controls);
-    this.sampler = new Sampler({
-      readers: {
-        ...options.collector.readers,
-        processes: (tick): ProcessesUpdate | null => options.controls.processes.read(tick),
-      },
+    this.metrics = options.metrics({
+      processes: options.controls.processes,
       policy: this.policy,
       emit: (frame): void => {
         options.link.send(frame);
@@ -144,7 +139,7 @@ export class ComputerNode {
     }
     this.states.stop();
     this.folders.stop();
-    this.options.collector.stop();
+    this.metrics.close();
     this.options.controls.processes.stop();
     this.session = null;
     this.options.controls.session.stop().catch((cause: unknown) => {
@@ -154,21 +149,21 @@ export class ComputerNode {
 
   setHistoryPolicy(policy: HistoryPolicy): void {
     this.policy = policy;
-    this.sampler.setPolicy(policy);
+    this.metrics.setPolicy(policy);
     if (this.sampling) {
-      this.options.collector.track(policy);
+      this.metrics.track(policy);
     }
   }
 
   private async greet(): Promise<void> {
-    const { collector, controls, link, now } = this.options;
+    const { controls, link, now } = this.options;
     const greetStartedAt = performance.now();
     await this.watchEnvironment();
     const [features, hosting] = await Promise.all([
       controlFeatures(controls, this.options.log),
       earHostFeatures(this.earHost, this.options.log),
     ]);
-    const hello = await collector.hello(now());
+    const hello = await this.metrics.hello(now());
     const machine = await machineReport(this.options.controls, this.options.log);
     this.fixedFeatures = [...hello.features, ...DESKTOP_FEATURES, ...hosting];
     const complete = {
@@ -346,9 +341,9 @@ export class ComputerNode {
     }
     if (!this.sampling) {
       this.sampling = true;
-      this.options.collector.track(this.policy);
-      this.sampler.start();
-      this.sampler.demand(BASELINE_OWNER, { summary: SUMMARY_IDLE_INTERVAL_MS });
+      this.metrics.track(this.policy);
+      this.metrics.start();
+      this.metrics.demand(BASELINE_OWNER, { summary: SUMMARY_IDLE_INTERVAL_MS });
     }
     this.syncDemand();
   }
@@ -357,12 +352,12 @@ export class ComputerNode {
     const { processes, ...topics } = this.demand.topics;
     const watching = processes !== undefined && this.handler.allows('processes');
     const window = watching ? (this.demand.processes ?? null) : null;
-    this.sampler.demand(HUB_OWNER, watching ? { ...topics, processes } : topics);
+    this.metrics.demand(HUB_OWNER, watching ? { ...topics, processes } : topics);
     const signature = JSON.stringify(window);
     if (signature !== this.window) {
       this.window = signature;
-      this.options.controls.processes.watch(window);
-      this.sampler.poke('processes');
+      this.metrics.watchProcesses(window);
+      this.metrics.poke('processes');
     }
   }
 
@@ -371,11 +366,11 @@ export class ComputerNode {
       return;
     }
     this.sampling = false;
-    this.sampler.release(HUB_OWNER);
-    this.sampler.release(BASELINE_OWNER);
-    this.sampler.stop();
-    this.options.collector.track(null);
-    this.options.controls.processes.watch(null);
+    this.metrics.release(HUB_OWNER);
+    this.metrics.release(BASELINE_OWNER);
+    this.metrics.stop();
+    this.metrics.track(null);
+    this.metrics.watchProcesses(null);
     this.window = '';
   }
 
@@ -411,6 +406,6 @@ export class ComputerNode {
     if (!this.handler.allows('metrics')) {
       throw new NodeFailureError('scope_off', COMPUTER_SCOPE_OFF.metrics);
     }
-    return this.sampler.backfill(request.query);
+    return await this.metrics.backfill(request.query);
   }
 }

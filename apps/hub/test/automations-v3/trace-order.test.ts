@@ -24,7 +24,7 @@ describe('the stored node records of a run', () => {
     const inner = repeating('inner', 3, failing);
     const outer = repeating('outer', 5, inner);
     const row = rig.add(program([outer]));
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.start(row.id, {}, null);
     await rig.until(() => rig.finished.length === 1);
     const run = rig.runs(row.id)[0];
@@ -42,7 +42,7 @@ describe('the stored node records of a run', () => {
     });
     const pass = repeating('passes', 3, setting);
     const row = rig.add(program([pass]));
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.start(row.id, {}, null);
     await rig.until(() => rig.finished.length === 1);
     const records = rig.nodes.forRun(rig.runs(row.id)[0]?.id ?? '');

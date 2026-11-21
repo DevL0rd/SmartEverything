@@ -44,6 +44,7 @@ async function handlers(): Promise<{
       store: home.db.store,
       feed: home.db.store.feed,
       clock: new FakeClock(NOW.toISOString()),
+      observed: (deviceId, capability) => home.db.store.state.value(deviceId, capability),
     }),
   };
 }

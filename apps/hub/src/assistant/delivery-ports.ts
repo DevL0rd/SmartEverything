@@ -1,3 +1,4 @@
+import { background } from '@smarteverything/logging';
 import type { StoredEvent } from '../store/repositories/assistant-events';
 import type { ConversationLog } from './conversation-log';
 import { STOPPED_BY_USER } from './interruption';
@@ -19,21 +20,34 @@ export function deliveryPorts(deps: {
   return {
     admit: (event) => deps.delegation().admit(event),
     delivered: (event): void => {
-      conversation.delivered(event.id);
-      publish();
+      background(
+        conversation.delivered(event.id).then(publish),
+        'delivery.delivered_record_failed',
+        {
+          eventId: event.id,
+        },
+      );
     },
     failed: (event, reason): void => {
-      conversation.failed(event, reason);
+      background(
+        conversation.failed(event, reason).then(publish),
+        'delivery.failure_record_failed',
+        {
+          eventId: event.id,
+        },
+      );
       ended(event, reason, false);
-      publish();
     },
     retrying: (event, active): void => {
       options.emit(retryNotice(event, active), event.profile_id);
     },
     stopped: (event): void => {
-      conversation.failed(event, STOPPED_BY_USER, 'stopped');
+      background(
+        conversation.failed(event, STOPPED_BY_USER, 'stopped').then(publish),
+        'delivery.stop_record_failed',
+        { eventId: event.id },
+      );
       ended(event, STOPPED_BY_USER, false);
-      publish();
     },
   };
 }

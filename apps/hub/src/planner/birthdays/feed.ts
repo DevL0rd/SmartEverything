@@ -1,46 +1,35 @@
 import { ApiError, type PlannerCollectionRow } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
-import { settled } from '../feeds/settled';
 import type { FeedCreateRequest, FeedKindHandler } from '../feeds/registry';
-import { reconcileBirthdays, type BirthdayStore } from './sync';
+import { PendingWork } from '../pending-work';
 
-export type BirthdayFeedStore = BirthdayStore & Pick<Store, 'plannerCollections' | 'feed'>;
+export type BirthdayFeedStore = Pick<Store, 'host' | 'feed'>;
 
 export class BirthdaysFeedKind implements FeedKindHandler {
   readonly kind = 'birthdays';
+  private readonly work = new PendingWork('planner.birthdays_failed');
 
   constructor(private readonly store: BirthdayFeedStore) {}
 
-  create(request: FeedCreateRequest): Promise<PlannerCollectionRow> {
-    return settled(() => this.created(request));
-  }
-
-  private created(request: FeedCreateRequest): PlannerCollectionRow {
+  async create(request: FeedCreateRequest): Promise<PlannerCollectionRow> {
     const { input, profileId } = request;
     if (input.kind !== 'birthdays') {
       throw new ApiError('invalid_request', 'This is not a birthdays calendar.');
     }
-    const { plannerCollections } = this.store;
-    const position = plannerCollections
-      .list(profileId)
-      .reduce((highest, row) => Math.max(highest, row.position + 1), 0);
-    return this.store.write(() => {
-      const row = plannerCollections.insert({
+    return this.store.host.write('plannerBirthdaysInsert', {
+      input: {
         profile_id: profileId,
         kind: 'calendar',
         name: input.name ?? 'Birthdays',
         colour: input.colour ?? 'family',
         icon: 'calendar',
-        position,
         visible: true,
         default_reminders: [],
         audience: 'personal',
         source: 'feed',
         google: null,
         feed: { kind: 'birthdays' },
-      });
-      reconcileBirthdays(this.store, row);
-      return row;
+      },
     });
   }
 
@@ -50,23 +39,25 @@ export class BirthdaysFeedKind implements FeedKindHandler {
     );
   }
 
-  refresh(collection: PlannerCollectionRow): Promise<PlannerCollectionRow> {
-    return settled(() => {
-      reconcileBirthdays(this.store, collection);
-      return collection;
-    });
+  async refresh(collection: PlannerCollectionRow): Promise<PlannerCollectionRow> {
+    await this.store.host.write('plannerBirthdaysReconcile', { collection });
+    return collection;
   }
 
-  prepare(collection: PlannerCollectionRow): void {
-    if (collection.feed?.kind === 'birthdays') reconcileBirthdays(this.store, collection);
+  async prepare(collection: PlannerCollectionRow): Promise<void> {
+    if (collection.feed?.kind === 'birthdays') {
+      await this.store.host.write('plannerBirthdaysReconcile', { collection });
+    }
+  }
+
+  settled(): Promise<void> {
+    return this.work.settled();
   }
 
   watch(): () => void {
     return this.store.feed.subscribe((change) => {
       if (change.table !== 'profiles') return;
-      for (const collection of this.store.plannerCollections.feeds('birthdays')) {
-        reconcileBirthdays(this.store, collection);
-      }
+      this.work.run(this.store.host.write('plannerBirthdaysReconcile', { collection: null }));
     });
   }
 }

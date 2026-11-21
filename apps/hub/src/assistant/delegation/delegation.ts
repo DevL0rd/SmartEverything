@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Logger } from '@smarteverything/logging';
+import { Logger, background } from '@smarteverything/logging';
 import {
   ApiError,
   type AiAsk,
@@ -91,6 +91,7 @@ export class Delegation {
   private readonly replies: Replies;
   private readonly admission: SubagentAdmission;
   private readonly rows: RunRows;
+  private readonly settling = new Set<Promise<void>>();
   private gate: SubagentGate | null = null;
 
   constructor(private readonly deps: DelegationDeps) {
@@ -112,15 +113,30 @@ export class Delegation {
   finished(event: StoredEvent, text: string, ok: boolean): void {
     this.rows.finished(event, text, ok);
     this.admission.release(event.id);
-    if (!settleHelperDialogue(this.deps, event, text, ok)) this.replies.finished(event, text, ok);
+    if (!this.settleDialogue(event, text, ok)) this.replies.finished(event, text, ok);
   }
 
-  restart(): void {
-    reconcileHelperDialogue(this.deps.store, this.finished.bind(this));
+  async restart(): Promise<void> {
+    await reconcileHelperDialogue(this.deps.store, this.finished.bind(this));
     this.rows.restart();
     for (const event of this.deps.store.assistantEvents.abandoned())
       if (this.deps.store.harnessDeliveries.find(event.id)?.state !== 'admitted')
-        settleHelperDialogue(this.deps, event, HUB_RESTARTED, false);
+        this.settleDialogue(event, HUB_RESTARTED, false);
+  }
+
+  async settled(): Promise<void> {
+    while (this.settling.size > 0) await Promise.allSettled([...this.settling]);
+  }
+
+  private settleDialogue(event: StoredEvent, text: string, ok: boolean): boolean {
+    const settling = settleHelperDialogue(this.deps, event, text, ok);
+    if (settling === null) return false;
+    const tracked = settling.finally(() => {
+      this.settling.delete(tracked);
+    });
+    this.settling.add(tracked);
+    background(tracked, 'helper.settle_failed', { eventId: event.id });
+    return true;
   }
 
   sendToHelper(
@@ -297,6 +313,7 @@ export class Delegation {
       quote: relay.quote ?? null,
     });
     const eventId = randomUUID();
+    store.live.chatWork.holds.assertQueued(relay.target.id);
     const queued = store.assistantEvents.add({
       id: eventId,
       kind: 'chat',

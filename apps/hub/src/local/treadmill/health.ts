@@ -184,63 +184,56 @@ function healthRecordsOf(
   ]);
 }
 
-export class TreadmillHealth {
-  constructor(
-    private readonly store: Pick<
-      Store,
-      'health' | 'treadmillSessions' | 'write' | 'devices' | 'localDevices'
-    >,
-  ) {}
+type HealthStore = Pick<Store, 'health' | 'treadmillSessions' | 'devices' | 'localDevices'>;
 
-  private scaleOf(session: TreadmillSession): InclineScale {
-    const device = this.store.devices.byId(session.deviceId);
-    const entry = this.store.localDevices.byExternalId(device.external_id);
-    return entrySettingsOf(entry).inclineScale;
-  }
+function scaleOf(store: HealthStore, session: TreadmillSession): InclineScale {
+  const device = store.devices.byId(session.deviceId);
+  const entry = store.localDevices.byExternalId(device.external_id);
+  return entrySettingsOf(entry).inclineScale;
+}
 
-  save(session: TreadmillSession): void {
-    if (session.walkerProfileId === null) {
-      return;
-    }
-    const walker = session.walkerProfileId;
-    const records = healthRecordsOf(
-      session,
-      this.store.treadmillSessions.samples(session.id),
-      this.scaleOf(session),
-    );
-    this.store.health.replaceOwn({ profileId: walker, previous: walker, records, removed: [] });
+export function saveHealth(store: HealthStore, session: TreadmillSession): void {
+  if (session.walkerProfileId === null) {
+    return;
   }
+  const walker = session.walkerProfileId;
+  const records = healthRecordsOf(
+    session,
+    store.treadmillSessions.samples(session.id),
+    scaleOf(store, session),
+  );
+  store.health.replaceOwn({ profileId: walker, previous: walker, records, removed: [] });
+}
 
-  move(session: TreadmillSession, from: string | null): void {
-    const samples = this.store.treadmillSessions.samples(session.id);
-    const scale = this.scaleOf(session);
-    const ids = healthRecordsOf({ ...session, walkerProfileId: from }, samples, 'percent').map(
-      (record) => record.recordId,
-    );
-    this.store.write(() => {
-      this.store.health.replaceOwn({
-        profileId: session.walkerProfileId,
-        previous: from,
-        records: session.walkerProfileId === null ? [] : healthRecordsOf(session, samples, scale),
-        removed: ids,
-      });
-    });
-  }
+export function moveHealth(
+  store: HealthStore,
+  session: TreadmillSession,
+  from: string | null,
+): void {
+  const samples = store.treadmillSessions.samples(session.id);
+  const scale = scaleOf(store, session);
+  const ids = healthRecordsOf({ ...session, walkerProfileId: from }, samples, 'percent').map(
+    (record) => record.recordId,
+  );
+  store.health.replaceOwn({
+    profileId: session.walkerProfileId,
+    previous: from,
+    records: session.walkerProfileId === null ? [] : healthRecordsOf(session, samples, scale),
+    removed: ids,
+  });
+}
 
-  forget(session: TreadmillSession): void {
-    if (session.walkerProfileId === null) {
-      return;
-    }
-    const ids = healthRecordsOf(
-      session,
-      this.store.treadmillSessions.samples(session.id),
-      'percent',
-    ).map((record) => record.recordId);
-    this.store.health.replaceOwn({
-      profileId: null,
-      previous: session.walkerProfileId,
-      records: [],
-      removed: ids,
-    });
+export function forgetHealth(store: HealthStore, session: TreadmillSession): void {
+  if (session.walkerProfileId === null) {
+    return;
   }
+  const ids = healthRecordsOf(session, store.treadmillSessions.samples(session.id), 'percent').map(
+    (record) => record.recordId,
+  );
+  store.health.replaceOwn({
+    profileId: null,
+    previous: session.walkerProfileId,
+    records: [],
+    removed: ids,
+  });
 }

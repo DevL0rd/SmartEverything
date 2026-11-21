@@ -37,8 +37,8 @@ export class TalkSockets {
     });
   }
 
-  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
-    this.socketEndpoint.upgrade(request, socket, head);
+  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+    return this.socketEndpoint.upgrade(request, socket, head);
   }
 
   stop(): void {

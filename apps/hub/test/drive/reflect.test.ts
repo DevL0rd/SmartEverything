@@ -12,13 +12,12 @@ import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
-import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
 import { DriveItemsRepository } from '../../src/store/repositories/drive-items';
-import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
 import { bundleWorker } from './drive-fixture';
+import { localScans } from './local-ports';
 
 const NOW = '2026-11-17T00:00:00.000Z';
 const ROOT = '0d000000-0000-4000-8000-000000000071';
@@ -76,7 +75,10 @@ beforeEach(() => {
   const sql = new Sql(database);
   context = new StoreContext(sql, feed, () => new Date(NOW));
   migrate(sql, MIGRATIONS, NOW, log);
-  roots = new DriveRootsRepository(context, () => tree);
+  roots = new DriveRootsRepository(context, {
+    home: tree,
+    people: { parent: join(tree, 'people'), leaf: '' },
+  });
   items = new DriveItemsRepository(context);
   roots.insert(driveRoot());
   progress = 0;
@@ -92,17 +94,15 @@ afterEach(() => {
 
 function environment(): ScanEnvironment {
   return {
-    store: {
-      driveRoots: roots,
-      driveItems: items,
-      driveInodes: new DriveInodesRepository(context),
-      driveMissing: new DriveMissingRepository(context),
+    ...localScans({
+      roots,
+      items,
+      context,
       feed,
-      write: (work) => context.write(work),
       now: () => new Date(NOW),
-    },
+    }),
     availability: () => Promise.resolve('online'),
-    mounted: () => false,
+    mounted: () => Promise.resolve(false),
     workerScript,
     lanes: new DriveRootLanes(),
     log: testLogger(),

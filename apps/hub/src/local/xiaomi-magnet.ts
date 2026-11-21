@@ -45,7 +45,7 @@ export async function magnetSetup(
   setup: Extract<LocalDeviceSetup, { driver: 'xiaomi_magnet' }>,
   context: SetupContext,
 ): Promise<ResolvedSetup> {
-  const device = context.store.devices.byId(setup.xiaomiDeviceId);
+  const device = await context.store.host.call('devices', 'byId', setup.xiaomiDeviceId);
   if (
     device.provider !== 'xiaomi' ||
     device.model !== XIAOMI_MAGNET_MODEL ||

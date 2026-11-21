@@ -20,6 +20,7 @@ class WatchState {
   sent!: WatchActionRequest[];
   answer!: WatchOutcome;
   preferences!: PlannerPreferences;
+  settlers: (() => Promise<void>)[] = [];
   sync!: WatchSync;
   refreshed!: string[];
 }
@@ -81,21 +82,24 @@ function send(_deviceId: string, action: WatchActionRequest): Promise<WatchOutco
 }
 
 export async function settle(): Promise<void> {
-  await new Promise((resolve) => setImmediate(resolve));
+  for (let round = 0; round < 3; round += 1) {
+    await w.sync.settled();
+    for (const settled of w.settlers) await settled();
+  }
 }
 
 export function ports(): {
   store: TestStore['store'];
   channel: { send: typeof send };
-  profileOf: () => string;
-  preferences: () => PlannerPreferences;
+  profileOf: () => Promise<string>;
+  preferences: () => Promise<PlannerPreferences>;
   log: ReturnType<typeof testLogger>;
 } {
   return {
     store: w.test.store,
     channel: { send },
-    profileOf: (): string => w.owner.profileId,
-    preferences: (): PlannerPreferences => w.preferences,
+    profileOf: (): Promise<string> => Promise.resolve(w.owner.profileId),
+    preferences: (): Promise<PlannerPreferences> => Promise.resolve(w.preferences),
     log: testLogger('watch'),
   };
 }
@@ -140,6 +144,7 @@ export async function startWatchHarness(): Promise<void> {
   w.watchAlarms = [];
   w.sent = [];
   w.refreshed = [];
+  w.settlers = [];
   w.answer = { ok: true, detail: 'Done' };
   w.preferences = preferencesOf({ watch_alarm_sync: true, watch_calendar_push: true });
   report();
@@ -151,6 +156,7 @@ export async function startWatchHarness(): Promise<void> {
 }
 
 export async function stopWatchHarness(): Promise<void> {
+  await settle();
   w.sync.stop();
   await w.test.close();
 }

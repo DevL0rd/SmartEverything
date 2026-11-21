@@ -471,7 +471,10 @@ describe('the Shelly Presence zone count', () => {
   function read(zone: string): unknown {
     const value = MANIFEST.contributes.automation.values.find((entry) => entry.id === 'zone_count');
     if (value === undefined) throw new Error('no zone count value');
-    const handler = pluginValueHandler(opened.store, valueBindingOf(PLUGIN, value));
+    const handler = pluginValueHandler(
+      { pluginStreams: { list: () => opened.store.pluginData.streams() } },
+      valueBindingOf(PLUGIN, value),
+    );
     if (handler === undefined) throw new Error('no handler');
     return handler(
       { zone },
@@ -557,7 +560,7 @@ describe('the Shelly Presence live tracking node', () => {
           ? Promise.resolve(failure(`no tool ${tool.name}`))
           : found.run(args, caller);
       },
-      validate: (tool, args) => byName.get(tool.name)?.validate(args) ?? null,
+      validate: (tool, args) => Promise.resolve(byName.get(tool.name)?.validate(args) ?? null),
       changes: () => () => undefined,
     };
     const handlers = pluginNodeEffects({
@@ -630,9 +633,12 @@ describe('the Shelly Presence live tracking node', () => {
     const ports = toolPorts();
     const result = await performer(shellyTools(ports))({ sensor: SENSOR.externalId, on: true });
     expect(result).toEqual({ ok: true, value: { sent: true } });
-    await vi.waitFor(() => {
-      expect(ports.track).toHaveBeenCalledTimes(1);
-    });
+    await vi.waitFor(
+      () => {
+        expect(ports.track).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 10_000 },
+    );
   });
 
   it('leaves through the error exit when the sensor refuses', async () => {

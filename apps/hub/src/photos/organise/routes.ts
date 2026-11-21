@@ -7,13 +7,10 @@ import type { MediaLinks } from '../../server/media-links';
 import { bound, DONE_REPLY, type Bound } from '../../server/router';
 import type { Store } from '../../store/store';
 import { photoActor } from '../actor';
-import { ArchiveService } from './archive';
 import { LockedService } from './locked';
 import { LockedLinks } from './locked-links';
 import { LockedMover } from './locked-move';
-import { DescriptionEditor } from './description';
 import { MetaEditor } from './meta';
-import { OrganisePages } from './pages';
 
 const E = PHOTOS_ENDPOINTS;
 
@@ -40,9 +37,6 @@ export type PhotoOrganiseRoutes = { readonly [N in RouteName]: Bound<(typeof E)[
 
 export interface OrganiseServices {
   readonly meta: MetaEditor;
-  readonly description: DescriptionEditor;
-  readonly archive: ArchiveService;
-  readonly pages: OrganisePages;
   readonly locked: LockedService;
   readonly mover: LockedMover;
   readonly links: LockedLinks;
@@ -53,19 +47,15 @@ export interface OrganiseInputs {
   readonly write: Pick<DriveWriteService, 'change'>;
   readonly links: Pick<MediaLinks, 'claimed'>;
   readonly now: () => Date;
-  readonly timeZone: () => string;
 }
 
 export function organiseServices(inputs: OrganiseInputs): OrganiseServices {
   const { store, now } = inputs;
   return {
-    meta: new MetaEditor(store),
-    description: new DescriptionEditor(store),
-    archive: new ArchiveService(store),
-    pages: new OrganisePages(store.context, inputs.timeZone),
+    meta: new MetaEditor(store.host, false),
     locked: new LockedService({ locked: store.photoLocked, now }),
     mover: new LockedMover({ store, write: inputs.write, now }),
-    links: new LockedLinks(store, inputs.links),
+    links: new LockedLinks(store.host, inputs.links),
   };
 }
 
@@ -99,26 +89,59 @@ function pageRoutes(
 ): Pick<PhotoOrganiseRoutes, PageRouteName> {
   return {
     editPhotoMeta: bound(E.editPhotoMeta, ({ body, caller }) =>
-      services.meta.edit(photoActor(store, caller), body),
+      services.meta.edit(photoActor(caller), body),
     ),
     setPhotoDescription: bound(E.setPhotoDescription, ({ params, body, caller }) =>
-      services.description.set(photoActor(store, caller), params.itemId, body),
+      store.host.write('photoDescription', {
+        actor: photoActor(caller),
+        itemId: params.itemId,
+        change: body,
+      }),
     ),
     archivePhotos: bound(E.archivePhotos, ({ body, caller }) =>
-      services.archive.archive(photoActor(store, caller), body),
+      store.host.write('photoArchive', { actor: photoActor(caller), request: body }),
     ),
     unarchivePhotos: bound(E.unarchivePhotos, ({ body, caller }) =>
-      services.archive.unarchive(photoActor(store, caller), body),
+      store.host.write('photoUnarchive', { actor: photoActor(caller), request: body }),
     ),
     readPhotoArchived: bound(E.readPhotoArchived, ({ params, caller }) =>
-      services.archive.archived(photoActor(store, caller), params.itemId),
+      store.host.read('photoArchived', { actor: photoActor(caller), itemId: params.itemId }),
     ),
     readArchiveBuckets: bound(E.readArchiveBuckets, ({ query, caller }) =>
-      services.pages.archiveBuckets(photoActor(store, caller), query),
+      store.host.read('photoArchiveBuckets', { actor: photoActor(caller), scope: query }),
     ),
     readArchivePage: bound(E.readArchivePage, ({ params, query, caller }) =>
-      services.pages.archivePage(photoActor(store, caller), params.month, query),
+      store.host.read('photoArchivePage', {
+        actor: photoActor(caller),
+        month: params.month,
+        query,
+      }),
     ),
+  };
+}
+
+type Opened = (caller: Caller, headers: IncomingHttpHeaders) => string;
+
+function lockedPageRoutes(
+  store: Store,
+  opened: Opened,
+): Pick<PhotoOrganiseRoutes, 'readLockedBuckets' | 'readLockedPage'> {
+  return {
+    readLockedBuckets: bound(E.readLockedBuckets, ({ query, caller, headers }) => {
+      opened(caller, headers);
+      return store.host.read('photoLockedBuckets', {
+        actor: photoActor(caller),
+        scope: query,
+      });
+    }),
+    readLockedPage: bound(E.readLockedPage, ({ params, query, caller, headers }) => {
+      opened(caller, headers);
+      return store.host.read('photoLockedPage', {
+        actor: photoActor(caller),
+        month: params.month,
+        query,
+      });
+    }),
   };
 }
 
@@ -126,45 +149,38 @@ function lockedRoutes(
   store: Store,
   services: OrganiseServices,
 ): Pick<PhotoOrganiseRoutes, LockedRouteName> {
-  const opened = (caller: Caller, headers: IncomingHttpHeaders): string =>
-    services.locked.require(profileIdOf(store, caller), appClientOf(caller), tokenOf(headers));
+  const opened: Opened = (caller, headers) =>
+    services.locked.require(profileIdOf(caller), appClientOf(caller), tokenOf(headers));
   return {
     readLockedState: bound(E.readLockedState, ({ caller }) =>
-      services.locked.state(profileIdOf(store, caller)),
+      services.locked.state(profileIdOf(caller)),
     ),
     setLockedPin: bound(E.setLockedPin, async ({ body, caller }) => {
       appClientOf(caller);
-      await services.locked.setPin(profileIdOf(store, caller), body);
+      await services.locked.setPin(profileIdOf(caller), body);
       return DONE_REPLY;
     }),
     unlockLockedFolder: bound(E.unlockLockedFolder, ({ body, caller }) =>
-      services.locked.unlock(profileIdOf(store, caller), appClientOf(caller), body.pin),
+      services.locked.unlock(profileIdOf(caller), appClientOf(caller), body.pin),
     ),
     lockLockedFolder: bound(E.lockLockedFolder, ({ caller }) => {
-      services.locked.lock(profileIdOf(store, caller), appClientOf(caller));
+      services.locked.lock(profileIdOf(caller), appClientOf(caller));
       return DONE_REPLY;
     }),
-    readLockedBuckets: bound(E.readLockedBuckets, ({ query, caller, headers }) => {
-      opened(caller, headers);
-      return services.pages.lockedBuckets(photoActor(store, caller), query);
-    }),
-    readLockedPage: bound(E.readLockedPage, ({ params, query, caller, headers }) => {
-      opened(caller, headers);
-      return services.pages.lockedPage(photoActor(store, caller), params.month, query);
-    }),
+    ...lockedPageRoutes(store, opened),
     readLockedLinks: bound(E.readLockedLinks, ({ body, caller, headers }) =>
-      services.links.mint(profileIdOf(store, caller), opened(caller, headers), body),
+      services.links.mint(profileIdOf(caller), opened(caller, headers), body),
     ),
     moveIntoLockedFolder: bound(E.moveIntoLockedFolder, ({ body, caller }) =>
-      services.mover.moveIn(callerOf(store, caller), body),
+      services.mover.moveIn(callerOf(caller), body),
     ),
     moveOutOfLockedFolder: bound(E.moveOutOfLockedFolder, ({ body, caller, headers }) => {
       opened(caller, headers);
-      return services.mover.moveOut(callerOf(store, caller), body);
+      return services.mover.moveOut(callerOf(caller), body);
     }),
     deleteFromLockedFolder: bound(E.deleteFromLockedFolder, ({ body, caller, headers }) => {
       opened(caller, headers);
-      return services.mover.remove(callerOf(store, caller), body);
+      return services.mover.remove(callerOf(caller), body);
     }),
   };
 }

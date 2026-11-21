@@ -5,15 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { scanHandler } from '../../src/drive/jobs';
 import { metadataHandler } from '../../src/drive/metadata';
-import { zonePicker } from '../../src/drive/metadata-zone';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
-import { DriveFeedRepository } from '../../src/store/repositories/drive-feed';
-import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
-import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
-import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
-import { PhotoDescriptionsRepository } from '../../src/store/repositories/photo-descriptions';
-import { PhotoDeviceZonesRepository } from '../../src/store/repositories/photo-device-zones';
-import { PhotoMetaOverridesRepository } from '../../src/store/repositories/photo-meta-overrides';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
 import {
   bundleMetadataWorker,
@@ -24,6 +16,7 @@ import {
   type BundledWorker,
   type DriveFixture,
 } from './drive-fixture';
+import { localMetadata, localScans } from './local-ports';
 
 const ROOT = '0d000000-0000-4000-8000-000000000004';
 const HUB_ZONE = 'America/New_York';
@@ -69,35 +62,22 @@ function place(name: string, as: string): void {
 async function scanAndRead(): Promise<void> {
   const signal = new AbortController().signal;
   await scanHandler({
-    store: {
-      driveRoots: drive.roots,
-      driveItems: drive.items,
-      driveInodes: new DriveInodesRepository(drive.context),
-      driveMissing: new DriveMissingRepository(drive.context),
+    ...localScans({
+      roots: drive.roots,
+      items: drive.items,
+      context: drive.context,
       feed: drive.feed,
-      write: (work) => drive.context.write(work),
       now: () => new Date(NOW),
-    },
+    }),
     availability: () => Promise.resolve('online'),
-    mounted: (): boolean => false,
+    mounted: () => Promise.resolve(false),
     workerScript: scannerScript,
     lanes: new DriveRootLanes(),
     log: testLogger(),
   })({ kind: 'scan', rootId: ROOT }, signal);
   await metadataHandler({
-    store: {
-      driveRoots: drive.roots,
-      driveItems: drive.items,
-      settingsKv: drive.settings,
-      photoMetaOverrides: new PhotoMetaOverridesRepository(drive.context),
-      photoDescriptions: new PhotoDescriptionsRepository(drive.context),
-      write: (work) => drive.context.write(work),
-      feed: drive.feed,
-      driveFeed: new DriveFeedRepository(drive.context),
-    },
-    media: new DriveMediaRepository(drive.context),
+    ...localMetadata(drive, HUB_ZONE),
     availability: () => Promise.resolve('online'),
-    zones: zonePicker(new PhotoDeviceZonesRepository(drive.context), () => HUB_ZONE),
     workerScript: metadataWorker.script,
     log: testLogger(),
   })({ kind: 'metadata', rootId: ROOT }, signal);

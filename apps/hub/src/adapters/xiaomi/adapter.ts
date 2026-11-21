@@ -79,6 +79,7 @@ export class XiaomiAdapter implements ProviderAdapter {
   readonly provider = 'xiaomi';
   private discovery: Promise<readonly DiscoveredDevice[]> = Promise.resolve([]);
   private discoveryGeneration = 0;
+  private runningGeneration = 0;
   private runners = new Map<string, DeviceRunner>();
   private readonly addresses = new WeakMap<DeviceRunner, string>();
   private cameras: { readonly did: string; readonly poller: CameraEventPoller }[] = [];
@@ -103,6 +104,7 @@ export class XiaomiAdapter implements ProviderAdapter {
     const generation = ++this.discoveryGeneration;
     const { cloud, specs, log, motor } = this.options;
     const entries = await fetchInventory({ cloud, specs, log, cameraMotor: motor !== null });
+    this.runningGeneration = generation;
     await this.stopRunning();
     for (const entry of entries) {
       const opened = await this.open(entry);
@@ -173,8 +175,10 @@ export class XiaomiAdapter implements ProviderAdapter {
 
   private runnerContext(generation: number): RunnerContext {
     const { dependencies, cloud, log } = this.options;
+    const sink = (): AdapterSink | null =>
+      generation === this.runningGeneration ? this.sink : null;
     return {
-      sink: () => this.sink,
+      sink,
       childEvent: (gateway, uplink) =>
         this.runners.get(uplink.childDid)?.legacyChildDelivery(gateway.did, uplink) ?? null,
       log,
@@ -192,7 +196,7 @@ export class XiaomiAdapter implements ProviderAdapter {
       },
       lookup: (did) => this.lookup(did, generation),
       online: (did, online): void => {
-        this.sink?.online(did, online);
+        sink()?.online(did, online);
       },
       motor: this.options.motor,
       devicesChanged: (): void => {

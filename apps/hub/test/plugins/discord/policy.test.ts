@@ -30,18 +30,21 @@ describe('who may talk to the assistant', () => {
     }).toThrow(DiscordPolicyError);
   });
 
-  it('knows which approved person is the owner', () => {
+  it('knows which approved person is the owner', async () => {
     const policy = policyOf();
-    expect(policy.isOwner(OWNER_ID)).toBe(true);
-    expect(policy.isOwner(GUEST_ID)).toBe(false);
-    expect(policy.isOwner(STRANGER)).toBe(false);
+    expect(await policy.isOwner(OWNER_ID)).toBe(true);
+    expect(await policy.isOwner(GUEST_ID)).toBe(false);
+    expect(await policy.isOwner(STRANGER)).toBe(false);
   });
 
-  it('takes the owner from what the home resolved, not from the stored status', () => {
-    const view = { ...peopleOf([OWNER_ID, 'owner']), requesterOf: () => 'approved' as const };
+  it('takes the owner from what the home resolved, not from the stored status', async () => {
+    const view = {
+      ...peopleOf([OWNER_ID, 'owner']),
+      requesterOf: (): Promise<'approved'> => Promise.resolve('approved'),
+    };
     const policy = new Policy(DISCORD_SETTINGS.parse({}), view, () => []);
     expect(policy.userAllowed(OWNER_ID)).toBe(true);
-    expect(policy.isOwner(OWNER_ID)).toBe(false);
+    expect(await policy.isOwner(OWNER_ID)).toBe(false);
   });
 
   it('approves a server member who holds an approved role, and forgets it when roles change', () => {

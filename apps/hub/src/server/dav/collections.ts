@@ -1,10 +1,11 @@
 import type { IncomingMessage } from 'node:http';
-import { dirname } from 'node:path';
 import type { DriveItem } from '@smarteverything/domain';
 import type { StoredDrive } from '../../store/repositories/drive-roots';
-import { canWrite, driveAccess, itemAccess, type ItemAccess } from '../../drive/access';
-import { folderDraft, identityOf, isoOf, parentOf, recordItem } from '../../drive/changes';
-import { DriveWriteError, locate } from '../../drive/intents';
+import { canWrite, type ItemAccess } from '../../drive/access';
+import { folderDraft, parentOf, recordItem } from '../../drive/changes';
+import { identityOf, isoOf } from '../../drive/change-rows';
+import { locate } from '../../drive/intents';
+import { DriveWriteError } from '../../drive/write-error';
 import { DrivePathError, normalizeRelativePath } from '../../drive/paths';
 import { MARKER_DIRECTORY } from '../../drive/root-marker';
 import {
@@ -70,40 +71,33 @@ export function locationOf(request: IncomingMessage): DavLocation {
   return { rootId: decodeSegment(rootPart), relPath };
 }
 
-function accessOf(
-  deps: DavDeps,
-  caller: DavCaller,
-  root: StoredDrive,
-  relPath: string,
-): ItemAccess {
-  const whole = driveAccess(caller.actor, root);
-  if (whole !== 'none') return whole;
-  for (let path = relPath; path !== ''; path = dirname(path) === '.' ? '' : dirname(path)) {
-    const item = deps.store.driveItems.byPath(root.id, path, null);
-    if (item !== undefined) return itemAccess(deps.store, caller.actor, root, item);
-  }
-  return 'none';
+function missing(): DavError {
+  return new DavError(404, 'There is no such drive or folder for this person.');
 }
 
-export function targetIn(
+export async function targetIn(
   deps: DavDeps,
   caller: DavCaller,
   location: { readonly rootId: string; readonly relPath: string },
-): DavTarget {
+): Promise<DavTarget> {
   const { rootId, relPath } = location;
   const root = deps.store.driveRoots.find(rootId);
-  const access = root === undefined ? 'none' : accessOf(deps, caller, root, relPath);
-  if (root === undefined || access === 'none') {
-    throw new DavError(404, 'There is no such drive or folder for this person.');
-  }
-  const item =
-    relPath === ''
-      ? undefined
-      : deps.store.driveItems.byPath(root.id, relPath, caller.actor.profileId);
-  return { root, relPath, item, access };
+  if (root === undefined) throw missing();
+  const found = await deps.store.host.read('davTarget', { root, relPath, actor: caller.actor });
+  if (found.access === 'none') throw missing();
+  return {
+    root,
+    relPath,
+    item: found.item ?? undefined,
+    access: found.access,
+  };
 }
 
-export function targetOf(deps: DavDeps, caller: DavCaller, request: IncomingMessage): DavTarget {
+export function targetOf(
+  deps: DavDeps,
+  caller: DavCaller,
+  request: IncomingMessage,
+): Promise<DavTarget> {
   return targetIn(deps, caller, locationOf(request));
 }
 
@@ -139,7 +133,7 @@ async function makeFolder(deps: DavDeps, caller: DavCaller, target: DavTarget): 
   if (stamp === null) {
     throw new DriveWriteError('missing', 'The new folder is missing after it was made.');
   }
-  recordItem(env, {
+  await recordItem(env, {
     draft: folderDraft(
       {
         rootId: root.id,
@@ -161,8 +155,8 @@ async function makeFolder(deps: DavDeps, caller: DavCaller, target: DavTarget): 
 export function handleMkcol(deps: DavDeps, exchange: DavExchange): Promise<void> {
   const { request, response } = exchange;
   return guarded(exchange, async () => {
-    const caller = authenticateDav(deps, request);
-    const target = targetOf(deps, caller, request);
+    const caller = await authenticateDav(deps, request);
+    const target = await targetOf(deps, caller, request);
     if (hasBody(request)) {
       throw new DavError(415, 'A collection is made without a request body.');
     }

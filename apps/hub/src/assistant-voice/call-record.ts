@@ -1,5 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import type { CallTranscript, CallTurn } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
 import { systemClock, type Cancel, type Clock } from '../clock';
+import type { NewAssistantMessage } from '../store/repositories/assistant-chat';
 import type { Store } from '../store/store';
 import type { Speaker } from './call-link';
 
@@ -28,13 +31,15 @@ export class CallRecord {
   private pending: Cancel | null = null;
   private savedAt = 0;
   private final: string | null = null;
+  private writes: Promise<void>;
 
   constructor(
-    private readonly store: Store,
+    private readonly store: Pick<Store, 'host'>,
     private readonly start: CallRecordStart,
     private readonly clock: Pick<Clock, 'now' | 'at'> = systemClock,
   ) {
-    this.messageId = store.assistantChat.addMessage({
+    this.messageId = randomUUID();
+    const row: NewAssistantMessage = {
       profile_id: start.profileId,
       client_id: start.clientId,
       role: 'system',
@@ -53,8 +58,12 @@ export class CallRecord {
       embeds: [],
       cost_micros: 0,
       model: null,
-    }).id;
-    store.aiChats.touched(start.chatId, 0);
+    };
+    this.writes = this.written(store.host.write('callRecordOpen', { id: this.messageId, row }));
+  }
+
+  settled(): Promise<void> {
+    return this.writes;
   }
 
   add(turn: RecordedTurn): void {
@@ -70,11 +79,7 @@ export class CallRecord {
     this.pending?.();
     this.pending = null;
     this.final = this.text();
-    this.store.assistantChat.updateMessage(this.messageId, {
-      text: this.final,
-      embeds: [this.embed()],
-    });
-    this.store.aiChats.touched(this.start.chatId, 0);
+    this.save(this.final);
   }
 
   private schedule(): void {
@@ -85,8 +90,24 @@ export class CallRecord {
     this.pending = this.clock.at(new Date(this.clock.now().getTime() + wait), () => {
       this.pending = null;
       this.savedAt = this.clock.now().getTime();
-      this.store.assistantChat.updateMessage(this.messageId, { embeds: [this.embed()] });
+      this.save(null);
     });
+  }
+
+  private save(text: string | null): void {
+    this.writes = this.written(
+      this.store.host.write('callRecordSave', {
+        id: this.messageId,
+        chatId: this.start.chatId,
+        text,
+        embed: this.embed(),
+      }),
+    );
+  }
+
+  private written(write: Promise<void>): Promise<void> {
+    background(write, 'voice.call_record_failed', { messageId: this.messageId });
+    return write;
   }
 
   private embed(): CallTranscript {

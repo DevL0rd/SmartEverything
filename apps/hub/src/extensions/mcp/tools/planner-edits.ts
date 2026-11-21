@@ -8,12 +8,9 @@ import {
   PLANNER_OCCURRENCE_KEY,
   PLANNER_TIMER_START,
   type EndpointName,
-  type PlannerItemCreate,
-  type PlannerItemRow,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { instantsOf } from '../../../planner/instants';
-import { operate, profileFor, type ActingContext } from './acting';
+import { operate, profileFor } from './acting';
 import {
   CALENDAR_EDIT_FIELDS,
   bookingPageRemove,
@@ -112,35 +109,6 @@ function occurrence(key: OccurrenceKey | undefined): { readonly occurrence_key?:
   return key === undefined ? {} : { occurrence_key: key };
 }
 
-function nextPosition(positions: readonly { readonly position: number }[]): number {
-  return positions.reduce((highest, row) => Math.max(highest, row.position + 1), 0);
-}
-
-function proposed(
-  context: ActingContext,
-  profileId: string,
-  draft: PlannerItemCreate,
-): PlannerItemRow {
-  const { store } = context;
-  store.plannerCollections.byId(draft.collection_id, profileId);
-  return store.plannerItems.insert({
-    ...draft,
-    ...instantsOf(draft),
-    position:
-      draft.position ??
-      nextPosition(store.plannerItems.list(profileId, { collectionIds: [draft.collection_id] })),
-    profile_id: profileId,
-    series_id: null,
-    original_start: null,
-    status: 'proposed',
-    google: null,
-    ical_uid: null,
-    ical_sequence: 0,
-    booking_page_id: null,
-    created_by: 'ai',
-  });
-}
-
 function add(): Selection {
   return selection({
     input: z.strictObject({ item: PLANNER_ITEM_CREATE }),
@@ -151,12 +119,11 @@ function add(): Selection {
 function propose(): Selection {
   return selection({
     input: z.strictObject({ items: z.array(PLANNER_ITEM_CREATE).min(1) }),
-    run: (context, input, as) => {
-      const profileId = profileFor(context, as);
-      return context.store.write(() =>
-        input.items.map((draft) => proposed(context, profileId, draft)),
-      );
-    },
+    run: async (context, input, as) =>
+      context.store.host.write('mcpPlannerPropose', {
+        profileId: await profileFor(context, as),
+        items: input.items,
+      }),
   });
 }
 

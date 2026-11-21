@@ -38,7 +38,7 @@ describe('the person behind a native session', () => {
       (): string | null => {
         throw new Error('A session without a turn authority reads no event.');
       },
-      (): string => '',
+      (): Promise<string> => Promise.resolve(''),
     );
 
     expect(sessions.principal('any')).toStrictEqual({
@@ -57,7 +57,7 @@ describe('the person behind a native session', () => {
         seen.push(id);
         return MESSAGE;
       },
-      (): string => '',
+      (): Promise<string> => Promise.resolve(''),
     );
 
     expect(sessions.principal('any').messageId).toBe(MESSAGE);

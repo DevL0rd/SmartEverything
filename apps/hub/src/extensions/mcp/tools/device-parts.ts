@@ -6,12 +6,12 @@ import type {
   StateRow,
 } from '@smarteverything/domain';
 import type { Clock } from '../../../clock';
-import type { Store } from '../../../store/store';
 import type { OperatingContext } from './acting';
+import type { DeviceFacts } from './device-detail-units';
 import type { Placed } from './targets';
 
 export interface PartSource {
-  readonly store: Store;
+  readonly facts: DeviceFacts;
   readonly scope: DeviceScope | null;
   readonly placed: Placed;
   readonly states: ReadonlyMap<string, StateRow>;

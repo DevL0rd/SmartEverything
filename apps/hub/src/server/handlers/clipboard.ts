@@ -1,6 +1,5 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import { SharedClipboard, type ClipboardCaller } from '../../clipboard/shared-clipboard';
-import type { Store } from '../../store/store';
 import { clientOf, profileIdOf, type Caller } from '../auth';
 import type { ServerContext } from '../context';
 import { bound } from '../router';
@@ -16,20 +15,20 @@ function newClipboard({ store, live, log }: ServerContext, now: () => Date): Sha
   });
 }
 
-const callerOf = (store: Store, caller: Caller): ClipboardCaller => ({
+const callerOf = (caller: Caller): ClipboardCaller => ({
   clientId: clientOf(caller).id,
-  profileId: profileIdOf(store, caller),
+  profileId: profileIdOf(caller),
 });
 
-const handlers = (clipboard: SharedClipboard, store: Store) =>
+const handlers = (clipboard: SharedClipboard) =>
   ({
     readSharedClipboard: bound(E.readSharedClipboard, ({ caller }) =>
-      clipboard.read(callerOf(store, caller)),
+      clipboard.read(callerOf(caller)),
     ),
     writeSharedClipboard: bound(E.writeSharedClipboard, ({ body, caller }) =>
-      clipboard.write(callerOf(store, caller), body.text),
+      clipboard.write(callerOf(caller), body.text),
     ),
   }) as const;
 
 export const clipboardRoutes = (context: ServerContext, now: () => Date) =>
-  ({ ...handlers(newClipboard(context, now), context.store) }) as const;
+  ({ ...handlers(newClipboard(context, now)) }) as const;

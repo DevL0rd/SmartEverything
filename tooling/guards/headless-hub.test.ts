@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { repositoryRoot } from './repository-files';
 
 const hubSource = join(repositoryRoot, 'apps', 'hub', 'src');
-const hubEntry = join(hubSource, 'service.ts');
+const hubEntries = [join(hubSource, 'service.ts'), join(hubSource, 'service-main.ts')];
 
 const IMPORT =
   /(?:^(?:import|export)\s+(?!type\b)[^;'"]*?\bfrom\s+|^import\s+|\bimport\s*\(\s*)'([^']+)'/gm;
@@ -39,10 +39,10 @@ function packageOf(specifier: string): string {
   return scope.startsWith('@') ? `${scope}/${name}` : scope;
 }
 
-function reachedFrom(entry: string): Reached {
+function reachedFrom(...entries: readonly string[]): Reached {
   const files = new Set<string>();
   const packages = new Set<string>();
-  const pending = [entry];
+  const pending = [...entries];
   for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
     if (files.has(file)) continue;
     files.add(file);
@@ -68,7 +68,7 @@ function insideHub(file: string): string {
 }
 
 describe('the hub is a headless server', () => {
-  const reached = reachedFrom(hubEntry);
+  const reached = reachedFrom(...hubEntries);
   const places = [...reached.files].map(insideHub);
 
   it('finds the code the hub starts', () => {

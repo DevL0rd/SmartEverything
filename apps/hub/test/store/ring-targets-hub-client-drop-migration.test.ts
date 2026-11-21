@@ -9,7 +9,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
-import { unusedDrivePath } from '../support/store';
+import { testStoreHost } from '../support/store-host';
 
 const NOW = '2026-11-14T09:00:00.000Z';
 const PROFILE = '0e000000-0000-4000-8000-0000000000a1';
@@ -89,11 +89,12 @@ describe('migrating to drop the hub built-in client from stored ring targets', (
     seedBefore();
 
     openStore({
+      host: testStoreHost(),
       path,
       log: testLogger(),
       now: () => new Date(NOW),
       systemTimeZone: 'UTC',
-      drivePathOf: unusedDrivePath,
+      driveFolders: null,
     }).close();
 
     const migrated = new DatabaseSync(path);

@@ -1,4 +1,6 @@
 import type { AutomationDecision } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
+import type { StoreHost } from '../../store/host/host';
 import { DECISION_WINDOW_MS } from '../../store/repositories/automation-decisions';
 import type { DroppedRun } from '../../store/repositories/automation-decisions';
 import type { Clock } from '../../clock';
@@ -7,6 +9,18 @@ export type DecisionReason = AutomationDecision['reason'];
 
 export interface DecisionLog {
   readonly record: (dropped: DroppedRun) => void;
+}
+
+export function hostDecisionLog(host: StoreHost): DecisionLog {
+  return {
+    record: (dropped): void => {
+      background(
+        host.call('automationDecisions', 'record', dropped),
+        'automation.decision_write_failed',
+        { automationId: dropped.automationId },
+      );
+    },
+  };
 }
 
 export const REFUSAL_MESSAGES: Readonly<Record<DecisionReason, string>> = {

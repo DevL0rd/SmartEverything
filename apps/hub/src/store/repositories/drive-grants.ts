@@ -102,7 +102,7 @@ export class DriveGrantsRepository {
           `insert into drive_grants (${COLUMNS})
             values ($id, $itemId, $profileId, $role, $grantedBy, $now, $expiresAt)`,
           {
-            id: this.context.newId(),
+            id: input.id ?? this.context.newId(),
             itemId: input.itemId,
             profileId: input.profileId,
             role: input.role,

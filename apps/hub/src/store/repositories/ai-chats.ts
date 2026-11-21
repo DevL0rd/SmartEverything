@@ -28,7 +28,7 @@ import { subagentChatIds } from './ai-chat-descendants';
 import { continuingChats, type ContinuingChat } from './ai-chat-continuations';
 import { archivedAt, modelKey, type NewChat } from './ai-chat-input';
 import { nextHelperName, STORED_CHAT } from './ai-chat-helper-name';
-import { assertSubagentCreation, holdChatTree, assertChatWork } from './ai-chat-removal-hold';
+import { assertSubagentCreation, assertChatWork } from './ai-chat-removal-hold';
 
 const STORED_COLUMNS =
   'id, profile_id, kind, title, icon, parent_id, helper_name, source_key, engine, tools, pinned, memory, archived_at, cost_micros, read_at, context_percent, branch_message_id, last_message_at, created_at, updated_at';
@@ -217,7 +217,7 @@ export class AiChatsRepository {
   create(input: NewChat): AiChatRow {
     assertSubagentCreation(this.context, input);
     return this.context.write(() => {
-      const id = this.context.newId();
+      const id = input.id ?? this.context.newId();
       const now = this.context.now();
       this.context.sql.run(
         'add the AI chat',
@@ -422,9 +422,6 @@ export class AiChatsRepository {
   }
   assertWorkAllowed(id: string, mode: 'read' | 'write' = 'write'): void {
     assertChatWork(this.context, id, mode);
-  }
-  holdRemoval(ids: readonly string[], work: () => Promise<void>): Promise<void> {
-    return holdChatTree(this.context, ids, work);
   }
   removalIds(id: string): string[] {
     return subagentChatIds(this.context, id);

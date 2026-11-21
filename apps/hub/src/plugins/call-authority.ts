@@ -21,7 +21,7 @@ export async function withPluginCallAuthority<T>(
   authority: ConversationAuthority,
   work: () => Promise<T>,
 ): Promise<T> {
-  if (store.plugins.byId(plugin).source === 'builtin') return work();
+  if ((await store.host.call('plugins', 'byId', plugin)).source === 'builtin') return work();
   const scopes = calls.get(store) ?? new Map<string, PluginCall>();
   calls.set(store, scopes);
   const previous = scopes.get(plugin);

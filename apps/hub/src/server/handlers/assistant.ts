@@ -15,7 +15,7 @@ const chatRoutes = ({ store, assistant }: ServerContext) =>
     listAssistantMessages: bound(E.listAssistantMessages, ({ query, caller }) =>
       wireMessages(
         assistant.messages(
-          assistant.chats.chatOf(chatOwnerOf(store, caller)).id,
+          assistant.chats.chatOf(chatOwnerOf(caller)).id,
           query.before,
           query.limit,
         ),
@@ -24,17 +24,17 @@ const chatRoutes = ({ store, assistant }: ServerContext) =>
     sendAssistantMessage: bound(E.sendAssistantMessage, ({ body, caller }) =>
       assistant.submissions.send(
         caller,
-        { clientId: clientOf(caller).id, profileId: profileIdOf(store, caller) },
+        { clientId: clientOf(caller).id, profileId: profileIdOf(caller) },
         body,
-        assistant.chats.chatOf(chatOwnerOf(store, caller)).id,
+        assistant.chats.chatOf(chatOwnerOf(caller)).id,
       ),
     ),
     removeAssistantMessage: bound(E.removeAssistantMessage, async ({ params, caller }) => {
-      await assistant.remove(chatOwnerOf(store, caller), [params.messageId]);
+      await assistant.remove(chatOwnerOf(caller), [params.messageId]);
       return DONE_REPLY;
     }),
     clearAssistantMessages: bound(E.clearAssistantMessages, async ({ caller }) => {
-      const owner = chatOwnerOf(store, caller);
+      const owner = chatOwnerOf(caller);
       await assistant.remove(
         owner,
         store.assistantChat.messageIdsOf(assistant.chats.chatOf(owner).id),
@@ -43,16 +43,16 @@ const chatRoutes = ({ store, assistant }: ServerContext) =>
     }),
   }) as const;
 
-const fileRoutes = ({ store, assistant, links }: ServerContext) =>
+const fileRoutes = ({ assistant, links }: ServerContext) =>
   ({
     startAssistantUpload: bound(E.startAssistantUpload, ({ body, caller }) =>
-      assistant.files.start({ ...body, profileId: profileIdOf(store, caller) }),
+      assistant.files.start({ ...body, profileId: profileIdOf(caller) }),
     ),
     sendAssistantUploadChunk: bound(
       E.sendAssistantUploadChunk,
       async ({ params, body, caller }) => ({
         received: await assistant.files.chunk(
-          profileIdOf(store, caller),
+          profileIdOf(caller),
           params.uploadId,
           body.index,
           body.data,
@@ -60,7 +60,7 @@ const fileRoutes = ({ store, assistant, links }: ServerContext) =>
       }),
     ),
     finishAssistantUpload: bound(E.finishAssistantUpload, async ({ params, caller }) => {
-      const file = await assistant.files.finish(profileIdOf(store, caller), params.uploadId);
+      const file = await assistant.files.finish(profileIdOf(caller), params.uploadId);
       return {
         id: file.id,
         name: file.name,
@@ -72,7 +72,7 @@ const fileRoutes = ({ store, assistant, links }: ServerContext) =>
       };
     }),
     assistantAttachmentLinks: bound(E.assistantAttachmentLinks, ({ body, caller }) => {
-      const owner = chatOwnerOf(store, caller);
+      const owner = chatOwnerOf(caller);
       return body.ids.map((id) => {
         assistant.chats.attachment(owner, id);
         return { id, ...links.assistantAttachment(id) };
@@ -91,7 +91,7 @@ const settingsRoutes = ({ assistant, store }: ServerContext) =>
       postHelperArtifacts({ store, files: assistant.files }, caller, body),
     ),
     postAssistant: bound(E.postAssistant, ({ body, caller }) => {
-      const owner = chatOwnerOf(store, caller);
+      const owner = chatOwnerOf(caller);
       return assistant.post(body, local(caller) && owner.role === 'owner', owner);
     }),
   }) as const;

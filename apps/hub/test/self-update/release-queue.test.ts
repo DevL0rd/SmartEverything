@@ -42,7 +42,8 @@ function queueOf(behaviour: Behaviour): { queue: ReleaseQueue; crashes: unknown[
     record,
     now: (): Date => new Date('2026-11-14T10:00:00.000Z'),
     newId: id,
-    sourceOf: (component): ReleaseSource => behaviour.sources?.[component] ?? 'hub',
+    sourceOf: (component): Promise<ReleaseSource> =>
+      Promise.resolve(behaviour.sources?.[component] ?? 'hub'),
     prepare: behaviour.prepare ?? ((): Promise<Prepared> => Promise.resolve(planned('hub', 'ui'))),
     execute: async (revision, step): Promise<StepOutcome> => {
       executed.push(`${revision.tip.slice(0, 1)}:${step.component}:${String(step.runId)}`);
@@ -311,7 +312,7 @@ describe('release queue', () => {
       },
       now: (): Date => new Date('2026-11-14T10:00:00.000Z'),
       newId: id,
-      sourceOf: (): ReleaseSource => 'hub',
+      sourceOf: (): Promise<ReleaseSource> => Promise.resolve('hub'),
       prepare: (): Promise<Prepared> => Promise.resolve(planned('ui')),
       execute: (): Promise<StepOutcome> => Promise.resolve({ status: 'done', offered: false }),
       changed: (): void => undefined,

@@ -11,9 +11,9 @@ import { z } from 'zod';
 import { reportOf } from '../../../weather/report';
 import { READS, defineTool, type Tool, type ToolContext } from './registry';
 
-function reportIn(context: ToolContext): WeatherReport {
+async function reportIn(context: ToolContext): Promise<WeatherReport> {
   const { store, clock } = context;
-  return reportOf(store.weather.read(), store.settings.read(), clock.now());
+  return reportOf(await store.host.call('weather', 'read'), store.settings.read(), clock.now());
 }
 
 function source(report: WeatherReport): Record<string, unknown> {
@@ -40,8 +40,8 @@ export const WEATHER_TOOLS: readonly Tool[] = [
     name: 'weather_read',
     input: z.strictObject({}),
     annotations: READS,
-    run: (context) => {
-      const report = reportIn(context);
+    run: async (context) => {
+      const report = await reportIn(context);
       const { now, daily } = report.forecast;
       return {
         structured: {
@@ -69,8 +69,8 @@ export const WEATHER_TOOLS: readonly Tool[] = [
         .describe('Days ahead to include, today first'),
     }),
     annotations: READS,
-    run: (context, input) => {
-      const report = reportIn(context);
+    run: async (context, input) => {
+      const report = await reportIn(context);
       const { hourly, daily, air } = report.forecast;
       return {
         structured: {

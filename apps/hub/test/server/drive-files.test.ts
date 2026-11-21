@@ -61,10 +61,12 @@ function actorOf(row: ComputerNodeRow): DriveActor {
   }
 }
 
-function authenticate(token: string | null): ComputerNodeRow {
+function authenticate(token: string | null): Promise<ComputerNodeRow> {
   const deviceId = token === null ? undefined : NODES[token];
-  if (deviceId === undefined) throw new ApiError('unauthorized', 'unknown or revoked node token');
-  return node(deviceId);
+  if (deviceId === undefined) {
+    return Promise.reject(new ApiError('unauthorized', 'unknown or revoked node token'));
+  }
+  return Promise.resolve(node(deviceId));
 }
 
 function writeFileItem(id: string, rootId: string, bytes: number, name = 'note.txt'): DriveItem {

@@ -7,33 +7,13 @@ import {
 import type { LocalDeviceEntry } from '../../store/repositories/local-devices';
 import type { Store } from '../../store/store';
 import type { WatchBridges } from '../watch-bridge';
-import { entryConfigOf } from './config';
 import type { BottleActionBroker } from './broker';
-import { actionPlanOf, type PlanDeps } from './plan';
 
 interface ActionsDeps {
-  readonly store: Pick<Store, 'clients' | 'profiles'>;
+  readonly store: Pick<Store, 'host'>;
   readonly broker: Pick<BottleActionBroker, 'run' | 'isRunning'>;
   readonly bridges: Pick<WatchBridges, 'holderOf'>;
-  readonly plan: PlanDeps;
-}
-
-export function phoneClientsOf(
-  store: Pick<Store, 'clients' | 'profiles'>,
-  profileId: string | null,
-  holder: string | null,
-): string[] {
-  const phones = store.clients
-    .list()
-    .filter(
-      (client) =>
-        client.platform === 'android' &&
-        (profileId === null
-          ? client.role === 'owner'
-          : store.profiles.activeOf(client.id).id === profileId),
-    )
-    .map((client) => client.id);
-  return holder !== null && phones.includes(holder) ? [holder] : phones;
+  readonly now: () => Date;
 }
 
 export class BottleActions {
@@ -47,24 +27,26 @@ export class BottleActions {
     return this.deps.broker.isRunning(deviceId);
   }
 
-  run(
+  async run(
     device: DeviceRow,
     entry: LocalDeviceEntry,
     action: BottlePushAction,
     uvMode: BottleUvStart | null = null,
   ): Promise<BottleActionResult> {
-    const config = entryConfigOf(entry);
+    const planned = await this.deps.store.host.read('bottleActionPlan', {
+      target: { entry, deviceId: device.id },
+      holder: this.holderOf(device),
+      action,
+      uvMode,
+      now: this.deps.now().toISOString(),
+    });
     return this.deps.broker.run(
       {
-        clientIds: phoneClientsOf(this.deps.store, config.binding.profileId, this.holderOf(device)),
+        clientIds: planned.clientIds,
         deviceId: device.id,
         name: device.display_name ?? device.name,
       },
-      {
-        action,
-        uvMode,
-        plan: actionPlanOf(this.deps.plan, { entry, deviceId: device.id }, action, uvMode),
-      },
+      { action, uvMode, plan: planned.plan },
     );
   }
 }

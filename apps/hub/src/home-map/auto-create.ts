@@ -1,20 +1,18 @@
-import type { HomeMapId } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
-import type { StoredRoomLink } from '../store/repositories/vacuum-room-links';
+import { background, type Logger } from '@smarteverything/logging';
 import { withRobotMap } from './feed-ops';
 import { alignFrameCheck } from './merge/align';
 import { planImport } from './merge/pipeline';
 import { withLinkedRooms } from './room-links';
 import type { MapSourceRegistry, SourceCandidate, SourceInventory } from './sources/registry';
 import type { RobotMapIdentity } from './sources/xiaomi-vacuum';
-import type { HomeMapService } from './service';
+import type { HomeMapRoomLinkStore } from './map-store';
+import type { HeldMaps, HomeMapService } from './service';
 
 export interface AutoCreatePorts {
   readonly registry: Pick<MapSourceRegistry, 'candidates'>;
-  readonly maps: Pick<HomeMapService, 'get' | 'apply'>;
-  readonly sets: { readonly ids: () => readonly HomeMapId[] };
+  readonly maps: Pick<HomeMapService, 'exclusive'>;
   readonly currentMap: (deviceId: string) => RobotMapIdentity | null;
-  readonly links: { readonly list: (deviceId: string) => readonly StoredRoomLink[] };
+  readonly links: HomeMapRoomLinkStore;
   readonly newId: () => string;
   readonly now: () => string;
   readonly log: Logger;
@@ -31,8 +29,9 @@ export class HomeMapAutoCreate {
 
   constructor(private readonly ports: AutoCreatePorts) {}
 
-  watch(inventory: SourceInventory): void {
+  async watch(inventory: SourceInventory): Promise<void> {
     const candidates = this.ports.registry.candidates(inventory);
+    const considered: Promise<AutoCreateOutcome>[] = [];
     const present = new Set(candidates.map(keyOf));
     for (const [key, release] of this.watched) {
       if (present.has(key)) continue;
@@ -45,11 +44,14 @@ export class HomeMapAutoCreate {
       this.watched.set(
         key,
         candidate.source.onChange(candidate.deviceId, () => {
-          this.consider(candidate);
+          background(this.consider(candidate), 'home_map.auto_create_failed', {
+            deviceId: candidate.deviceId,
+          });
         }),
       );
-      this.consider(candidate);
+      considered.push(this.consider(candidate));
     }
+    await Promise.all(considered);
   }
 
   stop(): void {
@@ -57,9 +59,9 @@ export class HomeMapAutoCreate {
     this.watched.clear();
   }
 
-  consider(candidate: SourceCandidate): AutoCreateOutcome {
+  async consider(candidate: SourceCandidate): Promise<AutoCreateOutcome> {
     try {
-      return this.create(candidate);
+      return await this.ports.maps.exclusive((held) => this.create(held, candidate));
     } catch (error) {
       this.ports.log.error('home_map.auto_create_failed', {
         deviceId: candidate.deviceId,
@@ -69,15 +71,18 @@ export class HomeMapAutoCreate {
     }
   }
 
-  private create({ source, deviceId }: SourceCandidate): AutoCreateOutcome {
-    if (this.ports.sets.ids().length > 0) return 'map_exists';
+  private async create(
+    held: HeldMaps,
+    { source, deviceId }: SourceCandidate,
+  ): Promise<AutoCreateOutcome> {
+    if (held.ids().length > 0) return 'map_exists';
     if (!source.isSettled(deviceId)) return 'not_settled';
     const geometry = source.read(deviceId);
     if (geometry === null) return 'no_published_map';
     if (geometry.rooms.length === 0) return 'no_rooms';
     const sourceId = this.ports.newId();
     const plan = planImport({
-      map: this.ports.maps.get(),
+      map: held.get(),
       geometry,
       sourceKind: source.kind,
       sourceId,
@@ -92,10 +97,10 @@ export class HomeMapAutoCreate {
       return 'failed';
     }
     const ops = withRobotMap(
-      withLinkedRooms(plan.ops, this.ports.links.list(deviceId)),
+      withLinkedRooms(plan.ops, await this.ports.links.list(deviceId)),
       this.ports.currentMap(deviceId),
     );
-    const result = this.ports.maps.apply(ops, plan.actor);
+    const result = await held.apply(ops, plan.actor);
     if (result.applied.length === 0) {
       this.ports.log.warn('home_map.auto_create_refused', {
         deviceId,

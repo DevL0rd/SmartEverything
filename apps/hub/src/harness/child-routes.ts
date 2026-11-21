@@ -5,6 +5,8 @@ import { SUBAGENT_MODEL_POLICY_EVENT, type SubagentModelRoute } from '@smartever
 import { assertModelAllowed, modelAllowed } from '../server/person-scope';
 import type { HarnessGrant } from './grant';
 import type { HarnessService } from './service';
+import { unchangedRoute } from './child-route-binding';
+import type { DshRouteBinding } from '../store/repositories/dsh-session-writes';
 
 const DESCRIPTOR = z.object({
   type: z.literal('subagent/descriptor'),
@@ -54,15 +56,6 @@ export function modelPolicyEvents(
   ];
 }
 
-function unchanged(grant: HarnessGrant, choice: ChildChoice): boolean {
-  return (
-    grant.route.route_id === choice.agentProvider &&
-    grant.route.model === choice.agentModel &&
-    (choice.agentReasoningEffort === undefined ||
-      choice.agentReasoningEffort === grant.route.effort)
-  );
-}
-
 function chosenRoute(
   service: HarnessService,
   grant: HarnessGrant,
@@ -100,41 +93,25 @@ function chosenRoute(
   return selection;
 }
 
-function bindChildRoute(service: HarnessService, sessionId: string, choice: ChildChoice): void {
-  const { store } = service;
-  const grant = store.harnessSessions.grant(sessionId);
-  if (grant === undefined || unchanged(grant, choice)) return;
-  const route = chosenRoute(service, grant, choice);
-  store.harnessSessions.issue({ ...grant, route });
-  const run = store.aiAgentRuns.currentOfSession(sessionId);
-  const chatId = run?.child_chat_id ?? null;
-  if (run === undefined || chatId === null) return;
-  const chat = store.aiChats.chat(chatId);
-  if (chat.engine.kind !== 'dsh') return;
-  store.aiChats.update(chat.id, {
-    engine: {
-      ...chat.engine,
-      model_route_id: route.route_id,
-      model: route.model,
-      effort: route.effort,
-    },
+async function plannedRoutes(
+  service: HarnessService,
+  sessionId: string,
+  events: readonly DshSessionEvent[],
+): Promise<DshRouteBinding[]> {
+  const choices = events.flatMap((event) => {
+    const descriptor = DESCRIPTOR.safeParse(event);
+    return descriptor.success ? [descriptor.data.data] : [];
   });
-  store.aiAgentRuns.upsert({
-    ...run,
-    model: route.model,
-    effort: route.effort,
-    source_seq: run.source_seq + 1,
-    ...(run.harness === undefined
-      ? {}
-      : { harness: { ...run.harness, model_route_id: route.route_id } }),
-  });
+  if (choices.length === 0) return [];
+  const grant = await service.store.host.call('harnessSessions', 'grant', sessionId);
+  if (grant === undefined) return [];
+  return choices
+    .filter((choice) => !unchangedRoute(grant, choice))
+    .map((choice) => ({ choice, route: chosenRoute(service, grant, choice) }));
 }
 
 export function admitChildRoutes(service: HarnessService): void {
-  service.store.dshSessions.admitAppend((sessionId, events) => {
-    for (const event of events) {
-      const descriptor = DESCRIPTOR.safeParse(event);
-      if (descriptor.success) bindChildRoute(service, sessionId, descriptor.data.data);
-    }
-  });
+  service.store.live.dshSessions.planAppend((sessionId, events) =>
+    plannedRoutes(service, sessionId, events),
+  );
 }

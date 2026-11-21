@@ -61,7 +61,7 @@ describe('a plugin action node through save, load, lowering and a run', () => {
     expect(core.kind === 'unstructured' ? core.problems.map((found) => found.code) : []).toContain(
       'unknown_target',
     );
-    expect(rig.engine.sync()).toMatchObject({ loaded: 1 });
+    expect(await rig.engine.sync()).toMatchObject({ loaded: 1 });
     rig.press(REMOTE, 'single');
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id).map((run) => run.status)).toStrictEqual(['succeeded']);

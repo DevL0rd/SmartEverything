@@ -16,6 +16,7 @@ import type { PlannerItemInput } from '../../src/store/repositories/planner-item
 import { testLogger } from '../support/logs';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
 import { testStore, type TestStore } from '../support/store';
+import { inProcessCalendars } from '../support/ical';
 
 const NOW_TEXT = '2026-11-14T12:00:00.000Z';
 const ZONE = 'Europe/Berlin';
@@ -396,7 +397,12 @@ describe('who may find what', () => {
 
 describe('the search route', () => {
   it('writes the holidays around today first and finds them', async () => {
-    const service = new FeedService({ store: test.store, clock, log: testLogger('feeds') });
+    const service = new FeedService({
+      store: test.store,
+      clock,
+      calendars: inProcessCalendars,
+      log: testLogger('feeds'),
+    });
     await service.registry.of('holidays').create({
       profileId: ann.profileId,
       input: { kind: 'holidays', country: 'DE', state: null },

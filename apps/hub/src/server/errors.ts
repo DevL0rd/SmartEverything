@@ -6,7 +6,6 @@ import {
   InvalidValueError,
   type ApiErrorCode,
 } from '@smarteverything/domain';
-import type { z } from 'zod';
 import {
   CameraOfflineError,
   CameraPrivacyError,
@@ -22,13 +21,6 @@ import { claudeApiErrorFor } from '../claude/api-errors';
 import { IrLibraryEntryUnknownError } from '../infrared/library/ir-library';
 import { StoreNotFoundError } from '../store/context';
 import { StoreConflictError } from '../store/sql';
-
-export function issuesOf(error: z.ZodError): string {
-  return error.issues
-    .slice(0, 5)
-    .map((issue) => `${issue.path.join('.') || 'value'}: ${issue.message}`)
-    .join('; ');
-}
 
 type ErrorClass = abstract new (...args: never) => Error;
 
@@ -78,15 +70,11 @@ export function httpFailureOf(cause: unknown): HttpFailure {
   };
 }
 
-export function invalid(what: string, error: z.ZodError): ApiError {
-  return new ApiError('invalid_request', `The ${what} is not valid: ${issuesOf(error)}.`);
-}
-
 export class InvalidResponseError extends ApiError {
   readonly issueCodes: readonly string[];
 
-  constructor(path: string, error: z.ZodError) {
+  constructor(path: string, issueCodes: readonly string[]) {
     super('internal', `The server built an invalid response for ${path}.`);
-    this.issueCodes = [...new Set(error.issues.map((issue) => issue.code))];
+    this.issueCodes = issueCodes;
   }
 }

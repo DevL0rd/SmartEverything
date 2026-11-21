@@ -13,7 +13,9 @@ import {
   PlacesDatasetError,
   PlacesService,
   parseDataset,
+  type PlacesStore,
 } from '../../src/photos/places';
+import { PlaceRecords } from '../../src/photos/places-records';
 import {
   PlaceQueries,
   geohashOf,
@@ -178,19 +180,47 @@ function writeDataset(rows: readonly (readonly string[])[]): string {
   return path;
 }
 
+function later<T>(work: () => T): Promise<T> {
+  return new Promise((resolve) => {
+    resolve(work());
+  });
+}
+
+function contextPlaces(): PlacesStore {
+  const records = new PlaceRecords(context);
+  return {
+    dataset: () => later(() => records.dataset()),
+    save: (places) =>
+      later(() => {
+        records.save(places);
+      }),
+    keep: (ids, dataset) =>
+      later(() => {
+        records.keep(ids, dataset);
+      }),
+    located: (everything) => later(() => records.located(everything)),
+    assign: (itemId) => later(() => records.assign(itemId)),
+    assignLocated: (located) =>
+      later(() => {
+        records.assignLocated(located);
+      }),
+    clearLost: () =>
+      later(() => {
+        records.clearLost();
+      }),
+  };
+}
+
 function service(path: string): PlacesService {
   return new PlacesService({
-    context,
-    reader: {
-      all: (schema, text, parameters) => Promise.resolve(context.sql.all(schema, text, parameters)),
-    },
-    datasetPath: path,
+    store: contextPlaces(),
+    datasetPath: (): Promise<string> => Promise.resolve(path),
     log: testLogger(),
   });
 }
 
-function assignAll(places: PlacesService, numbers: readonly number[]): void {
-  for (const n of numbers) places.assign(itemId(n));
+async function assignAll(places: PlacesService, numbers: readonly number[]): Promise<void> {
+  for (const n of numbers) await places.assign(itemId(n));
 }
 
 function placeOf(n: number): string | null {
@@ -214,17 +244,17 @@ function seedTrip(): void {
 }
 
 describe('the dataset', () => {
-  it('parses the rows and turns an empty region into null', () => {
-    const rows = parseDataset(gzipSync(Buffer.from('1\tApia\t\tWS\t-13.82\t-171.76\n')));
+  it('parses the rows and turns an empty region into null', async () => {
+    const rows = await parseDataset(gzipSync(Buffer.from('1\tApia\t\tWS\t-13.82\t-171.76\n')));
     expect(rows).toEqual([
       { id: '1', name: 'Apia', admin: null, country: 'WS', lat: -13.82, lon: -171.76 },
     ]);
   });
 
-  it('names the line of an unreadable row', () => {
+  it('names the line of an unreadable row', async () => {
     const bytes = gzipSync(Buffer.from('1\tApia\t\tWS\t-13.82\t-171.76\n2\tBroken\t\tws\t1\t2\n'));
-    expect(() => parseDataset(bytes)).toThrow(PlacesDatasetError);
-    expect(() => parseDataset(bytes)).toThrow(/line 2/);
+    await expect(parseDataset(bytes)).rejects.toThrow(PlacesDatasetError);
+    await expect(parseDataset(bytes)).rejects.toThrow(/line 2/);
   });
 });
 
@@ -288,7 +318,7 @@ describe('loading the dataset', () => {
     const places = service(writeDataset(CITIES));
     await places.load();
     seed({ n: 1, lat: 38.72, lon: -9.14, takenAt: '2026-03-01T10:00:00.000Z' });
-    places.assign(itemId(1));
+    await places.assign(itemId(1));
     expect(placeOf(1)).toBe('1001');
     const changed = service(
       writeDataset([
@@ -321,9 +351,9 @@ describe('the bundled dataset', () => {
     seed({ n: 1, lat: 38.7223, lon: -9.1393, takenAt: '2026-03-01T10:00:00.000Z' });
     seed({ n: 2, lat: 0, lon: -30, takenAt: '2026-03-01T10:00:00.000Z' });
     seed({ n: 3, lat: -17.5, lon: -179.95, takenAt: '2026-03-01T10:00:00.000Z' });
-    assignAll(places, [1, 2, 3]);
+    await assignAll(places, [1, 2, 3]);
     const repository = new DrivePlacesRepository(context);
-    const everyCity = parseDataset(readFileSync(bundled));
+    const everyCity = await parseDataset(readFileSync(bundled));
     const nearestTo = (lat: number, lon: number): string | undefined =>
       everyCity
         .map((city) => ({
@@ -347,24 +377,24 @@ describe('assigning a place', () => {
   it('names the nearest place of a new location and clears it when the location goes', async () => {
     const places = await loaded();
     seed({ n: 1, lat: 41.2, lon: -8.6, takenAt: '2026-03-01T10:00:00.000Z' });
-    expect(places.assign(itemId(1))).toBe('1002');
+    expect(await places.assign(itemId(1))).toBe('1002');
     expect(placeOf(1)).toBe('1002');
     database.exec(
       `update drive_items set place_lat = null, place_lon = null where id = '${itemId(1)}'`,
     );
-    expect(places.assign(itemId(1))).toBeNull();
+    expect(await places.assign(itemId(1))).toBeNull();
     expect(placeOf(1)).toBeNull();
   });
 
   it('refuses an item that does not exist', async () => {
     const places = await loaded();
-    expect(() => places.assign(itemId(99))).toThrow(StoreNotFoundError);
+    await expect(places.assign(itemId(99))).rejects.toThrow(StoreNotFoundError);
   });
 
   it('clears the place of items that lost their location when it sweeps', async () => {
     const places = await loaded();
     seed({ n: 1, lat: 41.2, lon: -8.6, takenAt: '2026-03-01T10:00:00.000Z' });
-    places.assign(itemId(1));
+    await places.assign(itemId(1));
     database.exec(
       `update drive_items set place_lat = null, place_lon = null where id = '${itemId(1)}'`,
     );
@@ -390,7 +420,7 @@ describe('geohash clusters', () => {
   it('groups items into cells that split as the map zooms in', async () => {
     const places = await loaded();
     seedTrip();
-    assignAll(places, [1, 2, 3, 4, 5]);
+    await assignAll(places, [1, 2, 3, 4, 5]);
     const world = new PlaceQueries(context).clusters(owner, PHOTO_MAP_QUERY.parse({ zoom: '0' }));
     expect(PHOTO_MAP_CLUSTERS.parse(world)).toEqual(world);
     expect(world.total).toBe(5);
@@ -482,7 +512,7 @@ describe('the places list', () => {
   it('groups places by country with counts and the newest photo as cover', async () => {
     const places = await loaded();
     seedTrip();
-    assignAll(places, [1, 2, 3, 4, 5]);
+    await assignAll(places, [1, 2, 3, 4, 5]);
     const list = new PlaceQueries(context).list(owner);
     expect(PHOTO_PLACE_LIST.parse(list)).toEqual(list);
     expect(list.countries.map((country) => [country.country, country.name, country.count])).toEqual(
@@ -509,7 +539,7 @@ describe('a place', () => {
     const places = await loaded();
     seedTrip();
     seed({ n: 9, lat: 38.7, lon: -9.1, takenAt: '2026-03-01T23:30:00.000Z', offset: 60 });
-    assignAll(places, [1, 2, 3, 4, 9]);
+    await assignAll(places, [1, 2, 3, 4, 9]);
     const detail = new PlaceQueries(context).detail(owner, '1001');
     expect(PHOTO_PLACE_DETAIL.parse(detail)).toEqual(detail);
     expect(detail).toMatchObject({
@@ -536,7 +566,7 @@ describe('a place', () => {
   it('is empty for a person who cannot see its items and refuses an unknown place', async () => {
     const places = await loaded();
     seed({ n: 1, root: ALICE_ROOT, lat: 38.72, lon: -9.14, takenAt: '2026-03-01T10:00:00.000Z' });
-    assignAll(places, [1]);
+    await assignAll(places, [1]);
     const queries = new PlaceQueries(context);
     expect(queries.detail(alice, '1001').items).toBe(1);
     expect(queries.detail(bob, '1001')).toMatchObject({ items: 0, coverItemId: null, visits: [] });
@@ -561,7 +591,7 @@ describe('the domain answers', () => {
   it('turns the place list and the clusters into the Photos contract', async () => {
     const places = await loaded();
     seedTrip();
-    assignAll(places, [1, 2, 3, 4, 5]);
+    await assignAll(places, [1, 2, 3, 4, 5]);
     const queries = new PlaceQueries(context);
     const countries = z.array(PLACE_COUNTRY).parse(domainCountries(queries.list(owner)));
     expect(

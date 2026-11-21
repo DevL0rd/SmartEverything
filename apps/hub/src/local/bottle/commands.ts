@@ -18,13 +18,12 @@ import type { z } from 'zod';
 import type { LocalDeviceEntry } from '../../store/repositories/local-devices';
 import type { Store } from '../../store/store';
 import type { DeviceDriver } from '../device-driver';
+import type { FleetRoster } from '../fleet-roster';
 import type { BottleActions } from './actions';
 import { standingOf } from './access';
-import { BOTTLE_DRIVER, entryConfigOf, saveConfig } from './config';
+import { BOTTLE_DRIVER, entryConfigOf, storedConfigOf, type BottleEntryConfig } from './config';
 
 const CHANNEL_MAX = 255;
-
-const OWNER_SOURCES: ReadonlySet<string> = new Set(['automation']);
 
 class BottleCommandFailedError extends Error {
   override readonly name = 'BottleCommandFailedError';
@@ -111,21 +110,22 @@ export function intentOf(command: DeviceCommand): Intent {
 }
 
 export interface CommandDeps {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host'>;
+  readonly roster: Pick<FleetRoster, 'deviceForEntry' | 'entryOf' | 'use'>;
   readonly actions: Pick<BottleActions, 'run'>;
   readonly log: Logger;
 }
 
-function assertMay(deps: CommandDeps, command: DeviceCommand, entry: LocalDeviceEntry): void {
-  const row = deps.store.commands.byId(command.commandId);
-  if (OWNER_SOURCES.has(row.source) || row.requested_by === null) {
+async function assertMay(
+  deps: CommandDeps,
+  command: DeviceCommand,
+  entry: LocalDeviceEntry,
+): Promise<void> {
+  const actor = await deps.store.host.read('bottleCommandActor', command.commandId);
+  if (actor === null) {
     return;
   }
-  const client = deps.store.clients.byId(row.requested_by);
-  const standing = standingOf(
-    { role: client.role, profileId: deps.store.profiles.activeOf(client.id).id },
-    entryConfigOf(entry),
-  );
+  const standing = standingOf(actor, entryConfigOf(entry));
   if (standing === 'none') {
     throw new CommandRefusedError(
       command.capability,
@@ -134,18 +134,31 @@ function assertMay(deps: CommandDeps, command: DeviceCommand, entry: LocalDevice
   }
 }
 
-function saveWish(deps: CommandDeps, entry: LocalDeviceEntry, intent: Intent): void {
-  const config = entryConfigOf(entry);
+function wishedConfig(config: BottleEntryConfig, intent: Intent): BottleEntryConfig | null {
   if (intent.kind === 'reminder') {
-    saveConfig(deps.store, entry, {
+    return {
       ...config,
       desired: { ...config.desired, reminder: { ...config.desired.reminder, ...intent.change } },
-    });
-  } else if (intent.kind === 'quiet') {
-    saveConfig(deps.store, entry, {
+    };
+  }
+  if (intent.kind === 'quiet') {
+    return {
       ...config,
       desired: { ...config.desired, quiet: { ...config.desired.quiet, ...intent.change } },
-    });
+    };
+  }
+  return null;
+}
+
+async function saveWish(deps: CommandDeps, entry: LocalDeviceEntry, intent: Intent): Promise<void> {
+  const wished = wishedConfig(entryConfigOf(entry), intent);
+  if (wished !== null) {
+    deps.roster.use(
+      await deps.store.host.write('localConfig', {
+        externalId: entry.externalId,
+        config: storedConfigOf(wished),
+      }),
+    );
   }
 }
 
@@ -153,15 +166,15 @@ export async function runBottleCommand(
   deps: CommandDeps,
   command: DeviceCommand,
 ): Promise<JsonValue> {
-  const device = deps.store.devices.byExternal('local', command.externalId);
+  const device = await deps.roster.deviceForEntry(command.externalId);
   if (device === undefined) {
     throw new CommandRefusedError(command.capability, 'this bottle is no longer known to the hub');
   }
-  const entry = deps.store.localDevices.byExternalId(command.externalId);
+  const entry = deps.roster.entryOf(command.externalId);
   const intent = intentOf(command);
-  assertMay(deps, command, entry);
+  await assertMay(deps, command, entry);
   if (intent.kind !== 'action') {
-    saveWish(deps, entry, intent);
+    await saveWish(deps, entry, intent);
     deps.log.info('bottle.setting_saved', { device: device.id, capability: command.capability });
     return 'Saved. It applies when the bottle next wakes.';
   }

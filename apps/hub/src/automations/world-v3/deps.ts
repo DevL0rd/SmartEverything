@@ -2,15 +2,18 @@ import type { JsonValue } from '@smarteverything/domain';
 import type { Clock } from '../../clock';
 import type { CommandExecutor } from '../../commands/executor';
 import type { Store } from '../../store/store';
+import type { NodeStateRows } from '../automation-memory';
 import type { NodeMemory } from './node-memory';
 import type { PersistentVariables } from './variables';
 import type { PresenceSource } from './presence';
 import type { RandomPort } from './random';
 import type { SignalReads } from './integration-reads';
+import type { WorldSource } from './world-mirror';
 import type { KindCatalog } from '../plugin-kinds/catalog';
 
 export interface WorldReadDeps {
   readonly store: Store;
+  readonly world: WorldSource;
   readonly executor: Pick<CommandExecutor, 'intendedValue'>;
   readonly clock: Pick<Clock, 'now'>;
   readonly observed: (deviceId: string, capability: string) => JsonValue | undefined;
@@ -18,6 +21,7 @@ export interface WorldReadDeps {
   readonly persistent: PersistentVariables;
   readonly random: RandomPort;
   readonly memory: NodeMemory;
+  readonly stateRows: NodeStateRows;
   readonly signals: SignalReads;
   readonly kinds: KindCatalog;
 }

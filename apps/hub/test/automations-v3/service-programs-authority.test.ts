@@ -39,14 +39,21 @@ afterEach(() => {
 
 let counter = 0;
 
-function create(caller: Caller, definition: AutomationV4): ReturnType<typeof rig.service.create> {
+async function create(
+  caller: Caller,
+  definition: AutomationV4,
+): Promise<ReturnType<typeof rig.service.create>> {
   counter += 1;
-  return rig.service.create(caller, { name: `Test ${String(counter)}`, enabled: true, definition });
+  return await rig.service.create(caller, {
+    name: `Test ${String(counter)}`,
+    enabled: true,
+    definition,
+  });
 }
 
-function refusal(work: () => unknown): ApiError {
+async function refusalOf(work: Promise<unknown>): Promise<ApiError> {
   try {
-    work();
+    await work;
   } catch (cause) {
     if (cause instanceof ApiError) return cause;
     throw cause;
@@ -70,7 +77,7 @@ function reusableWake(): string {
   };
   const lowered = lower(program, { kinds: (id) => createKindCatalog().get(id) });
   if (!lowered.ok) throw new Error(JSON.stringify(lowered.problems));
-  const planHash = rig.env.plans.put('function', planValue(lowered.plan));
+  const planHash = rig.plans.put('function', planValue(lowered.plan));
   return rig.functions.create(
     {
       name: 'Wake',
@@ -87,27 +94,27 @@ function reusableWake(): string {
 }
 
 describe('who may save what the manifest reaches', () => {
-  it('lets only an owner save an automation that wakes the AI', () => {
-    const refused = refusal(() => create(rig.member.caller, wake()));
+  it('lets only an owner save an automation that wakes the AI', async () => {
+    const refused = await refusalOf(create(rig.member.caller, wake()));
     expect(refused.code).toBe('forbidden');
     expect(refused.message).toMatch(/Only an owner/);
     expect(rig.programs.list()).toHaveLength(0);
-    expect(create(rig.owner.caller, wake()).ok).toBe(true);
+    expect((await create(rig.owner.caller, wake())).ok).toBe(true);
   });
 
-  it('lets only an owner save an automation that uses a tool', () => {
+  it('lets only an owner save an automation that uses a tool', async () => {
     const program = automationOf([step('tool', 'tool.call', { tool: lit('home_read') })]);
-    expect(refusal(() => create(rig.member.caller, program)).code).toBe('forbidden');
+    expect((await refusalOf(create(rig.member.caller, program))).code).toBe('forbidden');
   });
 
-  it('follows calls into reusable nodes, so a member cannot reach the AI through one', () => {
+  it('follows calls into reusable nodes, so a member cannot reach the AI through one', async () => {
     const functionId = reusableWake();
     const program = automationOf([step('use', 'fn.call', { fn: lit(functionId) })]);
-    expect(refusal(() => create(rig.member.caller, program)).code).toBe('forbidden');
-    expect(create(rig.owner.caller, program).ok).toBe(true);
+    expect((await refusalOf(create(rig.member.caller, program))).code).toBe('forbidden');
+    expect((await create(rig.owner.caller, program)).ok).toBe(true);
   });
 
-  it('keeps a member to their own computers', () => {
+  it('keeps a member to their own computers', async () => {
     const program = automationOf([
       step('quiet', 'computer.audio', {
         computer: lit(rig.computer.id),
@@ -115,22 +122,22 @@ describe('who may save what the manifest reaches', () => {
         muted: lit(true),
       }),
     ]);
-    const refused = refusal(() => create(rig.member.caller, program));
+    const refused = await refusalOf(create(rig.member.caller, program));
     expect(refused.message).toBe('A member can only automate their own computers.');
-    expect(create(rig.owner.caller, program).ok).toBe(true);
+    expect((await create(rig.owner.caller, program)).ok).toBe(true);
   });
 
-  it('keeps a member from commanding another person’s phone and allows their own', () => {
+  it('keeps a member from commanding another person’s phone and allows their own', async () => {
     const ownerPhone = rig.addPhone(rig.owner, 'Owner phone');
     const ownPhone = rig.addPhone(rig.member, 'Member phone');
     const launch = (device: string): AutomationV4 =>
       automationOf([setPower('open', device, 'launch_app')]);
-    const refused = refusal(() => create(rig.member.caller, launch(ownerPhone.id)));
+    const refused = await refusalOf(create(rig.member.caller, launch(ownerPhone.id)));
     expect(refused.message).toBe('Only the person who owns this phone can do this.');
-    expect(create(rig.member.caller, launch(ownPhone.id)).ok).toBe(true);
+    expect((await create(rig.member.caller, launch(ownPhone.id))).ok).toBe(true);
   });
 
-  it('keeps a member to the devices their access reaches', () => {
+  it('keeps a member to the devices their access reaches', async () => {
     const other = rig.addPhone(rig.member, 'Member phone');
     rig.store.personAccess.change(rig.member.profileId, {
       role: 'member',
@@ -140,17 +147,19 @@ describe('who may save what the manifest reaches', () => {
         devices: { mode: 'only', rooms: [], devices: [other.id] },
       },
     });
-    const refused = refusal(() =>
+    const refused = await refusalOf(
       create(rig.member.caller, automationOf([setPower('lamp', rig.lamp.id)])),
     );
     expect(refused.code).toBe('forbidden');
-    expect(create(rig.owner.caller, automationOf([setPower('lamp', rig.lamp.id)])).ok).toBe(true);
+    expect((await create(rig.owner.caller, automationOf([setPower('lamp', rig.lamp.id)]))).ok).toBe(
+      true,
+    );
   });
 });
 
 describe('who and what the saved automation remembers', () => {
-  it('records the person, or the assistant for an assistant turn', () => {
-    const person = create(rig.owner.caller, automationOf([logLine('say', 'hi')]));
+  it('records the person, or the assistant for an assistant turn', async () => {
+    const person = await create(rig.owner.caller, automationOf([logLine('say', 'hi')]));
     expect(rig.programs.byId(person.id ?? '').author).toStrictEqual({
       via: 'person',
       profile_id: rig.owner.profileId,
@@ -171,14 +180,14 @@ describe('who and what the saved automation remembers', () => {
       profileId: rig.owner.profileId,
       chatId: null,
     };
-    const assistant = create(service, automationOf([logLine('say', 'hi')]));
+    const assistant = await create(service, automationOf([logLine('say', 'hi')]));
     expect(rig.programs.byId(assistant.id ?? '').author).toStrictEqual({
       via: 'assistant',
       profile_id: rig.owner.profileId,
     });
   });
 
-  it('keeps the initiating authority of the effects on every revision', () => {
+  it('keeps the initiating authority of the effects on every revision', async () => {
     const authority = {
       event_id: randomUUID(),
       profile_id: rig.owner.profileId,
@@ -190,39 +199,39 @@ describe('who and what the saved automation remembers', () => {
       plugin_id: null,
       requester: null,
     };
-    const result = withExecutionAuthority(authority, () =>
+    const result = await withExecutionAuthority(authority, () =>
       create(rig.owner.caller, automationOf([logLine('say', 'hi')])),
     );
     const kept = rig.store.harnessRecovery.effects.find('automation', result.id ?? '');
     expect(kept?.profile_id).toBe(rig.owner.profileId);
   });
 
-  it('stores the plugin that wrote it and refuses a tool the plugin may not use', () => {
+  it('stores the plugin that wrote it and refuses a tool the plugin may not use', async () => {
     const plugin: Caller = {
       kind: 'client',
       client: rig.owner.client,
       pluginId: 'weather-plugin',
       pluginRequester: 'owner',
     };
-    const saved = create(plugin, automationOf([logLine('say', 'hi')]));
+    const saved = await create(plugin, automationOf([logLine('say', 'hi')]));
     expect(rig.programs.byId(saved.id ?? '').origin).toStrictEqual({
       plugin_id: 'weather-plugin',
       requester: 'owner',
     });
     rig.refusedTools.push('home_read');
     const program = automationOf([step('tool', 'tool.call', { tool: lit('home_read') })]);
-    expect(refusal(() => create(plugin, program)).message).toMatch(/not available to a plugin/);
+    expect((await refusalOf(create(plugin, program))).message).toMatch(/not available to a plugin/);
   });
 });
 
 describe('signal triggers', () => {
-  it('refuses a signal source or kind that is not installed', () => {
+  it('refuses a signal source or kind that is not installed', async () => {
     const program = automationOf([logLine('say', 'hi')], {
       triggers: [
         trigger('heard', 'trigger.signal', { source: lit('nowhere'), kind: lit('nothing') }),
       ],
     });
-    const refused = refusal(() => create(rig.owner.caller, program));
+    const refused = await refusalOf(create(rig.owner.caller, program));
     expect(refused.code).toBe('invalid_request');
   });
 });
@@ -233,32 +242,32 @@ describe('speech triggers', () => {
       triggers: [trigger('heard', 'trigger.speech', { phrase: lit(phrase) })],
     });
 
-  it('binds the grant to the saving profile and the saved revision', () => {
-    const saved = create(rig.owner.caller, speech('lights on'));
+  it('binds the grant to the saving profile and the saved revision', async () => {
+    const saved = await create(rig.owner.caller, speech('lights on'));
     const grant = rig.store.speech.grant(saved.id ?? '');
     expect(grant?.revision).toBe('1');
     expect(grant?.principal.profileId).toBe(rig.owner.profileId);
   });
 
-  it('moves the grant to the new revision and drops it with the last speech trigger', () => {
-    const id = create(rig.owner.caller, speech('lights on')).id ?? '';
-    rig.service.update(rig.owner.caller, id, {
+  it('moves the grant to the new revision and drops it with the last speech trigger', async () => {
+    const id = (await create(rig.owner.caller, speech('lights on'))).id ?? '';
+    await rig.service.update(rig.owner.caller, id, {
       definition: speech('lights off'),
       expectedRevision: 1,
     });
     expect(rig.store.speech.grant(id)?.revision).toBe('2');
-    rig.service.update(rig.owner.caller, id, {
+    await rig.service.update(rig.owner.caller, id, {
       definition: automationOf([logLine('say', 'hi')]),
       expectedRevision: 2,
     });
     expect(rig.store.speech.grant(id)).toBeUndefined();
   });
 
-  it('lets only the initiating profile change a speech automation', () => {
-    const id = create(rig.owner.caller, speech('lights on')).id ?? '';
+  it('lets only the initiating profile change a speech automation', async () => {
+    const id = (await create(rig.owner.caller, speech('lights on'))).id ?? '';
     const other = rig.addPhone(rig.member, 'unused');
     expect(other.kind).toBe('phone');
-    const refused = refusal(() =>
+    const refused = await refusalOf(
       rig.service.update(rig.member.caller, id, {
         definition: speech('lights off'),
         expectedRevision: 1,
@@ -268,13 +277,13 @@ describe('speech triggers', () => {
     expect(rig.programs.byId(id).revision).toBe(1);
   });
 
-  it('refuses a phrase that is wired', () => {
+  it('refuses a phrase that is wired', async () => {
     const program = automationOf([logLine('say', 'hi')], {
       triggers: [
         trigger('heard', 'trigger.speech', { phrase: { wire: { from: 'trigger', port: 'key' } } }),
       ],
     });
-    const refused = create(rig.owner.caller, program);
+    const refused = await create(rig.owner.caller, program);
     expect(refused.ok).toBe(false);
     expect(refused.problems).toContainEqual(
       expect.objectContaining({ code: 'static_not_literal', port: 'phrase', severity: 'error' }),

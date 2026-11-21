@@ -5,7 +5,7 @@ import { activityOf, alertOf, planEvents, RefreshPlan, SYNC_ALERTS } from './eve
 import { SyncthingEventStreams } from './event-streams';
 import { Loop } from '../../loop';
 import { Throttle } from '../../throttle';
-import { WireGate } from '../wire-gate';
+import { WireGate, type WireAudience } from '../wire-gate';
 import { JsonApiRefusedError, reasonOf } from '../json-api';
 import type { SyncthingRest } from './rest-client';
 import { FOLDER_SUMMARY_EVENT, type SyncthingEvent } from './rest-schemas';
@@ -24,7 +24,7 @@ export interface MonitorOptions {
   readonly overdueHours: number;
   readonly log: Logger;
   readonly record: (snapshot: SyncthingSnapshot) => void;
-  readonly publish: (snapshot: SyncthingSnapshot) => void;
+  readonly publish: (snapshot: SyncthingSnapshot, audience: WireAudience) => void;
   readonly publishActivity: (activity: readonly SyncActivity[]) => void;
   readonly emit: (event: PluginEvent) => void;
 }
@@ -83,7 +83,7 @@ export class SyncthingMonitor {
 
   start(): void {
     this.options.record(this.#latest);
-    this.options.publish(this.#latest);
+    this.options.publish(this.#latest, 'everyone');
     this.#streams.start();
     this.#rateLoop.runNow();
   }
@@ -173,8 +173,9 @@ export class SyncthingMonitor {
       this.#ratesRecovered();
       this.#latest = this.#build();
       this.options.record(this.#latest);
-      if (this.#wire.due(this.#watched)) {
-        this.options.publish(this.#latest);
+      const audience = this.#wire.due(this.#watched);
+      if (audience !== null) {
+        this.options.publish(this.#latest, audience);
       }
     } catch (error) {
       if (this.#failedRates === 0) {
@@ -220,7 +221,7 @@ export class SyncthingMonitor {
   #publish(): void {
     this.#latest = this.#build();
     this.options.record(this.#latest);
-    this.options.publish(this.#latest);
+    this.options.publish(this.#latest, 'everyone');
     this.#watchOverdue();
   }
 

@@ -85,7 +85,7 @@ it('records the admitted request before dispatching preparation and returns with
       remoteTip: 'b'.repeat(40),
     });
   });
-  const accepted = admitRemoteSnapshot(tools, request);
+  const accepted = await admitRemoteSnapshot(tools, request);
   expect(accepted).toEqual({ status: 'started', runId: request.requestId });
   expect(previousRemoteRun(tools.jobs, request, readLedger(tools.ledger))).toEqual(accepted);
   expect(startRemotePreparation).toHaveBeenCalledOnce();
@@ -97,7 +97,7 @@ it('returns the same refusal when retrying an admitted request whose dispatch fa
   vi.mocked(startRemotePreparation).mockImplementation(() => {
     throw new Error('fixture failure');
   });
-  const rejected = admitRemoteSnapshot(tools, request);
+  const rejected = await admitRemoteSnapshot(tools, request);
   expect(rejected).toMatchObject({
     status: 'refused',
     refusal: 'failed',
@@ -114,14 +114,14 @@ it('refuses a new request for the installed tip and preserves the original reque
   const ownerClient = '0282bfa7-712d-4760-8fc3-d92775bdbd3f';
   const offerId = '26d2c149-5e84-4c04-a494-cd457909a941';
   writeOffer(tools.paths.work, ownerClient, offerId);
-  const accepted = admitRemoteSnapshot(tools, request);
+  const accepted = await admitRemoteSnapshot(tools, request);
   mkdirSync(tools.target.install.service, { recursive: true });
   writeFileSync(
     join(tools.target.install.service, HUB_UPDATE_BOOT_RECEIPT_FILE),
     JSON.stringify({ runId: request.requestId }),
   );
   const repeat = { ...request, ownerClient, offerId, requestId: offerId };
-  expect(admitRemoteSnapshot(tools, repeat)).toMatchObject({
+  expect(await admitRemoteSnapshot(tools, repeat)).toMatchObject({
     status: 'refused',
     refusal: 'identity_same',
     runId: repeat.requestId,

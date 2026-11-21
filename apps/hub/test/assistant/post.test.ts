@@ -16,6 +16,7 @@ let owner: string;
 beforeEach(async () => {
   captureLogs();
   opened = await testStore(() => new Date('2026-10-09T10:00:00.000Z'));
+  await opened.store.live.aiModels.load();
   const { store } = opened;
   const client = store.clients.create(
     { name: 'This computer', platform: 'desktop', role: 'owner', tokenHash: 'a' },
@@ -26,6 +27,7 @@ beforeEach(async () => {
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now,
   });
   requests = new AssistantRequests({

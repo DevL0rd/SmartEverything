@@ -1,5 +1,4 @@
 import { join } from 'node:path';
-import { ownerProfileOf } from '../transcripts/owner';
 import {
   AI_MODEL_CHOICE,
   DSH_ENGINE_REQUEST,
@@ -46,12 +45,14 @@ export function pluginFiles(
   return { folder, outbox: join(folder, PLUGIN_OUTBOX), ...readers };
 }
 
-export function chatAttachmentPaths(
-  store: Pick<Store, 'assistantChat'>,
+export async function chatAttachmentPaths(
+  store: Pick<Store, 'host'>,
   files: Pick<AssistantFiles, 'pathOf'>,
   chatId: string,
-): readonly string[] {
-  return store.assistantChat.attachmentsOfChat(chatId).map((file) => files.pathOf(file));
+): Promise<readonly string[]> {
+  return (await store.host.call('assistantChat', 'attachmentsOfChat', chatId)).map((file) =>
+    files.pathOf(file),
+  );
 }
 
 interface Asker {
@@ -73,18 +74,15 @@ export class PluginConversations {
   forPlugin(pluginId: string): PluginAssistant {
     return {
       settings: () => this.settings(),
-      conversation: (key, actor) => this.conversation(this.asker(pluginId, actor), pluginId, key),
-      usage: (actor) => this.usage(this.asker(pluginId, actor)),
-      compact: (key, actor) =>
-        Promise.resolve().then(() => this.compact(this.asker(pluginId, actor), pluginId, key)),
-      startOver: (key, actor) =>
-        Promise.resolve().then(() => this.startOver(this.asker(pluginId, actor), pluginId, key)),
-      stop: (key, actor) =>
-        Promise.resolve().then(() => this.stop(this.asker(pluginId, actor), pluginId, key)),
-      setModel: (key, model, actor) =>
-        Promise.resolve().then(() =>
-          this.setModel(this.asker(pluginId, actor), pluginId, key, model),
-        ),
+      conversation: async (key, actor) =>
+        this.conversation(await this.asker(pluginId, actor), pluginId, key),
+      usage: async (actor) => this.usage(await this.asker(pluginId, actor)),
+      compact: async (key, actor) => this.compact(await this.asker(pluginId, actor), pluginId, key),
+      startOver: async (key, actor) =>
+        this.startOver(await this.asker(pluginId, actor), pluginId, key),
+      stop: async (key, actor) => this.stop(await this.asker(pluginId, actor), pluginId, key),
+      setModel: async (key, model, actor) =>
+        this.setModel(await this.asker(pluginId, actor), pluginId, key, model),
     };
   }
 
@@ -98,34 +96,40 @@ export class PluginConversations {
     };
   }
 
-  private asker(pluginId: string, actor: string | undefined): Asker {
+  private async asker(pluginId: string, actor: string | undefined): Promise<Asker> {
     if (actor === undefined) {
       return {
-        profileId: ownerProfileOf(this.options.store),
+        profileId: await this.options.store.host.call('personAccess', 'homeOwner'),
         role: 'owner',
         requester: null,
         guest: null,
       };
     }
-    const { requester, profileId, guest } = admittedIdentityOf(this.options.store, pluginId, actor);
+    const { requester, profileId, guest } = await admittedIdentityOf(
+      this.options.store,
+      pluginId,
+      actor,
+    );
     return { profileId, role: turnRoleOf(requester), requester, guest };
   }
 
-  private chatOf(asker: Asker, pluginId: string, key: string): AiChatRow | null {
+  private async chatOf(asker: Asker, pluginId: string, key: string): Promise<AiChatRow | null> {
     return (
-      this.options.store.aiChats.bySource(
+      (await this.options.store.host.call(
+        'aiChats',
+        'bySource',
         asker.profileId,
         identityChatKey(asker.guest, pluginId, key),
-      ) ?? null
+      )) ?? null
     );
   }
 
-  private conversation(
+  private async conversation(
     asker: Asker,
     pluginId: string,
     key: string,
-  ): PluginConversationState | null {
-    const chat = this.chatOf(asker, pluginId, key);
+  ): Promise<PluginConversationState | null> {
+    const chat = await this.chatOf(asker, pluginId, key);
     if (chat === null) {
       return null;
     }
@@ -142,23 +146,24 @@ export class PluginConversations {
     };
   }
 
-  private usage(asker: Asker): PluginUsageView {
+  private async usage(asker: Asker): Promise<PluginUsageView> {
     refuseStranger(asker, 'see what the AI cost');
     const to = this.options.now();
-    const span = (days: number): PluginUsageSpan => {
-      const sum = this.options.store.ledger.totals({
+    const span = async (days: number): Promise<PluginUsageSpan> => {
+      const { sum } = await this.options.store.host.read('mcpUsageTotals', {
         from: new Date(to.getTime() - days * DAY_MS).toISOString(),
         to: to.toISOString(),
         ...(asker.role === 'owner' ? {} : { profileIds: [asker.profileId] }),
-      }).sum;
+      });
       return { costMicros: sum.cost_micros, calls: sum.count };
     };
-    return { today: span(1), week: span(WEEK_DAYS), month: span(MONTH_DAYS) };
+    const [today, week, month] = await Promise.all([span(1), span(WEEK_DAYS), span(MONTH_DAYS)]);
+    return { today, week, month };
   }
 
   private async compact(asker: Asker, pluginId: string, key: string): Promise<boolean> {
     refuseStranger(asker, 'compact a conversation');
-    const chat = this.chatOf(asker, pluginId, key);
+    const chat = await this.chatOf(asker, pluginId, key);
     if (chat === null) {
       throw new ApiError('not_found', 'There is no conversation to compact yet.');
     }
@@ -170,7 +175,7 @@ export class PluginConversations {
 
   private async startOver(asker: Asker, pluginId: string, key: string): Promise<boolean> {
     refuseStranger(asker, 'start a conversation over');
-    const chat = this.chatOf(asker, pluginId, key);
+    const chat = await this.chatOf(asker, pluginId, key);
     if (chat === null) {
       return false;
     }
@@ -184,7 +189,7 @@ export class PluginConversations {
 
   private async stop(asker: Asker, pluginId: string, key: string): Promise<boolean> {
     refuseStranger(asker, 'stop a conversation');
-    const chat = this.chatOf(asker, pluginId, key);
+    const chat = await this.chatOf(asker, pluginId, key);
     if (chat === null || this.options.assistant.engineStatus(chat)?.state !== 'working') {
       return false;
     }
@@ -202,7 +207,7 @@ export class PluginConversations {
     model: string | null,
   ): Promise<string | null> {
     refuseStranger(asker, 'change the model');
-    const chat = this.chatOf(asker, pluginId, key);
+    const chat = await this.chatOf(asker, pluginId, key);
     if (chat === null) {
       throw new ApiError('not_found', 'Ask something first; the model is set per conversation.');
     }

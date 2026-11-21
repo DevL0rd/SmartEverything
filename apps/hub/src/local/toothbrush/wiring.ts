@@ -59,7 +59,7 @@ function livePublisher(context: ExtensionContext): LivePublisher {
 
 function ingestOf(
   context: ExtensionContext,
-  parts: Pick<Wiring, 'fleet' | 'publisher' | 'slot'> & { readonly home: HomeClock },
+  parts: Pick<Wiring, 'fleet' | 'publisher' | 'slot'>,
   clock: Clock,
 ): BrushIngest {
   return new BrushIngest({
@@ -68,7 +68,6 @@ function ingestOf(
     publisher: parts.publisher,
     sink: (): AdapterSink => parts.slot.require(),
     local: context.hub.local,
-    clock: parts.home,
     live: livePublisher(context),
     now: clock.now,
     at: clock.at,
@@ -108,7 +107,7 @@ export function buildWiring(context: ExtensionContext, clock: Clock): Wiring {
     sink: (): AdapterSink => slot.require(),
     metrics: hub.drivers.metrics,
   });
-  const ingest = ingestOf(context, { fleet, publisher, slot, home }, clock);
+  const ingest = ingestOf(context, { fleet, publisher, slot }, clock);
   const broker = new BrushActionBroker(context.pushCommands, log);
   return {
     slot,

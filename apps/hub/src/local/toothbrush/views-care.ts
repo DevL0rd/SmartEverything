@@ -19,6 +19,7 @@ export function viewContextOf(deps: ViewDeps, device: DeviceRow, state: DeviceSt
     deps,
     device,
     entry: state.entry,
+    heads: state.heads,
     brushedSeconds: state.runtime.machine.brushedSeconds,
     faulty: state.sent.get('brush_fault') === true,
   };

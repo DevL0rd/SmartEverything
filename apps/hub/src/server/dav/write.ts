@@ -86,8 +86,8 @@ async function stageUpload(deps: DavDeps, upload: Upload): Promise<StagedBytes> 
 export function handlePut(deps: DavDeps, exchange: DavExchange): Promise<void> {
   const { request, response } = exchange;
   return guarded(exchange, async () => {
-    const caller = authenticateDav(deps, request);
-    const target = targetOf(deps, caller, request);
+    const caller = await authenticateDav(deps, request);
+    const target = await targetOf(deps, caller, request);
     assertWritableFile(request, target);
     const root = writableOf(target);
     parentOf(deps.env, root.id, target.relPath);
@@ -115,8 +115,8 @@ export function handlePut(deps: DavDeps, exchange: DavExchange): Promise<void> {
 export function handleDelete(deps: DavDeps, exchange: DavExchange): Promise<void> {
   const { request, response } = exchange;
   return guarded(exchange, async () => {
-    const caller = authenticateDav(deps, request);
-    const target = targetOf(deps, caller, request);
+    const caller = await authenticateDav(deps, request);
+    const target = await targetOf(deps, caller, request);
     if (target.relPath === '') {
       throw new DavError(403, 'The top folder of a drive cannot be deleted.');
     }

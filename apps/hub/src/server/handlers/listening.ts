@@ -9,15 +9,15 @@ import { clientOf, profileIdOf, roleOfCaller, type Caller } from '../auth';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound } from '../router';
 
-function viewerOf(context: ServerContext, caller: Caller): ListeningViewer {
+function viewerOf(caller: Caller): ListeningViewer {
   return {
     owner: roleOfCaller(caller) === 'owner',
-    profileId: profileIdOf(context.store, caller),
+    profileId: profileIdOf(caller),
   };
 }
 
 function enrollPhone(context: ServerContext, caller: Caller): Promise<void> {
-  return context.hub.phones.enroll(phoneIdentityOf(context.store, caller, 'listens as a phone'));
+  return context.hub.phones.enroll(phoneIdentityOf(caller, 'listens as a phone'));
 }
 
 export const listeningRoutes = (
@@ -30,13 +30,13 @@ export const listeningRoutes = (
     listSpeechSources: bound(E.listSpeechSources, ({ caller }) =>
       readableSpeechSources(context.store, speechPrincipal(context.store, caller), registry),
     ),
-    readListening: bound(E.readListening, ({ caller }) => registry.view(viewerOf(context, caller))),
+    readListening: bound(E.readListening, ({ caller }) => registry.view(viewerOf(caller))),
     updateListeningSource: bound(E.updateListeningSource, ({ params, body, caller }) =>
-      registry.change(viewerOf(context, caller), params.sourceKey, body),
+      registry.change(viewerOf(caller), params.sourceKey, body),
     ),
     watchListeningLevel: bound(E.watchListeningLevel, async ({ body, caller }) => {
       if (body.sourceKey !== null) {
-        await registry.source(viewerOf(context, caller), body.sourceKey);
+        await registry.source(viewerOf(caller), body.sourceKey);
       }
       registry.levels.watch(clientOf(caller).id, body.sourceKey);
       return DONE_REPLY;

@@ -35,10 +35,10 @@ const floorOf = (map: HomeMap): HomeMapFloor => {
   return floor;
 };
 
-const importRobot = (): void => {
+const importRobot = async (): Promise<void> => {
   const plan = planFor(service.get(), syntheticScene);
   if (plan.kind === 'noop') throw new Error('nothing imported');
-  service.apply(plan.ops, plan.actor);
+  await service.apply(plan.ops, plan.actor);
 };
 
 const lamp: HomeMapPlacement = {
@@ -77,15 +77,15 @@ const interiorWall = (map: HomeMap): HomeMapWall => {
   return wall;
 };
 
-const editedMap = (): { readonly imported: HomeMap; readonly edited: HomeMap } => {
-  importRobot();
+const editedMap = async (): Promise<{ readonly imported: HomeMap; readonly edited: HomeMap }> => {
+  await importRobot();
   const before = service.get();
   const hall = floorOf(before).rooms.find((r) => r.name === 'Hall');
   if (!hall) throw new Error('no hall');
   const wall = interiorWall(before);
   const opening = floorOf(before).openings[0];
   if (!opening) throw new Error('no opening');
-  service.apply(
+  await service.apply(
     [
       {
         op: 'update',
@@ -122,12 +122,12 @@ const editedMap = (): { readonly imported: HomeMap; readonly edited: HomeMap } =
     USER,
   );
   const again = planFor(service.get(), syntheticScene);
-  if (again.kind !== 'noop') service.apply(again.ops, again.actor);
+  if (again.kind !== 'noop') await service.apply(again.ops, again.actor);
   return { imported: before, edited: service.get() };
 };
 
-beforeEach(() => {
-  service = storedService();
+beforeEach(async () => {
+  service = await storedService();
   reset = new HomeMapReset({
     maps: service,
     geometryOf: (): typeof geometry => geometry,
@@ -137,11 +137,11 @@ beforeEach(() => {
 });
 
 describe('reset to the robot map', () => {
-  it('restores shapes, walls, openings and tombstones, keeps objects, placements and names', () => {
-    const { imported, edited } = editedMap();
+  it('restores shapes, walls, openings and tombstones, keeps objects, placements and names', async () => {
+    const { imported, edited } = await editedMap();
     const source = edited.sources[0];
     expect(source?.tombstones).toHaveLength(1);
-    const answer = reset.reset(MAIN, USER);
+    const answer = await reset.reset(MAIN, USER);
     const after = service.get();
     expect(answer.revision).toBe(edited.revision + 1);
     expect(answer.conflicts).toEqual([]);
@@ -157,29 +157,29 @@ describe('reset to the robot map', () => {
     expect(floorOf(after).placements).toEqual(floorOf(edited).placements);
   });
 
-  it('is one revision and one undo brings the edits back', () => {
-    const { edited } = editedMap();
-    reset.reset(MAIN, USER);
-    expect(service.revisions({ mapId: MAIN }).at(-1)?.actor).toBe(USER);
-    service.undo(USER);
+  it('is one revision and one undo brings the edits back', async () => {
+    const { edited } = await editedMap();
+    await reset.reset(MAIN, USER);
+    expect((await service.revisions({ mapId: MAIN })).at(-1)?.actor).toBe(USER);
+    await service.undo(USER);
     const undone = service.get();
     expect(floorOf(undone).rooms).toEqual(floorOf(edited).rooms);
     expect(floorOf(undone).walls).toEqual(floorOf(edited).walls);
     expect(floorOf(undone).openings).toEqual(floorOf(edited).openings);
     expect(undone.sources[0]?.tombstones).toEqual(edited.sources[0]?.tombstones);
-    service.redo(USER);
+    await service.redo(USER);
     expect(floorOf(service.get()).openings).toHaveLength(1);
   });
 
-  it('writes nothing when the map already is the robot map', () => {
-    importRobot();
+  it('writes nothing when the map already is the robot map', async () => {
+    await importRobot();
     const revision = service.revision();
-    expect(reset.reset(MAIN, USER)).toEqual({ revision, conflicts: [] });
+    expect(await reset.reset(MAIN, USER)).toEqual({ revision, conflicts: [] });
     expect(service.revision()).toBe(revision);
   });
 
-  it('resets only the chosen source and refuses an unknown one', () => {
-    const { edited } = editedMap();
+  it('resets only the chosen source and refuses an unknown one', async () => {
+    const { edited } = await editedMap();
     expect(() => planReset({ map: edited, sourceId: 'nothing', sceneOf, newId })).toThrow();
     expect(planReset({ map: edited, sourceId: 'src-1', sceneOf, newId }).length).toBeGreaterThan(0);
     expect(planReset({ map: { ...edited, sources: [] }, sceneOf, newId })).toEqual([]);

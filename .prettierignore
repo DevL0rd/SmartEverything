@@ -11,3 +11,4 @@ apps/*/uniwind-types.d.ts
 apps/*/expo-env.d.ts
 .agents/
 apps/app/android/
+apps/hub/src/extensions/mcp/tools/tool-schemas.json

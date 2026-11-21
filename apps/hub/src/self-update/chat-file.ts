@@ -171,7 +171,7 @@ export async function sendChatFileLinkToChat(
 ): ReturnType<typeof sendChatFile> {
   const delivery = await sendChatFile(input, now);
   new ConversationLog(store).responderInChat({
-    chat: store.aiChats.chat(input.chat.id),
+    chat: await store.host.call('aiChats', 'chat', input.chat.id),
     replyTo: null,
     messageId: delivery.runId,
     kind: 'update',
@@ -218,7 +218,7 @@ export async function sendChatFileToChat(
   readonly mime: string;
   readonly bytes: number;
 }> {
-  const chat = store.aiChats.chat(input.chat.id);
+  const chat = await store.host.call('aiChats', 'chat', input.chat.id);
   const authorize = outputAuthority(store, chat.id);
   authorize();
   const content = await readAttachmentSource(await approvedSource(input));

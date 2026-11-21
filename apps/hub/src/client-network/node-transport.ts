@@ -16,9 +16,9 @@ export interface McpGrantAddress {
   readonly pin: string | null;
 }
 export interface NodeMcpTransport {
-  endpoint(runtime: ComputerAiRuntime, address: McpGrantAddress, token: string): string;
+  endpoint(runtime: ComputerAiRuntime, address: McpGrantAddress, token: string): Promise<string>;
   release(runtime: ComputerAiRuntime): void;
-  revoke(runtime: ComputerAiRuntime): void;
+  revoke(runtime: ComputerAiRuntime): Promise<void>;
 }
 
 export interface RouteBoundResponse {

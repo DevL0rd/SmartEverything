@@ -124,7 +124,7 @@ async function attachTarget(
       effort: move.route.effort,
     },
   });
-  const open = prepareConversation(service, {
+  const open = await prepareConversation(service, {
     owner: move.owner,
     chatId: move.chat.id,
     authority: move.grant.authority,
@@ -132,6 +132,7 @@ async function attachTarget(
     cwd,
     interactions: asked,
   });
+  await service.readyFolder(open);
   await service.directory.execute(move.target, randomUUID(), open);
   return { host: service.directory.get(move.target).host, cwd: open.cwd };
 }
@@ -141,7 +142,7 @@ async function attachSource(
   move: Move,
   asked: readonly AiHarnessInteraction[],
 ): Promise<void> {
-  const open = prepareConversation(service, {
+  const open = await prepareConversation(service, {
     owner: move.owner,
     chatId: move.chat.id,
     authority: move.grant.authority,
@@ -149,6 +150,7 @@ async function attachSource(
     cwd: move.grant.cwd,
     interactions: asked,
   });
+  await service.readyFolder(open);
   await service.directory.execute(move.session.target, randomUUID(), open);
 }
 

@@ -4,7 +4,7 @@ import type { DriveActor } from '../../../src/drive/access';
 import { DriveAlbumsService } from '../../../src/drive/albums';
 import { AlbumActivityService } from '../../../src/photos/sharing/activity';
 import { SharedAlbumMembers } from '../../../src/photos/sharing/members';
-import { PartnerAutoSaver } from '../../../src/photos/sharing/auto-save';
+import { PartnerAutoSaver, PartnerAutoSaveTrigger } from '../../../src/photos/sharing/auto-save';
 import { PartnerSharing } from '../../../src/photos/sharing/partners';
 import { SharingReader } from '../../../src/photos/sharing/reads';
 import { SavedAlbums } from '../../../src/photos/sharing/saved';
@@ -20,6 +20,7 @@ export interface Kit extends BaseKit {
   readonly activity: AlbumActivityService;
   readonly partners: PartnerSharing;
   readonly auto: PartnerAutoSaver;
+  readonly trigger: PartnerAutoSaveTrigger;
   readonly reader: SharingReader;
   readonly albums: DriveAlbumsService;
   readonly deferred: (() => void)[];
@@ -52,9 +53,14 @@ export async function openKit(): Promise<Kit> {
   const seen = new AlbumSeen(store);
   const saved = new SavedAlbums(store);
   const deferred: (() => void)[] = [];
-  const auto = new PartnerAutoSaver(store, saved, (work) => {
-    deferred.push(work);
-  });
+  const auto = new PartnerAutoSaver(store, saved);
+  const trigger = new PartnerAutoSaveTrigger(
+    store.feed,
+    () => Promise.resolve(auto.reconcile()),
+    (work) => {
+      deferred.push(work);
+    },
+  );
   const albums = albumsOf(store, base.time);
   return {
     ...base,
@@ -65,6 +71,7 @@ export async function openKit(): Promise<Kit> {
     activity: new AlbumActivityService(store, seen, (): Date => base.time.current),
     partners: new PartnerSharing(store, saved, auto),
     auto,
+    trigger,
     reader: new SharingReader(store, seen),
     albums,
     deferred,

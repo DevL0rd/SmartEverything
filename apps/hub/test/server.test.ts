@@ -9,6 +9,7 @@ import { captureLogs, testLogger } from './support/logs';
 import { PUBLIC_URL, tunnel, xiaomiWithCameraLogin } from './support/booted';
 import { testLayout } from './support/test-layout';
 import { bundledLogWorker } from './support/log-worker';
+import { bundledCodecWorker } from './support/codec-worker';
 import {
   call,
   changedColumns,
@@ -17,6 +18,7 @@ import {
   openLive,
   temporaryDirectory,
 } from './support/server';
+import { testStoreHost } from './support/store-host';
 
 let directory: { path: string; remove: () => Promise<void> };
 let running: RunningServer | null = null;
@@ -39,6 +41,8 @@ async function boot(): Promise<RunningServer> {
     fetch: tunnel(() => base),
     logLines: new LogLines(),
     logWorkerScript: await bundledLogWorker(directory.path),
+    storeHostScript: testStoreHost().script,
+    codecWorkerScript: await bundledCodecWorker(directory.path),
   });
   base = server.url;
   return server;

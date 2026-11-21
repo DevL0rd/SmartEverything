@@ -22,7 +22,7 @@ function nextSeq(): number {
 
 async function openChat(): Promise<{ chat: AiChatRow; epoch: number }> {
   const chat = rig.newChat(rig.hub.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
   return { chat: rig.opened.store.aiChats.chat(chat.id), epoch: open.claim.epoch };
 }

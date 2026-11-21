@@ -1,12 +1,12 @@
-import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 import { DSH_WRITER_CLAIM, harnessTargetKey } from '@smarteverything/domain';
 import type { DshWriterClaim } from '@smarteverything/domain';
 import { HELPER_SETTLEMENT_PROOF_DATA } from '@smarteverything/harness/process';
 import type { Store } from '../../../store/store';
+import { renewalId, type HelperSettlement } from './helper-renewal-record';
 
-export type HelperSettlement = z.infer<typeof HELPER_SETTLEMENT_PROOF_DATA>;
+export type { HelperSettlement };
 
 const RENEWAL = z.strictObject({
   kind: z.literal('helper-claim-renewal'),
@@ -15,13 +15,6 @@ const RENEWAL = z.strictObject({
   child: DSH_WRITER_CLAIM,
   settlement: HELPER_SETTLEMENT_PROOF_DATA,
 });
-
-function renewalId(child: DshWriterClaim): string {
-  const hex = createHash('sha256')
-    .update(`helper-claim-renewal:${child.session_id}:${String(child.epoch)}`)
-    .digest('hex');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-}
 
 function matchesRetainedParent(
   retained: DshWriterClaim,
@@ -53,19 +46,4 @@ export function retainedHelperSettlement(
   return settlement.childSessionId === child.session_id && settlement.nextSeq === nextSeq
     ? settlement
     : undefined;
-}
-
-export function rememberHelperRenewal(
-  store: Store,
-  input: {
-    readonly previousEpoch: number;
-    readonly parent: DshWriterClaim;
-    readonly child: DshWriterClaim;
-    readonly settlement: HelperSettlement;
-  },
-): void {
-  const renewal = RENEWAL.parse({ ...input, kind: 'helper-claim-renewal' });
-  const id = renewalId(input.child);
-  store.harnessSessions.begin(id, input.child.session_id, renewal);
-  store.harnessSessions.finish(id, { ok: true });
 }

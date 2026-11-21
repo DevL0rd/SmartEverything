@@ -7,13 +7,12 @@ import {
   type JsonValue,
   type PresentedCapability,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { NewCommand } from '../store/repositories/commands';
-import type { SettingsKvRepository } from '../store/repositories/settings-kv';
-import type { StateRepository } from '../store/repositories/state';
+import type { HomeMirror, MirroredSavedKey } from '../store/home-mirror';
 
-const FRAMING_KEY = 'reach.framing';
+const FRAMING_KEY: MirroredSavedKey = 'reach.framing';
 
 const SETTING = z.strictObject({ capability: z.string().min(1), value: JSON_VALUE });
 
@@ -43,15 +42,16 @@ const ENABLED_ROLES: Readonly<Partial<Record<CapabilityRole, true>>> = {
 
 const ZOOM_IN_SHARE = 0.15;
 
-interface FramingStore {
-  readonly settingsKv: Pick<SettingsKvRepository, 'read' | 'save'>;
-  readonly state: Pick<StateRepository, 'ofDevice'>;
-}
-
 export type FramedCamera = Pick<DeviceRow, 'id' | 'kind' | 'model' | 'capabilities'>;
 
 export interface FramingOptions {
-  readonly store: FramingStore;
+  readonly store: {
+    readonly live: {
+      readonly home: Pick<HomeMirror, 'saved'> & {
+        readonly state: Pick<HomeMirror['state'], 'value'>;
+      };
+    };
+  };
   readonly submit: (commands: readonly NewCommand[]) => void;
   readonly log: Logger;
 }
@@ -101,10 +101,11 @@ export class CameraFraming {
 
   begin(outreachId: string, device: FramedCamera): void {
     const presentation = presentDevice(device);
-    const values = this.valuesOf(device.id);
+    const values = (key: string): JsonValue | undefined =>
+      this.options.store.live.home.state.value(device.id, key);
     const found = FRAMING_ROLES.flatMap((role) => {
       const presented = withRole(presentation, role);
-      const value = presented === undefined ? undefined : values.get(presented.key);
+      const value = presented === undefined ? undefined : values(presented.key);
       return presented?.writable === true && value !== undefined ? [{ presented, value }] : [];
     });
     if (!found.some((entry) => isEnabled(entry.presented.role))) {
@@ -125,7 +126,7 @@ export class CameraFraming {
         capability: entry.presented.key,
         value: wanted(entry.presented, entry.value),
       }))
-      .filter((setting) => differ(values.get(setting.capability), setting.value));
+      .filter((setting) => differ(values(setting.capability), setting.value));
     this.apply('on', device.id, before, set);
   }
 
@@ -160,7 +161,7 @@ export class CameraFraming {
     }
     this.apply('restore', deviceId, snapshot.before, snapshot.before);
     const { calls } = this.stored();
-    this.options.store.settingsKv.save(FRAMING_KEY, {
+    this.write({
       calls: Object.fromEntries(
         Object.entries(calls).filter(([, entry]) => entry.deviceId !== deviceId),
       ),
@@ -169,7 +170,7 @@ export class CameraFraming {
 
   private forget(outreachId: string): void {
     const { calls } = this.stored();
-    this.options.store.settingsKv.save(FRAMING_KEY, {
+    this.write({
       calls: Object.fromEntries(Object.entries(calls).filter(([id]) => id !== outreachId)),
     });
   }
@@ -197,19 +198,20 @@ export class CameraFraming {
 
   private save(outreachId: string, snapshot: FramingSnapshot): void {
     const stored = this.stored();
-    this.options.store.settingsKv.save(FRAMING_KEY, {
+    this.write({
       calls: { ...stored.calls, [outreachId]: snapshot },
     });
   }
 
-  private stored(): Stored {
-    const raw = this.options.store.settingsKv.read(FRAMING_KEY);
-    return raw === null ? { calls: {} } : STORED.parse(raw);
+  private write(stored: Stored): void {
+    background(
+      this.options.store.live.home.saved.save(FRAMING_KEY, stored),
+      'reach.camera_framing_save_failed',
+    );
   }
 
-  private valuesOf(deviceId: string): ReadonlyMap<string, JsonValue> {
-    return new Map(
-      this.options.store.state.ofDevice(deviceId).map((row) => [row.capability, row.value]),
-    );
+  private stored(): Stored {
+    const raw = this.options.store.live.home.saved.read(FRAMING_KEY);
+    return raw === null ? { calls: {} } : STORED.parse(raw);
   }
 }

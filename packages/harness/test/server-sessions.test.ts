@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { AI_CODE_EXECUTION_TOOL_NAMES, AI_GOAL_TOOL_NAMES } from '@smarteverything/domain';
 import type { AiHarnessPermission } from '@smarteverything/domain';
 import { SUBAGENT_TOOL_NAMES } from '../src/plugins/subagents';
-import type { HarnessAuthority, HarnessServerToolAccess } from '../src/host/server-policy';
+import type { HarnessAuthority } from '../src/host/authority';
+import type { HarnessServerToolAccess } from '../src/host/server-policy';
 import { bootRuntime, spoken, turnsFinished } from './support/runtime';
 import type { RuntimeFixture } from './support/runtime';
 

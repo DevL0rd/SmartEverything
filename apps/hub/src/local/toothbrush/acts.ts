@@ -39,14 +39,15 @@ const OK: BrushActionResult = { ok: true, detail: 'Done.' };
 
 type Change = BrushSettingsChange;
 
-function save(deps: ActDeps, device: DeviceRow, settings: BrushSettings): void {
+async function save(deps: ActDeps, device: DeviceRow, settings: BrushSettings): Promise<void> {
   const state = deps.fleet.of(device);
   const { entry } = state;
-  deps.store.localDevices.updateConfig(
-    entry.externalId,
-    state.runtime.definition.savedConfig(entry, settings),
+  state.useEntry(
+    await deps.store.host.write('localConfig', {
+      externalId: entry.externalId,
+      config: state.runtime.definition.savedConfig(entry, settings),
+    }),
   );
-  state.useEntry(deps.store.localDevices.byExternalId(entry.externalId));
 }
 
 function keep<T>(change: T | undefined, before: T): T {
@@ -90,11 +91,11 @@ async function configure(
 ): Promise<BrushActionResult> {
   ownerOnly(actor, 'change the toothbrush settings');
   if (change.personId !== undefined && change.personId !== null) {
-    deps.store.profiles.byId(change.personId);
+    await deps.store.host.call('profiles', 'byId', change.personId);
   }
   const before = entrySettingsOf(deps.fleet.of(device).entry);
   const after = merged(before, change, deps.fleet.of(device).runtime.definition);
-  save(deps, device, after);
+  await save(deps, device, after);
   if (after.model !== before.model) {
     deps.fleet.refresh(device);
     await deps.local.observe(device.external_id, {});
@@ -103,19 +104,19 @@ async function configure(
   return OK;
 }
 
-function setGoal(
+async function setGoal(
   deps: ActDeps,
   device: DeviceRow,
   actor: Actor,
   request: Extract<BrushAction, { action: 'set_goal' }>,
-): BrushActionResult {
+): Promise<BrushActionResult> {
   const personId = request.personId ?? actor.profileId;
   if (personId !== actor.profileId) {
     ownerOnly(actor, 'set another person’s brushing goal');
   }
   const before = entrySettingsOf(deps.fleet.of(device).entry);
   const current = before.goals[personId] ?? BRUSHING_GOAL.parse({});
-  save(deps, device, {
+  await save(deps, device, {
     ...before,
     goals: { ...before.goals, [personId]: BRUSHING_GOAL.parse({ ...current, ...request.goal }) },
   });
@@ -128,35 +129,35 @@ function assertSessionOwned(actor: Actor, personId: string | null): void {
   }
 }
 
-function assignSession(
+async function assignSession(
   deps: ActDeps,
   device: DeviceRow,
   actor: Actor,
   request: Extract<BrushAction, { action: 'assign_session' }>,
-): BrushActionResult {
-  const session = deps.store.brushingSessions.byId(request.sessionId);
+): Promise<BrushActionResult> {
+  const session = await deps.store.host.call('brushingSessions', 'byId', request.sessionId);
   assertSessionOwned(actor, session.personId);
   if (request.personId !== null) {
-    deps.store.profiles.byId(request.personId);
+    await deps.store.host.call('profiles', 'byId', request.personId);
   }
   if (actor.role !== 'owner' && request.personId !== null && request.personId !== actor.profileId) {
     throw new ApiError('forbidden', 'Only the owner assigns a session to another person.');
   }
-  deps.store.brushingSessions.reassign(session.id, request.personId);
+  await deps.store.host.call('brushingSessions', 'reassign', session.id, request.personId);
   deps.fleet.of(device).sessionsChanged();
   return OK;
 }
 
-function forgetSession(
+async function forgetSession(
   deps: ActDeps,
   device: DeviceRow,
   actor: Actor,
   request: Extract<BrushAction, { action: 'forget_session' }>,
-): BrushActionResult {
-  const session = deps.store.brushingSessions.byId(request.sessionId);
+): Promise<BrushActionResult> {
+  const session = await deps.store.host.call('brushingSessions', 'byId', request.sessionId);
   assertSessionOwned(actor, session.personId);
-  deps.store.brushingSessions.remove(session.id);
-  deps.fleet.of(device).sessionsChanged();
+  await deps.store.host.call('brushingSessions', 'remove', session.id);
+  deps.fleet.of(device).forgot(session.handleSessionId);
   return OK;
 }
 
@@ -166,20 +167,20 @@ function mayChangePerson(actor: Actor, current: string | null, next: string | nu
   return claims || releases;
 }
 
-function setPerson(
+async function setPerson(
   deps: ActDeps,
   device: DeviceRow,
   actor: Actor,
   personId: string | null,
-): BrushActionResult {
+): Promise<BrushActionResult> {
   if (personId !== null) {
-    deps.store.profiles.byId(personId);
+    await deps.store.host.call('profiles', 'byId', personId);
   }
   const before = entrySettingsOf(deps.fleet.of(device).entry);
   if (actor.role !== 'owner' && !mayChangePerson(actor, before.personId, personId)) {
     throw new ApiError('forbidden', 'Only the owner says who uses this brush.');
   }
-  save(deps, device, { ...before, personId });
+  await save(deps, device, { ...before, personId });
   return OK;
 }
 

@@ -32,7 +32,7 @@ import {
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-14T00:00:00.000Z';
 const MODIFIED = '2026-10-01T12:34:56.789Z';
@@ -157,7 +157,7 @@ beforeEach(() => {
   context = new StoreContext(new Sql(database), new ChangeFeed(log), () => new Date(NOW));
   migrate(context.sql, MIGRATIONS, NOW, log);
   const owner = new ProfilesRepository(context).create({ name: 'Robin' }).id;
-  const roots = new DriveRootsRepository(context, drivePathOf);
+  const roots = new DriveRootsRepository(context, driveFolders);
   roots.insert(sharedDriveRoot(ROOT));
   roots.insert(personalDriveRoot(OTHER_ROOT, owner));
   items = new DriveItemsRepository(context);

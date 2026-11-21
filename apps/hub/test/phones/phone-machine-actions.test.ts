@@ -75,7 +75,7 @@ function execute(
   return phoneDriver({
     store: test.store,
     phones: idlePhoneNodes(test, (event) => events.push(event)),
-    originOf: () => ({ source: 'assistant', client: 'Owner phone' }),
+    originOf: () => Promise.resolve({ source: 'assistant', client: 'Owner phone' }),
     now: () => new Date('2026-10-18T10:00:00.000Z'),
     actions: {
       run: (_target, action) => {

@@ -2,7 +2,7 @@ import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import type { StoreContext } from '../store/context';
 import { Coalesced } from '../store/reader';
-import { inSlices } from '../store/slices';
+import { storeUnit } from '../store/host/unit';
 import type { Store } from '../store/store';
 
 const log = new Logger('hub.photos');
@@ -69,14 +69,13 @@ type Change =
   | { readonly kind: 'write'; readonly row: z.output<typeof STALE_ROW> }
   | { readonly kind: 'remove'; readonly rowId: number };
 
+const APPLY_BATCH = 512;
+
 export class PhotoSearchIndexer {
   private stops: (() => void)[] = [];
   private readonly pass: Coalesced;
 
-  constructor(
-    private readonly store: Pick<Store, 'context' | 'feed' | 'reader'>,
-    private readonly defer: (work: () => void) => void = setImmediate,
-  ) {
+  constructor(private readonly store: Pick<Store, 'feed' | 'reader' | 'host'>) {
     this.pass = new Coalesced(
       async () => {
         await this.reconcile();
@@ -107,7 +106,7 @@ export class PhotoSearchIndexer {
   }
 
   async reconcile(): Promise<number> {
-    const { context, reader } = this.store;
+    const { host, reader } = this.store;
     const [stale, gone] = await Promise.all([
       reader.all(STALE_ROW, STALE),
       reader.all(GONE_ROW, GONE),
@@ -116,43 +115,44 @@ export class PhotoSearchIndexer {
       ...stale.map((row): Change => ({ kind: 'write', row })),
       ...gone.map((row): Change => ({ kind: 'remove', rowId: row.row_id })),
     ];
-    await inSlices(
-      context,
-      changes,
-      (change) => {
-        this.apply(context, change);
-      },
-      this.defer,
-    );
+    for (let start = 0; start < changes.length; start += APPLY_BATCH) {
+      await host.write('photoSearchApply', { changes: changes.slice(start, start + APPLY_BATCH) });
+    }
     return changes.length;
   }
-
-  private apply(context: StoreContext, change: Change): void {
-    if (change.kind === 'remove') {
-      context.sql.run(
-        'remove the search entry of a photo that is gone',
-        'delete from drive_items_search where rowid = $rowId',
-        { rowId: change.rowId },
-      );
-      return;
-    }
-    const { row_id: rowId, item_id: itemId, name, path, camera, albums, dates } = change.row;
-    const words = { itemId, name, path, camera, albums, dates };
-    if (rowId === null) {
-      context.sql.run(
-        'index the photo for search',
-        `insert into drive_items_search (item_id, name, path, camera, albums, dates, labels)
-          values ($itemId, $name, $path, $camera, $albums, $dates, '')`,
-        words,
-      );
-      return;
-    }
-    context.sql.run(
-      'update the search entry of the photo',
-      `update drive_items_search
-        set name = $name, path = $path, camera = $camera, albums = $albums, dates = $dates
-        where rowid = $rowId and item_id = $itemId`,
-      { ...words, rowId },
-    );
-  }
 }
+
+function apply(context: StoreContext, change: Change): void {
+  if (change.kind === 'remove') {
+    context.sql.run(
+      'remove the search entry of a photo that is gone',
+      'delete from drive_items_search where rowid = $rowId',
+      { rowId: change.rowId },
+    );
+    return;
+  }
+  const { row_id: rowId, item_id: itemId, name, path, camera, albums, dates } = change.row;
+  const words = { itemId, name, path, camera, albums, dates };
+  if (rowId === null) {
+    context.sql.run(
+      'index the photo for search',
+      `insert into drive_items_search (item_id, name, path, camera, albums, dates, labels)
+        values ($itemId, $name, $path, $camera, $albums, $dates, '')`,
+      words,
+    );
+    return;
+  }
+  context.sql.run(
+    'update the search entry of the photo',
+    `update drive_items_search
+      set name = $name, path = $path, camera = $camera, albums = $albums, dates = $dates
+      where rowid = $rowId and item_id = $itemId`,
+    { ...words, rowId },
+  );
+}
+
+export const PHOTO_SEARCH_APPLY_UNIT = storeUnit(
+  (store, input: { readonly changes: readonly Change[] }): void => {
+    for (const change of input.changes) apply(store.context, change);
+  },
+);

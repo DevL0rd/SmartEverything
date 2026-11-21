@@ -72,7 +72,7 @@ export function createWorldReads(deps: WorldReadDeps): WorldReads {
   const { kinds } = deps;
   return {
     read: (kind, inputs, scope: ReadScope): ReadResult => {
-      const handler = handlers[kind] ?? pluginValueHandler(deps.store, kinds.valueBinding(kind));
+      const handler = handlers[kind] ?? pluginValueHandler(deps.world, kinds.valueBinding(kind));
       if (handler === undefined) {
         throw new ReadFailure('NotFound', `${kind} is not something the home can be asked`);
       }

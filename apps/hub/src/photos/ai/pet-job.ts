@@ -13,7 +13,7 @@ import { derivedPath } from '../pipeline/derived-paths';
 import type { JobHandler } from '../pipeline/jobs';
 import { EMBEDDING_DIMENSIONS } from './defaults';
 import { embeddingMetering, type EmbeddingClient } from './embed-job';
-import { currentItem, ignoreFailure, type AiEnvironment } from './env';
+import { ignoreFailure, sourceOf, type AiEnvironment } from './env';
 import { float32Bytes } from './vectors';
 
 interface Region {
@@ -65,14 +65,12 @@ export class PetEmbedHandler implements JobHandler {
   ) {}
 
   async run(job: DriveMediaJob, signal: AbortSignal): Promise<void> {
-    const item = currentItem(this.env, job);
-    if (item === undefined) return;
-    const subject = this.env.consent.subjectOfRoot(item.rootId);
-    if (!this.env.consent.smartSearch(subject)) return;
-    const analysis = this.env.store.photoAnalysis.find(item.id);
+    const source = await sourceOf(this.env, job);
+    if (source?.switches.smartSearch !== true) return;
+    const { item, subject, analysis } = source;
     if (analysis?.state !== 'done' || analysis.rev !== job.rev || analysis.pets.length === 0)
       return;
-    const model = this.env.models.read().petEmbedding;
+    const model = source.models.petEmbedding;
     const preview = await readFile(
       derivedPath(this.env.layout, { itemId: item.id, rev: item.rev, size: 'preview' }),
     );
@@ -111,15 +109,21 @@ export class PetEmbedHandler implements JobHandler {
         vector: float32Bytes(truncateNormalised(vector, EMBEDDING_DIMENSIONS)),
       };
     });
-    this.save(job, subject, rows);
+    await this.save(job, subject, rows);
   }
 
-  private save(job: DriveMediaJob, subject: string, rows: readonly PhotoFaceRow[]): void {
-    this.env.store.write(() => {
-      const now = this.env.store.driveItems.find(job.item_id, null);
-      if (now?.rev !== job.rev || !this.env.consent.smartSearch(subject)) return;
-      this.env.store.photoFaces.replaceKindForItem(job.item_id, 'pet', rows);
-      this.touched(subject);
+  private async save(
+    job: DriveMediaJob,
+    subject: string,
+    rows: readonly PhotoFaceRow[],
+  ): Promise<void> {
+    const saved = await this.env.host.write('photoFacesSave', {
+      itemId: job.item_id,
+      rev: job.rev,
+      subject,
+      kind: 'pet',
+      faces: rows,
     });
+    if (saved) this.touched(subject);
   }
 }

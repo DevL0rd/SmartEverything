@@ -8,15 +8,15 @@ export interface TransportActor {
   readonly id: string;
   readonly deviceId: string;
 }
-export function authenticate(
+export async function authenticate(
   context: Pick<ServerContext, 'computerNodes'>,
   request: IncomingMessage,
   deviceId?: string,
-): TransportActor {
+): Promise<TransportActor> {
   const token = bearerOf(request);
   if (!NODE_AI_TOKEN.safeParse(token).success)
     throw new ApiError('unauthorized', 'Harness transport requires its paired computer token.');
-  const node = context.computerNodes.authenticate(token);
+  const node = await context.computerNodes.authenticate(token);
   if (deviceId !== undefined && node.device_id !== deviceId)
     throw new ApiError('forbidden', 'This node token belongs to another computer.');
   return { kind: 'node', id: node.device_id, deviceId: node.device_id };

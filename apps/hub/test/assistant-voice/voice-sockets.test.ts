@@ -44,6 +44,7 @@ let owner: TestClient;
 beforeEach(async () => {
   logs = captureLogs();
   test = await testStore();
+  await test.store.live.home.load();
   owner = addClient(test, 'Pixel', 'owner');
   seen = { connected: [], messages: [], audio: [], sights: [], disconnected: [] };
   sockets = new VoiceSockets(
@@ -67,9 +68,9 @@ beforeEach(async () => {
     },
     testLogger('voice'),
   );
-  bench = await serveSockets(ASSISTANT_VOICE_PROTOCOL, (request, socket, head) => {
-    sockets.upgrade(request, socket, head);
-  });
+  bench = await serveSockets(ASSISTANT_VOICE_PROTOCOL, (request, socket, head) =>
+    sockets.upgrade(request, socket, head),
+  );
 });
 
 afterEach(async () => {

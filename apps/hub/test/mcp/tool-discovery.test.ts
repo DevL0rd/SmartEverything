@@ -193,7 +193,7 @@ describe('the in-app tool hub', () => {
   const hub = new ToolHub([
     {
       tools: (): typeof SE_TOOLS => SE_TOOLS,
-      validate: (): null => null,
+      validate: (): Promise<null> => Promise.resolve(null),
       changes: (): (() => void) => () => undefined,
       call: (): Promise<HubToolResult> =>
         Promise.resolve({ response: { result: 'done' }, line: '', pictures: [] }),
@@ -227,7 +227,7 @@ describe('the in-app tool hub', () => {
       (await hub.call('tool_read', { name: 'room_edit', variant: 'remove' }, caller)).response,
     );
     expect(one.variant.selector).toEqual({ action: 'remove' });
-    const refused = hub.check('tool_read', { name: 'room_edit', variant: 'paint' });
+    const refused = await hub.check('tool_read', { name: 'room_edit', variant: 'paint' });
     expect(refused).toMatchObject({ ok: false });
     expect(JSON.stringify(refused)).toContain('variant must be one of: create, update, remove');
   });

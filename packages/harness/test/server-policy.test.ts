@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Context } from '@deepseek-ai/cordis';
-import type { HarnessAuthority } from '../src/host/server-policy';
+import type { HarnessAuthority } from '../src/host/authority';
 import { bindHomeWebSearch } from '../src/plugins/home-web-search';
 import { TERMINAL_TOOL_NAMES } from '../src/plugins/terminals';
 import { WORKSPACE_TOOL_NAMES } from '../src/plugins/workspace';

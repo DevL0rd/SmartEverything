@@ -13,7 +13,7 @@ import type { GoogleAccountPatch } from '../../store/repositories/google-account
 import type { GoogleHub } from '../../services';
 import type { ServerContext } from '../context';
 import { DONE_REPLY, bound, type RouteOf } from '../router';
-import { plannerProfileOf } from './planner-items';
+import { plannerProfileOf } from './planner-profile';
 
 export type GoogleContext = Pick<ServerContext, 'store' | 'secrets'>;
 
@@ -132,7 +132,9 @@ function syncRoute(context: GoogleContext, google: GoogleServices): RouteOf<'goo
       throw new ApiError('rate_limited', 'Google asked for a pause. The sync resumes by itself.');
     }
     if (outcome === 'failed') {
-      const reason = context.store.googleAccounts.find(profileId)?.last_error ?? 'unknown';
+      const reason =
+        (await context.store.host.call('googleAccounts', 'find', profileId))?.last_error ??
+        'unknown';
       throw new ApiError('upstream_failed', `The Google sync failed: ${reason}.`);
     }
     return DONE_REPLY;
@@ -140,9 +142,11 @@ function syncRoute(context: GoogleContext, google: GoogleServices): RouteOf<'goo
 }
 
 function logRoute(context: GoogleContext): RouteOf<'googleSyncLog'> {
-  return bound(E.googleSyncLog, ({ query, caller }): GoogleSyncLogEntry[] => {
+  return bound(E.googleSyncLog, async ({ query, caller }): Promise<GoogleSyncLogEntry[]> => {
     const { before } = query;
-    const entries = context.store.googleSyncLog.list(
+    const entries = await context.store.host.call(
+      'googleSyncLog',
+      'list',
       plannerProfileOf(context, caller, query.personId),
     );
     return before === undefined
@@ -162,12 +166,14 @@ function appRoute(context: GoogleContext): RouteOf<'googleApp'> {
 }
 
 function accountRoute(context: GoogleContext): RouteOf<'googleAccount'> {
-  return bound(E.googleAccount, ({ query, body, caller }) => {
+  return bound(E.googleAccount, async ({ query, body, caller }) => {
     const patch: GoogleAccountPatch = {
       ...(body.calendar_ids === undefined ? {} : { calendar_ids: body.calendar_ids }),
       ...(body.list_ids === undefined ? {} : { list_ids: body.list_ids }),
     };
-    return context.store.googleAccounts.update(
+    return await context.store.host.call(
+      'googleAccounts',
+      'update',
       plannerProfileOf(context, caller, query.personId),
       patch,
     );
@@ -177,7 +183,12 @@ function accountRoute(context: GoogleContext): RouteOf<'googleAccount'> {
 function choiceRoute(context: GoogleContext, google: GoogleServices): RouteOf<'googleChoice'> {
   return bound(E.googleChoice, async ({ query, body, caller }) => {
     const profileId = plannerProfileOf(context, caller, query.personId);
-    const { choice } = context.store.googleSyncLog.byId(body.logId, profileId);
+    const { choice } = await context.store.host.call(
+      'googleSyncLog',
+      'byId',
+      body.logId,
+      profileId,
+    );
     if (choice === null) {
       throw new ApiError('conflict', 'This log entry has no choice to make.');
     }
@@ -188,7 +199,7 @@ function choiceRoute(context: GoogleContext, google: GoogleServices): RouteOf<'g
       throw new ApiError('invalid_request', 'That Google task is not one of the matches.');
     }
     await google.tasks.resolveChoice(profileId, body.logId, body.googleId);
-    return context.store.googleSyncLog.byId(body.logId, profileId);
+    return await context.store.host.call('googleSyncLog', 'byId', body.logId, profileId);
   });
 }
 

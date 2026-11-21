@@ -2,13 +2,14 @@ import { dirname } from 'node:path';
 import { manifestOf, manifestPathOf, swapPaths } from './exchange-files';
 import {
   abandonIntent,
-  DriveWriteError,
   exchangeRelPath,
   locate,
   tmpRelPath,
   type DriveWriteRoot,
   type FileEnv,
 } from './intents';
+import { DriveWriteError } from './write-error';
+import { openIntent } from './intent-batch';
 import type { DriveIntent } from '../store/repositories/drive-intents';
 
 export async function exchangeWithin(
@@ -21,7 +22,7 @@ export async function exchangeWithin(
   if (first === null || second === null) {
     throw new DriveWriteError('missing', 'Both items to exchange must exist.');
   }
-  const intent = env.store.driveIntents.open({
+  const intent = await openIntent(env.store, {
     rootId: root.id,
     op: 'exchange',
     fromPath: paths.a,

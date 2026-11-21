@@ -69,7 +69,7 @@ describe('a Shelly sensor that comes back on another address', () => {
       settings: SHELLY_SETTINGS.parse({}),
       settingsChanged: () => (): void => undefined,
       clients: { gone: () => (): void => undefined },
-      viewers: { watchDevice: () => (): void => undefined },
+      viewers: { watchDevice: () => (): void => undefined, publish: () => undefined },
       signal: new AbortController().signal,
       log: testLogger('shelly'),
     };

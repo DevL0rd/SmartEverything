@@ -138,7 +138,7 @@ async function goalsSet(
     await operate(context, 'updateFitnessSettings', { body: input.fitness }, as);
   }
   return {
-    person: context.store.profiles.byId(profileFor(context, as)),
+    person: await context.store.host.call('profiles', 'byId', await profileFor(context, as)),
     nutrition:
       input.nutrition === undefined
         ? await readPref(context, 'nutrition', as)

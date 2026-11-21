@@ -103,6 +103,7 @@ export class MemoryFiles extends AssistantFiles {
     super({
       layout: rig.layout,
       chat: rig.store.assistantChat,
+      attachments: rig.store.live.attachments,
       now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
     });
   }
@@ -142,7 +143,7 @@ export interface ImageRig {
   ) => Promise<ImageOperationReceipt>;
   readonly settle: (id: string) => Promise<ImageOperationReceipt>;
   readonly outcome: (id: string, signal?: AbortSignal) => Promise<ImageOperationReceipt>;
-  readonly cancel: (id: string) => ImageOperationReceipt;
+  readonly cancel: (id: string) => Promise<ImageOperationReceipt>;
 }
 
 function newChat(rig: TestStore): { readonly profileId: string; readonly chatId: string } {
@@ -171,7 +172,7 @@ function serviceOf(
 ): { readonly service: ImageOperationService; readonly catalog: OpenRouterImageCatalog } {
   const catalog = new OpenRouterImageCatalog({
     client: parts.client,
-    store: rig.store.aiModels,
+    store: rig.store.live.aiModels,
     now: (): Date => new Date('2026-10-08T10:00:00.000Z'),
   });
   const service = new ImageOperationService({

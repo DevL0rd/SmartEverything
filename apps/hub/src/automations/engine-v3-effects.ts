@@ -9,16 +9,13 @@ import type {
 import { changeVariable } from '@smarteverything/flow/nodes/state/var-change';
 import { z } from 'zod';
 import type { Store } from '../store/store';
-import type {
-  AutomationOwnedValuesRepository,
-  OwnedValueContent,
-} from '../store/repositories/automation-owned-values';
+import type { OwnedValueContent } from '../store/repositories/automation-owned-values';
+import type { OwnedValues } from './automation-memory';
 import type { DeviceSetter } from './effects/device-set';
 import type { TemporaryDeviceChanges } from './effects/device-temporary';
 import type { DeviceToggler } from './effects/device-toggle';
 import type { EffectRun } from './effects/effect-run';
 import { toggleHandler } from './engine-v3-device-effects';
-import { applyValueChange } from './effects/value-ops';
 import type { HttpEffects, HttpRequest } from './effects/http';
 import { TARGET_VALUE } from './world-v3/refs';
 import { stampOf } from './effects/command-metadata';
@@ -40,8 +37,8 @@ export interface EffectPorts {
   readonly temporary?: Pick<TemporaryDeviceChanges, 'run'> | undefined;
   readonly http: Pick<HttpEffects, 'request'>;
   readonly toggler: Pick<DeviceToggler, 'toggle'>;
-  readonly store: Pick<Store, 'automationValues'>;
-  readonly owned: Pick<AutomationOwnedValuesRepository, 'list' | 'write'>;
+  readonly store: Pick<Store, 'host'>;
+  readonly owned: OwnedValues;
   readonly kept: Pick<KeptData, 'read' | 'write'>;
   readonly extra: EffectHandlers;
 }
@@ -335,11 +332,17 @@ export function nextOf(params: z.infer<typeof VARIABLE_PARAMS>): Next {
   };
 }
 
-function homeValue(ports: EffectPorts, params: z.infer<typeof VARIABLE_PARAMS>): NodeResult {
+async function homeValue(
+  ports: EffectPorts,
+  params: z.infer<typeof VARIABLE_PARAMS>,
+): Promise<NodeResult> {
   const op = params.change === undefined ? 'set' : params.change.op;
   const amount = params.change === undefined ? params.to : params.change.amount;
-  const before = ports.store.automationValues.byId(params.target).content.value;
-  const row = applyValueChange(ports.store, { valueId: params.target, op, amount });
+  const { before, row } = await ports.store.host.write('applyHomeValue', {
+    valueId: params.target,
+    op,
+    amount,
+  });
   return {
     ok: true,
     value: outputs({ value: row.content.value, previous: before, wrapped: false }),
@@ -347,19 +350,19 @@ function homeValue(ports: EffectPorts, params: z.infer<typeof VARIABLE_PARAMS>):
 }
 
 function variable(ports: EffectPorts): EffectHandler {
-  return (params, _request, run) => {
+  return async (params, _request, run) => {
     const checked = parsed(VARIABLE_PARAMS, params);
-    if (!checked.ok) return Promise.resolve(checked);
+    if (!checked.ok) return checked;
     const call = checked.value;
     try {
-      if (call.source === 'home') return Promise.resolve(homeValue(ports, call));
+      if (call.source === 'home') return await homeValue(ports, call);
       if (Object.hasOwn(params, 'instance')) {
         const kept = parsed(KEPT_PARAMS, params);
-        return Promise.resolve(kept.ok ? keptVariable(ports, run, call, kept.value) : kept);
+        return kept.ok ? keptVariable(ports, run, call, kept.value) : kept;
       }
-      return Promise.resolve(persistent(ports, run, call.target, nextOf(call)));
+      return persistent(ports, run, call.target, nextOf(call));
     } catch (cause) {
-      return Promise.resolve(effectFailure(cause));
+      return effectFailure(cause);
     }
   };
 }

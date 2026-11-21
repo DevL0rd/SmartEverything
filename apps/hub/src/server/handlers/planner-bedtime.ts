@@ -1,8 +1,7 @@
 import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
-import { readSleep } from '../../planner/sleep-nights';
 import type { SleepSoundControl } from '../../planner/sleep-sound';
 import { DONE_REPLY, bound } from '../router';
-import { plannerProfileOf, type PlannerContext } from './planner-items';
+import { plannerProfileOf, type PlannerContext } from './planner-profile';
 
 export interface PlannerBedtimeDependencies {
   readonly sleepSound: Pick<SleepSoundControl, 'play' | 'stop'>;
@@ -11,7 +10,7 @@ export interface PlannerBedtimeDependencies {
 export const plannerBedtimeRoutes = (context: PlannerContext, deps: PlannerBedtimeDependencies) =>
   ({
     readPlannerSleep: bound(E.readPlannerSleep, ({ query, caller }) =>
-      readSleep(context.store, {
+      context.store.host.read('plannerSleepRead', {
         profileId: plannerProfileOf(context, caller, query.personId),
         from: query.from,
         to: query.to,

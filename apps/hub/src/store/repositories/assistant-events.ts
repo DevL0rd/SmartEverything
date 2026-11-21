@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { found, type StoreContext } from '../context';
-import { assertQueuedChatWork, holdQueuedChatWork } from './ai-chat-removal-hold';
+import { assertQueuedChatWork } from './ai-chat-removal-hold';
 
 const ASSISTANT_EVENT_KINDS = ['chat', 'voice', 'plugin', 'wake', 'report'] as const;
 
@@ -91,10 +91,6 @@ export class AssistantEventsRepository {
       );
       return this.event(input.id);
     });
-  }
-
-  holdQueuedWork(ids: readonly string[], work: () => Promise<void>): Promise<void> {
-    return holdQueuedChatWork(this.context, ids, work);
   }
 
   hasUnsettledChatWork(chatId: string): boolean {

@@ -45,18 +45,20 @@ export class DrivePosix {
 
   attach(caller: PosixCaller, placementId: string): Promise<Attached> {
     return guarded(async () => {
-      const { store } = this.env.change;
-      const placement = store.drivePlacements.find(placementId);
+      const { host } = this.env.change.store;
+      const placement = await host.call('drivePlacements', 'find', placementId);
       if (placement?.mode !== 'mounted' || placement.deviceId !== caller.nodeId) {
         throw posix('EACCES', 'This computer has no mount of that drive or folder.');
       }
-      const drive = this.env.space.read.rootFor(caller, placement.rootId);
+      const drive = await this.env.space.read.rootFor(caller, placement.rootId);
       const base =
         placement.folderItemId === null
           ? null
-          : this.env.space.read.readItem(caller, placement.folderItemId);
+          : (await this.env.space.read.readItemAndRoot(caller, placement.folderItemId)).item;
       const rootInode =
-        base === null ? store.driveInodes.rootOf(drive.id) : store.driveInodes.ofItem(base.id);
+        base === null
+          ? await host.call('driveInodes', 'rootOf', drive.id)
+          : await host.call('driveInodes', 'ofItem', base.id);
       if (rootInode === undefined) throw posix('EIO', 'The mounted folder has no inode.');
       const scope = new PosixScope(caller, placementId, {
         drive,
@@ -68,7 +70,7 @@ export class DrivePosix {
         root: drive.id,
         ino: rootInode.id,
         attr: await this.reads.getattr(scope, rootInode.id),
-        seq: store.driveFeed.latestSeqInRoot(drive.id),
+        seq: await host.call('driveFeed', 'latestSeqInRoot', drive.id),
       };
     });
   }
@@ -158,19 +160,15 @@ export class DrivePosix {
   }
 
   setxattr(scope: PosixScope, request: RequestMeta<'SETXATTR'>, value: Uint8Array): Promise<void> {
-    return this.mutate(scope.drive.id, () => {
-      this.xattrs.set(scope, request, value);
-    });
+    return this.mutate(scope.drive.id, () => this.xattrs.set(scope, request, value));
   }
 
   listxattr(scope: PosixScope, ino: number): Promise<ReplyMeta<'LISTXATTR'>> {
-    return guarded(() => ({ names: this.xattrs.list(scope, ino) }));
+    return guarded(async () => ({ names: await this.xattrs.list(scope, ino) }));
   }
 
   removexattr(scope: PosixScope, request: RequestMeta<'REMOVEXATTR'>): Promise<void> {
-    return this.mutate(scope.drive.id, () => {
-      this.xattrs.remove(scope, request);
-    });
+    return this.mutate(scope.drive.id, () => this.xattrs.remove(scope, request));
   }
 
   openTarget(scope: PosixScope, ino: number, write: boolean): Promise<OpenTarget> {
@@ -178,8 +176,8 @@ export class DrivePosix {
   }
 
   access(scope: PosixScope, request: RequestMeta<'ACCESS'>): Promise<Attr> {
-    return this.mutate(scope.drive.id, () => {
-      this.opens.access(scope, request);
+    return this.mutate(scope.drive.id, async () => {
+      await this.opens.access(scope, request);
       return this.reads.getattr(scope, request.ino);
     });
   }

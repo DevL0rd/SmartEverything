@@ -6,7 +6,6 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { PhoneViewer } from '../../../phones/phone-detail';
-import { visibleEvents, visibleRows } from '../../../phones/phone-visibility';
 import type { Store } from '../../../store/store';
 import { deviceScopeOfActor, phoneViewerOfActor } from './person-reach';
 import { DEVICE_REFERENCE, DEVICE_REFERENCES } from './references';
@@ -83,13 +82,13 @@ const EVENTS = z.strictObject({
 
 export type Events = z.infer<typeof EVENTS>;
 
-export function historyOf(
+export async function historyOf(
   store: Store,
   scope: DeviceScope | null,
   viewer: PhoneViewer,
   input: History,
-): Record<string, unknown> {
-  const device = placedDevice(store, scope, input.deviceId);
+): Promise<Record<string, unknown>> {
+  const device = await placedDevice(store, scope, input.deviceId);
   const presented = capabilityOf(device, input.capability);
   const kind = presented.capability.value.kind;
   const series = {
@@ -99,10 +98,11 @@ export function historyOf(
     to: input.to,
   };
   if (input.bucket === 'raw') {
-    const points = visibleRows(
-      store,
-      viewer,
-      store.state.history({ ...series, order: 'asc', limit: input.limit }),
+    const points = (
+      await store.host.read('mcpVisibleHistory', {
+        viewer,
+        query: { ...series, order: 'asc', limit: input.limit },
+      })
     ).map((row) => ({ value: row.value, observed_at: row.observed_at }));
     return {
       capability: presented.key,
@@ -118,7 +118,7 @@ export function historyOf(
       `${presented.label} holds ${kind} values; only numbers can be bucketed, use raw`,
     );
   }
-  const points = bucketedPoints(store, viewer, series, input);
+  const points = await bucketedPoints(store, viewer, series, input);
   return {
     capability: presented.key,
     label: presented.label,
@@ -136,17 +136,18 @@ interface Series {
   readonly to: string;
 }
 
-function bucketedPoints(
+async function bucketedPoints(
   store: Store,
   viewer: PhoneViewer,
   series: Series,
   input: History,
-): Record<string, unknown>[] {
+): Promise<Record<string, unknown>[]> {
   if (input.bucket === 'raw') return [];
-  return visibleRows(
-    store,
-    viewer,
-    store.state.buckets({ ...series, bucketSeconds: BUCKET_SECONDS[input.bucket] }),
+  return (
+    await store.host.read('mcpVisibleBuckets', {
+      viewer,
+      query: { ...series, bucketSeconds: BUCKET_SECONDS[input.bucket] },
+    })
   )
     .slice(0, input.limit)
     .map((row) => ({
@@ -158,9 +159,9 @@ function bucketedPoints(
     }));
 }
 
-function recordingsByEvent(store: Store, eventIds: readonly string[]): Map<string, RecordingRow[]> {
+function recordingsByEvent(found: readonly RecordingRow[]): Map<string, RecordingRow[]> {
   const grouped = new Map<string, RecordingRow[]>();
-  for (const recording of store.cameras.recordingsOfEvents(eventIds)) {
+  for (const recording of found) {
     const eventId = recording.event_id;
     if (eventId !== null) {
       appendTo(grouped, eventId, recording);
@@ -169,32 +170,35 @@ function recordingsByEvent(store: Store, eventIds: readonly string[]): Map<strin
   return grouped;
 }
 
-export function eventsOf(
+export async function eventsOf(
   store: Store,
   scope: DeviceScope | null,
   viewer: PhoneViewer,
   input: Events,
-): Record<string, unknown>[] {
-  const placed = new Map(placedDevices(store, scope).map((entry) => [entry.device.id, entry]));
-  const everything = store.events.list({
-    from: input.since,
-    to: input.until,
-    deviceIds: input.deviceIds?.map((ref) => placedDevice(store, scope, ref).device.id),
-    kinds: input.kinds,
-    signal: { source: input.source, kind: input.signalKind },
-    limit: input.limit,
-  });
-  const listed = visibleEvents(
-    store,
+): Promise<Record<string, unknown>[]> {
+  const placed = new Map(
+    (await placedDevices(store, scope)).map((entry) => [entry.device.id, entry]),
+  );
+  const deviceIds =
+    input.deviceIds === undefined
+      ? undefined
+      : await Promise.all(
+          input.deviceIds.map(async (ref) => (await placedDevice(store, scope, ref)).device.id),
+        );
+  const found = await store.host.read('mcpVisibleEvents', {
     viewer,
-    everything.filter(
-      (event) => scope === null || event.device_id === null || placed.has(event.device_id),
-    ),
-  );
-  const recordings = recordingsByEvent(
-    store,
-    listed.map((event) => event.id),
-  );
+    window: {
+      from: input.since,
+      to: input.until,
+      deviceIds,
+      kinds: input.kinds,
+      signal: { source: input.source, kind: input.signalKind },
+      limit: input.limit,
+    },
+    reachable: scope === null ? null : [...placed.keys()],
+  });
+  const listed = found.events;
+  const recordings = recordingsByEvent(found.recordings);
   return listed.map((event) => {
     const where = event.device_id === null ? undefined : placed.get(event.device_id);
     return {
@@ -220,8 +224,8 @@ export const HISTORY_TOOLS: readonly Tool[] = [
     name: 'history_read',
     input: HISTORY,
     annotations: READS,
-    run: (context, input) => ({
-      structured: historyOf(
+    run: async (context, input) => ({
+      structured: await historyOf(
         context.store,
         deviceScopeOfActor(context),
         phoneViewerOfActor(context),
@@ -233,9 +237,9 @@ export const HISTORY_TOOLS: readonly Tool[] = [
     name: 'event_find',
     input: EVENTS,
     annotations: READS,
-    run: (context, input) => ({
+    run: async (context, input) => ({
       structured: {
-        events: eventsOf(
+        events: await eventsOf(
           context.store,
           deviceScopeOfActor(context),
           phoneViewerOfActor(context),

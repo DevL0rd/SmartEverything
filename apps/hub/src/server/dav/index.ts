@@ -108,17 +108,23 @@ interface Preconditions {
   readonly request: IncomingMessage;
 }
 
-function submittedTokens(call: Preconditions): readonly string[] {
+async function submittedTokens(call: Preconditions): Promise<readonly string[]> {
   const header = headerOf(call.request, 'if');
   if (header === undefined) return [];
-  const accepted = parseIf(header).filter((list) => {
-    const target =
-      list.href === null
+  const checked = await Promise.all(
+    parseIf(header).map(async (list) => ({
+      list,
+      target: await (list.href === null
         ? targetOf(call.deps, call.caller, call.request)
-        : targetOfHref(call.deps, call.caller, call.request, list.href);
-    const active = call.locks.covering(target.root.id, target.relPath).map((lock) => lock.token);
-    return list.conditions.every((condition) => holds(condition, target, active));
-  });
+        : targetOfHref(call.deps, call.caller, call.request, list.href)),
+    })),
+  );
+  const accepted = checked
+    .filter(({ list, target }) => {
+      const active = call.locks.covering(target.root.id, target.relPath).map((lock) => lock.token);
+      return list.conditions.every((condition) => holds(condition, target, active));
+    })
+    .map(({ list }) => list);
   if (accepted.length === 0) {
     throw new DavError(412, 'None of the conditions in the If header holds.');
   }
@@ -128,29 +134,34 @@ function submittedTokens(call: Preconditions): readonly string[] {
     .flatMap((condition) => (condition.token === null ? [] : [condition.token]));
 }
 
-type ScopeBuilder = (call: Preconditions, target: DavTarget) => readonly Scope[];
+type ScopeBuilder = (call: Preconditions, target: DavTarget) => Promise<readonly Scope[]>;
 
-const destinationScope = (call: Preconditions): Scope => ({
-  target: destinationOf(call.deps, call.caller, call.request),
+const destinationScope = async (call: Preconditions): Promise<Scope> => ({
+  target: await destinationOf(call.deps, call.caller, call.request),
   membership: true,
   subtree: true,
 });
 
 const SCOPES: Readonly<Record<string, ScopeBuilder>> = {
-  PUT: (_call, target) => [{ target, membership: target.item === undefined, subtree: false }],
-  MKCOL: (_call, target) => [{ target, membership: true, subtree: false }],
-  DELETE: (_call, target) => [{ target, membership: true, subtree: true }],
-  MOVE: (call, target) => [{ target, membership: true, subtree: true }, destinationScope(call)],
-  COPY: (call) => [destinationScope(call)],
+  PUT: (_call, target) =>
+    Promise.resolve([{ target, membership: target.item === undefined, subtree: false }]),
+  MKCOL: (_call, target) => Promise.resolve([{ target, membership: true, subtree: false }]),
+  DELETE: (_call, target) => Promise.resolve([{ target, membership: true, subtree: true }]),
+  MOVE: async (call, target) => [
+    { target, membership: true, subtree: true },
+    await destinationScope(call),
+  ],
+  COPY: async (call) => [await destinationScope(call)],
 };
 
-function scopesOf(call: Preconditions): readonly Scope[] {
-  const target = targetOf(call.deps, call.caller, call.request);
-  return SCOPES[call.request.method ?? '']?.(call, target) ?? [];
+async function scopesOf(call: Preconditions): Promise<readonly Scope[]> {
+  const target = await targetOf(call.deps, call.caller, call.request);
+  const builder = SCOPES[call.request.method ?? ''];
+  return builder === undefined ? [] : builder(call, target);
 }
 
-function protect(call: Preconditions, scopes: readonly Scope[]): void {
-  const submitted = submittedTokens(call);
+async function protect(call: Preconditions, scopes: readonly Scope[]): Promise<void> {
+  const submitted = await submittedTokens(call);
   for (const { target, membership, subtree } of scopes) {
     const protection: Protection = {
       submitted,
@@ -188,10 +199,10 @@ function mutate(
 ): Promise<void> {
   const { request, response } = exchange;
   return guarded(exchange, async () => {
-    const caller = authenticateDav(deps, request);
+    const caller = await authenticateDav(deps, request);
     const call = { deps, locks, caller, request };
-    const scopes = scopesOf(call);
-    protect(call, scopes);
+    const scopes = await scopesOf(call);
+    await protect(call, scopes);
     await run(deps, exchange, caller);
     if (response.statusCode >= FIRST_FAILURE || !REMOVES_LOCKS.has(request.method ?? '')) return;
     for (const { target } of scopes) locks.dropWithin(target.root.id, target.relPath);
@@ -200,8 +211,8 @@ function mutate(
 
 function lock(deps: DavDeps, locks: LockTable, exchange: DavExchange): Promise<void> {
   return guarded(exchange, async () => {
-    const caller = authenticateDav(deps, exchange.request);
-    const submitted = submittedTokens({ deps, locks, caller, request: exchange.request });
+    const caller = await authenticateDav(deps, exchange.request);
+    const submitted = await submittedTokens({ deps, locks, caller, request: exchange.request });
     const call = { deps, locks, exchange, caller, submitted };
     await (exchange.request.method === 'LOCK' ? handleLock(call) : handleUnlock(call));
   });

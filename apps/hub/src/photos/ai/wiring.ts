@@ -40,8 +40,7 @@ export function startPhotoAi(wiring: PhotoAiWiring): RunningPhotoAi {
     log,
     runner: pipeline.runner,
     keys: openRouter.keys,
-    locate: (item): Promise<string> =>
-      locateMedia({ store, layout, log, parts: { context: store.context } }, item),
+    locate: (item): Promise<string> => locateMedia({ store }, item),
     detector: pool,
     ...clients,
   });

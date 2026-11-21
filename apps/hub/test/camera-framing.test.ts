@@ -1,4 +1,4 @@
-import type { JsonValue, StateRow } from '@smarteverything/domain';
+import type { JsonValue } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { CameraFraming, type FramedCamera } from '../src/reach/camera-framing';
 import type { NewCommand } from '../src/store/repositories/commands';
@@ -6,7 +6,6 @@ import { captureLogs, testLogger, type CapturedLogs } from './support/logs';
 
 const CAMERA_ID = '1d000000-0000-4000-8000-000000000021';
 const CALL = '1d000000-0000-4000-8000-000000000022';
-const AT = '2026-10-10T10:00:00.000Z';
 
 const LIVING_ROOM: FramedCamera = {
   id: CAMERA_ID,
@@ -52,22 +51,20 @@ function bench(initial: Readonly<Record<string, JsonValue>>, writeBack = true): 
   const sent: NewCommand[] = [];
   const framing = new CameraFraming({
     store: {
-      settingsKv: {
-        read: (key): Readonly<Record<string, unknown>> | null => settings.get(key) ?? null,
-        save: (key, value): void => {
-          settings.set(key, value);
+      live: {
+        home: {
+          saved: {
+            read: (key): Readonly<Record<string, unknown>> | null => settings.get(key) ?? null,
+            save: (key, value): Promise<void> => {
+              settings.set(key, value);
+              return Promise.resolve();
+            },
+          },
+          state: {
+            value: (deviceId, capability): JsonValue | undefined =>
+              deviceId === CAMERA_ID ? state.get(capability) : undefined,
+          },
         },
-      },
-      state: {
-        ofDevice: (deviceId): StateRow[] =>
-          deviceId === CAMERA_ID
-            ? [...state].map(([capability, value]) => ({
-                device_id: CAMERA_ID,
-                capability,
-                value,
-                observed_at: AT,
-              }))
-            : [],
       },
     },
     submit: (commands): void => {

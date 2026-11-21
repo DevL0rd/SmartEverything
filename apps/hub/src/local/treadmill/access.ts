@@ -1,25 +1,24 @@
 import type { DeviceRow, Starter } from '@smarteverything/domain';
-import { effectiveRow } from '../../server/person-access';
 import type { Store } from '../../store/store';
 
 export interface AccessDeps {
-  readonly store: Pick<Store, 'commands' | 'clients' | 'profiles' | 'personAccess'>;
+  readonly store: Pick<Store, 'host'>;
   readonly holderOf: (device: DeviceRow) => string | null;
-  readonly walkerOf: (device: DeviceRow) => string | null;
 }
 
-const OWNER_SOURCES: ReadonlySet<string> = new Set(['automation']);
+export function chosenWalkerOf(device: DeviceRow): string | null {
+  const chosen = device.details['walkerProfileId'];
+  return typeof chosen === 'string' ? chosen : null;
+}
 
-export function starterOf(deps: AccessDeps, device: DeviceRow, commandId: string): Starter {
-  const row = deps.store.commands.byId(commandId);
-  const clientId = row.requested_by;
-  const owner =
-    clientId === null
-      ? OWNER_SOURCES.has(row.source)
-      : effectiveRow(deps.store, deps.store.clients.byId(clientId)).role === 'owner';
-  const walker = deps.walkerOf(device);
-  const isWalker =
-    clientId !== null && walker !== null && deps.store.profiles.activeOf(clientId).id === walker;
-  const onHolder = row.source === 'app' && clientId !== null && clientId === deps.holderOf(device);
-  return { owner, walker: isWalker, remote: !onHolder };
+export function starterOf(
+  deps: AccessDeps,
+  device: DeviceRow,
+  commandId: string,
+): Promise<Starter> {
+  return deps.store.host.read('treadmillStarter', {
+    commandId,
+    holder: deps.holderOf(device),
+    chosen: chosenWalkerOf(device),
+  });
 }

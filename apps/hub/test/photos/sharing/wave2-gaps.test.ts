@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { albumAudience, invitePush } from '../../../src/extensions/push/album-activity';
+import { albumAudience } from '../../../src/extensions/push/album-activity';
+import { invitePush, pushClientOf } from '../../../src/extensions/push/push-units';
 import { testLogger } from '../../support/logs';
 import { openKit, type Kit } from './fixture';
 
@@ -60,7 +61,8 @@ describe('invitations', () => {
       data: { kind: 'photos_activity', albumId, activityKind: 'invited' },
     });
     expect([...(push?.recipients ?? [])]).toEqual([kit.bob.profileId]);
-    const audience = albumAudience(kit.store, push?.recipients ?? new Set(), testLogger());
+    const accept = albumAudience(push?.recipients ?? new Set(), testLogger());
+    const audience = (client: string): boolean => accept(pushClientOf(kit.store, client));
     expect(audience(kit.phone)).toBe(true);
     expect(audience(kit.tablet)).toBe(false);
     expect(invitePush(kit.store, albumId, kit.carol.profileId)).toBeNull();

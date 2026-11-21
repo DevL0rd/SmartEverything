@@ -56,6 +56,8 @@ import { createHttpServer, type RawRoute } from './http-server';
 import { LiveHub } from './live';
 import { Operations } from './operations';
 import { Router } from './router';
+import type { ResponseEncoder } from './responses/encoder';
+import type { GlbWorker } from '../models/glb-worker';
 import type { HubUpdateSourceRoutes } from './handlers/hub-update-source';
 import { startWatchDriver } from './watch-driver-wiring';
 import { startIrAppliances } from './ir-appliance-wiring';
@@ -69,6 +71,8 @@ export interface BuildOptions {
   readonly connections?: HubConnections;
   readonly store: Store;
   readonly logs: LogStore;
+  readonly responses: ResponseEncoder;
+  readonly models: GlbWorker;
   readonly secrets: SecretStore;
   readonly core: Core;
   readonly layout: HubLayout;
@@ -203,6 +207,7 @@ function toolHubOf(options: BuildOptions, context: ServerContext, operations: Op
     layout: options.layout,
     clock: options.clock,
     mediaNotes: context.mediaNotes,
+    calendars: options.core.planner.calendars,
     log: options.log.forArea('hub.ai-tools'),
   });
 }
@@ -251,10 +256,10 @@ function reconcilerOf(options: BuildOptions, context: ServerContext): Reconciler
   });
 }
 
-function startHomeServices(context: ServerContext): () => void {
-  seedModels(context.store);
+async function startHomeServices(context: ServerContext): Promise<() => void> {
+  await seedModels(context.store);
   const stopIrAppliances = startIrAppliances(context);
-  const stopHomeMap = startHomeMap(context);
+  const stopHomeMap = await startHomeMap(context);
   return (): void => {
     stopIrAppliances();
     stopHomeMap();
@@ -262,7 +267,9 @@ function startHomeServices(context: ServerContext): () => void {
 }
 
 export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
+  await options.store.live.home.load();
   const status = statusOf(options);
+  await Promise.all([options.store.live.aiModels.load(), options.store.live.engineDefaults.load()]);
   const context = contextOf(
     options,
     new LiveHub({
@@ -272,12 +279,13 @@ export async function buildServer(options: BuildOptions): Promise<BuiltServer> {
     }),
     status,
   );
+  await context.computerAi.load();
   const stopWatches = startWatchDriver(context);
-  const stopHomeServices = startHomeServices(context);
+  const stopHomeServices = await startHomeServices(context);
   await ensureInviteKey(context.secrets);
   await context.talk.start();
   context.assistant.start();
-  const operations = new Operations(context.log, context.store);
+  const operations = new Operations(context.log, context.store, options.responses);
   const drive = await startDriveHub(options, context);
   context.computerPlacements.attach(drive.placements);
   const extensions = await startExtensions(options, context, operations);
@@ -299,7 +307,7 @@ function rawRoutesOf(
   extensions: readonly RunningExtension[],
   routes: readonly RawRoute[],
   context: ServerContext,
-  fetcher: typeof fetch,
+  options: Pick<BuildOptions, 'fetch' | 'responses' | 'models'>,
 ): readonly RawRoute[] {
   return [
     ...extensions.flatMap((extension) => extension.routes),
@@ -310,8 +318,11 @@ function rawRoutesOf(
     computerMcpPolicyRoute(context),
     ...webhookRoutes(context.hub.automationWebhooks),
     nodeConnectionRoute(context),
-    ...modelAssetRoutes(modelRouteServices(context.store)),
-    ...harnessTransportRoutes(context, context.harness, fetcher),
+    ...modelAssetRoutes(modelRouteServices(context.store), {
+      encoder: options.responses,
+      glb: options.models,
+    }),
+    ...harnessTransportRoutes(context, context.harness, options.fetch, options.responses),
   ];
 }
 function attachBudget(context: ServerContext, budget: Budget): void {
@@ -335,9 +346,9 @@ function listenersOf(
 ): Pick<Serving, 'http' | 'secure'> {
   const httpOptions = {
     context,
-    router: new Router(parts.table, options.store, context.log),
+    router: new Router(parts.table, options.store, options.responses),
     rawRoutes: [
-      ...rawRoutesOf(parts.extensions, parts.routes, context, options.fetch),
+      ...rawRoutesOf(parts.extensions, parts.routes, context, options),
       ...chatFileDeliveryRoutes(options.layout),
       ...homeMapScanRoutesOf(options, context),
       ...plannerIcalRoutesOf(options, context),

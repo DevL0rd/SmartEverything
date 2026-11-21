@@ -38,19 +38,19 @@ function depsOf(brushed: SonicareRig): ViewDeps {
 
 async function brushedTwice(owns: 'owner' | 'member'): Promise<SonicareRig> {
   const brushed = await sonicareRig(identityOf(), {}, owns);
-  brushed.batch(0, [
+  await brushed.batch(0, [
     brushed.frame('4022', '00010204', 0),
     brushed.frame('4080', '01', 0),
     brushed.frame('4091', word(120), 0),
     brushed.frame('2a19', '50', 0),
   ]);
   for (const start of [10, 400]) {
-    brushed.batch(start, [
+    await brushed.batch(start, [
       brushed.frame('4010', '02', start),
       brushed.frame('4082', '01', start),
       brushed.frame('4090', word(0), start),
     ]);
-    brushed.batch(start + 120, [
+    await brushed.batch(start + 120, [
       brushed.frame('4090', word(120), start + 120),
       brushed.frame('4082', '03', start + 120),
       brushed.frame('4010', '01', start + 120),
@@ -70,7 +70,7 @@ function read(
 describe('a brush that belongs to the owner', () => {
   it('shows the owner today, the streak, the score and the last session', async () => {
     rig = await brushedTwice('owner');
-    const view = read(rig, viewerOf(rig.owner, 'owner'), { view: 'state' });
+    const view = await read(rig, viewerOf(rig.owner, 'owner'), { view: 'state' });
     expect(view).toMatchObject({
       view: 'state',
       mine: true,
@@ -91,7 +91,7 @@ describe('a brush that belongs to the owner', () => {
 
   it('hides every session detail from a member and keeps the device level facts', async () => {
     rig = await brushedTwice('owner');
-    const view = read(rig, viewerOf(rig.member, 'member'), { view: 'state' });
+    const view = await read(rig, viewerOf(rig.member, 'member'), { view: 'state' });
     expect(view).toMatchObject({
       mine: false,
       today: null,
@@ -106,9 +106,9 @@ describe('a brush that belongs to the owner', () => {
 
   it('lists no sessions for a member and says how many belong to someone else', async () => {
     rig = await brushedTwice('owner');
-    const view = read(rig, viewerOf(rig.member, 'member'), { view: 'sessions' });
+    const view = await read(rig, viewerOf(rig.member, 'member'), { view: 'sessions' });
     expect(view).toMatchObject({ view: 'sessions', sessions: [], hidden: 2, more: false });
-    const own = read(rig, viewerOf(rig.owner, 'owner'), { view: 'sessions', limit: 1 });
+    const own = await read(rig, viewerOf(rig.owner, 'owner'), { view: 'sessions', limit: 1 });
     expect(own).toMatchObject({ sessions: [{}], more: true, hidden: 0 });
   });
 
@@ -116,13 +116,13 @@ describe('a brush that belongs to the owner', () => {
     rig = await brushedTwice('owner');
     const [first] = rig.test.store.brushingSessions.all(rig.device.id, undefined);
     const member = viewerOf(rig.member, 'member');
-    expect(() => read(rig!, member, { view: 'session', sessionId: first?.id ?? '' })).toThrow(
-      ApiError,
-    );
-    expect(() => read(rig!, member, { view: 'stats', personId: rig!.owner.profile.id })).toThrow(
-      ApiError,
-    );
-    const mine = read(rig, member, { view: 'stats' });
+    await expect(
+      read(rig, member, { view: 'session', sessionId: first?.id ?? '' }),
+    ).rejects.toThrow(ApiError);
+    await expect(
+      read(rig, member, { view: 'stats', personId: rig.owner.profile.id }),
+    ).rejects.toThrow(ApiError);
+    const mine = await read(rig, member, { view: 'stats' });
     expect(mine).toMatchObject({ view: 'stats', personId: rig.member.profile.id });
     expect(mine.view === 'stats' ? mine.stats.totals.sessions : -1).toBe(0);
   });
@@ -130,12 +130,12 @@ describe('a brush that belongs to the owner', () => {
   it('keeps the settings and the diagnostics to the owner', async () => {
     rig = await brushedTwice('owner');
     const member = viewerOf(rig.member, 'member');
-    expect(read(rig, member, { view: 'settings' })).toMatchObject({
+    expect(await read(rig, member, { view: 'settings' })).toMatchObject({
       settings: null,
       mayConfigure: false,
     });
-    expect(() => read(rig!, member, { view: 'diagnostics' })).toThrow(ApiError);
-    const owner = read(rig, viewerOf(rig.owner, 'owner'), { view: 'diagnostics' });
+    await expect(read(rig, member, { view: 'diagnostics' })).rejects.toThrow(ApiError);
+    const owner = await read(rig, viewerOf(rig.owner, 'owner'), { view: 'diagnostics' });
     expect(owner).toMatchObject({
       view: 'diagnostics',
       brand: { identity: { serial: '0143C5C968' } },
@@ -144,7 +144,7 @@ describe('a brush that belongs to the owner', () => {
 
   it('computes the statistics of the week for the brush person', async () => {
     rig = await brushedTwice('owner');
-    const view = read(rig, viewerOf(rig.owner, 'owner'), { view: 'stats', range: 'week' });
+    const view = await read(rig, viewerOf(rig.owner, 'owner'), { view: 'stats', range: 'week' });
     expect(view.view === 'stats' ? view.stats.totals : null).toMatchObject({
       sessions: 2,
       complete: 2,
@@ -155,20 +155,23 @@ describe('a brush that belongs to the owner', () => {
   it('shows head and battery history views', async () => {
     rig = await brushedTwice('owner');
     const owner = viewerOf(rig.owner, 'owner');
-    expect(read(rig, owner, { view: 'head' })).toMatchObject({ view: 'head', timeline: [] });
-    expect(read(rig, owner, { view: 'battery' })).toMatchObject({ view: 'battery', levels: [] });
-    expect(read(rig, owner, { view: 'handle' })).toMatchObject({ view: 'handle' });
+    expect(await read(rig, owner, { view: 'head' })).toMatchObject({ view: 'head', timeline: [] });
+    expect(await read(rig, owner, { view: 'battery' })).toMatchObject({
+      view: 'battery',
+      levels: [],
+    });
+    expect(await read(rig, owner, { view: 'handle' })).toMatchObject({ view: 'handle' });
   });
 });
 
 describe('a brush that belongs to a member', () => {
   it('shows the member their own sessions and the owner everything', async () => {
     rig = await brushedTwice('member');
-    const member = read(rig, viewerOf(rig.member, 'member'), { view: 'state' });
+    const member = await read(rig, viewerOf(rig.member, 'member'), { view: 'state' });
     expect(member).toMatchObject({ mine: true, today: { counted: 2 } });
-    const sessions = read(rig, viewerOf(rig.member, 'member'), { view: 'sessions' });
+    const sessions = await read(rig, viewerOf(rig.member, 'member'), { view: 'sessions' });
     expect(sessions).toMatchObject({ sessions: [{}, {}], hidden: 0 });
-    const owner = read(rig, viewerOf(rig.owner, 'owner'), { view: 'state' });
+    const owner = await read(rig, viewerOf(rig.owner, 'owner'), { view: 'state' });
     expect(owner).toMatchObject({ mine: true, personName: rig.member.profile.name });
   });
 

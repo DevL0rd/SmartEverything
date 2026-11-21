@@ -2,8 +2,7 @@ import { z } from 'zod';
 import { API_ENDPOINTS as E, type DriveHit, type DriveItem } from '@smarteverything/domain';
 import { decodeCursor, encodeCursor } from '../../drive/search';
 import type { DriveActor } from '../../drive/access';
-import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
-import type { Store } from '../../store/store';
+import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
 import { DONE_REPLY, bound, type Routes } from '../router';
 import { refusing } from './drive-errors';
 import { actorOf, callerOf, type DriveServices } from './drive-services';
@@ -21,53 +20,52 @@ interface AlbumPageRequest {
   readonly cursor: string | undefined;
 }
 
-function membersOf(
-  store: Store,
+async function membersOf(
   services: DriveServices,
   actor: DriveActor,
   request: AlbumPageRequest,
-): {
+): Promise<{
   readonly items: DriveItem[];
   readonly hits: DriveHit[];
   readonly next: string | null;
-} {
+}> {
   const { albumId, cursor } = request;
-  const page = services.albums.members(
+  const page = await services.albums.members(
     albumId,
     actor,
     cursor === undefined ? null : decodeCursor(ALBUM_CURSOR, cursor),
     DRIVE_PAGE_SIZE,
   );
   return {
-    items: page.itemIds.map((itemId) => store.driveItems.byId(itemId, actor.profileId)),
-    hits: page.itemIds.map((itemId) => ({ itemId, where: 'name', snippet: null })),
+    items: page.items,
+    hits: page.items.map((item) => ({ itemId: item.id, where: 'name', snippet: null })),
     next: page.next === null ? null : encodeCursor(page.next),
   };
 }
 
-export function driveAlbumRoutes(store: Store, services: DriveServices): Routes<DriveAlbumRoute> {
+export function driveAlbumRoutes(services: DriveServices): Routes<DriveAlbumRoute> {
   const { write, albums } = services;
   return {
     listAlbums: bound(E.listAlbums, ({ query, caller }) =>
-      refusing(() => albums.list(actorOf(store, caller), query.surface)),
+      refusing(() => albums.list(actorOf(caller), query.surface)),
     ),
     listAlbumItems: bound(E.listAlbumItems, ({ params, query, caller }) =>
       refusing(() =>
-        membersOf(store, services, actorOf(store, caller), {
+        membersOf(services, actorOf(caller), {
           albumId: params.albumId,
           cursor: query.cursor,
         }),
       ),
     ),
     createAlbum: bound(E.createAlbum, ({ body, caller }) =>
-      refusing(() => write.createAlbum(callerOf(store, caller), body)),
+      refusing(() => write.createAlbum(callerOf(caller), body)),
     ),
     updateAlbum: bound(E.updateAlbum, ({ params, body, caller }) =>
-      refusing(() => write.updateAlbum(callerOf(store, caller), params.albumId, body)),
+      refusing(() => write.updateAlbum(callerOf(caller), params.albumId, body)),
     ),
     removeAlbum: bound(E.removeAlbum, ({ params, caller }) =>
-      refusing(() => {
-        write.removeAlbum(callerOf(store, caller), params.albumId);
+      refusing(async () => {
+        await write.removeAlbum(callerOf(caller), params.albumId);
         return DONE_REPLY;
       }),
     ),

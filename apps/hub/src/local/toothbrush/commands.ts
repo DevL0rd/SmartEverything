@@ -9,7 +9,6 @@ import type { Store } from '../../store/store';
 import type { DeviceDriver } from '../device-driver';
 import type { BrushActionBroker } from './broker';
 import { brushBrands } from './brands';
-import { commandRoleOf } from './command-access';
 import type { Fleet } from './fleet';
 
 class BrushCommandFailedError extends Error {
@@ -17,7 +16,7 @@ class BrushCommandFailedError extends Error {
 }
 
 export interface CommandDeps {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host'>;
   readonly fleet: Fleet;
   readonly broker: Pick<BrushActionBroker, 'run'>;
   readonly holderOf: (device: DeviceRow) => string | null;
@@ -29,18 +28,16 @@ export async function runBrushCommand(
   deps: CommandDeps,
   command: DeviceCommand,
 ): Promise<JsonValue> {
-  const device = deps.store.devices.byExternal('local', command.externalId);
+  const device = await deps.store.host.call('devices', 'byExternal', 'local', command.externalId);
   if (device === undefined) {
     throw new CommandRefusedError(
       command.capability,
       'this toothbrush is no longer known to the hub',
     );
   }
-  const state = deps.fleet.of(device);
-  const steps = state.runtime.brand.command(command, {
-    state,
-    owner: () => commandRoleOf(deps.store, command.commandId) === 'owner',
-  });
+  const state = await deps.fleet.ensure(device);
+  const owner = (await deps.store.host.read('localCommandRole', command.commandId)) === 'owner';
+  const steps = state.runtime.brand.command(command, { state, owner: () => owner });
   const holder = deps.holderOf(device);
   const name = device.display_name ?? device.name;
   if (holder === null) {

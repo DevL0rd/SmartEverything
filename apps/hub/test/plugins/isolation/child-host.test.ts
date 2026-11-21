@@ -57,10 +57,14 @@ class FakeChild implements ChildHandle {
 let children: FakeChild[];
 let host: ChildHost;
 
-function spawner(): ChildHandle {
+function spawner(): Promise<ChildHandle> {
   const child = new FakeChild();
   children.push(child);
-  return child;
+  return Promise.resolve(child);
+}
+
+async function flush(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(0);
 }
 
 function current(): FakeChild {
@@ -88,6 +92,7 @@ describe('calls', () => {
   it('starts the child on the first call and resolves with the reply payload', async () => {
     expect(host.running).toBe(false);
     const call = host.call('join', { channel: 7 }, 1000);
+    await flush();
     expect(host.running).toBe(true);
     expect(current().sent).toEqual([
       { kind: 'call', id: 1, name: 'join', payload: { channel: 7 } },
@@ -99,6 +104,7 @@ describe('calls', () => {
   it('reuses the running child and numbers calls in order', async () => {
     const first = host.call('a', null, 1000);
     const second = host.call('b', null, 1000);
+    await flush();
     expect(children).toHaveLength(1);
     current().deliver({ kind: 'reply', id: 2, ok: true, payload: 'B', error: null });
     current().deliver({ kind: 'reply', id: 1, ok: true, payload: 'A', error: null });
@@ -107,15 +113,18 @@ describe('calls', () => {
 
   it('rejects with the child error message when the reply is not ok', async () => {
     const call = host.call('join', null, 1000);
+    await flush();
     current().deliver({ kind: 'reply', id: 1, ok: false, payload: null, error: 'no such channel' });
     await expect(call).rejects.toThrow('no such channel');
     const next = host.call('join', null, 1000);
+    await flush();
     current().deliver({ kind: 'reply', id: 2, ok: false, payload: null, error: null });
     await expect(next).rejects.toThrow('The call failed');
   });
 
   it('rejects a call the child does not answer in time', async () => {
     const call = host.call('join', null, 500);
+    await flush();
     const failure = expect(call).rejects.toThrow(
       'The voice process is not available: join did not answer in time',
     );
@@ -126,12 +135,14 @@ describe('calls', () => {
 
   it('rejects at once when the channel to the child is closed', async () => {
     host.call('warm', null, 1000).catch(() => undefined);
+    await flush();
     current().open = false;
     await expect(host.call('join', null, 1000)).rejects.toThrow('its channel is closed');
   });
 
-  it('ignores a reply for a call that is no longer waiting', () => {
+  it('ignores a reply for a call that is no longer waiting', async () => {
     host.call('join', null, 1000).catch(() => undefined);
+    await flush();
     expect(() => {
       current().deliver({ kind: 'reply', id: 99, ok: true, payload: null, error: null });
     }).not.toThrow();
@@ -139,11 +150,12 @@ describe('calls', () => {
 });
 
 describe('events', () => {
-  it('passes child events to every listener and sends events to the child', () => {
+  it('passes child events to every listener and sends events to the child', async () => {
     const seen: string[] = [];
     host.onEvent((name, payload) => seen.push(`a:${name}:${String(payload)}`));
     host.onEvent((name) => seen.push(`b:${name}`));
     host.call('x', null, 1000).catch(() => undefined);
+    await flush();
     current().deliver({ kind: 'event', name: 'speaking', payload: 'ana' });
     expect(seen).toEqual(['a:speaking:ana', 'b:speaking']);
     expect(host.send('mute', true)).toBe(true);
@@ -155,9 +167,10 @@ describe('events', () => {
     expect(children).toHaveLength(0);
   });
 
-  it('logs and survives a frame that does not parse', () => {
+  it('logs and survives a frame that does not parse', async () => {
     const logs = captureLogs();
     host.call('x', null, 1000).catch(() => undefined);
+    await flush();
     current().reject(new Error('bad frame'));
     expect(logs.events()).toContain('plugin.child_frame_invalid');
   });
@@ -168,6 +181,7 @@ describe('crashes', () => {
     const crashes: ChildCrash[] = [];
     host.onCrash((crash) => crashes.push(crash));
     const waiting = host.call('join', null, 10_000);
+    await flush();
     const failure = expect(waiting).rejects.toBeInstanceOf(ChildCrashedError);
     current().crash(null, 'SIGSEGV');
     await failure;
@@ -180,18 +194,20 @@ describe('crashes', () => {
       restartInMs: 1000,
     });
     expect(crashes[0]?.error.message).toBe('The voice process stopped unexpectedly (SIGSEGV)');
-    expect(() => host.call('join', null, 1000)).toThrow(
+    await expect(host.call('join', null, 1000)).rejects.toThrow(
       new ChildUnavailableError('voice', 'it is restarting after a crash (about 1 s)'),
     );
   });
 
   it('starts the child again after the backoff delay and takes calls once more', async () => {
     host.call('join', null, 10_000).catch(() => undefined);
+    await flush();
     current().crash(1, null);
     await vi.advanceTimersByTimeAsync(1000);
     expect(host.running).toBe(true);
     expect(children).toHaveLength(2);
     const call = host.call('join', null, 1000);
+    await flush();
     current().deliver({ kind: 'reply', id: 2, ok: true, payload: 'ok', error: null });
     await expect(call).resolves.toBe('ok');
   });
@@ -200,6 +216,7 @@ describe('crashes', () => {
     const delays: number[] = [];
     host.onCrash((crash) => delays.push(crash.restartInMs));
     host.call('join', null, 10_000).catch(() => undefined);
+    await flush();
     for (const wait of [1000, 2000, 4000]) {
       current().crash(1, null);
       await vi.advanceTimersByTimeAsync(wait);
@@ -212,6 +229,7 @@ describe('crashes', () => {
     host.onCrash((crash) => delays.push(crash.restartInMs));
     host.hold();
     host.call('join', null, 10_000).catch(() => undefined);
+    await flush();
     current().crash(1, null);
     await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(60_000);
@@ -219,10 +237,11 @@ describe('crashes', () => {
     expect(delays).toEqual([1000, 1000]);
   });
 
-  it('names an exit code when no signal ended the child', () => {
+  it('names an exit code when no signal ended the child', async () => {
     const crashes: ChildCrash[] = [];
     host.onCrash((crash) => crashes.push(crash));
     host.call('join', null, 10_000).catch(() => undefined);
+    await flush();
     current().crash(3, null);
     expect(crashes[0]?.error.message).toBe('The voice process stopped unexpectedly (exit code 3)');
   });
@@ -233,6 +252,7 @@ describe('retire and idle', () => {
     const crashes: ChildCrash[] = [];
     host.onCrash((crash) => crashes.push(crash));
     const waiting = host.call('join', null, 10_000);
+    await flush();
     const failure = expect(waiting).rejects.toThrow('it was stopped');
     const child = current();
     host.retire();
@@ -247,6 +267,7 @@ describe('retire and idle', () => {
 
   it('cancels a pending restart when retired', async () => {
     host.call('join', null, 10_000).catch(() => undefined);
+    await flush();
     current().crash(1, null);
     host.retire();
     await vi.advanceTimersByTimeAsync(5000);
@@ -256,16 +277,19 @@ describe('retire and idle', () => {
 
   it('stops an idle child after 30 s and starts a new one for the next call', async () => {
     host.call('join', null, 1000).catch(() => undefined);
+    await flush();
     const first = current();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(first.killed).toBe(true);
     expect(host.running).toBe(false);
     host.call('join', null, 1000).catch(() => undefined);
+    await flush();
     expect(children).toHaveLength(2);
   });
 
   it('keeps the child while something holds it and arms the idle timer when the last hold ends', async () => {
     host.call('join', null, 1000).catch(() => undefined);
+    await flush();
     const first = current();
     const releaseA = host.hold();
     const releaseB = host.hold();
@@ -283,6 +307,7 @@ describe('retire and idle', () => {
   it('honours a configured idle time', async () => {
     const quick = new ChildHost({ kind: 'voice', spawn: spawner, idleMs: 100 });
     quick.call('join', null, 1000).catch(() => undefined);
+    await flush();
     const child = current();
     await vi.advanceTimersByTimeAsync(100);
     expect(child.killed).toBe(true);

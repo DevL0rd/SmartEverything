@@ -67,7 +67,7 @@ export interface ToolSource {
     tool: HubTool,
     args: Readonly<Record<string, unknown>>,
     caller?: ToolCaller,
-  ) => string | null;
+  ) => Promise<string | null>;
   readonly changes: (listener: () => void) => () => void;
 }
 

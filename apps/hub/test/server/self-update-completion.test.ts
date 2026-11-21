@@ -14,7 +14,8 @@ import { saveRepairWorkClaim } from '../../src/store/repositories/repair-work-cl
 import { openStore } from '../../src/store/store';
 import { TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore, unusedDrivePath } from '../support/store';
+import { testStore, type TestStore } from '../support/store';
+import { testStoreHost } from '../support/store-host';
 
 const NOW = '2026-11-05T06:00:00.000Z';
 const PRIVATE = '/home/private/release';
@@ -93,11 +94,12 @@ function reopen(): void {
   const { directory, layout } = fixture;
   fixture.store.close();
   const store = openStore({
+    host: testStoreHost(),
     path: join(directory, 'test.db'),
     now: () => new Date(NOW),
     log: testLogger('self-update-completion'),
     systemTimeZone: 'UTC',
-    drivePathOf: unusedDrivePath,
+    driveFolders: null,
   });
   fixture = {
     directory,
@@ -215,7 +217,7 @@ it('does not deliver to a member or a chat whose owner does not match the saved 
   const member = fixture.store.profiles.create({ name: 'Member' });
   const other = origin(member.id);
   await record(release(other, 'done'), release({ ...target, profileId: member.id }, 'done'));
-  reconcileHubUpdateNotes(fixture.store, await readHubUpdateLedger(fixture.layout));
+  await reconcileHubUpdateNotes(fixture.store, await readHubUpdateLedger(fixture.layout));
   expect(messages(target.chatId)).toEqual([]);
   expect(messages(other.chatId)).toEqual([]);
 });
@@ -231,8 +233,8 @@ it('asks the requesting chat and the hub repair chat once for a decision on a fa
   const waiting = { ...release(target, 'awaiting_decision'), finishedAt: null };
   await record(waiting);
   const ledger = await readHubUpdateLedger(fixture.layout);
-  reconcileHubUpdateNotes(fixture.store, ledger);
-  reconcileHubUpdateNotes(fixture.store, ledger);
+  await reconcileHubUpdateNotes(fixture.store, ledger);
+  await reconcileHubUpdateNotes(fixture.store, ledger);
   for (const chat of [target, repair]) {
     expect(messages(chat.chatId)).toHaveLength(1);
     expect(messages(chat.chatId)[0]?.text).toContain('waits for your decision');
@@ -240,6 +242,6 @@ it('asks the requesting chat and the hub repair chat once for a decision on a fa
   }
   expect(JSON.stringify(messages(target.chatId))).not.toContain(PRIVATE);
   await record({ ...waiting, revision: waiting.revision + 1 });
-  reconcileHubUpdateNotes(fixture.store, await readHubUpdateLedger(fixture.layout));
+  await reconcileHubUpdateNotes(fixture.store, await readHubUpdateLedger(fixture.layout));
   expect(messages(target.chatId)).toHaveLength(2);
 });

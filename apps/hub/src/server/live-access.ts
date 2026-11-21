@@ -134,7 +134,7 @@ function actorOf(hearer: Pick<Hearer, 'client'>, store: DriveStore): DriveActor 
 }
 
 function rootShown(hearer: Pick<Hearer, 'client'>, rootId: string, store: DriveStore): boolean {
-  const root = store.driveRoots.find(rootId);
+  const root = store.driveRoots.record(rootId);
   return root !== undefined && driveAccess(actorOf(hearer, store), root) !== 'none';
 }
 
@@ -151,7 +151,7 @@ function albumShown(hearer: Pick<Hearer, 'client'>, albumId: string, store: Driv
 function itemShown(hearer: Pick<Hearer, 'client'>, itemId: string, store: DriveStore): boolean {
   const actor = actorOf(hearer, store);
   const item = store.driveItems.find(itemId, actor.profileId);
-  const root = item === undefined ? undefined : store.driveRoots.find(item.rootId);
+  const root = item === undefined ? undefined : store.driveRoots.record(item.rootId);
   return item !== undefined && root !== undefined && canRead(itemAccess(store, actor, root, item));
 }
 

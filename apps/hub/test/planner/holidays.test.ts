@@ -16,6 +16,7 @@ import { plannerCoreRoutes } from '../../src/server/handlers/planner';
 import { testLogger } from '../support/logs';
 import { addPerson } from '../support/phone-fixtures';
 import { testStore, type TestStore } from '../support/store';
+import { inProcessCalendars } from '../support/ical';
 
 const START = '2026-11-14T12:00:00.000Z';
 
@@ -30,7 +31,12 @@ beforeEach(async () => {
   const owner = test.store.profiles.list()[0];
   if (owner === undefined) throw new Error('the store has no owner');
   ownerId = owner.id;
-  service = new FeedService({ store: test.store, clock, log: testLogger('feeds') });
+  service = new FeedService({
+    store: test.store,
+    clock,
+    calendars: inProcessCalendars,
+    log: testLogger('feeds'),
+  });
 });
 
 afterEach(async () => {
@@ -43,9 +49,8 @@ const create = (country: string, state: string | null = null): Promise<PlannerCo
     input: { kind: 'holidays', country, state },
   });
 
-const prepare = (collection: PlannerCollectionRow, from: string, to: string): void => {
+const prepare = (collection: PlannerCollectionRow, from: string, to: string): Promise<void> =>
   service.registry.prepare([collection], { from, to });
-};
 
 const rows = (collection: PlannerCollectionRow): { date: string; title: string }[] =>
   test.store.plannerItems
@@ -116,19 +121,19 @@ describe('creating a holidays calendar', () => {
 describe('writing years when a read reaches them', () => {
   it('writes only the years the window covers', async () => {
     const collection = await create('DE', 'BY');
-    prepare(collection, '2026-06-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z');
+    await prepare(collection, '2026-06-01T00:00:00.000Z', '2026-07-01T00:00:00.000Z');
     expect(datesOf(collection).every((date) => date.startsWith('2026-'))).toBe(true);
     expect(datesOf(collection)).toContain('2026-12-25');
-    prepare(collection, '2028-06-01T00:00:00.000Z', '2028-06-02T00:00:00.000Z');
+    await prepare(collection, '2028-06-01T00:00:00.000Z', '2028-06-02T00:00:00.000Z');
     const years = new Set(datesOf(collection).map((date) => date.slice(0, 4)));
     expect([...years].sort()).toEqual(['2026', '2028']);
   });
 
   it('writes each year once and keeps its rows on later reads', async () => {
     const collection = await create('US');
-    prepare(collection, '2026-01-01T00:00:00.000Z', '2026-12-31T00:00:00.000Z');
+    await prepare(collection, '2026-01-01T00:00:00.000Z', '2026-12-31T00:00:00.000Z');
     const before = test.store.plannerItems.inCollection(collection.id).map((item) => item.id);
-    prepare(collection, '2026-03-01T00:00:00.000Z', '2026-04-01T00:00:00.000Z');
+    await prepare(collection, '2026-03-01T00:00:00.000Z', '2026-04-01T00:00:00.000Z');
     const after = test.store.plannerItems.inCollection(collection.id).map((item) => item.id);
     expect(after).toEqual(before);
     expect(before.length).toBeGreaterThan(8);
@@ -136,13 +141,14 @@ describe('writing years when a read reaches them', () => {
 
   it('finds the rows it wrote earlier after a restart without writing them twice', async () => {
     const collection = await create('US');
-    prepare(collection, '2026-01-01T00:00:00.000Z', '2026-12-31T00:00:00.000Z');
+    await prepare(collection, '2026-01-01T00:00:00.000Z', '2026-12-31T00:00:00.000Z');
     const restarted = new FeedService({
       store: test.store,
       clock: new SimulatedClock(START),
+      calendars: inProcessCalendars,
       log: testLogger('feeds'),
     });
-    restarted.registry.prepare([collection], {
+    await restarted.registry.prepare([collection], {
       from: '2026-01-01T00:00:00.000Z',
       to: '2026-12-31T00:00:00.000Z',
     });
@@ -152,13 +158,13 @@ describe('writing years when a read reaches them', () => {
 
   it('covers a window that crosses a new year', async () => {
     const collection = await create('DE');
-    prepare(collection, '2026-12-30T00:00:00.000Z', '2027-01-03T00:00:00.000Z');
+    await prepare(collection, '2026-12-30T00:00:00.000Z', '2027-01-03T00:00:00.000Z');
     expect(datesOf(collection)).toEqual(expect.arrayContaining(['2026-12-25', '2027-01-01']));
   });
 
   it('writes all-day events made by the feed', async () => {
     const collection = await create('DE');
-    prepare(collection, '2026-12-01T00:00:00.000Z', '2026-12-31T00:00:00.000Z');
+    await prepare(collection, '2026-12-01T00:00:00.000Z', '2026-12-31T00:00:00.000Z');
     const christmas = test.store.plannerItems
       .inCollection(collection.id)
       .find((item) => item.start_local === '2026-12-25');
@@ -174,7 +180,7 @@ describe('writing years when a read reaches them', () => {
 
   it('shows the days in a range read', async () => {
     const collection = await create('DE', 'BY');
-    prepare(collection, '2026-12-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z');
+    await prepare(collection, '2026-12-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z');
     const range = composeRange(test.store, {
       profileId: ownerId,
       window: {
@@ -195,12 +201,12 @@ describe('writing years when a read reaches them', () => {
 describe('changing the region', () => {
   it('replaces the days with those of the new region', async () => {
     const collection = await create('DE', 'BY');
-    prepare(collection, '2026-01-01T00:00:00.000Z', '2026-12-31T00:00:00.000Z');
+    await prepare(collection, '2026-01-01T00:00:00.000Z', '2026-12-31T00:00:00.000Z');
     expect(datesOf(collection)).toContain('2026-01-06');
     const moved = await service.registry.of('holidays').update(collection, { state: 'BE' });
     expect(moved.feed).toEqual({ kind: 'holidays', country: 'DE', state: 'BE' });
     expect(rows(moved)).toEqual([]);
-    prepare(moved, '2026-01-01T00:00:00.000Z', '2026-12-31T00:00:00.000Z');
+    await prepare(moved, '2026-01-01T00:00:00.000Z', '2026-12-31T00:00:00.000Z');
     expect(datesOf(moved)).not.toContain('2026-01-06');
     expect(datesOf(moved)).toContain('2026-03-08');
   });
@@ -208,12 +214,12 @@ describe('changing the region', () => {
   it('writes again after going back to an earlier region', async () => {
     const collection = await create('DE', 'BY');
     const window = { from: '2026-01-01T00:00:00.000Z', to: '2026-12-31T00:00:00.000Z' };
-    service.registry.prepare([collection], window);
+    await service.registry.prepare([collection], window);
     const handler = service.registry.of('holidays');
     const there = await handler.update(collection, { state: 'BE' });
-    service.registry.prepare([there], window);
+    await service.registry.prepare([there], window);
     const back = await handler.update(there, { state: 'BY' });
-    service.registry.prepare([back], window);
+    await service.registry.prepare([back], window);
     expect(datesOf(back)).toContain('2026-01-06');
   });
 });

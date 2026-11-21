@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { entryConfigOf } from '../../../src/local/bottle/config';
 import { syncPlanOf } from '../../../src/local/bottle/plan';
 import { SNAP } from '../../../src/local/bottle/snapshots';
-import { planDepsOf } from '../../../src/local/bottle/ingest';
+import { planDepsOf } from '../../../src/local/bottle/sync';
 import { runPlan } from '../../support/fake-phone';
 import { captureLogs } from '../../support/logs';
 import { bottleRig, seedDevice, tofRow, type BottleRig } from '../../support/bottle-rig';
@@ -95,11 +95,11 @@ describe('a day of drinking read from the cap', () => {
     const entry = rig.entry();
     const plan = syncPlanOf(planDepsOf(rig.ingestDeps), { entry, deviceId: rig.device.id });
     const upload = runPlan(plan, rig.cap, { now: rig.clock.now() });
-    await rig.ingest.process(rig.row(), entry, rig.owner.client, upload);
+    await rig.ingest.process(rig.row(), rig.owner.client, upload);
     const [first] = rig.test.store.bottleReadings.drinks(rig.device.id, { from: 0, to: 4e9 });
     expect(first?.entryId).not.toBeNull();
     rig.test.store.healthEntries.remove(first?.entryId ?? '', rig.owner.profile.id);
-    await rig.ingest.process(rig.row(), entry, rig.owner.client, upload);
+    await rig.ingest.process(rig.row(), rig.owner.client, upload);
     expect(hydration()).toHaveLength(3);
   });
 
@@ -146,7 +146,7 @@ describe('readings that must not become drinks', () => {
       rig.cap,
       { now: rig.clock.now() },
     );
-    await rig.ingest.process(rig.row(), entry, rig.owner.client, upload);
+    await rig.ingest.process(rig.row(), rig.owner.client, upload);
     const rows = rig.test.store.bottleReadings.all(rig.device.id);
     expect(rows.map((row) => row.kind)).toStrictEqual(['seed', 'drink', 'drink']);
     expect(
@@ -169,7 +169,8 @@ describe('a bottle that is forgotten and added again', () => {
     const entry = rig.test.store.localDevices.byExternalId(added.externalId);
     const plan = syncPlanOf(planDepsOf(rig.ingestDeps), { entry, deviceId: added.device.id });
     const upload = runPlan(plan, rig.cap, { now: rig.clock.now() });
-    const result = await rig.ingest.process(added.device, entry, rig.owner.client, upload);
+    await rig.roster.load();
+    const result = await rig.ingest.process(added.device, rig.owner.client, upload);
     expect(result.accepted).toBeGreaterThan(0);
     expect(rig.test.store.bottleReadings.all(added.device.id)).toHaveLength(6);
     const drinks = rig.test.store.bottleReadings.drinks(added.device.id, { from: 0, to: 4e9 });

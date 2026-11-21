@@ -1,18 +1,17 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { Duplex } from 'node:stream';
 import {
-  ApiError,
   BEARER_PROTOCOL_PREFIX,
   createClientToken,
   hashClientToken,
 } from '@smarteverything/domain';
 import WebSocket, { type RawData } from 'ws';
 import { z } from 'zod';
+import { httpFailureOf } from '../../src/server/errors';
+import { refuseUpgrade } from '../../src/server/upgrade-refusal';
 import type { TestStore } from './store';
 
 const MESSAGE = z.record(z.string(), z.unknown());
-
-const REFUSED = 'HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n';
 
 export interface SocketLink {
   readonly socket: WebSocket;
@@ -31,7 +30,7 @@ export interface TestClient {
   readonly token: string;
 }
 
-type Upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
+type Upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => Promise<void>;
 
 function bytesOf(data: RawData): Buffer {
   if (Buffer.isBuffer(data)) {
@@ -49,18 +48,23 @@ export function addClient(test: TestStore, name: string, role: 'owner' | 'member
   return { id: row.id, token };
 }
 
-async function listen(upgrade: Upgrade): Promise<{ server: Server; url: string }> {
-  const server = createServer();
-  server.on('upgrade', (request, socket, head) => {
-    try {
-      upgrade(request, socket, head);
-    } catch (cause) {
-      if (!(cause instanceof ApiError)) {
+export function refusingUpgrades(
+  upgrade: Upgrade,
+): (request: IncomingMessage, socket: Duplex, head: Buffer) => void {
+  return (request, socket, head) => {
+    upgrade(request, socket, head).catch((cause: unknown) => {
+      const failure = httpFailureOf(cause);
+      refuseUpgrade(socket, failure.error);
+      if (failure.unexpected !== null) {
         throw cause;
       }
-      socket.end(REFUSED);
-    }
-  });
+    });
+  };
+}
+
+async function listen(upgrade: Upgrade): Promise<{ server: Server; url: string }> {
+  const server = createServer();
+  server.on('upgrade', refusingUpgrades(upgrade));
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve);
   });

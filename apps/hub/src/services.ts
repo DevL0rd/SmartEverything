@@ -18,6 +18,7 @@ import { GoogleTokens } from './google/tokens';
 import { GoogleCalendarSync } from './planner/google/calendar-sync';
 import { TasksSync } from './planner/google/tasks-sync';
 import { PlannerRuntime } from './planner/runtime';
+import { CalendarWorker } from './planner/ical/calendar-reader';
 import type { FetchLike } from './plugins/builtin/fetch-like';
 import { FirewallMonitor, type DeviceMacs } from './firewall/monitor';
 import { CameraLoad, observedGo2rtc } from './firewall/observed-go2rtc';
@@ -66,6 +67,7 @@ export interface CoreOptions {
   readonly clock: Clock;
   readonly fetch: FetchLike;
   readonly log: Logger;
+  readonly codecWorkerScript: string;
   readonly fatal: (cause: Error) => void;
 }
 
@@ -117,7 +119,7 @@ export function startGoogle(options: GoogleOptions): GoogleHub {
   });
   const runner = new GoogleSyncRunner({
     store,
-    calendar: new GoogleCalendarSync({ store, tokens, fetch: send, now: clock.now }),
+    calendar: new GoogleCalendarSync({ store, tokens, fetch: send }),
     tasks,
     clock,
   });
@@ -282,8 +284,9 @@ function plannerOf(
   options: CoreOptions,
   store: Store,
   hub: RunningHub,
-  google: GoogleHub,
+  planning: { readonly google: GoogleHub; readonly calendars: CalendarWorker },
 ): PlannerRuntime {
+  const { google, calendars } = planning;
   return new PlannerRuntime({
     store,
     clock: options.clock,
@@ -291,6 +294,7 @@ function plannerOf(
     submit: hub.submit,
     automations: hub.automationEngine,
     google: google.runner,
+    calendars,
     log: options.log.forArea('hub.planner'),
   });
 }
@@ -343,13 +347,15 @@ export async function startCore(
     clock: options.clock,
     key: channelKey,
   });
-  const planner = plannerOf(options, store, hub, google);
+  const calendars = new CalendarWorker(options.codecWorkerScript, options.log);
+  const planner = plannerOf(options, store, hub, { google, calendars });
   return {
     hub: {
       ...hub,
       stop: async (): Promise<void> => {
         google.stop();
         await hub.stop();
+        await calendars.close();
       },
     },
     google,

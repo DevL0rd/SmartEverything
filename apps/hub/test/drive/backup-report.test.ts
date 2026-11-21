@@ -12,6 +12,8 @@ import { driveRoutes } from '../../src/server/handlers/drive';
 import { createDrive, type DriveRuntime } from '../../src/server/handlers/drive-wiring';
 import { MediaLinks } from '../../src/server/media-links';
 import { Operations } from '../../src/server/operations';
+import { ResponseEncoder } from '../../src/server/responses/encoder';
+import { bundledCodecWorker } from '../support/codec-worker';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { Sql } from '../../src/store/sql';
@@ -26,6 +28,7 @@ let opened: TestStore;
 let second: DatabaseSync;
 let runtime: DriveRuntime;
 let operations: Operations;
+let encoder: ResponseEncoder;
 let ownerId = '';
 let memberId = '';
 
@@ -60,16 +63,12 @@ beforeEach(async () => {
       context: new StoreContext(new Sql(second), new ChangeFeed(log), () => NOW),
       database: second,
       conflicts: {
-        insert: (): void => undefined,
         find: (): undefined => undefined,
-        resolve: (): never => {
-          throw new Error('no conflicts in this rig');
-        },
       },
       listings: {
-        shares: () => ({ items: [], next: null }),
-        duplicates: () => ({ items: [], next: null }),
-        conflicts: () => ({ items: [], next: null }),
+        shares: () => Promise.resolve({ items: [], next: null }),
+        duplicates: () => Promise.resolve({ items: [], next: null }),
+        conflicts: () => Promise.resolve({ items: [], next: null }),
       },
       removeLocationOutside: () => true,
       notifyCorruption: (): void => undefined,
@@ -87,11 +86,13 @@ beforeEach(async () => {
     hasherScript: join(opened.directory, 'unused-hasher.mjs'),
   });
   await ensureDrives(store, opened.layout, store.profiles.list());
-  operations = new Operations(log, store);
+  encoder = new ResponseEncoder(await bundledCodecWorker(opened.directory), log);
+  operations = new Operations(log, store, encoder);
   operations.attach(driveRoutes(store, runtime.services));
 });
 
 afterEach(async () => {
+  await encoder.close();
   await runtime.queue.stop();
   second.close();
   await opened.close();
@@ -117,14 +118,14 @@ describe('reporting a backup through an MCP access token', () => {
     },
   );
 
-  it('refuses a member’s MCP token and records nothing', () => {
+  it('refuses a member’s MCP token and records nothing', async () => {
     const member = mcpCaller(memberId, 'member', 'oauth');
-    expect(() => operations.run('reportBackup', member, { body: REPORT })).toThrow(
-      expect.objectContaining({ code: 'forbidden' }),
-    );
-    expect(() => operations.run('readBackupStatus', member, {})).toThrow(
-      expect.objectContaining({ code: 'forbidden' }),
-    );
+    await expect(operations.run('reportBackup', member, { body: REPORT })).rejects.toMatchObject({
+      code: 'forbidden',
+    });
+    await expect(operations.run('readBackupStatus', member, {})).rejects.toMatchObject({
+      code: 'forbidden',
+    });
     expect(opened.store.driveBackups.last()).toBeNull();
     expect(opened.store.driveRoots.list().every((root) => root.health.lastBackupAt === null)).toBe(
       true,

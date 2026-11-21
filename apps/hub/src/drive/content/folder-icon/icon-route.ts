@@ -1,19 +1,16 @@
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { ApiError } from '@smarteverything/domain';
+import { ApiError, type DriveItem } from '@smarteverything/domain';
 import { fsCode } from '../../../fs-code';
 import type { DriveExchange } from '../../../server/drive-files';
 import { serveBytes } from '../../../server/file-serve';
 import type { MediaLinks } from '../../../server/media-links';
-import type { DriveFolderIconsRepository } from '../../../store/repositories/drive-folder-icons';
-import type { DriveItemsRepository } from '../../../store/repositories/drive-items';
+import type { DriveFolderIcon } from '../../../store/repositories/drive-folder-icons';
 import { folderIconFile, type FolderIconEnvironment } from './refresh';
 
 export interface FolderIconServing {
-  readonly store: {
-    readonly driveItems: Pick<DriveItemsRepository, 'find'>;
-    readonly driveFolderIcons: Pick<DriveFolderIconsRepository, 'find'>;
-  };
+  readonly folder: (itemId: string) => Promise<DriveItem | undefined>;
+  readonly icon: (itemId: string) => Promise<DriveFolderIcon | undefined>;
   readonly links: Pick<MediaLinks, 'verifyDrive'>;
   readonly derivedDirectory: FolderIconEnvironment['derivedDirectory'];
   readonly now: () => Date;
@@ -25,12 +22,12 @@ export async function serveFolderIcon(
   itemId: string,
 ): Promise<void> {
   const link = serving.links.verifyDrive(exchange.url);
-  const folder = serving.store.driveItems.find(itemId, null);
+  const folder = await serving.folder(itemId);
   if (folder?.kind !== 'folder') throw new ApiError('not_found', 'There is no such folder.');
   if (folder.rev !== link.rev) {
     throw new ApiError('link_expired', 'This folder changed; request a new link.');
   }
-  const icon = serving.store.driveFolderIcons.find(itemId);
+  const icon = await serving.icon(itemId);
   if (icon === undefined) throw new ApiError('not_found', 'This folder has no icon file.');
   const path = folderIconFile(serving, itemId, icon.imageSha256);
   const info = await stat(path).catch((cause: unknown) => {

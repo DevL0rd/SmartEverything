@@ -27,6 +27,7 @@ import {
   type ComputerRuntimeTarget,
   type ComputerRuntimeSettingsPatch,
   type ComputerRuntimeStatus,
+  type ComputerRuntimeCapabilities,
   type ComputerRuntimeRequest,
   type ComputerRuntimeModel,
   type ComputerRuntimeProviderTurn,
@@ -34,7 +35,7 @@ import {
   type AiNativeCommandWrite,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
 import type { ComputerRuntimeHost, ComputerRuntimeHostEvent } from './runtime-host';
@@ -104,11 +105,7 @@ export class ComputerRuntimeDirectory {
     const detach = (): void => {
       if (this.hosts.get(computerRuntimeKey(target)) === attached) this.detach(target, owned);
     };
-    this.store.computerRuntimes.cache(
-      target,
-      unavailableRuntime(target.runtime),
-      this.store.computerRuntimes.models(target),
-    );
+    this.cached(target, unavailableRuntime(target.runtime));
     this.changed(target);
     return detach;
   }
@@ -118,7 +115,7 @@ export class ComputerRuntimeDirectory {
   status(target: ComputerRuntimeTarget): ComputerRuntimeStatus {
     this.computer(target);
     return runtimeDirectoryStatus(
-      { store: this.store, localDeviceId: this.localDeviceId },
+      { state: this.store.live.computers, localDeviceId: this.localDeviceId },
       target,
       this.hosts.get(computerRuntimeKey(target)),
     );
@@ -130,8 +127,13 @@ export class ComputerRuntimeDirectory {
     this.computer(target);
     if (patch.runtime !== target.runtime)
       throw new ApiError('invalid_request', 'Runtime patch and path must agree.');
-    this.store.computerNativeMcpPolicy.denyLegacy(target, patch.settings.control);
-    const previous = this.store.computerRuntimes.settings(target);
+    await this.store.host.call(
+      'computerNativeMcpPolicy',
+      'denyLegacy',
+      target,
+      patch.settings.control,
+    );
+    const previous = this.store.live.computers.runtimeSettings(target);
     const settings = COMPUTER_RUNTIME_SETTINGS.parse({
       runtime: target.runtime,
       settings: {
@@ -145,7 +147,7 @@ export class ComputerRuntimeDirectory {
       request: { operation: 'configure', settings: settings.settings },
     });
     if (attached !== undefined) await this.send(target, attached, request, COMPUTER_RUNTIME_REPLY);
-    this.store.computerRuntimes.saveSettings(target, settings);
+    await this.store.live.computers.saveRuntimeSettings(target, settings);
     this.changed(target);
     return this.status(target);
   }
@@ -179,8 +181,8 @@ export class ComputerRuntimeDirectory {
     assertPublicRuntimeRequest(request);
     if (request.runtime !== target.runtime)
       throw new ApiError('invalid_request', 'Runtime request and path must agree.');
-    assertNativeEffectsReconciled(this.store, target, request);
-    const profileId = profileIdOf(this.store, caller);
+    await assertNativeEffectsReconciled(this.store, target, request);
+    const profileId = profileIdOf(caller);
     const owner = { profileId, clientId: caller.client.id };
     const current = this.hosts.get(computerRuntimeKey(target));
     let attached: AttachedRuntime;
@@ -205,7 +207,7 @@ export class ComputerRuntimeDirectory {
   async models(target: ComputerRuntimeTarget): Promise<ComputerRuntimeModel[]> {
     const reason = runtimeModelUnavailableReason(this.status(target));
     if (reason !== null)
-      return this.store.computerRuntimes.models(target).map((model) => ({
+      return this.store.live.computers.runtimeModels(target).map((model) => ({
         ...model,
         available: false,
         reason,
@@ -233,7 +235,7 @@ export class ComputerRuntimeDirectory {
         );
       return model;
     });
-    this.store.computerRuntimes.cache(target, this.status(target).capabilities, parsed);
+    await this.store.live.computers.cacheRuntime(target, this.status(target).capabilities, parsed);
     this.changed(target);
     return parsed;
   }
@@ -347,11 +349,7 @@ export class ComputerRuntimeDirectory {
     if (attached !== source || event.runtime !== target.runtime) return;
     if (event.kind === 'capabilities') {
       attached.capabilities = COMPUTER_RUNTIME_CAPABILITIES.parse(event.capabilities);
-      this.store.computerRuntimes.cache(
-        target,
-        event.capabilities,
-        this.store.computerRuntimes.models(target),
-      );
+      this.cached(target, event.capabilities);
       this.changed(target);
     }
     const profileId =
@@ -374,7 +372,7 @@ export class ComputerRuntimeDirectory {
       runtime,
       request: {
         operation: 'configure',
-        settings: this.store.computerRuntimes.settings(target).settings,
+        settings: this.store.live.computers.runtimeSettings(target).settings,
       },
     });
     if (isRuntimeRead(request))
@@ -384,12 +382,17 @@ export class ComputerRuntimeDirectory {
     });
   }
   changed(target: ComputerRuntimeTarget): void {
-    if (this.store.devices.find(target.device_id) === undefined) return;
+    if (!this.store.live.computers.exists(target.device_id)) return;
     const status = this.status(target);
     this.changes.emit(`${target.device_id}:${target.runtime}`, status);
   }
+  private cached(target: ComputerRuntimeTarget, capabilities: ComputerRuntimeCapabilities): void {
+    const { computers } = this.store.live;
+    const work = computers.cacheRuntime(target, capabilities, computers.runtimeModels(target));
+    background(work, 'computer.runtime_cache_failed', { ...target });
+  }
   private computer(target: ComputerRuntimeTarget): void {
-    if (this.store.devices.byId(target.device_id).kind !== 'computer')
+    if (this.store.live.computers.kind(target.device_id) !== 'computer')
       throw new ApiError('invalid_request', 'Runtime operations require a computer device.');
   }
 }

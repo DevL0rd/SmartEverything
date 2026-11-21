@@ -256,3 +256,24 @@ describe('closing and reopening a session', () => {
     await expect(host.runtime.create(options)).rejects.toThrow(/already open/u);
   });
 });
+
+describe('a turn that fails while input waits for the next turn', () => {
+  it('discards the waiting input instead of leaving the session waiting for it forever', async () => {
+    const host = await booted();
+    host.model.script({
+      kind: 'fail',
+      failure: { code: 'AUTH', message: '403: Key limit exceeded' },
+    });
+    const session = await host.runtime.create(host.sessionOptions());
+
+    session.text('first');
+    session.text('second');
+
+    await vi.waitFor(() => {
+      expect(host.events.some((event) => event.kind === 'discarded')).toBe(true);
+    });
+    expect(session.work().queuedMessages).toBe(0);
+    expect(session.work().turn).toBe(false);
+    expect(host.model.requests).toHaveLength(1);
+  });
+});

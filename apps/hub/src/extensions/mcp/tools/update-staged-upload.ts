@@ -21,12 +21,12 @@ export interface StagedUploadRequest {
 }
 
 async function githubUpload(context: ToolContext, request: StagedUploadRequest): Promise<string> {
-  requireUpdateRequester(context);
+  await requireUpdateRequester(context);
   const { layout } = context;
   try {
     const upload = await stageGithubRelease(
       {
-        ...githubRepositoryOf(layout),
+        ...(await githubRepositoryOf(layout)),
         staging: releaseStaging(layout, () => context.clock.now()),
         token: await githubReleaseToken(layout.system.keys),
         fetch,
@@ -63,7 +63,7 @@ export async function discardStagedUpload(
   context: Pick<ToolContext, 'actor' | 'caller' | 'store' | 'layout' | 'clock'>,
   upload: string,
 ): Promise<ToolOutput> {
-  requireUpdateRequester(context);
+  await requireUpdateRequester(context);
   return {
     structured: {
       discarded: await releaseStaging(context.layout, () => context.clock.now()).discard(upload),

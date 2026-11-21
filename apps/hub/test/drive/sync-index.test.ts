@@ -76,12 +76,10 @@ beforeEach(async () => {
   );
   server = createServer();
   server.on('upgrade', (request, socket, head) => {
-    try {
-      sync.upgrade(request, socket, head);
-    } catch (cause) {
+    sync.upgrade(request, socket, head).catch((cause: unknown) => {
       if (!(cause instanceof ApiError)) throw cause;
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
-    }
+    });
   });
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve);

@@ -1,5 +1,6 @@
 import { Logger, background } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
+import type { StoredMemory } from '../store/repositories/ai-memories';
 import type { Store } from '../store/store';
 import type { MemoryManager } from './manager';
 import type { Principals } from './principals';
@@ -11,7 +12,7 @@ const log = new Logger('hub.memory');
 export const SWEEP_EVERY_MS = 24 * 3_600_000;
 
 export interface UpkeepPorts {
-  readonly store: Pick<Store, 'aiMemories'>;
+  readonly store: Pick<Store, 'host'>;
   readonly manager: Pick<MemoryManager, 'expired'>;
   readonly review: Pick<MemoryReview, 'run'>;
   readonly principals: Pick<Principals, 'enabled' | 'of'>;
@@ -38,38 +39,41 @@ export class MemoryUpkeep {
   }
 
   async sweep(): Promise<void> {
-    await this.step('memory.purge_failed', () => {
-      this.purge();
-      return Promise.resolve();
+    await this.step('memory.purge_failed', async () => {
+      await this.purge();
     });
     await this.step('memory.expiry_failed', () => this.expire());
     await this.step('memory.review_failed', () => this.ports.review.run());
   }
 
-  purge(): number {
-    const { aiMemories } = this.ports.store;
+  async purge(): Promise<number> {
+    const { host } = this.ports.store;
     const now = this.ports.clock.now();
-    const gone = aiMemories
-      .all()
-      .filter(
-        (memory) => purgeable(memory, now) && this.ports.principals.enabled(memory.profile_id),
-      );
-    aiMemories.purge(gone.map((memory) => memory.id));
+    const gone: StoredMemory[] = [];
+    for (const memory of await host.call('aiMemories', 'all'))
+      if (purgeable(memory, now) && (await this.ports.principals.enabled(memory.profile_id)))
+        gone.push(memory);
+    await host.call(
+      'aiMemories',
+      'purge',
+      gone.map((memory) => memory.id),
+    );
     if (gone.length > 0) log.info('memory.purged', { count: gone.length });
     return gone.length;
   }
 
   async expire(): Promise<void> {
     const today = localDay(this.ports.clock.now(), this.ports.zone());
-    for (const memory of this.ports.store.aiMemories.expired(today)) {
-      if (this.cleaned.has(memory.id) || !this.ports.principals.enabled(memory.profile_id))
+    const { host } = this.ports.store;
+    for (const memory of await host.call('aiMemories', 'expired', today)) {
+      if (this.cleaned.has(memory.id) || !(await this.ports.principals.enabled(memory.profile_id)))
         continue;
-      const standing = this.ports.principals.of(memory.profile_id);
+      const standing = await this.ports.principals.of(memory.profile_id);
       if (standing === null) continue;
       await this.ports.manager.expired(standing.who, standing.chatId, memory);
       if (
-        this.ports.principals.enabled(memory.profile_id) &&
-        this.ports.store.aiMemories.expired(today).some((left) => left.id === memory.id)
+        (await this.ports.principals.enabled(memory.profile_id)) &&
+        (await host.call('aiMemories', 'expired', today)).some((left) => left.id === memory.id)
       ) {
         this.cleaned.add(memory.id);
         log.info('memory.expired_kept', { id: memory.id });

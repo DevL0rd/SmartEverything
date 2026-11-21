@@ -1,8 +1,8 @@
-import { lstatSync } from 'node:fs';
+import { lstat } from 'node:fs/promises';
 import type { FileStamp } from './intents';
 
-export function statSyncOf(path: string): FileStamp {
-  const stat = lstatSync(path, { bigint: true });
+export async function diskStampOf(path: string): Promise<FileStamp> {
+  const stat = await lstat(path, { bigint: true });
   return {
     dev: stat.dev,
     ino: stat.ino,

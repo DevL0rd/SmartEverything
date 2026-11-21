@@ -9,7 +9,7 @@ import { derivedPath, writeDerived } from '../../../src/photos/pipeline/derived-
 import { MediaJobRunner } from '../../../src/photos/pipeline/jobs';
 import { PhotoAi, openRouterClients } from '../../../src/photos/ai/service';
 import type { FaceDetector } from '../../../src/photos/ai/faces-job';
-import { DriveMediaJobsRepository } from '../../../src/store/repositories/drive-media-jobs';
+import { hostedJobs } from '../../../src/photos/pipeline/job-units';
 import type { DetectedFace } from '../../../src/vision/faces/engine';
 import { testLogger } from '../../support/logs';
 import { driveTestStore } from '../../drive/spaces-fixture';
@@ -168,12 +168,18 @@ function fetchOf(rig: {
   keyState: Rig['keyState'];
   byPreview: Map<string, string>;
 }): typeof fetch {
-  return (input, init) => {
+  return async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    const body = BODY.parse(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
+    const body = BODY.parse(JSON.parse(await bodyText(init?.body)));
     rig.sent.push({ path: new URL(url).pathname, body });
-    return Promise.resolve(respond(rig, new URL(url).pathname, body));
+    return respond(rig, new URL(url).pathname, body);
   };
+}
+
+async function bodyText(body: RequestInit['body']): Promise<string> {
+  if (typeof body === 'string') return body;
+  if (body instanceof Blob) return body.text();
+  throw new Error('The OpenRouter request has no JSON body.');
 }
 
 function respond(
@@ -225,7 +231,7 @@ function partsOf(opened: TestStore): Parts {
   });
   const log = testLogger('photos-ai');
   const runner = new MediaJobRunner({
-    jobs: new DriveMediaJobsRepository(store.context),
+    jobs: hostedJobs(store.host),
     limits: { image: 2, video: 2, io: 2, cloud: 2 },
     log,
     progress: (): void => undefined,
@@ -268,7 +274,7 @@ export async function makeRig(): Promise<Rig> {
   insertDriveRow(store.database, { id: memberRoot, scope: 'person', ownerId: member });
   const parts = partsOf(opened);
   const { runner, ai } = parts;
-  runner.start();
+  await runner.start();
   return {
     ...parts,
     owner,

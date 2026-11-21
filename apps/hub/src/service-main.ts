@@ -13,6 +13,8 @@ import {
 } from './service/data-preparation';
 import { confirmFileIoThreads } from './service/file-io-threads';
 import { BUNDLED_LOG_WORKER } from './logs/log-store';
+import { BUNDLED_CODEC_WORKER } from './codec/thread';
+import { BUNDLED_STORE_HOST } from './store/host/script';
 import { runService } from './service/runner';
 
 async function prepare(
@@ -27,6 +29,7 @@ async function prepare(
   process.once('SIGINT', stop);
   try {
     await prepareHubData(layout, new Logger('hub.data-preparation'), {
+      host: { script: BUNDLED_STORE_HOST, readers: 1 },
       signal: abort.signal,
       ...(location === undefined ? {} : { location }),
     });
@@ -56,6 +59,8 @@ export async function startService(): Promise<void> {
     pointer: location,
     fileIoThreads,
     logWorkerScript: BUNDLED_LOG_WORKER,
+    codecWorkerScript: BUNDLED_CODEC_WORKER,
+    storeHostScript: BUNDLED_STORE_HOST,
     exit,
     onSignal: (signal, handler) => {
       process.once(signal, handler);

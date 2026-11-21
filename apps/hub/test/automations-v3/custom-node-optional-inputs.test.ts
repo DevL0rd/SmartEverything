@@ -110,7 +110,7 @@ function saved(rig: RigV3, definition: FunctionV4): string {
 
 async function runOnce(rig: RigV3, nodes: readonly FlowNode[]): Promise<string | null> {
   const row = rig.add(program(nodes));
-  rig.engine.sync();
+  await rig.engine.sync();
   rig.engine.start(row.id, {}, null);
   await rig.until(() => rig.finished.length === 1);
   return rig.runs(row.id).map((record) => record.error)[0] ?? null;
@@ -166,7 +166,7 @@ describe('optional Custom Node inputs on the hub', () => {
         { inputs: [{ name: 'level', type: { t: 'number' }, required: false }] },
       ),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.start(row.id, {}, null);
     await rig.until(() => rig.finished.length === 1);
     rig.engine.start(row.id, { level: 40 }, null);
@@ -180,12 +180,13 @@ describe('optional Custom Node inputs on the hub', () => {
     const row = rig.add(
       program(probeCalls(saved(rig, graphFunction(PROBE, STATIC_KIND_LOOKUP)), rig.home.lampId)),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     const rehearsal = await rehearsals({
       clock: rig.clock,
       base: rig.world(),
       watch: () => (): void => undefined,
       subjectOf: (automationId) => rig.engine.subjectOf(automationId),
+      heldSubject: (automationId) => rig.engine.heldSubject(automationId),
       zone: () => 'UTC',
     }).run({
       automationId: row.id,

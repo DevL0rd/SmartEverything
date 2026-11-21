@@ -109,6 +109,7 @@ async function rig(): Promise<Rig> {
   const files = new AssistantFiles({
     layout: hubLayout(db.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: clock.now,
   });
   const unused = (): never => {
@@ -134,7 +135,7 @@ async function rig(): Promise<Rig> {
   };
   let answer: Answer = (name) => defaultAnswer(name);
   const tools: Pick<ToolHub, 'check' | 'call'> = {
-    check: (name, args) => checked(name, args),
+    check: (name, args) => Promise.resolve(checked(name, args)),
     call: (name, args, caller) => {
       calls.push({ name, args, caller });
       return Promise.resolve(answer(name, args));
@@ -278,6 +279,7 @@ describe('chat.post', () => {
     const files = new AssistantFiles({
       layout: hubLayout(home.db.directory, {}),
       chat: home.db.store.assistantChat,
+      attachments: home.db.store.live.attachments,
       now: (): Date => new Date(NOW),
     });
     const theirs = await files.keepBytes({
@@ -685,7 +687,7 @@ describe('ai.vision sources', () => {
     const home = await rig();
     const strays = {
       ...home.tools,
-      check: (): ToolCheck => ({ ok: false, reason: 'no such thing' }),
+      check: (): Promise<ToolCheck> => Promise.resolve({ ok: false, reason: 'no such thing' }),
     };
     await expect(
       visionPicture({ ...home, tools: strays }, { source: 'phone_screen' }, WHO),

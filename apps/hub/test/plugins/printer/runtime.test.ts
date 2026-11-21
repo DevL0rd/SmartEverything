@@ -88,7 +88,7 @@ function hostOf(current: Fixture): PrinterPluginHost {
     files: {
       folder: current.folder,
       outbox: current.folder,
-      attachmentsOf: (): readonly string[] => [],
+      attachmentsOf: (): Promise<readonly string[]> => Promise.resolve([]),
       fromUpload: () => Promise.resolve(null),
       fromPicture: () => Promise.resolve(null),
       fromMachine: () => Promise.resolve(null),

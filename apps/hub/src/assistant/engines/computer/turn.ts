@@ -1,3 +1,4 @@
+import { background } from '@smarteverything/logging';
 import { effectiveTools } from '../../tool-scope';
 import { effectiveClientById, hasOwnerDevice } from '../../../server/person-access';
 import { computerEngine, type ComputerEngine } from '../../engine-kind';
@@ -48,7 +49,11 @@ export function openProviderTurn(
   });
   const { stream, replies } = providerOutput(deps, event, bound);
   const grant = grantOf(deps, chat);
-  deps.conversation.stateOf(event.message_id, 'working');
+  background(
+    deps.conversation.stateOf(event.message_id, 'working'),
+    'computer.message_state_failed',
+    { eventId: event.id },
+  );
   stream.snapshot('thinking', null, null);
   return {
     jobId: randomUUID(),

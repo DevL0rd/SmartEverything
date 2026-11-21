@@ -12,10 +12,10 @@ export function deviceHealthHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
     'device.health': (inputs): ReadResult => {
       const { device: id } = parseInputs('device.health', DEVICE_HEALTH, inputs);
-      const device = deviceById(deps.store, id);
+      const device = deviceById(deps.world, id);
       const battery = withRole(presentDevice(device), 'battery');
       const level = battery === undefined ? undefined : deps.observed(device.id, battery.key);
-      const observations = deps.store.state.ofDevice(device.id).map((row) => row.observed_at);
+      const observations = deps.world.state.ofDevice(device.id).map((row) => row.observed_at);
       const lastSeen = observations.length === 0 ? undefined : observations.sort().at(-1);
       return outputsOf({
         online: device.online,

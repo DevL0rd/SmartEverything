@@ -10,7 +10,7 @@ import type { HashPool } from './workers';
 
 export interface StagingEnv {
   readonly files: DriveFiles;
-  readonly store: Pick<Store, 'driveRoots'>;
+  readonly store: Pick<Store, 'host'>;
   readonly hashes: () => HashPool;
 }
 
@@ -41,11 +41,14 @@ export class Staging {
   }
 
   async path(rootId: string, commitId: number): Promise<string> {
-    return locate(this.env.store.driveRoots.byId(rootId), mountStagingRelPath(commitId));
+    return locate(
+      await this.env.store.host.call('driveRoots', 'byId', rootId),
+      mountStagingRelPath(commitId),
+    );
   }
 
   async ensure(rootId: string, commitId: number): Promise<void> {
-    const root = this.env.store.driveRoots.byId(rootId);
+    const root = await this.env.store.host.call('driveRoots', 'byId', rootId);
     await this.env.files.mkdir(await locate(root, TMP_DIRECTORY));
     const handle = await open(
       await this.path(rootId, commitId),

@@ -8,7 +8,7 @@ import { smtpTransport, type MailTransport } from './transport';
 
 export interface MailServiceDeps {
   readonly settings: MailSettingsStore;
-  readonly store: Pick<Store, 'mailLog'>;
+  readonly store: Pick<Store, 'host'>;
   readonly log: Logger;
   readonly transport?: MailTransport;
 }
@@ -44,8 +44,8 @@ export class MailService {
     return this.deps.settings.config()?.from_name ?? null;
   }
 
-  recent(count: number): MailLogRow[] {
-    return this.deps.store.mailLog.recent(count);
+  recent(count: number): Promise<MailLogRow[]> {
+    return this.deps.store.host.call('mailLog', 'recent', count);
   }
 
   async send(message: MailMessage): Promise<MailResult> {
@@ -57,7 +57,7 @@ export class MailService {
     } catch (cause) {
       result = { outcome: 'failed', detail: failureDetail(cause) };
     }
-    this.record(message, result);
+    await this.record(message, result);
     return result;
   }
 
@@ -75,8 +75,8 @@ export class MailService {
     });
   }
 
-  private record(message: MailMessage, result: MailResult): void {
-    this.deps.store.mailLog.insert({
+  private async record(message: MailMessage, result: MailResult): Promise<void> {
+    await this.deps.store.host.call('mailLog', 'insert', {
       kind: message.kind,
       to_hash: addressHash(message.to),
       subject: message.subject,

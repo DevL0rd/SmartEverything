@@ -23,6 +23,7 @@ describe('delegating from a native conversation', () => {
         new AssistantFiles({
           layout: hubLayout(rig.opened.directory, {}),
           chat: store.assistantChat,
+          attachments: store.live.attachments,
           now,
         }),
       ),

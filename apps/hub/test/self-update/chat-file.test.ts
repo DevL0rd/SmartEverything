@@ -158,6 +158,7 @@ describe('claimable chat files', () => {
       const files = new AssistantFiles({
         layout,
         chat: store.assistantChat,
+        attachments: store.live.attachments,
         now: (): Date => NOW,
       });
 

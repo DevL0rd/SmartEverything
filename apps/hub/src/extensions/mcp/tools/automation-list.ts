@@ -56,16 +56,15 @@ function wanted(
   );
 }
 
-export function listAutomations(
+export async function listAutomations(
   context: Pick<ToolContext, 'store' | 'actor'>,
   filter: AutomationFilter,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   const roomOfDevice = new Map<string, RoomRow>();
-  for (const placed of placedDevices(context.store, deviceScopeOfActor(context))) {
+  for (const placed of await placedDevices(context.store, deviceScopeOfActor(context))) {
     if (placed.room !== null) roomOfDevice.set(placed.device.id, placed.room);
   }
-  const listed = context.store.automations
-    .list()
+  const listed = (await context.store.host.call('automations', 'list'))
     .map((automation) => ({ automation, rooms: roomsOf(automation, roomOfDevice) }))
     .filter(({ automation, rooms }) => wanted(filter, automation, rooms))
     .map(({ automation, rooms }) => ({ ...automation, rooms: rooms.map((room) => room.name) }));

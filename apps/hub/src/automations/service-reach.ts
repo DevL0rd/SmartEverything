@@ -8,22 +8,20 @@ import {
   type GraphNode,
   type JsonValue,
   type NodeKindLookup,
-  type PluginOrigin,
 } from '@smarteverything/domain';
 import type { Manifest } from '@smarteverything/flow/compile/manifest';
-import { pluginOriginOf } from '../ai-tools/plugin-turn';
-import type { ToolHub } from '../ai-tools/tool-hub';
-import { hiddenComputer, viewerOf } from '../computers/computer-access';
+import { viewerOf } from '../computers/computer-access';
+import { hiddenComputer } from '../computers/computer-visibility';
 import { resolveTarget } from '../device-groups/commands';
 import { assertPhoneCommandAllowed } from '../phones/phone-access';
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
 import { commandRole } from '../server/commands';
-import { assertDevicesReach } from '../server/person-scope';
+import type { Refusal } from '../server/person-access';
+import { devicesReachWhy } from '../server/person-scope';
 import { installedSignalSources } from '../signals/sources/installed';
 import type { Store } from '../store/store';
 
 const SIGNAL_KIND = 'trigger.signal';
-const TOOL_KIND = 'tool.call';
 
 function literalOf(node: Pick<GraphNode, 'ports'>, port: string): JsonValue | undefined {
   const value = node.ports?.[port];
@@ -59,7 +57,7 @@ export function requireOwnerForTriggers(
 }
 
 export function requireVisibleComputers(store: Store, caller: Caller, manifest: Manifest): void {
-  const viewer = viewerOf(store, caller);
+  const viewer = viewerOf(caller);
   for (const id of manifest.uses.computer) {
     const device = store.devices.find(id);
     if (device !== undefined && hiddenComputer(store, viewer, device)) {
@@ -80,12 +78,11 @@ function reachedDevices(store: Store, uses: Manifest['uses']): readonly DeviceRo
 }
 
 function requirePhoneAccess(
-  store: Store,
   caller: Caller,
   devices: readonly DeviceRow[],
   controls: readonly string[],
 ): void {
-  const viewer = { role: commandRole(caller), profileId: profileIdOf(store, caller) };
+  const viewer = { role: commandRole(caller), profileId: profileIdOf(caller) };
   for (const device of devices.filter((candidate) => candidate.kind === 'phone')) {
     for (const control of controls) {
       const presented = targetCapability(device, control);
@@ -94,14 +91,36 @@ function requirePhoneAccess(
   }
 }
 
+export class ReachRefusedError extends Error {
+  override readonly name = 'ReachRefusedError';
+
+  constructor(readonly why: Refusal) {
+    super(why.message);
+  }
+}
+
+export type Reached<T> =
+  | { readonly kind: 'reached'; readonly value: T }
+  | { readonly kind: 'refused'; readonly why: Refusal };
+
+export function reached<T>(work: () => T): Reached<T> {
+  try {
+    return { kind: 'reached', value: work() };
+  } catch (cause) {
+    if (cause instanceof ReachRefusedError) return { kind: 'refused', why: cause.why };
+    throw cause;
+  }
+}
+
 export function requireReachableTargets(store: Store, caller: Caller, manifest: Manifest): void {
   const devices = reachedDevices(store, manifest.uses);
-  assertDevicesReach(
+  const why = devicesReachWhy(
     store,
     caller,
     devices.map((device) => device.id),
   );
-  requirePhoneAccess(store, caller, devices, manifest.uses.control);
+  if (why !== null) throw new ReachRefusedError(why);
+  requirePhoneAccess(caller, devices, manifest.uses.control);
 }
 
 export function requireKnownSignals(store: Store, program: AutomationV4): void {
@@ -122,25 +141,8 @@ export function requireKnownSignals(store: Store, program: AutomationV4): void {
   }
 }
 
-export function authorOf(store: Store, caller: Caller): AutomationAuthor {
+export function authorOf(caller: Caller): AutomationAuthor {
   const assistant =
     caller.kind === 'service' || (caller.kind === 'client' && caller.via === 'assistant');
-  return { via: assistant ? 'assistant' : 'person', profile_id: profileIdOf(store, caller) };
-}
-
-export function originOf(
-  tools: Pick<ToolHub, 'pluginTurnRefusal'>,
-  caller: Caller,
-  program: AutomationV4,
-): PluginOrigin | null {
-  const plugin = caller.kind === 'client' ? pluginOriginOf(caller) : null;
-  if (plugin === null) return null;
-  for (const node of program.nodes.filter((candidate) => candidate.kind === TOOL_KIND)) {
-    const name = literalOf(node, 'tool');
-    const args = literalOf(node, 'args');
-    const refusal =
-      typeof name === 'string' ? tools.pluginTurnRefusal(name, isMatch(args) ? args : {}) : null;
-    if (refusal !== null) throw refusal;
-  }
-  return plugin;
+  return { via: assistant ? 'assistant' : 'person', profile_id: profileIdOf(caller) };
 }

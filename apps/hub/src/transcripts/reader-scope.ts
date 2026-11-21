@@ -45,7 +45,7 @@ export function admitTranscriptSource(
     return;
   }
   const device = sourceId === undefined ? undefined : store.devices.find(sourceId);
-  if (device === undefined || personOfDevice(store, device) !== profileIdOf(store, caller)) {
+  if (device === undefined || personOfDevice(store, device) !== profileIdOf(caller)) {
     throw new ApiError('forbidden', `Members read only the speech of their own ${source}.`);
   }
 }

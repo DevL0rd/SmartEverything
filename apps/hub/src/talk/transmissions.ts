@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   LISTEN_SECONDS_MAX,
   TALK_SECONDS_MAX,
+  type TalkMemberKind,
   type TalkMessageKind,
   type TalkSpeaker,
 } from '@smarteverything/domain';
@@ -9,15 +10,14 @@ import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import type { CameraMicrophones } from './camera-microphone';
 import type { CameraSpeakers } from './camera-speaker';
-import { memberLabel } from './labels';
 import type { TalkMembership } from './membership';
 import type { Recording, TalkRecorder } from './recorder';
 import type { TalkListening } from './talk-listening';
 import type { PacketSink, TalkEndpoint, Transmission } from './transmission';
-import { messageOf } from '@smarteverything/logging';
+import { background, messageOf } from '@smarteverything/logging';
 
 export interface TransmissionsOptions {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host'>;
   readonly membership: TalkMembership;
   readonly recorder: TalkRecorder;
   readonly speakers: CameraSpeakers;
@@ -42,6 +42,7 @@ interface Opening {
 
 export class Transmissions {
   private readonly recordings = new Map<string, Recording>();
+  private readonly started = new Map<string, Promise<unknown>>();
   private listening: Pick<TalkListening, 'open'> | null = null;
 
   constructor(private readonly options: TransmissionsOptions) {}
@@ -59,7 +60,7 @@ export class Transmissions {
       owner,
       channelId,
       kind: 'talk',
-      speaker: this.clientSpeaker(owner.clientId),
+      speaker: this.speaker(channelId, 'client', owner.clientId),
       stopSource: () => undefined,
       skipCamera: null,
     });
@@ -72,7 +73,7 @@ export class Transmissions {
       owner,
       channelId,
       kind: 'listen',
-      speaker: this.cameraSpeaker(cameraId),
+      speaker: this.speaker(channelId, 'camera', cameraId),
       stopSource: () => {
         stopped = true;
         stop();
@@ -103,12 +104,15 @@ export class Transmissions {
   }
 
   async finish(transmission: Transmission, bytes: number): Promise<void> {
+    const started = this.started.get(transmission.messageId);
+    this.started.delete(transmission.messageId);
     transmission.stopSource();
     transmission.sinks.forEach((sink) => {
       sink.end();
     });
     const recording = this.recordings.get(transmission.messageId);
     this.recordings.delete(transmission.messageId);
+    await started;
     const saved = recording === undefined ? false : await recording.saved();
     const channel = this.options.membership.channel(transmission.channelId);
     if (channel === undefined) {
@@ -117,7 +121,7 @@ export class Transmissions {
       }
       return;
     }
-    this.options.store.talk.finishMessage(transmission.messageId, {
+    await this.options.store.host.call('talk', 'finishMessage', transmission.messageId, {
       durationMs: this.options.now().getTime() - transmission.startedAt.getTime(),
       bytes: saved ? bytes : 0,
       storagePath: saved && recording !== undefined ? recording.storagePath : null,
@@ -128,7 +132,7 @@ export class Transmissions {
   private open(opening: Opening): Transmission {
     const messageId = randomUUID();
     const startedAt = this.options.now();
-    this.options.store.talk.startMessage({
+    const started = this.options.store.host.call('talk', 'startMessage', {
       id: messageId,
       channel_id: opening.channelId,
       speaker_kind: opening.speaker.kind,
@@ -138,6 +142,8 @@ export class Transmissions {
       kind: opening.kind,
       started_at: startedAt.toISOString(),
     });
+    this.started.set(messageId, started);
+    background(started, 'talk.message_start_failed', { messageId });
     return {
       messageId,
       channelId: opening.channelId,
@@ -167,11 +173,7 @@ export class Transmissions {
     return sinks;
   }
 
-  private clientSpeaker(clientId: string): TalkSpeaker {
-    return { kind: 'client', id: clientId, ...memberLabel(this.options.store, 'client', clientId) };
-  }
-
-  private cameraSpeaker(cameraId: string): TalkSpeaker {
-    return { kind: 'camera', id: cameraId, ...memberLabel(this.options.store, 'camera', cameraId) };
+  private speaker(channelId: string, kind: TalkMemberKind, id: string): TalkSpeaker {
+    return { kind, id, ...this.options.membership.labelOf(channelId, kind, id) };
   }
 }

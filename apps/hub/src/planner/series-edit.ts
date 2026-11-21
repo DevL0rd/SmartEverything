@@ -172,12 +172,23 @@ function overrideAt(store: SeriesStore, target: Target): PlannerItemRow | undefi
     );
 }
 
+function carriedOf(master: PlannerItemRow): PlannerItemInput {
+  const {
+    id: _id,
+    created_at: _created,
+    updated_at: _updated,
+    deleted_at: _deleted,
+    ...carried
+  } = master;
+  return carried;
+}
+
 function overrideRow(
   master: PlannerItemRow,
   slot: Slot,
   changes: PlannerItemChanges,
 ): PlannerItemInput {
-  const carried: PlannerItemInput = master;
+  const carried = carriedOf(master);
   const seeded: PlannerItemInput = {
     ...carried,
     start_local: slot.local,
@@ -289,7 +300,7 @@ function tailRow(
   changes: PlannerItemChanges,
 ): PlannerItemInput {
   const rrule = changes.rrule === undefined ? remainingRule(master, slot) : changes.rrule;
-  const carried: PlannerItemInput = master;
+  const carried = carriedOf(master);
   const seeded: PlannerItemInput = {
     ...carried,
     start_local: slot.local,

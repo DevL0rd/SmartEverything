@@ -36,7 +36,7 @@ export const OLDEST_SUPPORTED_GLIBC: GlibcVersion = [2, 31];
 
 const CLAUDE_SDK = '@anthropic-ai/claude-agent-sdk';
 export const OPENVINO_PACKAGE = 'openvino-node';
-const OPENVINO_FILES = [
+export const OPENVINO_FILES = [
   'ov_node_addon.node',
   'libopenvino_intel_cpu_plugin.so',
   'libopenvino_intel_gpu_plugin.so',

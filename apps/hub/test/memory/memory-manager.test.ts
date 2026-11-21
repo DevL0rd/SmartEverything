@@ -86,7 +86,8 @@ beforeEach(async () => {
         ? Promise.reject(next)
         : Promise.resolve(next ?? '{"operations":[]}');
     },
-    nameOf: (profileId): string => opened.store.profiles.byId(profileId).name,
+    nameOf: (profileId): Promise<string> =>
+      Promise.resolve(opened.store.profiles.byId(profileId).name),
     now: (): Date => new Date('2026-11-05T10:00:00.000Z'),
     sleep: (ms): Promise<void> => {
       slept.push(ms);
@@ -344,7 +345,7 @@ describe('the retries of the memory manager', () => {
     const interrupted = new ManagerModel({
       selected: (): string => selected,
       complete,
-      nameOf: (): string => 'Ida',
+      nameOf: (): Promise<string> => Promise.resolve('Ida'),
       now: (): Date => clock,
       sleep: (): Promise<void> => Promise.resolve(),
     });

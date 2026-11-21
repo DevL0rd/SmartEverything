@@ -14,7 +14,8 @@ import type { PublicRsvp } from '../planner/invites/public';
 import { bookingPageHtml } from '../planner/public-pages/booking-page';
 import { rsvpPageHtml } from '../planner/public-pages/rsvp-page';
 import { noticePageHtml } from '../planner/public-pages/shell';
-import { apiErrorFor, invalid } from './errors';
+import { apiErrorFor } from './errors';
+import { invalid } from './invalid';
 import { PUBLIC_BODY_LIMIT, parseJsonBody, readBody, sendJson } from './http';
 import type { RawRoute } from './http-server';
 
@@ -92,16 +93,16 @@ function tokenOf(params: Params): string {
   return params['token'] ?? '';
 }
 
-function rsvpPage(
+async function rsvpPage(
   services: PlannerPublicServices,
   request: IncomingMessage,
   response: ServerResponse,
   params: Params,
-): void {
+): Promise<void> {
   try {
     const token = tokenOf(params);
     const { answer = null } = queryOf(request, PLANNER_RSVP_PAGE_QUERY);
-    sendHtml(response, 200, rsvpPageHtml(services.rsvp.pageOf(token), { token, answer }));
+    sendHtml(response, 200, rsvpPageHtml(await services.rsvp.pageOf(token), { token, answer }));
   } catch (cause) {
     sendProblem(response, cause);
   }
@@ -117,40 +118,52 @@ async function rsvpAnswer(
   const asForm = (request.headers['content-type'] ?? '').toLowerCase().startsWith(FORM_TYPE);
   try {
     const answer = await bodyOf(request, PLANNER_RSVP_BODY);
-    const receipt = services.rsvp.respond(token, { response: answer.response, note: answer.note });
+    const receipt = await services.rsvp.respond(token, {
+      response: answer.response,
+      note: answer.note,
+    });
     if (!asForm) {
       sendJson(response, 200, receipt);
       return;
     }
-    sendHtml(response, 200, rsvpPageHtml(services.rsvp.pageOf(token), { token, answer: null }));
+    sendHtml(
+      response,
+      200,
+      rsvpPageHtml(await services.rsvp.pageOf(token), { token, answer: null }),
+    );
   } catch (cause) {
     if (!asForm) throw cause;
     sendProblem(response, cause);
   }
 }
 
-function bookingPage(
+async function bookingPage(
   services: PlannerPublicServices,
   _request: IncomingMessage,
   response: ServerResponse,
   params: Params,
-): void {
+): Promise<void> {
   try {
     const nonce = randomBytes(16).toString('base64');
-    sendHtml(response, 200, bookingPageHtml(services.booking.view(tokenOf(params)), nonce), nonce);
+    sendHtml(
+      response,
+      200,
+      bookingPageHtml(await services.booking.view(tokenOf(params)), nonce),
+      nonce,
+    );
   } catch (cause) {
     sendProblem(response, cause);
   }
 }
 
-function bookingSlots(
+async function bookingSlots(
   services: PlannerPublicServices,
   request: IncomingMessage,
   response: ServerResponse,
   params: Params,
-): void {
+): Promise<void> {
   const query = queryOf(request, PLANNER_BOOKING_SLOTS_QUERY);
-  sendJson(response, 200, services.booking.slots(tokenOf(params), query));
+  sendJson(response, 200, await services.booking.slots(tokenOf(params), query));
 }
 
 async function bookingBook(

@@ -12,7 +12,7 @@ import { enabledTools, runTool } from './dispatch';
 import { resourceList, resourceRead } from './resources';
 import { COMMON_TOOL_NAMES } from '../../ai-tools/tool-sets';
 import { TOOLS } from './tools';
-import type { ToolContext, ToolOutput } from './tools/registry';
+import type { Tool as HubTool, ToolContext, ToolOutput } from './tools/registry';
 
 const CAPABILITIES = { tools: { listChanged: true }, resources: {} } as const;
 
@@ -92,23 +92,24 @@ export function notifierServer(): McpServer {
   return new McpServer(SERVER_INFO, { capabilities: CAPABILITIES });
 }
 
-export function createMcpServer(context: ToolContext, log: Logger, userAgent: string): McpServer {
+export function createMcpServer(
+  context: ToolContext,
+  log: Logger,
+  userAgent: string,
+  enabled: readonly HubTool[],
+): McpServer {
   const listed = listedFor(userAgent);
   log.debug('server.created', { via: context.caller?.via, clientId: context.actor?.clientId });
   const mcp = new McpServer(SERVER_INFO, {
     capabilities: CAPABILITIES,
-    instructions: serverInstructions(enabledTools(context).map((tool) => tool.name)),
+    instructions: serverInstructions(enabled.map((tool) => tool.name)),
   });
   const { server } = mcp;
   server.onerror = (cause): void => {
     log.warn('request.rejected', { message: cause.message });
   };
-  server.setRequestHandler('tools/list', () => {
-    const enabled = new Set(
-      enabledTools(context)
-        .map((tool) => tool.name)
-        .filter(listed),
-    );
+  server.setRequestHandler('tools/list', async () => {
+    const enabled = new Set((await enabledTools(context)).map((tool) => tool.name).filter(listed));
     log.debug('tools.listed', {
       enabled: enabled.size,
       total: LISTED.length,
@@ -126,8 +127,8 @@ export function createMcpServer(context: ToolContext, log: Logger, userAgent: st
     log.trace('resources.listed', { via: context.caller?.via });
     return resourceList();
   });
-  server.setRequestHandler('resources/read', ({ params }) => {
-    const read = resourceRead(params.uri, enabledTools(context));
+  server.setRequestHandler('resources/read', async ({ params }) => {
+    const read = resourceRead(params.uri, await enabledTools(context));
     log.debug('resource.read', { found: read !== null, via: context.caller?.via });
     if (read === null) {
       throw new ProtocolError(ProtocolErrorCode.InvalidParams, 'Unknown resource');

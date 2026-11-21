@@ -26,7 +26,7 @@ const sessions: MemorySessions = {
     if (principal === undefined) throw new ApiError('forbidden', 'No grant.');
     return principal;
   },
-  latest: () => null,
+  latest: () => Promise.resolve(null),
 };
 
 function person(profileId: string, role: MemoryPrincipal['role']): MemoryPrincipal {

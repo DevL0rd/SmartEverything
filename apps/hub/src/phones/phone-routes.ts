@@ -37,7 +37,7 @@ export interface PhoneRouteContext {
   readonly approvals: Pick<MachineApprovals, 'has' | 'answer'>;
   readonly notifications: Pick<LiveNotifications, 'has' | 'answer'>;
   readonly now: () => Date;
-  readonly files: (caller: Caller, fileId: string) => PhoneFilePush;
+  readonly files: (caller: Caller, fileId: string) => Promise<PhoneFilePush>;
 }
 
 function allowedTarget(
@@ -47,10 +47,7 @@ function allowedTarget(
   action: PhoneAction,
 ): PhoneTarget {
   const target = context.hub.phones.target(device);
-  assertPhoneActionAllowed(
-    action.type,
-    tierOfViewer(target, phoneViewerOfCaller(context.store, caller)),
-  );
+  assertPhoneActionAllowed(action.type, tierOfViewer(target, phoneViewerOfCaller(caller)));
   return target;
 }
 
@@ -93,14 +90,14 @@ export function phoneRoutes(context: PhoneRouteContext): Routes<PhoneEndpointNam
   const { store, hub, actions, files } = context;
   return {
     reportPhone: bound(E.reportPhone, async ({ body, caller }) => {
-      await hub.phones.report(phoneIdentityOf(store, caller, 'reports as a phone'), body);
+      await hub.phones.report(phoneIdentityOf(caller, 'reports as a phone'), body);
       return DONE_REPLY;
     }),
     runPhoneAction: bound(E.runPhoneAction, async ({ params, body, caller }) => {
-      const device = store.devices.byId(params.deviceId);
+      const device = await store.host.call('devices', 'byId', params.deviceId);
       const target = allowedTarget(context, device, caller, body);
       const origin = originOf(caller);
-      const asked = body.type === 'receive_file' ? files(caller, body.fileId) : body;
+      const asked = body.type === 'receive_file' ? await files(caller, body.fileId) : body;
       const result = await actions.run(target, asked, origin);
       if (result.ok) {
         recordAction(context, device, body, origin);
@@ -112,19 +109,19 @@ export function phoneRoutes(context: PhoneRouteContext): Routes<PhoneEndpointNam
       return DONE_REPLY;
     }),
     readPhoneContext: bound(E.readPhoneContext, ({ query, caller }) =>
-      hub.phones.contextOf(query.profileId, profileIdOf(store, caller)),
+      hub.phones.contextOf(query.profileId, profileIdOf(caller)),
     ),
-    readPhoneDetail: bound(E.readPhoneDetail, ({ params, query, caller }) =>
+    readPhoneDetail: bound(E.readPhoneDetail, async ({ params, query, caller }) =>
       readPhoneDetail(
-        store,
-        hub.phones.target(store.devices.byId(params.deviceId)),
-        phoneViewerOfCaller(store, caller),
+        hub.phones.details,
+        hub.phones.target(await store.host.call('devices', 'byId', params.deviceId)),
+        phoneViewerOfCaller(caller),
         query.sections,
       ),
     ),
-    uploadPhoneIcon: bound(E.uploadPhoneIcon, ({ body, caller }) => {
+    uploadPhoneIcon: bound(E.uploadPhoneIcon, async ({ body, caller }) => {
       androidOnly(caller, 'uploads app icons');
-      savePhoneIcon(store, body);
+      await savePhoneIcon(store, body);
       return DONE_REPLY;
     }),
     readPhoneIcon: bound(E.readPhoneIcon, ({ params }) => readPhoneIcon(store, params.hash)),

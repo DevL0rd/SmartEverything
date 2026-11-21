@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AiChatRow } from '@smarteverything/domain';
 import type { HubLayout } from '../data-layout';
@@ -9,7 +9,7 @@ export function chatFolder(layout: HubLayout, chat: Pick<AiChatRow, 'id' | 'prof
   return layout.chat(chat.profile_id, chat.id).project;
 }
 
-export function ensureChatFolder(root: string): string {
-  for (const area of AREAS) mkdirSync(join(root, area), { recursive: true, mode: 0o700 });
+export async function ensureChatFolder(root: string): Promise<string> {
+  await Promise.all(AREAS.map((area) => mkdir(join(root, area), { recursive: true, mode: 0o700 })));
   return root;
 }

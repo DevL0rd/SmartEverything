@@ -39,6 +39,14 @@ export type GlbLodResult =
   | { readonly ok: true; readonly levels: readonly [GlbLod, GlbLod, GlbLod] }
   | { readonly ok: false; readonly problem: string };
 
+export type GlbPrepared =
+  | {
+      readonly ok: true;
+      readonly triangles: number;
+      readonly levels: readonly [GlbLod, GlbLod, GlbLod];
+    }
+  | { readonly ok: false; readonly stage: 'check' | 'lod'; readonly problem: string };
+
 const log = new Logger('hub.models');
 
 const GLB_MAGIC = 0x46546c67;
@@ -291,13 +299,11 @@ async function ensureSimplifier(): Promise<void> {
   if (!MeshoptSimplifier.supported) problem('cannot run the mesh simplifier without WebAssembly');
 }
 
-export async function decimateGlb(
+async function decimateChecked(
   content: Uint8Array,
-  targets: GlbLodTargets = GLB_LOD_TRIANGLE_TARGETS,
+  total: number,
+  targets: GlbLodTargets,
 ): Promise<GlbLodResult> {
-  const checked = checkGlb(content);
-  if (!checked.ok) return { ok: false, problem: `GLB ${checked.problem}` };
-  const total = checked.value.triangles;
   const operation = log.operation('model_lod.decimate', { triangles: total });
   try {
     await ensureSimplifier();
@@ -318,4 +324,23 @@ export async function decimateGlb(
     if (cause instanceof LodProblem) return { ok: false, problem: `GLB ${cause.message}` };
     throw cause;
   }
+}
+
+export async function decimateGlb(
+  content: Uint8Array,
+  targets: GlbLodTargets = GLB_LOD_TRIANGLE_TARGETS,
+): Promise<GlbLodResult> {
+  const checked = checkGlb(content);
+  if (!checked.ok) return { ok: false, problem: `GLB ${checked.problem}` };
+  return decimateChecked(content, checked.value.triangles, targets);
+}
+
+export async function prepareGlb(content: Uint8Array): Promise<GlbPrepared> {
+  const checked = checkGlb(content);
+  if (!checked.ok) return { ok: false, stage: 'check', problem: checked.problem };
+  const triangles = checked.value.triangles;
+  const lods = await decimateChecked(content, triangles, GLB_LOD_TRIANGLE_TARGETS);
+  return lods.ok
+    ? { ok: true, triangles, levels: lods.levels }
+    : { ok: false, stage: 'lod', problem: lods.problem };
 }

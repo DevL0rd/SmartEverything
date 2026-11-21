@@ -14,11 +14,13 @@ export class ListingCache {
   private readonly entries = new Map<string, Entry>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly byRoot = new Map<string, Set<string>>();
+  private readonly generations = new Map<string, number>();
 
-  constructor(
-    private seconds: number,
-    private readonly latestSeq: (rootId: string) => number,
-  ) {}
+  constructor(private seconds: number) {}
+
+  private generationOf(rootId: string): number {
+    return this.generations.get(rootId) ?? 0;
+  }
 
   setSeconds(seconds: number): void {
     this.seconds = seconds;
@@ -41,7 +43,7 @@ export class ListingCache {
     if (this.seconds === 0 || driveAccess(scope.caller, scope.drive) === 'none') return load();
     const rootId = scope.drive.id;
     const key = `${scope.placementId}\0${scope.caller.lockedFolder ?? 'closed'}\0${String(request.ino)}\0${String(request.cursor)}`;
-    const seq = this.latestSeq(rootId);
+    const seq = this.generationOf(rootId);
     const known = this.entries.get(key);
     if (known !== undefined) {
       if (known.seq === seq) {
@@ -56,6 +58,7 @@ export class ListingCache {
   }
 
   invalidateRoot(rootId: string): void {
+    this.generations.set(rootId, this.generationOf(rootId) + 1);
     const keys = this.byRoot.get(rootId);
     if (keys === undefined) return;
     for (const key of [...keys]) {

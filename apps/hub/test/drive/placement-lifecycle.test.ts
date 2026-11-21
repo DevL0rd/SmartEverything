@@ -1,6 +1,7 @@
 import type { DrivePlacement, DriveTrashEntry } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { HOLD_REASONS, PlacementLifecycle } from '../../src/drive/placement-lifecycle';
+import { PlacementLifecycle } from '../../src/drive/placement-lifecycle';
+import { HOLD_REASONS } from '../../src/drive/units/placement-reconcile';
 import { testLogger } from '../support/logs';
 import { putItem } from './spaces-fixture';
 import {
@@ -56,6 +57,7 @@ function entryOf(itemId: string, rootId: string, relPath: string): DriveTrashEnt
 }
 
 async function trashFolder(itemId: string, rootId: string, relPath: string): Promise<void> {
+  await lifecycle.settled();
   world.store.context.write(() => {
     world.store.driveTrash.insert(entryOf(itemId, rootId, relPath));
     world.store.driveItems.remove(itemId);
@@ -90,7 +92,6 @@ beforeEach(async () => {
   lifecycle = new PlacementLifecycle({
     store: world.store,
     placements: world.placements,
-    now: (): string => NOW,
     log: testLogger('placement-lifecycle'),
   });
   stop = lifecycle.start();
@@ -152,7 +153,7 @@ describe('purge', () => {
 });
 
 describe('access', () => {
-  it('holds a placement when a grant is removed and releases it when access is back', () => {
+  it('holds a placement when a grant is removed and releases it when access is back', async () => {
     share(ROBIN_TRIP, world.ida.profileId, 'edit');
     const placed = place(world, world.ida, world.idaDesk, {
       rootId: ROBIN_DRIVE,
@@ -161,11 +162,13 @@ describe('access', () => {
     });
     const grant = world.store.driveGrants.forPerson(ROBIN_TRIP, world.ida.profileId);
     world.store.driveGrants.remove(grant?.id ?? '');
+    await lifecycle.settled();
     expect(current(placed.id)).toMatchObject({
       hold: 'no_access',
       status: { state: 'stopped', reason: 'No access to this folder any more' },
     });
     share(ROBIN_TRIP, world.ida.profileId, 'edit');
+    await lifecycle.settled();
     expect(current(placed.id)).toMatchObject({ hold: null, status: { state: 'starting' } });
   });
 
@@ -193,45 +196,46 @@ describe('access', () => {
 });
 
 describe('read only', () => {
-  it('follows a grant changing from edit to view and back', () => {
+  it('follows a grant changing from edit to view and back', async () => {
     share(ROBIN_TRIP, world.ida.profileId, 'edit');
     const placed = place(world, world.ida, world.idaDesk, {
       rootId: ROBIN_DRIVE,
       folderItemId: ROBIN_TRIP,
       mountName: 'Trip',
     });
+    await lifecycle.settled();
     expect(current(placed.id).status.readOnly).toBe(false);
     share(ROBIN_TRIP, world.ida.profileId, 'view');
+    await lifecycle.settled();
     expect(current(placed.id).status.readOnly).toBe(true);
     share(ROBIN_TRIP, world.ida.profileId, 'edit');
+    await lifecycle.settled();
     expect(current(placed.id).status.readOnly).toBe(false);
   });
 
-  it('sends the computer the new placement when the access changes', () => {
+  it('sends the computer the new placement when the access changes', async () => {
     share(ROBIN_TRIP, world.ida.profileId, 'edit');
     place(world, world.ida, world.idaDesk, {
       rootId: ROBIN_DRIVE,
       folderItemId: ROBIN_TRIP,
       mountName: 'Trip',
     });
+    await lifecycle.settled();
     const heard: (readonly string[])[] = [];
     world.placements.onDeviceChanged((deviceIds) => heard.push(deviceIds));
     share(ROBIN_TRIP, world.ida.profileId, 'view');
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        expect(heard).toEqual([[world.idaDesk]]);
-        resolve();
-      }, 0);
-    });
+    await lifecycle.settled();
+    expect(heard).toEqual([[world.idaDesk]]);
   });
 });
 
 describe('computer', () => {
-  it('removes the rows of an unpaired computer and keeps the others', () => {
+  it('removes the rows of an unpaired computer and keeps the others', async () => {
     const gone = place(world, world.owner, world.ownerDesk);
     const kept = place(world, world.ida, world.idaDesk, { rootId: IDA_DRIVE });
     world.store.computerNodes.revoke(world.ownerDesk);
     lifecycle.deviceUnpaired(world.ownerDesk);
+    await lifecycle.settled();
     expect(world.store.drivePlacements.find(gone.id)).toBeUndefined();
     expect(world.store.drivePlacements.find(kept.id)).toBeDefined();
   });
@@ -255,13 +259,17 @@ describe('copies', () => {
 describe('held rows', () => {
   it('are not in activeFor while held and return when released', async () => {
     const placed = place(world, world.owner, world.ownerDesk, { folderItemId: ROMS });
-    expect(world.placements.activeFor(world.ownerDesk).map((one) => one.id)).toEqual([placed.id]);
+    expect((await world.placements.activeFor(world.ownerDesk)).map((one) => one.id)).toEqual([
+      placed.id,
+    ]);
     await trashFolder(ROMS, HOME_DRIVE, 'Roms');
-    expect(world.placements.activeFor(world.ownerDesk)).toEqual([]);
+    expect(await world.placements.activeFor(world.ownerDesk)).toEqual([]);
     expect(world.store.drivePlacements.forDevice(world.ownerDesk).map((one) => one.id)).toEqual([
       placed.id,
     ]);
     await restoreFolder(ROMS, HOME_DRIVE, 'Roms');
-    expect(world.placements.activeFor(world.ownerDesk).map((one) => one.id)).toEqual([placed.id]);
+    expect((await world.placements.activeFor(world.ownerDesk)).map((one) => one.id)).toEqual([
+      placed.id,
+    ]);
   });
 });

@@ -10,6 +10,8 @@ import { jsonText, SQL_JSON } from '../sql';
 
 const STORED = z.strictObject({ scopes: SQL_JSON.pipe(COMPUTER_SCOPES.partial()) });
 
+const STORED_ROW = STORED.extend({ device_id: z.string() });
+
 export class ComputerScopesRepository {
   constructor(private readonly context: StoreContext) {}
 
@@ -23,6 +25,15 @@ export class ComputerScopesRepository {
       return DEFAULT_COMPUTER_SCOPES;
     }
     return COMPUTER_SCOPES.parse({ ...DEFAULT_COMPUTER_SCOPES, ...row.scopes });
+  }
+
+  all(): { readonly deviceId: string; readonly scopes: ComputerScopes }[] {
+    return this.context.sql
+      .all(STORED_ROW, 'select device_id, scopes from computer_scopes order by device_id')
+      .map((row) => ({
+        deviceId: row.device_id,
+        scopes: COMPUTER_SCOPES.parse({ ...DEFAULT_COMPUTER_SCOPES, ...row.scopes }),
+      }));
   }
 
   update(deviceId: string, patch: ComputerScopesPatch): ComputerScopes {

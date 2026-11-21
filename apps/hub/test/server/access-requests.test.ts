@@ -69,9 +69,9 @@ function ownerPhone(): string {
   }).id;
 }
 
-function refusal(work: () => unknown): ApiError {
+async function refusal(work: () => Promise<unknown>): Promise<ApiError> {
   try {
-    work();
+    await work();
   } catch (error) {
     if (error instanceof ApiError) return error;
     throw error;
@@ -105,9 +105,13 @@ function lampIn(room: string): DeviceRow {
 }
 
 describe('asking the owner for more', () => {
-  it('stores the request and tells the owners at once', () => {
+  it('stores the request and tells the owners at once', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const row = requests.create(kid.id, { kind: 'area', target: 'settings', note: 'for the lamp' });
+    const row = await requests.create(kid.id, {
+      kind: 'area',
+      target: 'settings',
+      note: 'for the lamp',
+    });
     expect(row).toMatchObject({ status: 'pending', profile_id: kid.id, target: 'settings' });
     expect(raised).toHaveLength(1);
     expect(raised[0]).toMatchObject({
@@ -118,50 +122,52 @@ describe('asking the owner for more', () => {
     expect(raised[0]?.person).toBeUndefined();
   });
 
-  it('refuses an owner, a request for what they hold and a repeat of a pending request', () => {
+  it('refuses an owner, a request for what they hold and a repeat of a pending request', async () => {
     const boss = person('Boss', {}, 'owner');
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const owner = refusal(() =>
+    const owner = await refusal(() =>
       requests.create(boss.id, { kind: 'area', target: 'home', note: '' }),
     );
     expect(owner.message).toContain('already has everything');
-    const held = refusal(() => requests.create(kid.id, { kind: 'area', target: 'home', note: '' }));
+    const held = await refusal(() =>
+      requests.create(kid.id, { kind: 'area', target: 'home', note: '' }),
+    );
     expect(held.message).toContain('already have that');
-    requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
-    const again = refusal(() =>
+    await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    const again = await refusal(() =>
       requests.create(kid.id, { kind: 'area', target: 'settings', note: 'again' }),
     );
     expect(again.message).toContain('already asked');
   });
 
-  it('refuses an area that does not exist and a budget request without a budget', () => {
+  it('refuses an area that does not exist and a budget request without a budget', async () => {
     const kid = person('Kid', {});
-    const area = refusal(() =>
+    const area = await refusal(() =>
       requests.create(kid.id, { kind: 'area', target: 'attic', note: '' }),
     );
     expect(area.code).toBe('invalid_request');
-    const budget = refusal(() =>
+    const budget = await refusal(() =>
       requests.create(kid.id, { kind: 'budget', target: '5', note: '' }),
     );
     expect(budget.message).toContain('no AI budget');
   });
 
-  it('lists everything for the owner and only their own for a person', () => {
+  it('lists everything for the owner and only their own for a person', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
     const other = person('Other', { areas: WITHOUT_SETTINGS });
-    requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
-    requests.create(other.id, { kind: 'area', target: 'settings', note: '' });
-    expect(requests.list(null)).toHaveLength(2);
-    expect(requests.list(kid.id).map((row) => row.profile_id)).toStrictEqual([kid.id]);
+    await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    await requests.create(other.id, { kind: 'area', target: 'settings', note: '' });
+    expect(await requests.list(null)).toHaveLength(2);
+    expect((await requests.list(kid.id)).map((row) => row.profile_id)).toStrictEqual([kid.id]);
   });
 });
 
 describe('deciding a request', () => {
-  it('widens the limits at once on approval and tells the person', () => {
+  it('widens the limits at once on approval and tells the person', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const row = requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    const row = await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
     raised = [];
-    const decided = requests.decide(row.id, ownerPhone(), {
+    const decided = await requests.decide(row.id, ownerPhone(), {
       approve: true,
       until: null,
       target: null,
@@ -175,69 +181,81 @@ describe('deciding a request', () => {
     );
   });
 
-  it('leaves the limits alone on a denial and refuses a second decision', () => {
+  it('leaves the limits alone on a denial and refuses a second decision', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const row = requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    const row = await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
     const by = ownerPhone();
-    const denied = requests.decide(row.id, by, { approve: false, until: null, target: null });
+    const denied = await requests.decide(row.id, by, { approve: false, until: null, target: null });
     expect(denied.status).toBe('denied');
     expect(areasOf(kid.id)).not.toContain('settings');
     expect(raised.at(-1)).toMatchObject({ title: 'Your request was denied' });
-    expect(() => requests.decide(row.id, by, { approve: true, until: null, target: null })).toThrow(
-      /already denied/u,
-    );
+    await expect(
+      requests.decide(row.id, by, { approve: true, until: null, target: null }),
+    ).rejects.toThrow(/already denied/u);
   });
 
-  it('needs a target, which the owner can name when approving', () => {
+  it('needs a target, which the owner can name when approving', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const row = requests.create(kid.id, { kind: 'area', target: null, note: 'the settings page' });
+    const row = await requests.create(kid.id, {
+      kind: 'area',
+      target: null,
+      note: 'the settings page',
+    });
     const by = ownerPhone();
-    const missing = refusal(() =>
+    const missing = await refusal(() =>
       requests.decide(row.id, by, { approve: true, until: null, target: null }),
     );
     expect(missing.code).toBe('invalid_request');
-    const decided = requests.decide(row.id, by, { approve: true, until: null, target: 'settings' });
+    const decided = await requests.decide(row.id, by, {
+      approve: true,
+      until: null,
+      target: 'settings',
+    });
     expect(decided.target).toBe('settings');
     expect(areasOf(kid.id)).toContain('settings');
   });
 
-  it('keeps the target the person named and refuses a different one', () => {
+  it('keeps the target the person named and refuses a different one', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const row = requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    const row = await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
     const by = ownerPhone();
-    expect(
-      refusal(() => requests.decide(row.id, by, { approve: true, until: null, target: 'cameras' }))
-        .code,
-    ).toBe('invalid_request');
+    const swapped = await refusal(() =>
+      requests.decide(row.id, by, { approve: true, until: null, target: 'cameras' }),
+    );
+    expect(swapped.code).toBe('invalid_request');
     expect(opened.store.accessRequests.byId(row.id)).toMatchObject({
       status: 'pending',
       target: 'settings',
     });
-    const decided = requests.decide(row.id, by, { approve: true, until: null, target: 'settings' });
+    const decided = await requests.decide(row.id, by, {
+      approve: true,
+      until: null,
+      target: 'settings',
+    });
     expect(decided.target).toBe('settings');
   });
 
-  it('refuses an end time that has already passed', () => {
+  it('refuses an end time that has already passed', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const row = requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    const row = await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
     const past = '2026-10-18T09:00:00.000Z';
-    const refused = refusal(() =>
+    const refused = await refusal(() =>
       requests.decide(row.id, ownerPhone(), { approve: true, until: past, target: null }),
     );
     expect(refused.code).toBe('invalid_request');
     expect(opened.store.accessRequests.byId(row.id).status).toBe('pending');
   });
 
-  it('gives a device to a person limited to listed devices and refuses an unknown one', () => {
+  it('gives a device to a person limited to listed devices and refuses an unknown one', async () => {
     const room = opened.store.rooms.create('Hall', 0).id;
     const lamp = lampIn(room);
     const kid = person('Kid', { devices: { mode: 'only', rooms: [], devices: [] } });
-    const row = requests.create(kid.id, { kind: 'device', target: lamp.id, note: '' });
-    requests.decide(row.id, ownerPhone(), { approve: true, until: null, target: null });
+    const row = await requests.create(kid.id, { kind: 'device', target: lamp.id, note: '' });
+    await requests.decide(row.id, ownerPhone(), { approve: true, until: null, target: null });
     expect(opened.store.personAccess.byProfile(kid.id).scopes.devices.devices).toStrictEqual([
       lamp.id,
     ]);
-    const unknown = refusal(() =>
+    const unknown = await refusal(() =>
       requests.create(kid.id, {
         kind: 'device',
         target: '00000000-0000-4000-8000-000000000000',
@@ -247,13 +265,13 @@ describe('deciding a request', () => {
     expect(unknown.code).toBe('not_found');
   });
 
-  it('raises the daily and monthly AI budget', () => {
+  it('raises the daily and monthly AI budget', async () => {
     const kid = person('Kid', {});
     opened.store.personAccess.change(kid.id, {
       budget: { daily_usd: 1, monthly_usd: 10, warn_at_percent: 80, hard_stop: true },
     });
-    const row = requests.create(kid.id, { kind: 'budget', target: '4', note: '' });
-    requests.decide(row.id, ownerPhone(), { approve: true, until: null, target: null });
+    const row = await requests.create(kid.id, { kind: 'budget', target: '4', note: '' });
+    await requests.decide(row.id, ownerPhone(), { approve: true, until: null, target: null });
     expect(opened.store.personAccess.byProfile(kid.id).budget).toMatchObject({
       daily_usd: 5,
       monthly_usd: 14,
@@ -262,48 +280,48 @@ describe('deciding a request', () => {
 });
 
 describe('a grant with an end time', () => {
-  it('is taken back when the end time comes, once, and the person is reconnected', () => {
+  it('is taken back when the end time comes, once, and the person is reconnected', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const row = requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
-    requests.decide(row.id, ownerPhone(), { approve: true, until: UNTIL, target: null });
+    const row = await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    await requests.decide(row.id, ownerPhone(), { approve: true, until: UNTIL, target: null });
     expect(opened.store.accessRequests.nextLapse(moment.toISOString())).toBe(UNTIL);
-    expect(requests.lapse()).toStrictEqual([]);
+    expect(await requests.lapse()).toStrictEqual([]);
     moment = new Date(UNTIL);
     changedFor = [];
-    expect(requests.lapse()).toStrictEqual([kid.id]);
+    expect(await requests.lapse()).toStrictEqual([kid.id]);
     expect(areasOf(kid.id)).not.toContain('settings');
     expect(opened.store.accessRequests.byId(row.id).lapsed_at).toBe(UNTIL);
     expect(changedFor).toStrictEqual([kid.id]);
-    expect(requests.lapse()).toStrictEqual([]);
+    expect(await requests.lapse()).toStrictEqual([]);
     expect(opened.store.accessAudit.list(10, kid.id)[0]?.detail).toContain(
       'Temporary access ended',
     );
   });
 
-  it('does not take back what a second, permanent approval still grants', () => {
+  it('does not take back what a second, permanent approval still grants', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
     const by = ownerPhone();
-    const first = requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
-    requests.decide(first.id, by, { approve: true, until: UNTIL, target: null });
+    const first = await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    await requests.decide(first.id, by, { approve: true, until: UNTIL, target: null });
     opened.store.personAccess.change(kid.id, {
       scopes: { ...opened.store.personAccess.byProfile(kid.id).scopes, areas: WITHOUT_SETTINGS },
     });
-    const second = requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
-    requests.decide(second.id, by, { approve: true, until: null, target: null });
+    const second = await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    await requests.decide(second.id, by, { approve: true, until: null, target: null });
     moment = new Date(UNTIL);
-    expect(requests.lapse()).toStrictEqual([]);
+    expect(await requests.lapse()).toStrictEqual([]);
     expect(areasOf(kid.id)).toContain('settings');
   });
 
-  it('takes back each timed budget grant by its own amount', () => {
+  it('takes back each timed budget grant by its own amount', async () => {
     const kid = person('Kid', {});
     opened.store.personAccess.change(kid.id, {
       budget: { daily_usd: 1, monthly_usd: 10, warn_at_percent: 80, hard_stop: true },
     });
     const by = ownerPhone();
     for (let asked = 0; asked < 2; asked += 1) {
-      const row = requests.create(kid.id, { kind: 'budget', target: '5', note: '' });
-      requests.decide(row.id, by, { approve: true, until: UNTIL, target: null });
+      const row = await requests.create(kid.id, { kind: 'budget', target: '5', note: '' });
+      await requests.decide(row.id, by, { approve: true, until: UNTIL, target: null });
     }
     expect(opened.store.personAccess.byProfile(kid.id).budget).toMatchObject({
       daily_usd: 11,
@@ -311,7 +329,7 @@ describe('a grant with an end time', () => {
     });
     moment = new Date(UNTIL);
     changedFor = [];
-    requests.lapse();
+    await requests.lapse();
     expect(changedFor).toStrictEqual([kid.id]);
     expect(opened.store.personAccess.byProfile(kid.id).budget).toMatchObject({
       daily_usd: 1,
@@ -319,84 +337,81 @@ describe('a grant with an end time', () => {
     });
   });
 
-  it('takes back a timed budget grant that sits next to a permanent one', () => {
+  it('takes back a timed budget grant that sits next to a permanent one', async () => {
     const kid = person('Kid', {});
     opened.store.personAccess.change(kid.id, {
       budget: { daily_usd: 1, monthly_usd: 10, warn_at_percent: 80, hard_stop: true },
     });
     const by = ownerPhone();
-    const timed = requests.create(kid.id, { kind: 'budget', target: '5', note: '' });
-    requests.decide(timed.id, by, { approve: true, until: UNTIL, target: null });
-    const permanent = requests.create(kid.id, { kind: 'budget', target: '5', note: '' });
-    requests.decide(permanent.id, by, { approve: true, until: null, target: null });
+    const timed = await requests.create(kid.id, { kind: 'budget', target: '5', note: '' });
+    await requests.decide(timed.id, by, { approve: true, until: UNTIL, target: null });
+    const permanent = await requests.create(kid.id, { kind: 'budget', target: '5', note: '' });
+    await requests.decide(permanent.id, by, { approve: true, until: null, target: null });
     moment = new Date(UNTIL);
-    expect(requests.lapse()).toStrictEqual([kid.id]);
+    expect(await requests.lapse()).toStrictEqual([kid.id]);
     expect(opened.store.personAccess.byProfile(kid.id).budget).toMatchObject({
       daily_usd: 6,
       monthly_usd: 15,
     });
   });
 
-  it('keeps a timed grant the owner then saved by hand', () => {
+  it('keeps a timed grant the owner then saved by hand', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const row = requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
-    requests.decide(row.id, ownerPhone(), { approve: true, until: UNTIL, target: null });
-    opened.store.personAccess.change(kid.id, {
+    const row = await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    await requests.decide(row.id, ownerPhone(), { approve: true, until: UNTIL, target: null });
+    await requests.changeByOwner(kid.id, {
       scopes: opened.store.personAccess.byProfile(kid.id).scopes,
     });
-    requests.keepWhatOwnerSet(kid.id);
     expect(opened.store.accessRequests.byId(row.id).until).toBeNull();
     expect(opened.store.accessRequests.nextLapse(moment.toISOString())).toBeUndefined();
     moment = new Date(UNTIL);
-    expect(requests.lapse()).toStrictEqual([]);
+    expect(await requests.lapse()).toStrictEqual([]);
     expect(areasOf(kid.id)).toContain('settings');
   });
 
-  it('keeps a timed device grant when the owner has since granted its whole room', () => {
+  it('keeps a timed device grant when the owner has since granted its whole room', async () => {
     const room = opened.store.rooms.create('Hall', 0).id;
     const lamp = lampIn(room);
     const kid = person('Kid', { devices: { mode: 'only', rooms: [], devices: [] } });
-    const row = requests.create(kid.id, { kind: 'device', target: lamp.id, note: '' });
-    requests.decide(row.id, ownerPhone(), { approve: true, until: UNTIL, target: null });
+    const row = await requests.create(kid.id, { kind: 'device', target: lamp.id, note: '' });
+    await requests.decide(row.id, ownerPhone(), { approve: true, until: UNTIL, target: null });
     const { devices } = opened.store.personAccess.byProfile(kid.id).scopes;
-    opened.store.personAccess.change(kid.id, {
+    await requests.changeByOwner(kid.id, {
       scopes: {
         ...opened.store.personAccess.byProfile(kid.id).scopes,
         devices: { ...devices, rooms: [room] },
       },
     });
-    requests.keepWhatOwnerSet(kid.id);
     moment = new Date(UNTIL);
-    expect(requests.lapse()).toStrictEqual([]);
+    expect(await requests.lapse()).toStrictEqual([]);
     expect(opened.store.personAccess.byProfile(kid.id).scopes.devices).toMatchObject({
       rooms: [room],
     });
   });
 
-  it('does not keep a timed grant the owner has since taken away by hand', () => {
+  it('does not keep a timed grant the owner has since taken away by hand', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const row = requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
-    requests.decide(row.id, ownerPhone(), { approve: true, until: UNTIL, target: null });
-    opened.store.personAccess.change(kid.id, {
+    const row = await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    await requests.decide(row.id, ownerPhone(), { approve: true, until: UNTIL, target: null });
+    await requests.changeByOwner(kid.id, {
       scopes: { ...opened.store.personAccess.byProfile(kid.id).scopes, areas: WITHOUT_SETTINGS },
     });
-    requests.keepWhatOwnerSet(kid.id);
     expect(opened.store.accessRequests.byId(row.id).until).toBe(UNTIL);
     moment = new Date(UNTIL);
-    requests.lapse();
+    await requests.lapse();
     expect(areasOf(kid.id)).not.toContain('settings');
   });
 
-  it('records no end time for an approval that changed nothing', () => {
+  it('records no end time for an approval that changed nothing', async () => {
     const kid = person('Kid', { areas: WITHOUT_SETTINGS });
-    const row = requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
+    const row = await requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
     opened.store.personAccess.change(kid.id, {
       scopes: {
         ...opened.store.personAccess.byProfile(kid.id).scopes,
         areas: TEMPLATE_SCOPES.adult.areas,
       },
     });
-    const decided = requests.decide(row.id, ownerPhone(), {
+    const decided = await requests.decide(row.id, ownerPhone(), {
       approve: true,
       until: UNTIL,
       target: null,

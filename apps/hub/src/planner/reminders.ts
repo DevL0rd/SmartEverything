@@ -6,20 +6,15 @@ import {
   type PlannerRingRow,
   type SignalInput,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
+import { Coalesced } from '../store/reader';
 import type { Store } from '../store/store';
-import { isoOf } from './instants';
-import { expandOccurrences } from './occurrences';
-import { loadWindow } from './range';
-import { duesOfView, reachOf, ringKey, type Due } from './reminder-dues';
-import { involvedProfiles } from './sharing/visibility';
-import { profilesOfItem, type SummaryDesk, type SummaryStore } from './summary';
+import { PendingWork } from './pending-work';
+import { profilesOfItem, type SummaryDesk } from './summary';
+import type { AnnouncedDue, PlainDue } from './units/reminders';
 
-const DAY_MS = 86_400_000;
-
-export type ReminderStore = SummaryStore &
-  Pick<Store, 'plannerItems' | 'plannerOccurrences' | 'plannerRings' | 'plannerGuests'>;
+export type ReminderStore = Pick<Store, 'host' | 'feed'>;
 
 export type ReminderPull = (item: PlannerItemRow) => Promise<void>;
 
@@ -39,263 +34,170 @@ interface Armed {
 
 export class ReminderScheduler {
   private readonly armed = new Map<string, Armed>();
+  private readonly arming = new Map<string, Coalesced>();
   private readonly watermark = new Map<string, number>();
   private unsubscribe: (() => void) | null = null;
+  private turn = 0;
+  private readonly work = new PendingWork('planner.reminder_follow_failed');
 
   constructor(private readonly options: ReminderSchedulerOptions) {}
 
-  start(): void {
-    this.reconcile('hub_down');
+  async start(): Promise<void> {
     this.unsubscribe = this.options.store.feed.subscribe((change) => {
-      this.follow(change);
+      this.work.run(this.follow(change));
     });
+    await this.reconcile('hub_down');
   }
 
-  private follow(change: LiveChange): void {
-    if (change.table === 'planner_items') this.followItem(change.record ?? change.oldRecord);
+  stop(): void {
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    this.turn += 1;
+    for (const run of this.arming.values()) background(run.stop(), 'planner.reminder_failed');
+    this.arming.clear();
+    this.disarmAll();
+  }
+
+  resumed(): Promise<void> {
+    return this.reconcile('computer_asleep');
+  }
+
+  async settled(): Promise<void> {
+    await this.work.settled();
+    await Promise.all([...this.arming.values()].map((run) => run.idle()));
+    await this.work.settled();
+  }
+
+  private async follow(change: LiveChange): Promise<void> {
+    if (change.table === 'planner_items') await this.followItem(change.record ?? change.oldRecord);
     else if (change.table === 'planner_guests') this.followGuest(change.record ?? change.oldRecord);
     else if (change.table === 'planner_occurrences') {
-      this.followOccurrence(change.record ?? change.oldRecord);
-    } else if (change.table === 'settings') this.armAll();
+      await this.followOccurrence(change.record ?? change.oldRecord);
+    } else if (change.table === 'settings') await this.armAll();
   }
 
-  private followItem(row: PlannerItemRow | null): void {
+  private async followItem(row: PlannerItemRow | null): Promise<void> {
     if (row === null) return;
-    for (const profileId of involvedProfiles(this.options.store, row)) this.arm(profileId);
+    const involved = await this.options.store.host.read('plannerItemInvolved', { item: row });
+    for (const profileId of involved) this.arm(profileId);
   }
 
   private followGuest(row: { readonly profile_id: string | null } | null): void {
     if (row?.profile_id !== null && row?.profile_id !== undefined) this.arm(row.profile_id);
   }
 
-  private followOccurrence(row: { readonly item_id: string } | null): void {
-    const profiles = row === null ? [] : profilesOfItem(this.options.store, row.item_id);
-    if (profiles.length === 0) this.armAll();
+  private async followOccurrence(row: { readonly item_id: string } | null): Promise<void> {
+    const profiles = row === null ? [] : await profilesOfItem(this.options.store, row.item_id);
+    if (profiles.length === 0) await this.armAll();
     else for (const profileId of profiles) this.arm(profileId);
   }
 
-  stop(): void {
-    this.unsubscribe?.();
-    this.unsubscribe = null;
-    this.disarmAll();
-  }
-
-  resumed(): void {
-    this.reconcile('computer_asleep');
-  }
-
-  private zone(): string {
-    return this.options.store.settings.read().time_zone;
-  }
-
-  private nowInstant(): Temporal.Instant {
-    return Temporal.Instant.fromEpochMilliseconds(this.options.clock.now().getTime());
-  }
-
-  private reconcile(reason: PlannerMissedReason): void {
+  private async reconcile(reason: PlannerMissedReason): Promise<void> {
+    const turn = ++this.turn;
     this.disarmAll();
     this.watermark.clear();
-    const now = this.nowInstant();
-    for (const profile of this.options.store.profiles.list()) {
-      this.settleOverdue(profile.id, now, reason);
-      this.watermark.set(profile.id, now.epochMilliseconds + 1);
-    }
-    this.armAll();
-    this.options.summary.refreshAll();
-  }
-
-  private settleOverdue(
-    profileId: string,
-    now: Temporal.Instant,
-    reason: PlannerMissedReason,
-  ): void {
-    const lower = this.handledUntil(profileId);
-    if (lower.size === 0) return;
-    const from = Temporal.Instant.fromEpochMilliseconds(Math.min(...lower.values()));
-    const overdue = this.duesIn(profileId, from, now.add({ milliseconds: 1 })).filter(
-      (due) =>
-        due.kind === 'reminder' &&
-        due.at.epochMilliseconds > (lower.get(due.item.id) ?? Infinity) &&
-        !this.rung(due),
-    );
-    for (const due of overdue) this.recordMissed(due, reason);
-  }
-
-  private handledUntil(profileId: string): Map<string, number> {
-    const lower = new Map<string, number>();
-    for (const item of this.options.store.plannerItems.list(profileId, { scope: 'involved' })) {
-      if (item.reminders.length === 0) continue;
-      const rings = this.options.store.plannerRings
-        .forRef('reminder', item.id)
-        .filter((ring) => ring.profile_id === profileId);
-      const latest = rings.at(-1)?.due_at;
-      lower.set(
-        item.id,
-        Math.max(Date.parse(item.updated_at), latest === undefined ? 0 : Date.parse(latest)),
-      );
-    }
-    return lower;
-  }
-
-  private duesIn(profileId: string, from: Temporal.Instant, to: Temporal.Instant): Due[] {
-    const { store } = this.options;
-    const zone = this.zone();
-    const reach = reachOf(store.plannerItems.list(profileId, { scope: 'involved' }));
-    const window = {
-      from: from.subtract({ milliseconds: reach.lead }),
-      to: to.add({ milliseconds: reach.reach }),
-      timeZone: zone,
-    };
-    const loaded = loadWindow(store, profileId, window, 'involved');
-    const items = new Map(loaded.items.map((item) => [item.id, item]));
-    const views = expandOccurrences({
-      items: loaded.items,
-      stored: loaded.stored,
-      window,
-      now: from,
+    const nowMs = this.options.clock.now().getTime();
+    const overdue = await this.options.store.host.write('plannerRemindersOverdue', {
+      nowMs,
+      reason,
     });
-    const seen = new Set<string>();
-    return views
-      .flatMap((view) => {
-        const item = items.get(view.item_id);
-        return item === undefined ? [] : duesOfView(view, item, profileId, zone);
-      })
-      .filter((due) => {
-        const key = `${due.kind}|${due.view.occurrence_key}|${ringKey(due.item, due.at)}`;
-        const inside =
-          Temporal.Instant.compare(due.at, from) >= 0 && Temporal.Instant.compare(due.at, to) < 0;
-        if (!inside || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort((a, b) => Temporal.Instant.compare(a.at, b.at));
+    for (const row of overdue.missed) {
+      this.options.log.warn('planner.reminder_missed', { itemId: row.ref_id, reason });
+      this.notice(row);
+    }
+    if (turn !== this.turn) return;
+    for (const profileId of overdue.profiles) this.watermark.set(profileId, nowMs + 1);
+    await Promise.all(overdue.profiles.map((profileId) => this.armProfile(profileId)));
+    await this.options.summary.refreshAll();
   }
 
-  private next(profileId: string, after: Temporal.Instant): Due | null {
-    const reach = reachOf(this.options.store.plannerItems.list(profileId, { scope: 'involved' }));
-    if (!reach.relevant) return null;
-    for (let span = DAY_MS; ; span *= 2) {
-      const to = after.add({ milliseconds: span });
-      const best = this.duesIn(profileId, after, to)[0];
-      if (best !== undefined) return best;
-      if (reach.latest !== null && to.epochMilliseconds > reach.latest) return null;
-    }
+  private async armAll(): Promise<void> {
+    const profiles = await this.options.store.host.call('profiles', 'list');
+    await Promise.all(profiles.map((profile) => this.armProfile(profile.id)));
   }
 
   private arm(profileId: string): void {
+    this.work.run(this.armProfile(profileId), { profileId });
+  }
+
+  private async armProfile(profileId: string): Promise<void> {
+    if (this.unsubscribe === null) return;
+    const run =
+      this.arming.get(profileId) ??
+      new Coalesced(
+        () => this.armNow(profileId),
+        (cause) => {
+          this.options.log.error('planner.reminder_failed', cause, { profileId });
+        },
+      );
+    this.arming.set(profileId, run);
+    run.trigger();
+    await run.idle();
+  }
+
+  private async armNow(profileId: string): Promise<void> {
+    const turn = this.turn;
     const floor = this.watermark.get(profileId) ?? 0;
-    const after = Temporal.Instant.fromEpochMilliseconds(
-      Math.max(this.options.clock.now().getTime(), floor),
-    );
-    const due = this.next(profileId, after);
+    const afterMs = Math.max(this.options.clock.now().getTime(), floor);
+    const due = await this.options.store.host.read('plannerReminderNext', { profileId, afterMs });
+    if (turn !== this.turn) return;
     if (due === null) {
       this.disarm(profileId);
       return;
     }
-    const atMs = due.at.epochMilliseconds;
+    const { atMs } = due;
     if (this.armed.get(profileId)?.atMs === atMs) return;
     this.disarm(profileId);
     const cancel = this.options.clock.at(new Date(atMs), () => {
       this.armed.delete(profileId);
-      this.run(profileId, due.at);
+      this.work.run(this.run(profileId, atMs), { profileId });
     });
     this.armed.set(profileId, { atMs, cancel });
   }
 
-  private run(profileId: string, at: Temporal.Instant): void {
-    this.watermark.set(profileId, at.epochMilliseconds + 1);
-    const dues = this.duesIn(profileId, at, at.add({ milliseconds: 1 }));
-    const pulls = this.pulls(dues);
-    if (pulls.length === 0) {
-      this.settle(profileId, dues);
-      return;
-    }
-    this.afterPulls(profileId, at, pulls).catch((cause: unknown) => {
+  private async run(profileId: string, atMs: number): Promise<void> {
+    this.watermark.set(profileId, atMs + 1);
+    try {
+      await this.pullFor(profileId, atMs);
+      const announced = await this.options.store.host.write('plannerReminderRing', {
+        profileId,
+        atMs,
+        nowMs: this.options.clock.now().getTime(),
+      });
+      this.announceAll(announced);
+    } catch (cause) {
       this.options.log.error('planner.reminder_failed', cause, { profileId });
-    });
+    } finally {
+      await this.options.summary.refresh(profileId);
+      await this.armProfile(profileId);
+    }
   }
 
-  private async afterPulls(
-    profileId: string,
-    at: Temporal.Instant,
-    pulls: readonly Promise<void>[],
-  ): Promise<void> {
-    for (const result of await Promise.allSettled(pulls)) {
+  private async pullFor(profileId: string, atMs: number): Promise<void> {
+    const { pull } = this.options;
+    if (pull === undefined) return;
+    const dues = await this.options.store.host.read('plannerReminderDues', { profileId, atMs });
+    const items = new Map(
+      dues.filter((due) => due.item.google !== null).map((due) => [due.item.id, due.item]),
+    );
+    if (items.size === 0) return;
+    for (const result of await Promise.allSettled([...items.values()].map((item) => pull(item)))) {
       if (result.status === 'rejected') {
         this.options.log.error('planner.reminder_pull_failed', result.reason, { profileId });
       }
     }
-    this.settle(profileId, this.duesIn(profileId, at, at.add({ milliseconds: 1 })));
   }
 
-  private settle(profileId: string, dues: readonly Due[]): void {
-    try {
-      this.announceAll(dues);
-    } catch (cause) {
-      this.options.log.error('planner.reminder_failed', cause, { profileId });
-    } finally {
-      this.options.summary.refresh(profileId);
-      this.arm(profileId);
+  private announceAll(announced: readonly AnnouncedDue[]): void {
+    for (const { due, ring } of announced) {
+      if (ring === null) {
+        this.emitTask('task_missed', due, null);
+        continue;
+      }
+      this.notice(ring);
+      if (due.item.kind === 'event') this.emitEvent(due, ring);
+      else this.emitTask('task_due', due, ring);
     }
-  }
-
-  private pulls(dues: readonly Due[]): Promise<void>[] {
-    const { pull } = this.options;
-    if (pull === undefined) return [];
-    const items = new Map(
-      dues.filter((due) => due.item.google !== null).map((due) => [due.item.id, due.item]),
-    );
-    return [...items.values()].map((item) => pull(item));
-  }
-
-  private announceAll(dues: readonly Due[]): void {
-    for (const due of dues) {
-      if (due.kind === 'missed') this.emitTask('task_missed', due, null);
-      else if (!this.rung(due)) this.ring(due);
-    }
-  }
-
-  private rung(due: Due): boolean {
-    const at = isoOf(due.at);
-    return this.options.store.plannerRings
-      .forRef('reminder', due.item.id)
-      .some((row) => row.due_at === at && row.profile_id === due.profileId);
-  }
-
-  private ring(due: Due): void {
-    const now = this.options.clock.now().toISOString();
-    const row = this.options.store.plannerRings.insert({
-      kind: 'reminder',
-      ref_id: due.item.id,
-      profile_id: due.profileId,
-      due_at: isoOf(due.at),
-      rang_at: now,
-      dismissed_at: now,
-      snoozes: 0,
-      target: null,
-      outcome: 'rang',
-      missed_reason: null,
-    });
-    this.notice(row);
-    if (due.item.kind === 'event') this.emitEvent(due, row);
-    else this.emitTask('task_due', due, row);
-  }
-
-  private recordMissed(due: Due, reason: PlannerMissedReason): void {
-    const row = this.options.store.plannerRings.insert({
-      kind: 'reminder',
-      ref_id: due.item.id,
-      profile_id: due.profileId,
-      due_at: isoOf(due.at),
-      rang_at: null,
-      dismissed_at: null,
-      snoozes: 0,
-      target: null,
-      outcome: 'missed',
-      missed_reason: reason,
-    });
-    this.options.log.warn('planner.reminder_missed', { itemId: due.item.id, reason });
-    this.notice(row);
   }
 
   private notice(row: PlannerRingRow): void {
@@ -308,7 +210,7 @@ export class ReminderScheduler {
     });
   }
 
-  private base(due: Due, ring: PlannerRingRow | null): Omit<SignalInput, 'kind' | 'data'> {
+  private base(due: PlainDue, ring: PlannerRingRow | null): Omit<SignalInput, 'kind' | 'data'> {
     return {
       source: 'planner',
       subject: due.item.id,
@@ -320,7 +222,11 @@ export class ReminderScheduler {
     };
   }
 
-  private emitTask(kind: 'task_due' | 'task_missed', due: Due, ring: PlannerRingRow | null): void {
+  private emitTask(
+    kind: 'task_due' | 'task_missed',
+    due: PlainDue,
+    ring: PlannerRingRow | null,
+  ): void {
     this.options.emit(
       PLANNER_SIGNAL.parse({
         ...this.base(due, ring),
@@ -335,7 +241,7 @@ export class ReminderScheduler {
     );
   }
 
-  private emitEvent(due: Due, ring: PlannerRingRow): void {
+  private emitEvent(due: PlainDue, ring: PlannerRingRow): void {
     this.options.emit(
       PLANNER_SIGNAL.parse({
         ...this.base(due, ring),
@@ -344,15 +250,11 @@ export class ReminderScheduler {
           itemId: due.item.id,
           occurrenceKey: due.view.occurrence_key,
           title: due.item.title,
-          startsAt: isoOf(due.anchor),
+          startsAt: new Date(due.anchorMs).toISOString(),
           minutesBefore: due.minutesBefore,
         },
       }),
     );
-  }
-
-  private armAll(): void {
-    for (const profile of this.options.store.profiles.list()) this.arm(profile.id);
   }
 
   private disarm(profileId: string): void {

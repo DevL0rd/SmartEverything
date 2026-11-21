@@ -318,7 +318,7 @@ function refreshLock(call: LockCall, target: DavTarget): void {
 export function handleLock(call: LockCall): Promise<void> {
   const { deps, caller, exchange } = call;
   return guarded(exchange, async () => {
-    const target = targetOf(deps, caller, exchange.request);
+    const target = await targetOf(deps, caller, exchange.request);
     const body = await bodyOf(exchange.request);
     if (body.trim() === '') {
       refreshLock(call, target);
@@ -330,8 +330,8 @@ export function handleLock(call: LockCall): Promise<void> {
 
 export function handleUnlock(call: LockCall): Promise<void> {
   const { deps, locks, caller, exchange } = call;
-  return guarded(exchange, () => {
-    const target = targetOf(deps, caller, exchange.request);
+  return guarded(exchange, async () => {
+    const target = await targetOf(deps, caller, exchange.request);
     const header = [exchange.request.headers['lock-token']].flat()[0];
     const token = TOKEN_HEADER.exec(header?.trim() ?? '')?.[1];
     if (token === undefined) {
@@ -340,6 +340,5 @@ export function handleUnlock(call: LockCall): Promise<void> {
     locks.release(target.root.id, target.relPath, token, caller.actor.profileId);
     exchange.response.writeHead(204, { 'content-length': 0, 'cache-control': 'no-store' });
     exchange.response.end();
-    return Promise.resolve();
   });
 }

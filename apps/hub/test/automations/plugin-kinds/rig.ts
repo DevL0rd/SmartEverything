@@ -120,7 +120,7 @@ export function rig(store: Store, options: RigOptions = {}): Rig {
       calls.push(call);
       return next(call);
     },
-    validate: (): null => null,
+    validate: (): Promise<null> => Promise.resolve(null),
     changes: (): (() => void) => () => undefined,
   };
   const listening = new Listening();

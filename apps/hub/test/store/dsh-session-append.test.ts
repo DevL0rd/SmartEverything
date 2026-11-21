@@ -6,6 +6,7 @@ import { DshSessionStorageError } from '../../src/store/repositories/dsh-session
 import { useRig, type Rig } from '../assistant/harness/support/rig';
 
 let rig: Rig;
+let base = 0;
 useRig((made) => {
   rig = made;
 });
@@ -30,21 +31,21 @@ function appended(seq: number, type: string, text: string): DshSessionEvent {
     type === 'user/message'
       ? message(role, text)
       : { turn: 0, step: 0, stream: [], message: message(role, text) };
-  return { type, seq, time: 1_000 + seq, data, surfaceOp: 'append' };
+  return { type, seq: base + seq, time: 1_000 + seq, data, surfaceOp: 'append' };
 }
 
 function replacing(seq: number, text: string, from: number, to: number): DshSessionEvent {
   return {
     ...appended(seq, 'user/message', text),
-    surfaceOp: { op: 'replace', startSeq: from, endSeq: to },
-    sourceEventSeqs: Array.from({ length: to - from + 1 }, (_, index) => from + index),
+    surfaceOp: { op: 'replace', startSeq: base + from, endSeq: base + to },
+    sourceEventSeqs: Array.from({ length: to - from + 1 }, (_, index) => base + from + index),
   };
 }
 
 function requestHeader(seq: number): DshSessionEvent {
   return {
     type: 'request/header',
-    seq,
+    seq: base + seq,
     time: 1_000 + seq,
     ignorable: true,
     data: {
@@ -60,14 +61,14 @@ function requestHeader(seq: number): DshSessionEvent {
 function developerAddition(seq: number, headerSeq: number, toolName: string): DshSessionEvent {
   return {
     type: 'developer/message',
-    seq,
+    seq: base + seq,
     time: 1_000 + seq,
     ignorable: true,
     surfaceOp: 'append',
     data: {
       turn: 0,
       step: 0,
-      headerSeq,
+      headerSeq: base + headerSeq,
       message: {
         id: randomUUID(),
         role: 'developer',
@@ -79,21 +80,23 @@ function developerAddition(seq: number, headerSeq: number, toolName: string): Ds
 }
 
 interface Session {
-  readonly append: (events: readonly DshSessionEvent[]) => void;
+  readonly append: (events: readonly DshSessionEvent[]) => Promise<void>;
+  readonly appendHere: (events: readonly DshSessionEvent[]) => void;
   readonly nextSeq: () => number;
 }
 
-function openSession(): Session {
+async function openSession(): Promise<Session> {
   const chat = rig.newChat(rig.hub.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   const principal = rig.service.hostPrincipal(
     rig.owner.profileId,
     rig.service.directory.get(rig.hub.target).host,
   );
   const { dshSessions } = rig.opened.store;
+  base = dshSessions.stat(open.claim.session_id, rig.owner.profileId)?.next_seq ?? 0;
   return {
-    append: (events): void => {
-      dshSessions.append(
+    append: async (events): Promise<void> => {
+      await rig.opened.store.live.dshSessions.append(
         {
           claim: open.claim,
           operation_id: randomUUID(),
@@ -102,108 +105,131 @@ function openSession(): Session {
         principal,
       );
     },
+    appendHere: (events): void => {
+      dshSessions.append(
+        {
+          claim: open.claim,
+          operation_id: randomUUID(),
+          events: DSH_SESSION_EVENTS_WRITE.parse(events),
+        },
+        principal,
+        () => undefined,
+      );
+    },
     nextSeq: (): number =>
-      dshSessions.stat(open.claim.session_id, rig.owner.profileId)?.next_seq ?? 0,
+      (dshSessions.stat(open.claim.session_id, rig.owner.profileId)?.next_seq ?? 0) - base,
   };
 }
 
 describe('appending native session events', () => {
-  it('accepts a replacement of a node that an earlier append placed on the surface', () => {
-    const session = openSession();
-    session.append([appended(0, 'system/message', 'rules'), appended(1, 'user/message', 'hi')]);
-    session.append([appended(2, 'user/message', 'again')]);
+  it('accepts a replacement of a node that an earlier append placed on the surface', async () => {
+    const session = await openSession();
+    await session.append([
+      appended(0, 'system/message', 'rules'),
+      appended(1, 'user/message', 'hi'),
+    ]);
+    await session.append([appended(2, 'user/message', 'again')]);
 
-    session.append([replacing(3, 'again please', 2, 2)]);
-
-    expect(session.nextSeq()).toBe(4);
-  });
-
-  it('accepts a second replacement of the node the first one produced', () => {
-    const session = openSession();
-    session.append([appended(0, 'system/message', 'rules'), appended(1, 'user/message', 'hi')]);
-    session.append([replacing(2, 'hey', 1, 1)]);
-
-    session.append([replacing(3, 'hello', 2, 2)]);
+    await session.append([replacing(3, 'again please', 2, 2)]);
 
     expect(session.nextSeq()).toBe(4);
   });
 
-  it('refuses a replacement of a node that is no longer on the surface, and stays usable', () => {
-    const session = openSession();
-    session.append([appended(0, 'system/message', 'rules'), appended(1, 'user/message', 'hi')]);
-    session.append([replacing(2, 'hey', 1, 1)]);
+  it('accepts a second replacement of the node the first one produced', async () => {
+    const session = await openSession();
+    await session.append([
+      appended(0, 'system/message', 'rules'),
+      appended(1, 'user/message', 'hi'),
+    ]);
+    await session.append([replacing(2, 'hey', 1, 1)]);
 
-    expect(() => {
-      session.append([replacing(3, 'again', 1, 1)]);
-    }).toThrow(DshSessionStorageError);
-    session.append([replacing(3, 'again', 2, 2)]);
+    await session.append([replacing(3, 'hello', 2, 2)]);
 
     expect(session.nextSeq()).toBe(4);
   });
 
-  it('refuses a replacement that does not cite every node it shadows', () => {
-    const session = openSession();
-    session.append([
+  it('refuses a replacement of a node that is no longer on the surface, and stays usable', async () => {
+    const session = await openSession();
+    await session.append([
+      appended(0, 'system/message', 'rules'),
+      appended(1, 'user/message', 'hi'),
+    ]);
+    await session.append([replacing(2, 'hey', 1, 1)]);
+
+    await expect(session.append([replacing(3, 'again', 1, 1)])).rejects.toThrow(
+      DshSessionStorageError,
+    );
+    await session.append([replacing(3, 'again', 2, 2)]);
+
+    expect(session.nextSeq()).toBe(4);
+  });
+
+  it('refuses a replacement that does not cite every node it shadows', async () => {
+    const session = await openSession();
+    await session.append([
       appended(0, 'system/message', 'rules'),
       appended(1, 'user/message', 'hi'),
       appended(2, 'user/message', 'hello'),
     ]);
     const partial: DshSessionEvent = {
       ...replacing(3, 'summary', 1, 2),
-      sourceEventSeqs: [1],
+      sourceEventSeqs: [base + 1],
     };
 
-    expect(() => {
-      session.append([partial]);
-    }).toThrow('must cite every shadowed surface node');
+    await expect(session.append([partial])).rejects.toThrow(
+      'must cite every shadowed surface node',
+    );
   });
 
-  it('refuses to replace the system head with anything but one system message', () => {
-    const session = openSession();
-    session.append([appended(0, 'system/message', 'rules'), appended(1, 'user/message', 'hi')]);
+  it('refuses to replace the system head with anything but one system message', async () => {
+    const session = await openSession();
+    await session.append([
+      appended(0, 'system/message', 'rules'),
+      appended(1, 'user/message', 'hi'),
+    ]);
 
-    expect(() => {
-      session.append([replacing(2, 'rules now', 0, 0)]);
-    }).toThrow('system surface head');
+    await expect(session.append([replacing(2, 'rules now', 0, 0)])).rejects.toThrow(
+      'system surface head',
+    );
   });
 
-  it('checks a developer tool addition against the stored request header', () => {
-    const session = openSession();
-    session.append([appended(0, 'system/message', 'rules'), requestHeader(1)]);
+  it('checks a developer tool addition against the stored request header', async () => {
+    const session = await openSession();
+    await session.append([appended(0, 'system/message', 'rules'), requestHeader(1)]);
 
-    session.append([developerAddition(2, 1, 'bash')]);
+    await session.append([developerAddition(2, 1, 'bash')]);
     expect(session.nextSeq()).toBe(3);
-    expect(() => {
-      session.append([developerAddition(3, 1, 'missing')]);
-    }).toThrow('exactly one complete historical tool definition');
-    expect(() => {
-      session.append([developerAddition(3, 0, 'bash')]);
-    }).toThrow('headerSeq must reference an earlier request/header');
+    await expect(session.append([developerAddition(3, 1, 'missing')])).rejects.toThrow(
+      'exactly one complete historical tool definition',
+    );
+    await expect(session.append([developerAddition(3, 0, 'bash')])).rejects.toThrow(
+      'headerSeq must reference an earlier request/header',
+    );
   });
 
-  it('stays correct when the transaction that appended is rolled back', () => {
-    const session = openSession();
-    session.append([appended(0, 'system/message', 'rules'), appended(1, 'user/message', 'hi')]);
+  it('stays correct when the transaction that appended is rolled back', async () => {
+    const session = await openSession();
+    session.appendHere([appended(0, 'system/message', 'rules'), appended(1, 'user/message', 'hi')]);
 
     expect(() => {
       rig.opened.store.durableWrite(() => {
-        session.append([replacing(2, 'hey', 1, 1)]);
+        session.appendHere([replacing(2, 'hey', 1, 1)]);
         throw new Error('abort');
       });
     }).toThrow('abort');
     expect(session.nextSeq()).toBe(2);
-    session.append([replacing(2, 'hello', 1, 1)]);
+    session.appendHere([replacing(2, 'hello', 1, 1)]);
 
     expect(session.nextSeq()).toBe(3);
   });
 
-  it('does not read the stored log again once the session is warm', () => {
-    const session = openSession();
-    session.append([appended(0, 'system/message', 'rules'), appended(1, 'user/message', 'hi')]);
+  it('does not read the stored log again once the session is warm', async () => {
+    const session = await openSession();
+    session.appendHere([appended(0, 'system/message', 'rules'), appended(1, 'user/message', 'hi')]);
     const all = vi.spyOn(Sql.prototype, 'all');
 
-    session.append([appended(2, 'user/message', 'hello')]);
-    session.append([replacing(3, 'hello there', 2, 2)]);
+    session.appendHere([appended(2, 'user/message', 'hello')]);
+    session.appendHere([replacing(3, 'hello there', 2, 2)]);
 
     expect(all.mock.calls.filter(([, text]) => text.includes('dsh_session_events'))).toStrictEqual(
       [],

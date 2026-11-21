@@ -1,16 +1,15 @@
-import { API_ENDPOINTS as E, ApiError, type PluginSearchHit } from '@smarteverything/domain';
+import { API_ENDPOINTS as E, ApiError } from '@smarteverything/domain';
 import type { ToolCaller } from '../../ai-tools/hub-tool';
 import type { PluginAdmin } from '../../plugins/plugin-admin';
-import { searchHitsOf } from '../../plugins/search-hits';
 import type { Store } from '../../store/store';
 import type { SettingsAuthor } from '../../plugins/plugin-settings';
 import { clientOf, profileIdOf, type Caller } from '../auth';
 import { DONE_REPLY, bound } from '../router';
 
-export function toolCallerOf(store: Store, caller: Caller): ToolCaller {
+export function toolCallerOf(caller: Caller): ToolCaller {
   const client = clientOf(caller);
   return {
-    profileId: profileIdOf(store, caller),
+    profileId: profileIdOf(caller),
     role: client.role,
     chatId: caller.kind === 'client' ? (caller.chatId ?? null) : null,
     via: caller.kind === 'client' && caller.via === 'assistant' ? 'chat' : 'app',
@@ -65,31 +64,31 @@ export const pluginRoutes = (store: Store, admin: PluginAdmin) =>
     }),
     readPluginTools: bound(E.readPluginTools, ({ params }) => admin.tools(params.pluginId)),
     callPluginTool: bound(E.callPluginTool, ({ params, body, caller }) =>
-      admin.callTool(params.pluginId, params.tool, body, toolCallerOf(store, caller)),
+      admin.callTool(params.pluginId, params.tool, body, toolCallerOf(caller)),
     ),
-    readPluginLog: bound(E.readPluginLog, ({ params }) => [...admin.log(params.pluginId)]),
+    readPluginLog: bound(E.readPluginLog, ({ params }) => admin.log(params.pluginId)),
     readPluginData: bound(E.readPluginData, ({ params, query }) =>
       admin.data(params.pluginId, query.stream, query.limit),
     ),
-    listPluginSearch: bound(E.listPluginSearch, (): PluginSearchHit[] => searchHitsOf(store)),
+    listPluginSearch: bound(E.listPluginSearch, () => store.host.read('pluginSearchHits', null)),
     readPluginOptions: bound(E.readPluginOptions, ({ params, query, caller }) =>
-      admin.choices(params.pluginId, params.source, query, toolCallerOf(store, caller)),
+      admin.choices(params.pluginId, params.source, query, toolCallerOf(caller)),
     ),
     listPluginPeople: bound(E.listPluginPeople, ({ params }) => admin.people(params.pluginId)),
     setPluginPerson: bound(E.setPluginPerson, ({ params, body, caller }) => {
       aPerson(caller);
       return admin.setPerson(params.pluginId, params.externalId, body);
     }),
-    removePluginPerson: bound(E.removePluginPerson, ({ params, caller }) => {
+    removePluginPerson: bound(E.removePluginPerson, async ({ params, caller }) => {
       aPerson(caller);
-      admin.removePerson(params.pluginId, params.externalId);
+      await admin.removePerson(params.pluginId, params.externalId);
       return DONE_REPLY;
     }),
-    postPluginMessage: bound(E.postPluginMessage, ({ body, caller }) => {
+    postPluginMessage: bound(E.postPluginMessage, async ({ body, caller }) => {
       if (caller.kind !== 'client' || caller.pluginId === undefined) {
         throw new ApiError('forbidden', 'Only a plugin’s own key can post plugin messages.');
       }
-      admin.post(caller.pluginId, body);
+      await admin.post(caller.pluginId, body);
       return DONE_REPLY;
     }),
   }) as const;

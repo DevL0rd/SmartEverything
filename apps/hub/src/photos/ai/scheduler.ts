@@ -1,45 +1,27 @@
 import type { CommittedNotice, LiveChange } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
-import { z } from 'zod';
+import { background, type Logger } from '@smarteverything/logging';
 import type { ChangeFeed } from '../../store/feed';
 import { Coalesced } from '../../store/reader';
-import { inSlices } from '../../store/slices';
 import type { Store } from '../../store/store';
 import type { MediaJobRunner } from '../pipeline/jobs';
 import { candidatesOf, type CandidateScope } from './candidates';
-import type { ConsentSwitches, PhotoConsent } from './consent';
-import { PhotoAiPurge } from './purge';
+import type { ConsentSwitches } from './consent';
 import type { PhotoAiKind, PhotoAiQueue } from './queue';
-import { subjectOf } from './scope';
-import type { PhotoAiModelStore } from './settings';
 import type { PhotoVectorIndex } from './index';
 
 export interface SchedulerEnvironment {
-  readonly store: Pick<Store, 'context' | 'personAccess' | 'reader' | 'driveFeed'>;
+  readonly store: Pick<Store, 'host' | 'reader'>;
   readonly feed: Pick<ChangeFeed, 'subscribe' | 'subscribeNotices' | 'afterCommit'>;
   readonly media: Pick<MediaJobRunner, 'onTouched'>;
   readonly keys: { readonly onChange: (listener: () => void) => () => void };
   readonly queue: PhotoAiQueue;
-  readonly consent: PhotoConsent;
-  readonly models: PhotoAiModelStore;
   readonly index: PhotoVectorIndex;
   readonly log: Logger;
 }
 
-const OWNER = z.strictObject({ id: z.string() });
-
 const ORDER: readonly PhotoAiKind[] = ['faces', 'vision', 'embed', 'pet_embed'];
 
-const NEEDS_KEY_RESUME = [
-  `delete from drive_media_jobs where kind = 'vision' and item_id in
-    (select item_id from photo_analysis where state = 'needs_key')`,
-  `delete from drive_media_jobs where kind = 'embed' and state = 'done'
-    and not exists (select 1 from photo_embeddings e
-      where e.item_id = drive_media_jobs.item_id and e.rev = drive_media_jobs.rev)`,
-  `delete from drive_media_jobs where kind = 'pet_embed' and state = 'done'
-    and not exists (select 1 from photo_faces f
-      where f.item_id = drive_media_jobs.item_id and f.rev = drive_media_jobs.rev and f.kind = 'pet')`,
-] as const;
+const REQUEST_BATCH = 256;
 
 function layoutOwnerOf(change: LiveChange): string | null {
   if (change.table !== 'layouts') return null;
@@ -49,9 +31,9 @@ function layoutOwnerOf(change: LiveChange): string | null {
 
 export class PhotoAiScheduler {
   private readonly known = new Map<string, ConsentSwitches>();
-  private readonly purge: PhotoAiPurge;
   private readonly pass: Coalesced;
   private readonly dirty = new Set<string>();
+  private readonly pending = new Set<Promise<void>>();
   private touchedThisTurn = false;
   private wholeLibrary = true;
   private seenSeq = 0;
@@ -59,7 +41,6 @@ export class PhotoAiScheduler {
   private stops: (() => void)[] = [];
 
   constructor(private readonly env: SchedulerEnvironment) {
-    this.purge = new PhotoAiPurge(env.store.context, env.index);
     this.pass = new Coalesced(
       async () => {
         await this.cycle();
@@ -78,10 +59,11 @@ export class PhotoAiScheduler {
       }),
       feed.subscribe((change) => {
         const profileId = layoutOwnerOf(change);
-        if (profileId !== null) this.consentChanged(profileId);
+        if (profileId !== null)
+          this.track(this.consentChanged(profileId), 'photos.consent_purge_failed');
       }),
       keys.onChange(() => {
-        this.resumeAfterKey();
+        this.track(this.resumeAfterKey(), 'photos.key_resume_failed');
       }),
       this.env.media.onTouched((itemId) => {
         this.touched(itemId);
@@ -90,8 +72,17 @@ export class PhotoAiScheduler {
     this.defer();
   }
 
-  idle(): Promise<void> {
-    return this.pass.idle();
+  async idle(): Promise<void> {
+    while (this.pending.size > 0) await Promise.allSettled(this.pending);
+    await this.pass.idle();
+  }
+
+  private track(work: Promise<void>, event: string): void {
+    const tracked: Promise<void> = work.finally(() => {
+      this.pending.delete(tracked);
+    });
+    this.pending.add(tracked);
+    background(tracked, event);
   }
 
   async stop(): Promise<void> {
@@ -101,7 +92,7 @@ export class PhotoAiScheduler {
   }
 
   async reconcile(): Promise<number> {
-    const upTo = this.env.store.driveFeed.latestSeq();
+    const upTo = await this.latestSeq();
     const queued = await this.schedule({ items: null, feedAfter: null, feedUpTo: upTo });
     this.cursor = Math.max(this.cursor ?? 0, upTo);
     return queued;
@@ -117,7 +108,7 @@ export class PhotoAiScheduler {
     const items = [...this.dirty];
     this.dirty.clear();
     const feedAfter = this.cursor;
-    const feedUpTo = this.env.store.driveFeed.latestSeq();
+    const feedUpTo = await this.latestSeq();
     if (items.length === 0 && feedUpTo <= feedAfter) return;
     await this.schedule({ items, feedAfter, feedUpTo });
     this.cursor = Math.max(this.cursor, feedUpTo);
@@ -126,15 +117,13 @@ export class PhotoAiScheduler {
   private async schedule(
     scope: Pick<CandidateScope, 'items' | 'feedAfter' | 'feedUpTo'>,
   ): Promise<number> {
-    const models = this.env.models.read();
+    const { homeOwner, subjects, models } = await this.env.store.host.read('photoAiSubjects', null);
     const versions: Readonly<Record<PhotoAiKind, string>> = {
       faces: 'sface',
       vision: models.vision,
       embed: models.embedding,
       pet_embed: models.petEmbedding,
     };
-    const homeOwner = this.env.store.personAccess.homeOwner();
-    const subjects = this.subjects(homeOwner);
     let queued = 0;
     for (const kind of ORDER) {
       const allowed = subjects
@@ -146,56 +135,51 @@ export class PhotoAiScheduler {
         allowed,
         homeOwner,
       });
-      await inSlices(this.env.store.context, candidates, (candidate) => {
-        if (this.env.queue.request(kind, candidate.id, candidate.rev, versions[kind])) queued += 1;
-      });
+      for (let at = 0; at < candidates.length; at += REQUEST_BATCH) {
+        queued += await this.env.queue.request(
+          candidates.slice(at, at + REQUEST_BATCH).map((candidate) => ({
+            kind,
+            itemId: candidate.id,
+            rev: candidate.rev,
+            modelVersion: versions[kind],
+          })),
+        );
+      }
     }
     return queued;
   }
 
-  private subjects(
-    homeOwner: string,
-  ): readonly { readonly profileId: string; readonly switches: ConsentSwitches }[] {
-    const owners = this.env.store.context.sql.all(
-      OWNER,
-      'select distinct owner_profile_id as id from drive_roots where owner_profile_id is not null',
-    );
-    const profileIds = new Set([homeOwner, ...owners.map(({ id }) => id)]);
-    return [...profileIds].map((profileId) => ({
-      profileId,
-      switches: this.env.consent.switches(profileId),
-    }));
+  private latestSeq(): Promise<number> {
+    return this.env.store.host.call('driveFeed', 'latestSeq');
   }
 
-  resumeAfterKey(): void {
-    for (const statement of NEEDS_KEY_RESUME)
-      this.env.store.context.sql.run('queue the photo AI work that waited for a key', statement);
+  async resumeAfterKey(): Promise<void> {
+    await this.env.store.host.write('photoAiResumeKey', null);
     this.defer();
   }
 
-  consentChanged(profileId: string): void {
-    const now = this.env.consent.switches(profileId);
-    const before = this.known.get(profileId);
-    this.known.set(profileId, now);
-    const scope = subjectOf(profileId, this.env.store.personAccess.ownerIds().includes(profileId));
-    if (!now.smartSearch && (before?.smartSearch ?? true)) {
+  async consentChanged(profileId: string): Promise<void> {
+    const purged = await this.env.store.host.write('photoAiConsentPurge', {
+      profileId,
+      before: this.known.get(profileId),
+    });
+    this.known.set(profileId, purged.switches);
+    if (purged.smartSearch !== null) {
+      for (const itemId of purged.smartSearch.unindexed) this.env.index.remove(itemId);
       this.env.log.info('consent.smart_search_off', {
         profileId,
-        ...this.purge.smartSearch(profileId, scope),
+        ...purged.smartSearch.counts,
       });
     }
-    if (!now.faceGrouping && (before?.faceGrouping ?? true)) {
-      this.env.log.info('consent.face_grouping_off', {
-        profileId,
-        ...this.purge.faceGrouping(profileId, scope),
-      });
+    if (purged.faceGrouping !== null) {
+      this.env.log.info('consent.face_grouping_off', { profileId, ...purged.faceGrouping });
     }
     this.defer();
   }
 
   private noticed(notice: CommittedNotice): void {
     if (notice.type !== 'drive_changed') return;
-    const latest = this.env.store.driveFeed.latestSeq();
+    const latest = notice.cursor;
     if (latest <= this.seenSeq && !this.touchedThisTurn) this.wholeLibrary = true;
     this.seenSeq = Math.max(this.seenSeq, latest);
     this.pass.trigger();

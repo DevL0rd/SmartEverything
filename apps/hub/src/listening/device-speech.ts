@@ -4,7 +4,6 @@ import type { Clock } from '../clock';
 import type { Store } from '../store/store';
 import { sameWords, silenceHallucination } from '../transcripts/heard-text';
 import type { ListeningBudget } from '../transcripts/listening-budget';
-import { ownerProfileOf } from '../transcripts/owner';
 import type { Transcriber } from '../transcripts/transcriber';
 import type { Transcripts } from '../transcripts/transcript-service';
 import { Utterances } from '../transcripts/utterances';
@@ -20,10 +19,7 @@ type SpeakingDevice = 'phone' | 'computer';
 
 export interface DeviceSpeechOptions {
   readonly source: SpeakingDevice;
-  readonly store: Pick<
-    Store,
-    'devices' | 'clients' | 'profiles' | 'personAccess' | 'settings' | 'computerNodes'
-  >;
+  readonly store: Pick<Store, 'live' | 'host'>;
   readonly transcripts: Pick<Transcripts, 'open' | 'add' | 'close' | 'find' | 'recent'>;
   readonly transcriber: Pick<Transcriber, 'transcribe'>;
   readonly budget: Pick<ListeningBudget, 'capReached'>;
@@ -105,7 +101,7 @@ export class DeviceSpeech {
     }
     const text = await this.options.transcriber.transcribe({
       pcm16k: segment.pcm,
-      profileId: this.profileOf(deviceId),
+      profileId: await this.profileOf(deviceId),
       pluginId: null,
       names: this.options.names(),
       recent: this.recentLines(deviceId),
@@ -190,20 +186,21 @@ export class DeviceSpeech {
     return opened;
   }
 
-  private profileOf(deviceId: string): string {
-    const device = this.options.store.devices.find(deviceId);
-    const person = device === undefined ? null : personOfDevice(this.options.store, device);
-    return person ?? ownerProfileOf(this.options.store);
+  private async profileOf(deviceId: string): Promise<string> {
+    const { home } = this.options.store.live;
+    const device = home.devices.find(deviceId);
+    const person = device === undefined ? null : personOfDevice(home, device);
+    return person ?? (await this.options.store.host.call('personAccess', 'homeOwner'));
   }
 
   private nameOf(deviceId: string): string {
-    const device = this.options.store.devices.find(deviceId);
+    const device = this.options.store.live.home.devices.find(deviceId);
     return device === undefined ? 'Device' : (device.display_name ?? device.name);
   }
 
   private dayOf(): string {
     return new Intl.DateTimeFormat('en-US', {
-      timeZone: this.options.store.settings.read().time_zone,
+      timeZone: this.options.store.live.home.settings.read().time_zone,
       weekday: 'short',
       day: 'numeric',
       month: 'short',

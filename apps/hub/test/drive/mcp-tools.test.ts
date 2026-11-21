@@ -255,8 +255,8 @@ describe('drive_read', () => {
     await selected(DRIVE_READ, 'drives').run(own, {}, {});
     const [first] = calls;
     expect(first?.caller.kind === 'client' ? first.caller.client.role : null).toBe('member');
-    expect(() =>
+    await expect(
       selected(DRIVE_READ, 'drives').run(own, {}, { personId: ownerProfile.id }),
-    ).toThrow(/another person’s drive/u);
+    ).rejects.toThrow(/another person’s drive/u);
   });
 });

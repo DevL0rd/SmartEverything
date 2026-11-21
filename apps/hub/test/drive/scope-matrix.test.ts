@@ -3,16 +3,17 @@ import type {
   DriveChangedNotice,
   DriveQuery,
   DriveScrubState,
+  DriveStats,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
 import { DriveHealthReader } from '../../src/drive/health';
+import type { DriveHealthFigures } from '../../src/drive/units/health';
 import { DriveRecentReader } from '../../src/drive/recent';
 import { DriveSearch } from '../../src/drive/search';
 import { DriveReadService } from '../../src/drive/service-read';
-import { DriveStatsReader } from '../../src/drive/stats';
+import { readDriveStats } from '../../src/drive/stats';
 import type { WatchStatus } from '../../src/drive/watcher';
-import type { StoredDrive } from '../../src/store/repositories/drive-roots';
 import { readDriveUsage } from '../../src/drive/usage';
 import { driveNoticeSeenBy } from '../../src/server/live-access';
 import { photoMembership } from '../../src/photos/membership';
@@ -154,32 +155,31 @@ afterEach(async () => {
 });
 
 describe('who reaches what', () => {
-  it('keeps the hub owner out of a member drive: no list, read, browse or search', () => {
+  it('keeps the hub owner out of a member drive: no list, read, browse or search', async () => {
     const me = actorOf(owner);
-    expect(
-      read
-        .listRoots(me)
-        .map((root) => root.id)
-        .sort(),
-    ).toEqual([HOME, OWNER_DRIVE].sort());
+    expect((await read.listRoots(me)).map((root) => root.id).sort()).toEqual(
+      [HOME, OWNER_DRIVE].sort(),
+    );
     for (const item of [VIEW_DIR, VIEW_FILE, EDIT_FILE, OUTSIDE]) {
-      expect(() => read.readItem(me, item)).toThrow(/no such/);
+      await expect(read.readItem(me, item)).rejects.toThrow(/no such/);
     }
-    expect(() => read.browseFolder(me, { rootId: A_DRIVE })).toThrow(/no such/);
-    expect(() => read.browseFolder(me, { rootId: A_DRIVE, folderId: VIEW_DIR })).toThrow(/no such/);
+    await expect(read.browseFolder(me, { rootId: A_DRIVE })).rejects.toThrow(/no such/);
+    await expect(read.browseFolder(me, { rootId: A_DRIVE, folderId: VIEW_DIR })).rejects.toThrow(
+      /no such/,
+    );
     expect(found(owner)).toEqual([SHARED_FILE, OWNER_FILE].sort());
     expect(found(owner, { kinds: ['document'] })).toEqual([SHARED_FILE, OWNER_FILE].sort());
   });
 
-  it('gives the grantee the shared folders and what is inside, and nothing outside', () => {
+  it('gives the grantee the shared folders and what is inside, and nothing outside', async () => {
     const me = actorOf(b);
     for (const item of [VIEW_DIR, VIEW_FILE, EDIT_DIR, EDIT_FILE]) {
-      expect(read.readItem(me, item).id).toBe(item);
+      expect((await read.readItem(me, item)).id).toBe(item);
     }
-    expect(() => read.readItem(me, OUTSIDE)).toThrow(/no such/);
-    expect(() => read.browseFolder(me, { rootId: A_DRIVE })).toThrow(/no such/);
+    await expect(read.readItem(me, OUTSIDE)).rejects.toThrow(/no such/);
+    await expect(read.browseFolder(me, { rootId: A_DRIVE })).rejects.toThrow(/no such/);
     expect(
-      read.browseFolder(me, { rootId: A_DRIVE, folderId: VIEW_DIR }).items.map((i) => i.id),
+      (await read.browseFolder(me, { rootId: A_DRIVE, folderId: VIEW_DIR })).items.map((i) => i.id),
     ).toEqual([VIEW_FILE]);
     expect(found(b, { kinds: ['document'] })).toEqual(
       [SHARED_FILE, B_FILE, VIEW_FILE, EDIT_FILE].sort(),
@@ -187,17 +187,17 @@ describe('who reaches what', () => {
     expect(found(b)).toEqual(
       [SHARED_FILE, B_FILE, VIEW_DIR, VIEW_FILE, EDIT_DIR, EDIT_FILE].sort(),
     );
-    expect(read.listRoots(me).map((root) => root.id)).not.toContain(A_DRIVE);
+    expect((await read.listRoots(me)).map((root) => root.id)).not.toContain(A_DRIVE);
   });
 
-  it('reaches the sharer’s own drive in full and never the grantee’s', () => {
+  it('reaches the sharer’s own drive in full and never the grantee’s', async () => {
     expect(found(a)).toEqual(
       [SHARED_FILE, VIEW_DIR, VIEW_FILE, EDIT_DIR, EDIT_FILE, OUTSIDE].sort(),
     );
-    expect(() => read.readItem(actorOf(a), B_FILE)).toThrow(/no such/);
+    await expect(read.readItem(actorOf(a), B_FILE)).rejects.toThrow(/no such/);
   });
 
-  it('lists recent activity only for what the person can open', () => {
+  it('lists recent activity only for what the person can open', async () => {
     const { driveFeed } = opened.store;
     for (const [item, root] of [
       [OUTSIDE, A_DRIVE],
@@ -223,15 +223,15 @@ describe('who reaches what', () => {
     expect(recent(b)).toEqual([SHARED_FILE, VIEW_FILE].sort());
     expect(recent(a)).toEqual([OUTSIDE, SHARED_FILE, VIEW_FILE].sort());
     expect(
-      read
-        .readRecent(actorOf(owner), { filter: 'added' })
-        .entries.flatMap((entry) => (entry.kind === 'shortcut' ? [] : [entry.item.id])),
+      (await read.readRecent(actorOf(owner), { filter: 'added' })).entries.flatMap((entry) =>
+        entry.kind === 'shortcut' ? [] : [entry.item.id],
+      ),
     ).toEqual([SHARED_FILE]);
   });
 });
 
 describe('stars are personal', () => {
-  it('shows a star only to the person who set it, in any drive', () => {
+  it('shows a star only to the person who set it, in any drive', async () => {
     const { driveStars } = opened.store;
     driveStars.star(a.profileId, OUTSIDE);
     driveStars.star(b.profileId, SHARED_FILE);
@@ -239,8 +239,8 @@ describe('stars are personal', () => {
     expect(found(owner, { starred: true })).toEqual([]);
     expect(found(b, { starred: true })).toEqual([SHARED_FILE]);
     expect(found(a, { starred: false })).not.toContain(OUTSIDE);
-    expect(read.readItem(actorOf(b), SHARED_FILE).starred).toBe(true);
-    expect(read.readItem(actorOf(owner), SHARED_FILE).starred).toBe(false);
+    expect((await read.readItem(actorOf(b), SHARED_FILE)).starred).toBe(true);
+    expect((await read.readItem(actorOf(owner), SHARED_FILE)).starred).toBe(false);
   });
 
   it('does not let a star on an item the owner cannot open make it reachable', () => {
@@ -274,17 +274,21 @@ describe('totals only for the hub owner', () => {
   });
 
   it('counts only the drives the person can open in stats and health', async () => {
-    const stats = new DriveStatsReader(opened.store.context);
-    const ownerStats = await stats.read(actorOf(owner), () => Promise.resolve(SPACE));
+    const { store } = opened;
+    const stats = (actor: DriveActor): Promise<DriveStats> =>
+      readDriveStats(store, actor, () => Promise.resolve(SPACE));
+    const ownerStats = await stats(actorOf(owner));
     expect(ownerStats.roots.map((row) => row.rootId).sort()).toEqual([HOME, OWNER_DRIVE].sort());
     expect(ownerStats.items).toBe(2);
-    const annStats = await stats.read(actorOf(a), () => Promise.resolve(SPACE));
+    const annStats = await stats(actorOf(a));
     expect(annStats.items).toBe(4);
-    const health = new DriveHealthReader(opened.store.context, {
-      roots: (): StoredDrive[] => opened.store.driveRoots.list(),
+    const health = new DriveHealthReader({
+      figures: (actor): Promise<DriveHealthFigures> =>
+        store.host.read('driveHealthFigures', { actor }),
       watcher: (): WatchStatus => WATCHING,
-      scrub: (): DriveScrubState => ({ state: 'idle', lastFinishedAt: null, corrupt: 0 }),
-      backup: (): DriveBackupStatus => ({ last: null, lastOkAt: null }),
+      scrub: (): Promise<DriveScrubState> =>
+        Promise.resolve({ state: 'idle', lastFinishedAt: null, corrupt: 0 }),
+      backup: (): Promise<DriveBackupStatus> => Promise.resolve({ last: null, lastOkAt: null }),
       space: (): Promise<typeof SPACE> => Promise.resolve(SPACE),
     });
     expect((await health.read(actorOf(owner))).rootsTotal).toBe(2);

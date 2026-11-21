@@ -87,7 +87,7 @@ describe('device set effect', () => {
     );
     expect(result).toStrictEqual({ sent: [home.lampId], skipped: [], note: null });
     expect(home.adapter.executed.map((command) => command.value)).toStrictEqual([40]);
-    const [row] = run.recorded;
+    const [row] = home.db.store.commands.recent(1);
     const metadata = commandMetadata(home.db.store).of(row?.id ?? '', NOW.getTime());
     expect(metadata).toMatchObject({
       runId: run.runId,

@@ -27,6 +27,7 @@ import { beginTrace, noteRoute } from './request-trace';
 import { recordingFile, sendRecording } from './recording-files';
 import type { Router } from './router';
 import type { CLASS2_METHODS } from './dav';
+import { refuseUpgrade } from './upgrade-refusal';
 
 export interface RawRoute {
   readonly method: HttpMethod | 'HEAD' | (typeof CLASS2_METHODS)[number];
@@ -273,15 +274,8 @@ function disconnected(response: ServerResponse, cause: unknown): boolean {
   );
 }
 
-function refuseUpgrade(socket: Duplex, error: ApiError): void {
-  const body = JSON.stringify(error.body());
-  socket.end(
-    `HTTP/1.1 ${String(error.status)} ${error.code}\r\ncontent-type: application/json\r\ncontent-length: ${String(Buffer.byteLength(body))}\r\nconnection: close\r\n\r\n${body}`,
-  );
-}
-
 interface UpgradePort {
-  readonly upgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
+  readonly upgrade: (request: IncomingMessage, socket: Duplex, head: Buffer) => Promise<void>;
 }
 
 function nativeSocketOf(context: ServerContext, pathname: string): UpgradePort | undefined {
@@ -321,19 +315,19 @@ async function upgrade(
   const url = urlOf(request);
   const native = nativeSocketOf(options.context, url.pathname);
   if (native !== undefined) {
-    native.upgrade(request, socket, head);
+    await native.upgrade(request, socket, head);
     return;
   }
   if (url.pathname === MEDIA_PATHS.live) {
-    options.context.live.upgrade(request, socket, head);
+    await options.context.live.upgrade(request, socket, head);
     return;
   }
   if (url.pathname === TALK_PATH) {
-    options.context.talk.upgrade(request, socket, head);
+    await options.context.talk.upgrade(request, socket, head);
     return;
   }
   if (url.pathname === ASSISTANT_VOICE_PATH) {
-    options.assistantVoice.upgrade(request, socket, head);
+    await options.assistantVoice.upgrade(request, socket, head);
     return;
   }
   const raw = rawUpgradeOf(options.rawRoutes, url.pathname);

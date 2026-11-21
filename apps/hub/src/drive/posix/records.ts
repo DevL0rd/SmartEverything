@@ -1,63 +1,51 @@
 import type { DriveFeedOp, DriveItem } from '@smarteverything/domain';
+import type { DriveInodeTimes } from '../../store/repositories/drive-inodes';
 import type { DriveInodePatch } from '../../store/repositories/drive-item-inodes';
 import type { DriveItemDraft, DriveItemIdentity } from '../../store/repositories/drive-items';
-import { announce, appendFeed, type ChangeActor } from '../changes';
+import type { ChangeActor } from '../changes';
+import type { DriveOp } from '../units/ops';
 import { posix } from './errors';
 import type { PosixCaller, PosixChangeEnv } from './env';
-import type { PosixNode } from './nodes';
+import type { PosixNode } from '../units/posix';
 import { after, nowNs } from './times';
 
 export function actorOf(caller: PosixCaller): ChangeActor {
   return { actorProfileId: caller.profileId, via: 'mount', deviceId: caller.nodeId };
 }
 
-export function identityOfItem(env: PosixChangeEnv, item: DriveItem): { dev: string; ino: string } {
-  const identity = env.store.driveItems.identityOf(item.id);
+export async function identityOfItem(
+  env: PosixChangeEnv,
+  item: DriveItem,
+): Promise<DriveItemIdentity> {
+  const identity = await env.store.host.call('driveItems', 'identityOf', item.id);
   if (identity === null) {
     throw posix('ESTALE', `The item ${item.id} is not indexed yet; scan its folder first.`);
   }
   return identity;
 }
 
-export function recordInode(
-  env: PosixChangeEnv,
-  caller: PosixCaller,
-  item: DriveItem,
-  patch: DriveInodePatch,
-): DriveItem {
-  const identity = identityOfItem(env, item);
-  return env.store.write(() => {
-    const written = env.store.driveItems.write({ item, identity, inode: patch });
-    if (written.changed) {
-      appendFeed(env, written.item, 'update', actorOf(caller));
-      announce(env, written.item.rootId, written.item.parentId, [written.item]);
-    }
-    return written.item;
-  });
+export function announceOp(caller: PosixCaller, item: DriveItem, op: DriveFeedOp): DriveOp {
+  return { kind: 'announce', item, op, actor: actorOf(caller) };
 }
 
-export function recordOp(
-  env: PosixChangeEnv,
-  caller: PosixCaller,
-  item: DriveItem,
-  op: DriveFeedOp,
-): void {
-  appendFeed(env, item, op, actorOf(caller));
-  announce(env, item.rootId, item.parentId, [item]);
-}
-
-export function touchDirectory(env: PosixChangeEnv, directory: PosixNode): void {
+export function touchDirectory(env: PosixChangeEnv, directory: PosixNode): DriveOp {
   const now = nowNs(env);
-  env.store.driveInodes.setTimes(directory.inode.id, {
-    mtimeNs: after(directory.inode.mtimeNs, now),
-    ctimeNs: after(directory.inode.ctimeNs, now),
-  });
+  return {
+    kind: 'times',
+    inodeId: directory.inode.id,
+    times: {
+      mtimeNs: after(directory.inode.mtimeNs, now),
+      ctimeNs: after(directory.inode.ctimeNs, now),
+    },
+  };
 }
 
-export function touchChange(env: PosixChangeEnv, node: PosixNode): void {
-  env.store.driveInodes.setTimes(node.inode.id, {
-    ctimeNs: after(node.inode.ctimeNs, nowNs(env)),
-  });
+export function changeTimes(env: PosixChangeEnv, node: PosixNode): DriveInodeTimes {
+  return { ctimeNs: after(node.inode.ctimeNs, nowNs(env)) };
+}
+
+export function touchChange(env: PosixChangeEnv, node: PosixNode): DriveOp {
+  return { kind: 'times', inodeId: node.inode.id, times: changeTimes(env, node) };
 }
 
 export interface NewRecord {
@@ -66,21 +54,6 @@ export interface NewRecord {
   readonly inode: DriveInodePatch;
 }
 
-function adopted(env: PosixChangeEnv, draft: DriveItemDraft): DriveItemDraft {
-  const taken = env.store.driveItems.lookups.placed(draft.rootId, draft.relPath);
-  if (taken?.kind !== draft.kind) return draft;
-  return { ...draft, id: taken.id, addedAt: taken.addedAt };
-}
-
-export function recordNew(env: PosixChangeEnv, caller: PosixCaller, record: NewRecord): DriveItem {
-  return env.store.write(() => {
-    const written = env.store.driveItems.write({
-      item: adopted(env, record.draft),
-      identity: record.identity,
-      inode: record.inode,
-    });
-    appendFeed(env, written.item, 'create', actorOf(caller));
-    announce(env, written.item.rootId, written.item.parentId, [written.item]);
-    return written.item;
-  });
+export function createOp(caller: PosixCaller, record: NewRecord): DriveOp {
+  return { kind: 'create', ...record, actor: actorOf(caller) };
 }

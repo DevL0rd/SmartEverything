@@ -26,7 +26,7 @@ describe('release publications', () => {
       record,
       now: (): Date => new Date('2026-11-14T10:00:00.000Z'),
       newId: (): string => '00000000-0000-4000-8000-000000000001',
-      sourceOf: (): ReleaseSource => 'provided',
+      sourceOf: (): Promise<ReleaseSource> => Promise.resolve('provided'),
       prepare: () => Promise.resolve({ base: null, components: ['app'], notes: 'Notes' }),
       execute: () => Promise.reject(new Error('a provided step must not execute')),
       changed: (): void => undefined,

@@ -3,22 +3,11 @@ import { messageOf, type Logger } from '@smarteverything/logging';
 import type { Clock } from '../../clock';
 import { ScheduledFetch } from '../../scheduled-fetch';
 import type { Store } from '../../store/store';
-import { applyEntries } from '../ical/apply';
-import { readCalendar } from '../ical/read';
+import type { CalendarReader } from '../ical/calendar-reader';
 import { feedUrlOf } from './address';
 import { FEED_DEADLINE_MS, type FeedAnswer, type FeedRequest } from './transport';
 
-export type SubscriptionStore = Pick<
-  Store,
-  | 'write'
-  | 'feed'
-  | 'settings'
-  | 'personAccess'
-  | 'plannerCollections'
-  | 'plannerItems'
-  | 'plannerGuests'
-  | 'plannerOccurrences'
->;
+export type SubscriptionStore = Pick<Store, 'host' | 'feed' | 'settings'>;
 
 export type FeedFetcher = (request: FeedRequest) => Promise<FeedAnswer>;
 
@@ -27,6 +16,7 @@ export interface SubscriptionDeps {
   readonly clock: Clock;
   readonly log: Logger;
   readonly fetcher: FeedFetcher;
+  readonly calendars: CalendarReader;
 }
 
 type IcsFeed = Extract<PlannerFeed, { readonly kind: 'ics' }>;
@@ -97,92 +87,73 @@ export class FeedSubscription {
 
   private async pull(): Promise<PlannerCollectionRow> {
     const { store, log } = this.deps;
-    const collection = store.plannerCollections.anyById(this.collectionId);
+    const { collection, allowPrivate } = await store.host.read('plannerFeedSource', {
+      collectionId: this.collectionId,
+    });
     const feed = icsFeedOf(collection);
     const request: FeedRequest = {
       url: feedUrlOf(feed.url),
       etag: feed.etag,
       lastModified: feed.last_modified,
-      allowPrivate: store.personAccess.find(collection.profile_id)?.role === 'owner',
+      allowPrivate,
       signal: AbortSignal.timeout(FEED_DEADLINE_MS),
     };
     try {
       const answer = await this.deps.fetcher(request);
-      const stored = this.record(collection, answer);
+      const stored = await this.record(collection, answer);
       this.job.reset();
       this.scheduleNext(stored);
       return stored;
     } catch (cause) {
       log.warn('planner.feed_failed', { collection: collection.id, reason: messageOf(cause) });
-      const failed = this.fail(collection, cause);
+      const failed = await this.touch(collection, messageOf(cause));
       this.job.schedule(this.job.retryAt());
       return failed;
     }
   }
 
-  private current(collection: PlannerCollectionRow): PlannerCollectionRow | undefined {
-    const latest = this.deps.store.plannerCollections.findAny(collection.id);
-    return latest?.feed?.kind === 'ics' && latest.feed.url === icsFeedOf(collection).url
-      ? latest
-      : undefined;
-  }
-
-  private record(collection: PlannerCollectionRow, answer: FeedAnswer): PlannerCollectionRow {
+  private async record(
+    collection: PlannerCollectionRow,
+    answer: FeedAnswer,
+  ): Promise<PlannerCollectionRow> {
     const { store, clock, log } = this.deps;
-    const latest = this.current(collection);
-    if (latest === undefined) return collection;
-    const feed = icsFeedOf(latest);
-    const fetchedAt = clock.now().toISOString();
     if (answer.kind === 'not_modified') {
       log.info('planner.feed_fetched', { collection: collection.id, outcome: 'not_modified' });
-      return store.plannerCollections.update(latest.id, latest.profile_id, {
-        feed: { ...feed, fetched_at: fetchedAt, failure: null },
-      });
+      return this.touch(collection, null);
     }
-    const calendar = readCalendar(answer.text, { defaultZone: store.settings.read().time_zone });
-    this.statedMinutes = calendar.refreshMinutes;
-    const tally = store.write(() => {
-      const counts = applyEntries(
-        store,
-        clock.now,
-        {
-          profileId: latest.profile_id,
-          collectionId: latest.id,
-          createdBy: 'feed',
-          removeMissing: true,
-        },
-        calendar.entries,
-      );
-      const row = store.plannerCollections.update(latest.id, latest.profile_id, {
-        feed: {
-          ...feed,
-          etag: answer.etag,
-          last_modified: answer.lastModified,
-          fetched_at: fetchedAt,
-          failure: null,
-        },
-      });
-      return { counts, row };
+    const calendar = await this.deps.calendars.read(answer.text, {
+      defaultZone: store.settings.read().time_zone,
     });
+    const applied = await store.host.write('plannerFeedApply', {
+      collectionId: collection.id,
+      url: icsFeedOf(collection).url,
+      entries: calendar.entries,
+      etag: answer.etag,
+      lastModified: answer.lastModified,
+      nowMs: clock.now().getTime(),
+    });
+    if (applied === null) return collection;
+    this.statedMinutes = calendar.refreshMinutes;
     log.info('planner.feed_fetched', {
       collection: collection.id,
       outcome: 'changed',
-      ...tally.counts,
+      ...applied.counts,
       unsupported: calendar.unsupported.length,
       statedMinutes: calendar.refreshMinutes,
     });
-    return tally.row;
+    return applied.row;
   }
 
-  private fail(collection: PlannerCollectionRow, cause: unknown): PlannerCollectionRow {
-    const { store, clock } = this.deps;
-    const latest = this.current(collection);
-    if (latest === undefined) return collection;
-    return store.plannerCollections.update(latest.id, latest.profile_id, {
-      feed: {
-        ...icsFeedOf(latest),
-        failure: { at: clock.now().toISOString(), reason: messageOf(cause) },
-      },
+  private async touch(
+    collection: PlannerCollectionRow,
+    failure: string | null,
+  ): Promise<PlannerCollectionRow> {
+    const touched = await this.deps.store.host.write('plannerFeedTouch', {
+      collectionId: collection.id,
+      url: icsFeedOf(collection).url,
+      failure,
+      nowMs: this.deps.clock.now().getTime(),
     });
+    return touched ?? collection;
   }
 }

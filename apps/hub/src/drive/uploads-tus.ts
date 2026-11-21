@@ -4,15 +4,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { messageOf } from '@smarteverything/logging';
 import { fsCode } from '../fs-code';
 import type { DriveItem, DriveUpload } from '@smarteverything/domain';
-import type { DriveUploadOwner } from '../store/repositories/drive-uploads';
-import type { Store } from '../store/store';
 import { commitContent } from './changes';
 import { locate, TMP_DIRECTORY, type DriveWriteRoot } from './intents';
-import { checkDriveFreeSpace, checkDriveQuota } from './quotas';
-import { readDriveSettings } from './settings';
+import { checkDriveFreeSpace, loadedQuotaCheck } from './quotas';
+import { loadDriveSettings } from './settings';
 import type { DriveActivity } from './activity';
 import { stagedUpload, type StagedEnv } from './uploads-tus-content';
-import { destinationOf, relPathOf } from './uploads-tus-target';
+import { destinationOf, ownedUpload, relPathOf } from './uploads-tus-target';
 import {
   absent,
   actorOf,
@@ -37,16 +35,13 @@ import {
   type Reply,
   type TusCaller,
 } from './uploads-tus-wire';
-import type { BlockHashes } from './blocks';
 import type { DataSpaceProbe } from './data-space';
 
 export interface TusEnv extends StagedEnv {
-  readonly store: StagedEnv['store'] & Pick<Store, 'driveUploads' | 'driveQuotas' | 'settingsKv'>;
   readonly space: DataSpaceProbe['space'];
-  readonly completed: (item: DriveItem) => void;
+  readonly completed: (item: DriveItem) => Promise<void>;
   readonly activity: Pick<DriveActivity, 'around'>;
-  readonly authenticate: (request: IncomingMessage) => TusCaller | null;
-  readonly settle: <T>(work: () => T) => Promise<T>;
+  readonly authenticate: (request: IncomingMessage) => Promise<TusCaller | null>;
 }
 
 export class TusUploads {
@@ -73,19 +68,23 @@ export class TusUploads {
   }
 
   async sweepExpired(): Promise<number> {
-    const expired = this.env.store.driveUploads.expire(this.env.now().toISOString());
+    const expired = await this.env.store.host.call(
+      'driveUploads',
+      'expire',
+      this.env.now().toISOString(),
+    );
     for (const upload of expired) {
       await this.discard(upload);
     }
     return expired.length;
   }
 
-  soonestExpiry(): string | null {
-    return this.env.store.driveUploads.soonestExpiry();
+  soonestExpiry(): Promise<string | null> {
+    return this.env.store.host.call('driveUploads', 'soonestExpiry');
   }
 
   private async route(request: IncomingMessage): Promise<Reply> {
-    const caller = this.env.authenticate(request);
+    const caller = await this.env.authenticate(request);
     if (caller === null) {
       return { status: 401, body: 'Sign in to upload.' };
     }
@@ -117,7 +116,7 @@ export class TusUploads {
     }
     switch (method) {
       case 'HEAD':
-        this.owned(id, caller);
+        await this.owned(id, caller);
         return this.locked(id, () => this.head(id, caller));
       case 'PATCH':
         return this.patch(request, id, caller);
@@ -131,16 +130,16 @@ export class TusUploads {
   private async create(request: IncomingMessage, caller: TusCaller): Promise<Reply> {
     const length = lengthOf(request);
     const { target, name, sha256 } = targetOf(request);
-    const destination = destinationOf(this.env.store, target, caller);
+    const destination = await destinationOf(this.env.store, target, caller);
     const released = destination.item?.bytes ?? 0;
-    checkDriveQuota((profileId) => this.env.store.driveQuotas.status(profileId), {
+    await loadedQuotaCheck(this.env.store, {
       profileId: caller.profileId,
       addBytes: length,
       releasedBytes: released,
     });
     await checkDriveFreeSpace(this.env.space, destination.root.path, length);
     const now = this.env.now();
-    const days = readDriveSettings(this.env.store).uploadExpiryDays;
+    const days = (await loadDriveSettings(this.env.store)).uploadExpiryDays;
     const upload: DriveUpload = {
       id: randomUUID(),
       rootId: destination.root.id,
@@ -174,13 +173,13 @@ export class TusUploads {
     upload: DriveUpload,
     expectedSha256: string | null,
   ): Promise<void> {
-    const { files, store, settle } = this.env;
+    const { files, store } = this.env;
     const path = await locate(root, tmpPath(upload.id));
     await files.mkdir(await locate(root, TMP_DIRECTORY));
     const created = await open(path, 'wx', 0o600);
     await created.close();
     try {
-      await settle(() => store.driveUploads.insert(upload, expectedSha256));
+      await store.host.call('driveUploads', 'insert', upload, expectedSha256);
     } catch (cause) {
       await files.remove(path);
       throw cause;
@@ -188,13 +187,13 @@ export class TusUploads {
   }
 
   private async head(id: string, caller: TusCaller): Promise<Reply> {
-    const upload = this.owned(id, caller);
+    const upload = await this.owned(id, caller);
     const offset = upload.state === 'open' ? await this.currentOffset(upload) : upload.offset;
     const result =
       upload.state === 'open' && offset === upload.length
         ? await this.commit({ ...upload, offset }, caller)
         : upload.state === 'complete'
-          ? completedHeaders(this.env.store.driveUploads.result(upload.id))
+          ? await this.completed(upload.id)
           : {};
     return {
       status: 200,
@@ -209,17 +208,17 @@ export class TusUploads {
   }
 
   private async terminate(id: string, caller: TusCaller): Promise<Reply> {
-    const upload = this.owned(id, caller);
+    const upload = await this.owned(id, caller);
     if (this.active.has(id)) {
       throw new TusError(409, 'The upload is being written.');
     }
     await this.discard(upload);
-    this.env.store.driveUploads.remove(id);
+    await this.env.store.host.call('driveUploads', 'remove', id);
     return { status: 204 };
   }
 
-  private patch(request: IncomingMessage, id: string, caller: TusCaller): Promise<Reply> {
-    const upload = this.owned(id, caller);
+  private async patch(request: IncomingMessage, id: string, caller: TusCaller): Promise<Reply> {
+    const upload = await this.owned(id, caller);
     return this.locked(id, () => this.patchLocked(request, upload, caller));
   }
 
@@ -263,23 +262,12 @@ export class TusUploads {
     };
   }
 
-  private owned(id: string, caller: TusCaller): DriveUpload {
-    const owner: DriveUploadOwner = {
-      profileId: caller.profileId,
-      clientId: caller.clientId,
-      nodeId: caller.nodeId,
-    };
-    const upload = this.env.store.driveUploads.findOwned(id, owner);
-    const due =
-      upload?.state === 'open' && Date.parse(upload.expiresAt) <= this.env.now().getTime();
-    if (upload === undefined || upload.state === 'failed' || upload.state === 'expired' || due) {
-      throw absent();
-    }
-    return upload;
+  private owned(id: string, caller: TusCaller): Promise<DriveUpload> {
+    return ownedUpload(this.env.store, { id, caller, now: this.env.now() });
   }
 
-  private rootOf(upload: DriveUpload): DriveWriteRoot {
-    const root = this.env.store.driveRoots.find(upload.rootId);
+  private async rootOf(upload: DriveUpload): Promise<DriveWriteRoot> {
+    const root = await this.env.store.host.call('driveRoots', 'find', upload.rootId);
     if (root === undefined) {
       throw absent();
     }
@@ -287,14 +275,14 @@ export class TusUploads {
   }
 
   private async currentOffset(upload: DriveUpload): Promise<number> {
-    const root = this.rootOf(upload);
+    const root = await this.rootOf(upload);
     const stamp = await this.env.files.stamp(await locate(root, tmpPath(upload.id)));
     if (stamp === null) {
-      this.fail(upload, upload.state, 'The partial upload is missing from disk.');
+      await this.fail(upload, upload.state, 'The partial upload is missing from disk.');
       throw absent();
     }
     if (stamp.size !== upload.offset) {
-      this.env.store.driveUploads.setOffset(upload.id, stamp.size);
+      await this.env.store.host.call('driveUploads', 'setOffset', upload.id, stamp.size);
     }
     return stamp.size;
   }
@@ -304,7 +292,7 @@ export class TusUploads {
     write: { upload: DriveUpload; offset: number; claim: string | undefined },
   ): Promise<DriveUpload> {
     const { upload, offset, claim } = write;
-    const root = this.rootOf(upload);
+    const root = await this.rootOf(upload);
     const handle = await open(await locate(root, tmpPath(upload.id)), 'r+');
     const hash = claim === undefined ? null : createHash('sha256');
     try {
@@ -324,10 +312,14 @@ export class TusUploads {
         throw new TusError(460, 'The checksum does not match the received bytes.');
       }
       await handle.sync();
-      const days = readDriveSettings(this.env.store).uploadExpiryDays;
+      const days = (await loadDriveSettings(this.env.store)).uploadExpiryDays;
       const expiresAt = new Date(this.env.now().getTime() + days * DAY_MS).toISOString();
-      return await this.env.settle(() =>
-        this.env.store.driveUploads.setOffset(upload.id, offset + written, expiresAt),
+      return await this.env.store.host.call(
+        'driveUploads',
+        'setOffset',
+        upload.id,
+        offset + written,
+        expiresAt,
       );
     } catch (cause) {
       await this.afterInterruption(cause, handle, upload);
@@ -347,11 +339,11 @@ export class TusUploads {
     }
     if (fsCode(cause) === 'ENOSPC') {
       await this.discard(upload);
-      this.fail(upload, 'open', 'The disk ran out of space.');
+      await this.fail(upload, 'open', 'The disk ran out of space.');
       return;
     }
     const { size } = await handle.stat();
-    this.env.store.driveUploads.setOffset(upload.id, size);
+    await this.env.store.host.call('driveUploads', 'setOffset', upload.id, size);
     this.env.log.info('drive_upload.interrupted', { uploadId: upload.id, offset: size });
   }
 
@@ -366,11 +358,11 @@ export class TusUploads {
     upload: DriveUpload,
     caller: TusCaller,
   ): Promise<Readonly<Record<string, string>>> {
-    const { driveUploads } = this.env.store;
-    await this.env.settle(() => driveUploads.transition(upload.id, 'open', 'committing', null));
+    const { host } = this.env.store;
+    await host.call('driveUploads', 'transition', upload.id, 'open', 'committing', null);
     try {
-      const destination = destinationOf(this.env.store, upload.target, caller);
-      checkDriveQuota((profileId) => this.env.store.driveQuotas.status(profileId), {
+      const destination = await destinationOf(this.env.store, upload.target, caller);
+      await loadedQuotaCheck(this.env.store, {
         profileId: upload.profileId,
         addBytes: upload.length,
         releasedBytes: destination.item?.bytes ?? 0,
@@ -379,40 +371,42 @@ export class TusUploads {
         this.env,
         destination.root,
         upload,
-        driveUploads.expectedHash(upload.id),
+        await host.call('driveUploads', 'expectedHash', upload.id),
       );
       const relPath = await relPathOf(this.env, destination, upload.name);
-      await commitContent(this.env, {
+      const written = await commitContent(this.env, {
         root: destination.root,
         staged,
         relPath,
         actor: actorOf(upload),
-        alongside: (item): void => {
-          if (blocks !== null) this.keepBlocks(item, blocks);
-          driveUploads.complete(upload.id, item);
-          this.env.completed(item);
-        },
+        alongside: [
+          ...(blocks === null ? [] : [{ kind: 'blocks', ...blocks } as const]),
+          { kind: 'uploadComplete', uploadId: upload.id },
+        ],
       });
-      return completedHeaders(this.env.store.driveUploads.result(upload.id));
+      await this.env.completed(written.item);
+      return await this.completed(upload.id);
     } catch (cause) {
       await this.discard(upload);
-      this.fail(upload, 'committing', messageOf(cause));
+      await this.fail(upload, 'committing', messageOf(cause));
       throw cause;
     }
   }
 
-  private keepBlocks(item: DriveItem, blocks: BlockHashes): void {
-    const { driveBlocks } = this.env.store;
-    driveBlocks.put({ itemId: item.id, rev: item.rev, ...blocks });
-    driveBlocks.removeBefore(item.id, item.rev);
+  private async completed(id: string): Promise<Readonly<Record<string, string>>> {
+    return completedHeaders(await this.env.store.host.call('driveUploads', 'result', id));
   }
 
-  private fail(upload: DriveUpload, from: DriveUpload['state'], reason: string): void {
-    this.env.store.driveUploads.transition(upload.id, from, 'failed', reason);
+  private async fail(
+    upload: DriveUpload,
+    from: DriveUpload['state'],
+    reason: string,
+  ): Promise<void> {
+    await this.env.store.host.call('driveUploads', 'transition', upload.id, from, 'failed', reason);
   }
 
   private async discard(upload: DriveUpload): Promise<void> {
-    const root = this.env.store.driveRoots.find(upload.rootId);
+    const root = await this.env.store.host.call('driveRoots', 'find', upload.rootId);
     if (root !== undefined) {
       await this.env.files.remove(await locate(root, tmpPath(upload.id)));
     }

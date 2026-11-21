@@ -198,9 +198,9 @@ describe('committing and cleaning up', () => {
     scans.release('map-1', { hash: received.hash, format: 'splat' });
     const directory = join(root, Buffer.from('map-1').toString('base64url'));
     for (const name of names) writeFileSync(join(directory, name), 'x');
-    scans.reconcile('map-1', scanOf('b', 'splat', 'd'));
+    await scans.reconcile('map-1', scanOf('b', 'splat', 'd'));
     expect(readdirSync(directory).sort()).toEqual(['b.splat', 'd.rad']);
-    scans.reconcile('map-1', undefined);
+    await scans.reconcile('map-1', undefined);
     expect(existsSync(directory)).toBe(false);
   });
 
@@ -208,28 +208,26 @@ describe('committing and cleaning up', () => {
     const scans = store();
     const received = await scans.receive(chunked(splatFile(1)), { declared: 32, format: 'splat' });
     await scans.commit(received, 'map-1', 'splat');
-    scans.reconcile('map-1', undefined);
+    await scans.reconcile('map-1', undefined);
     const directory = join(root, Buffer.from('map-1').toString('base64url'));
     expect(readdirSync(directory)).toEqual([`${received.hash}.splat`]);
     scans.release('map-1', { hash: received.hash, format: 'splat' });
-    scans.reconcile('map-1', undefined, new Set([`${received.hash}.splat`]));
+    await scans.reconcile('map-1', undefined, new Set([`${received.hash}.splat`]));
     expect(readdirSync(directory)).toEqual([`${received.hash}.splat`]);
-    scans.reconcile('map-1', undefined);
+    await scans.reconcile('map-1', undefined);
     expect(existsSync(directory)).toBe(false);
   });
 
-  it('removeAll deletes the folder of a deleted map and tolerates a map without one', () => {
+  it('removeAll deletes the folder of a deleted map and tolerates a map without one', async () => {
     const scans = store();
-    expect(() => {
-      scans.removeAll('never-had-a-scan');
-    }).not.toThrow();
+    await expect(scans.removeAll('never-had-a-scan')).resolves.toBeUndefined();
   });
 
   it('sweeps temp files left by a crash', async () => {
     const scans = store();
     await scans.receive(chunked(splatFile(1)), { declared: 32, format: 'splat' });
     expect(temporary()).toHaveLength(1);
-    scans.sweepTemp();
+    await scans.sweepTemp();
     expect(temporary()).toEqual([]);
   });
 

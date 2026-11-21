@@ -15,12 +15,10 @@ import {
 } from '../../server/person-scope';
 import { DONE_REPLY, bound, type Routes } from '../../server/router';
 import type { Store } from '../../store/store';
-import type { LocalDevices } from '../local-devices';
 import type { WatchBridges } from '../watch-bridge';
 import type { Viewer } from './access';
 import { actBrush, type ActDeps, type Actor } from './acts';
 import type { BrushActionBroker } from './broker';
-import { isBrushEntry } from './brands';
 import type { Fleet } from './fleet';
 import type { BrushIngest } from './ingest';
 import { readBrush, type ViewDeps } from './views';
@@ -35,7 +33,6 @@ export type BrushEndpointName =
 export interface RouteDeps {
   readonly store: Store;
   readonly fleet: Fleet;
-  readonly local: Pick<LocalDevices, 'deviceOf'>;
   readonly bridges: Pick<WatchBridges, 'acquire' | 'heldElsewhere' | 'pair'>;
   readonly ingest: BrushIngest;
   readonly broker: Pick<BrushActionBroker, 'answer'>;
@@ -44,24 +41,17 @@ export interface RouteDeps {
   readonly now: () => Date;
 }
 
-function brushDeviceOf(
-  store: Pick<Store, 'devices' | 'localDevices'>,
-  deviceId: string,
-): DeviceRow {
-  const device = store.devices.byId(deviceId);
-  const isBrush =
-    device.provider === 'local' &&
-    store.localDevices
-      .list()
-      .some((entry) => entry.externalId === device.external_id && isBrushEntry(entry));
-  if (!isBrush) {
+async function brushDeviceOf(fleet: Fleet, deviceId: string): Promise<DeviceRow> {
+  const { device, member } = await fleet.roster.lookup(deviceId);
+  if (!member) {
     throw new ApiError('invalid_request', `${device.name} is not a toothbrush.`);
   }
+  await fleet.ensure(device);
   return device;
 }
 
-function reachable(deps: RouteDeps, deviceId: string, caller: Caller): DeviceRow {
-  const device = brushDeviceOf(deps.store, deviceId);
+async function reachable(deps: RouteDeps, deviceId: string, caller: Caller): Promise<DeviceRow> {
+  const device = await brushDeviceOf(deps.fleet, deviceId);
   assertDeviceReach(deps.store, subjectOf(caller), deviceScopeOf(deps.store, caller), device);
   return device;
 }
@@ -76,33 +66,32 @@ function phoneOf(caller: Caller): boolean {
   );
 }
 
-function viewerOf(store: Store, caller: Caller): Viewer {
+function viewerOf(caller: Caller): Viewer {
   return {
     clientId: caller.kind === 'client' ? caller.client.id : '',
     role: roleOfCaller(caller),
-    profileId: profileIdOf(store, caller),
+    profileId: profileIdOf(caller),
   };
 }
 
-function mine(deps: RouteDeps, caller: Caller): PhoneBrushes {
+async function mine(deps: RouteDeps, caller: Caller): Promise<PhoneBrushes> {
   const client = clientOf(caller);
   const scope = deviceScopeOf(deps.store, caller);
-  const brushes = deps.store.localDevices
-    .list()
-    .filter((entry) => isBrushEntry(entry))
-    .flatMap((entry) => {
-      const device = deps.local.deviceOf(entry);
-      return device === undefined || deviceHidden(scope, device) ? [] : [device];
-    })
-    .map((device) => {
-      const state = deps.fleet.of(device);
+  const devices = deps.fleet.roster
+    .members()
+    .map(({ device }) => device)
+    .filter((device) => !deviceHidden(scope, device));
+  const brushes = await Promise.all(
+    devices.map(async (device) => {
+      const state = await deps.fleet.ensure(device);
       return state.runtime.definition.plan(
         device,
         state,
         deps.bridges.heldElsewhere(device, client) === null,
         deps.now(),
       );
-    });
+    }),
+  );
   return { brushes };
 }
 
@@ -116,7 +105,7 @@ async function report(
   if (!phoneOf(caller)) {
     throw new ApiError('forbidden', 'Only a phone can report the toothbrush Bluetooth link.');
   }
-  const device = reachable(deps, deviceId, caller);
+  const device = await reachable(deps, deviceId, caller);
   const blocking = await deps.bridges.acquire(device, client);
   if (blocking !== null) {
     throw new ApiError(
@@ -124,15 +113,15 @@ async function report(
       `${blocking.clientName} holds the Bluetooth link to this toothbrush. Take over in the toothbrush settings to use it here.`,
     );
   }
-  const result = deps.ingest.process(device, client, body);
+  const result = await deps.ingest.process(device, client, body);
   if (body.link.phase === 'linked') {
     await deps.bridges.pair(device, client);
   }
   return result;
 }
 
-function actorOf(deps: RouteDeps, caller: Caller): Actor {
-  return { ...viewerOf(deps.store, caller), client: clientOf(caller), phone: phoneOf(caller) };
+function actorOf(caller: Caller): Actor {
+  return { ...viewerOf(caller), client: clientOf(caller), phone: phoneOf(caller) };
 }
 
 export function brushRoutes(deps: RouteDeps): Routes<BrushEndpointName> {
@@ -146,16 +135,16 @@ export function brushRoutes(deps: RouteDeps): Routes<BrushEndpointName> {
       deps.broker.answer(clientOf(caller).id, requestId, result);
       return DONE_REPLY;
     }),
-    readToothbrush: bound(E.readToothbrush, ({ params, query, caller }) =>
+    readToothbrush: bound(E.readToothbrush, async ({ params, query, caller }) =>
       readBrush(
         deps.views,
-        reachable(deps, params.deviceId, caller),
-        viewerOf(deps.store, caller),
+        await reachable(deps, params.deviceId, caller),
+        viewerOf(caller),
         query,
       ),
     ),
-    actToothbrush: bound(E.actToothbrush, ({ params, body, caller }) =>
-      actBrush(deps.acts, reachable(deps, params.deviceId, caller), actorOf(deps, caller), body),
+    actToothbrush: bound(E.actToothbrush, async ({ params, body, caller }) =>
+      actBrush(deps.acts, await reachable(deps, params.deviceId, caller), actorOf(caller), body),
     ),
   };
 }

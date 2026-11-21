@@ -1,5 +1,5 @@
 import type { HarnessRuntimeRequest } from '@smarteverything/domain';
-import type { HarnessAuthority } from '../host/server-policy';
+import type { HarnessAuthority } from '../host/authority';
 import type { HarnessSessionOptions } from '../host/contracts';
 export function sessionOpenOptions(
   input: Extract<HarnessRuntimeRequest, { kind: 'open' }>,

@@ -1,3 +1,4 @@
+import { inlineMetrics } from '../../src/node/metrics/node-metrics';
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -168,7 +169,7 @@ links.hub.onFrame((frame) => {
 });
 const real = controlsFor('linux', { now, log });
 const node = new ComputerNode({
-  collector: collectorFor('linux', { log, machineId: '0'.repeat(32), now: Date.now }),
+  metrics: inlineMetrics(collectorFor('linux', { log, machineId: '0'.repeat(32), now: Date.now })),
   controls: {
     ...real,
     session: {

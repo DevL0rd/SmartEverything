@@ -98,7 +98,7 @@ async function start(
     logFor: (area) => testLogger(area),
   });
   if (gate === null) {
-    await hub.providersStarted;
+    await Promise.all([hub.providersStarted, hub.resumed]);
   }
   return { store, fake, hub, go2rtcCalls, accountChanges };
 }
@@ -153,18 +153,32 @@ describe('hub core on the SQLite store', () => {
     await restarted.hub.stop();
   });
 
-  it('is ready while a slow provider discovery is still pending, then catches up once it finishes', async () => {
+  it('catches up at once while a slow provider is still starting and runs its waiting command once it has started', async () => {
+    const first = await start();
+    const lamp = deviceId(first.store, 'lamp-1');
+    await first.hub.stop();
+    const [waiting] = first.store.commands.insert([
+      { deviceId: lamp, capability: 'power', value: true, source: 'app', requestedBy: null },
+    ]);
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    const { store, hub } = await start(undefined, gate);
-    expect(store.devices.list()).toHaveLength(0);
-    expect(logs.records.filter((record) => record.event === 'commands.caught_up')).toHaveLength(0);
+    const { store, fake, hub } = await start(undefined, gate);
+    await hub.resumed;
+    expect(
+      logs.records
+        .filter((record) => record.event === 'commands.caught_up')
+        .map((record) => record.payload),
+    ).toStrictEqual([{ count: 0 }, { count: 1 }]);
+    expect(store.commands.byId(waiting?.id ?? '').status).not.toBe('succeeded');
+    expect(fake.adapter.executed).toHaveLength(0);
     release();
     await hub.providersStarted;
+    await hub.settled();
     expect(store.providers.find('xiaomi')).toMatchObject({ status: 'linked', device_count: 2 });
-    expect(logs.records.filter((record) => record.event === 'commands.caught_up')).toHaveLength(1);
+    expect(store.commands.byId(waiting?.id ?? '')).toMatchObject({ status: 'succeeded' });
+    expect(fake.adapter.executed.map((command) => command.capability)).toStrictEqual(['power']);
     await hub.stop();
   });
 
@@ -219,6 +233,7 @@ describe('hub core on the SQLite store', () => {
       ],
       body: [node('device.set', { target: { device: lamp }, control: 'brightness', to: 80 })],
     });
+    await hub.automationEngine.settled();
     fake.adapter.sink?.state({
       externalId: 'lamp-1',
       capability: 'power',
@@ -266,13 +281,16 @@ describe('hub core on the SQLite store', () => {
       triggers: [trigger('trigger.webhook', { path })],
       body: [node('device.set', { target: { device: lamp }, control: 'brightness', to: 71 })],
     });
+    await hub.automationEngine.settled();
     const starter = saveAutomation(store, { name: 'Starts the timer' });
+    await hub.automationEngine.settled();
     saveAutomation(store, {
       name: 'Timer done',
       triggers: [trigger('trigger.timer', { timer: 'laundry' })],
       body: [node('device.set', { target: { device: lamp }, control: 'brightness', to: 72 })],
     });
-    hub.automationEngine.sync();
+    await hub.automationEngine.settled();
+    await hub.automationEngine.sync();
     const answer = await hub.automationWebhooks.call({
       path,
       method: 'POST',
@@ -354,6 +372,7 @@ describe('hub core on the SQLite store', () => {
       enabled: false,
       triggers: [trigger('trigger.interval', { every: 300_000 })],
     });
+    await hub.automationEngine.settled();
     expect(reload).toHaveBeenCalledTimes(1);
     expect(reload).toHaveBeenCalledWith(automation.id);
     store.automations.recordRun(automation.id, {
@@ -391,6 +410,7 @@ describe('hub core on the SQLite store', () => {
       ],
       body: [node('flow.wait', { duration: 600_000 })],
     });
+    await hub.automationEngine.settled();
     fake.adapter.sink?.state({
       externalId: 'lamp-1',
       capability: 'power',
@@ -431,6 +451,7 @@ describe('hub core on the SQLite store', () => {
         node('device.toggle', { target: { device: lamp }, control: 'power' }),
       ],
     });
+    await hub.automationEngine.settled();
     fake.adapter.sink?.state({
       externalId: 'lamp-1',
       capability: 'power',
@@ -454,14 +475,16 @@ describe('hub core on the SQLite store', () => {
       .list({ limit: 20 })
       .find((event) => event.kind === 'automation_run' && event.details['message'] === 'Hello');
     expect(note?.details).toMatchObject({ automationId: automation.id, name: 'By hand' });
+    await vi.waitFor(() => {
+      expect(store.automations.byId(automation.id)).toMatchObject({
+        run_count: 1,
+        last_error: null,
+      });
+    });
     const noted = store.events
       .list({ limit: 20 })
       .find((event) => event.kind === 'automation_run' && event.details['outcome'] !== undefined);
     expect(noted?.details).toMatchObject({ automationId: automation.id, outcome: 'succeeded' });
-    expect(store.automations.byId(automation.id)).toMatchObject({
-      run_count: 1,
-      last_error: null,
-    });
     expect(store.automations.byId(automation.id).last_run_at).not.toBeNull();
     await hub.stop();
   });

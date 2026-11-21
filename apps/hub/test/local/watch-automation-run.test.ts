@@ -80,12 +80,13 @@ function perform(
     watchAutomationRuntime({
       store: opened.store,
       watches: {
-        target: (device) => ({
-          deviceId: device.id,
-          profileId: 'profile-1',
-          name: device.name,
-          bridgeClientId: null,
-        }),
+        target: (device) =>
+          Promise.resolve({
+            deviceId: device.id,
+            profileId: 'profile-1',
+            name: device.name,
+            bridgeClientId: null,
+          }),
       },
       actions: {
         attempt: (target, action, by) => {
@@ -232,9 +233,7 @@ describe('the watch face picker served by the driver', () => {
       watchAutomationRuntime({
         store: opened.store,
         watches: {
-          target: () => {
-            throw new Error('not used');
-          },
+          target: () => Promise.reject(new Error('not used')),
         },
         actions: { attempt: () => Promise.reject(new Error('not used')) },
       }),

@@ -1,16 +1,18 @@
 import {
   driveDurationBucket,
   DRIVE_DURATION_BUCKETS,
+  type DriveDataSpace,
   type DriveItem,
   type DriveQuery,
   type DriveRecentEntry,
   type DriveRecentFilter,
   type DriveRecentPage,
+  type DriveStats,
 } from '@smarteverything/domain';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
-import { driveHits } from '../../src/drive/search-provider';
+import { driveHits, type DriveHit, type DriveHitInput } from '../../src/drive/search-provider';
 import {
   DriveCursorError,
   DriveFolderRequiredError,
@@ -20,7 +22,12 @@ import {
   driveSearchStatement,
 } from '../../src/drive/search';
 import { DriveRecentReader } from '../../src/drive/recent';
-import { DriveStatsReader, fullInMonths, paceBytesPerMonth } from '../../src/drive/stats';
+import {
+  DriveStatsReader,
+  driveStatsOf,
+  fullInMonths,
+  paceBytesPerMonth,
+} from '../../src/drive/stats';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
@@ -38,7 +45,7 @@ import { DriveStarsRepository } from '../../src/store/repositories/drive-stars';
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
+import { driveFolders, personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const HOME = '0d000000-0000-4000-8000-000000000001';
@@ -228,7 +235,7 @@ beforeEach(() => {
   opens = new DriveOpensRepository(context);
   feed = new DriveFeedRepository(context);
   days = new DriveDaysRepository(context);
-  roots = new DriveRootsRepository(context, drivePathOf);
+  roots = new DriveRootsRepository(context, driveFolders);
   stars = new DriveStarsRepository(context);
   grants = new DriveGrantsRepository(context);
   search = new DriveSearch(context);
@@ -421,12 +428,29 @@ describe('search order and paging', () => {
   });
 });
 
+function hitsOf(input: DriveHitInput): Promise<DriveHit[]> {
+  return driveHits(
+    (viewer, query, limit) => Promise.resolve(search.search(viewer, query, limit)),
+    owner,
+    input,
+    () => Promise.resolve([]),
+  );
+}
+
+async function statsOf(
+  actor: DriveActor,
+  probe: () => Promise<DriveDataSpace>,
+): Promise<DriveStats> {
+  const figures = new DriveStatsReader(context).figures(actor);
+  return driveStatsOf(figures, await probe());
+}
+
 describe('drive hits for home_search', () => {
-  it('returns the tool hit shape with a target that opens the folder of a file or the folder itself', () => {
+  it('returns the tool hit shape with a target that opens the folder of a file or the folder itself', async () => {
     const trips = put(folder(1, 'trips'));
     put(photo(2, 'beach.jpg', { relPath: 'trips/beach.jpg', parentId: trips.id }));
     put(document(3, 'top beach notes.txt'));
-    const hits = driveHits(search, owner, { query: 'beach', limit: 10 }, () => []);
+    const hits = await hitsOf({ query: 'beach', limit: 10 });
     expect(hits.map((hit) => hit.name).sort()).toEqual(['beach.jpg', 'top beach notes.txt']);
     const beach = hits.find((hit) => hit.name === 'beach.jpg');
     expect(beach).toEqual({
@@ -445,7 +469,7 @@ describe('drive hits for home_search', () => {
       itemId: id(3),
       focus: null,
     });
-    const named = driveHits(search, owner, { query: 'trips', limit: 10 }, () => []).find(
+    const named = (await hitsOf({ query: 'trips', limit: 10 })).find(
       (hit) => hit.kind === 'folder',
     );
     expect(named?.target).toEqual({
@@ -457,14 +481,14 @@ describe('drive hits for home_search', () => {
     });
   });
 
-  it('honours the limit and the viewer scope', () => {
+  it('honours the limit and the viewer scope', async () => {
     for (let index = 1; index <= 4; index += 1) put(document(index, `note ${String(index)}.txt`));
     put(document(9, 'note private.txt', { rootId: SAM_ROOT }));
-    expect(driveHits(search, owner, { query: 'note', limit: 3 }, () => [])).toHaveLength(3);
-    expect(driveHits(search, owner, { query: 'private', limit: 10 }, () => [])).toEqual([]);
+    expect(await hitsOf({ query: 'note', limit: 3 })).toHaveLength(3);
+    expect(await hitsOf({ query: 'private', limit: 10 })).toEqual([]);
   });
 
-  it('finds what a person shared with the searcher and nothing else of theirs', () => {
+  it('finds what a person shared with the searcher and nothing else of theirs', async () => {
     const shared = put(folder(30, 'shared trip', { rootId: SAM_ROOT }));
     put(
       document(31, 'shared trip map.txt', {
@@ -474,13 +498,12 @@ describe('drive hits for home_search', () => {
       }),
     );
     put(document(32, 'shared secret.txt', { rootId: SAM_ROOT }));
-    expect(driveHits(search, owner, { query: 'shared', limit: 10 }, () => [])).toEqual([]);
+    expect(await hitsOf({ query: 'shared', limit: 10 })).toEqual([]);
     grants.set({ itemId: shared.id, profileId: robin, role: 'view', expiresAt: null }, sam);
-    expect(
-      driveHits(search, owner, { query: 'shared', limit: 10 }, () => [])
-        .map((hit) => hit.name)
-        .sort(),
-    ).toEqual(['shared trip', 'shared trip map.txt']);
+    expect((await hitsOf({ query: 'shared', limit: 10 })).map((hit) => hit.name).sort()).toEqual([
+      'shared trip',
+      'shared trip map.txt',
+    ]);
   });
 });
 
@@ -638,7 +661,7 @@ describe('stats', () => {
     version(id(3), 2, { sha: SHA, bytes: 40, purgeAt: '2027-02-10T00:00:00.000Z' });
     version(id(3), 3, { sha: SHA_TWO, bytes: 25, purgeAt: '2027-01-20T00:00:00.000Z' });
     trash(id(9), HOME, 5, '2026-12-01T00:00:00.000Z');
-    const stats = await new DriveStatsReader(context).read(owner, probe);
+    const stats = await statsOf(owner, probe);
     expect(stats).toMatchObject({
       items: 3,
       folders: 1,
@@ -674,24 +697,24 @@ describe('stats', () => {
     version(id(1), 2, { sha: SHA_TWO, bytes: 25, purgeAt: '2027-01-20T00:00:00.000Z' });
     trash(id(8), HOME, 5, '2026-12-01T00:00:00.000Z');
     trash(id(9), HOME, 7, '2027-01-02T00:00:00.000Z');
-    const stats = await new DriveStatsReader(context).read(owner, probe);
+    const stats = await statsOf(owner, probe);
     expect(stats.purges).toEqual([
       { month: '2026-11', trashBytes: 0, versionBytes: 40 },
       { month: '2026-12', trashBytes: 5, versionBytes: 0 },
       { month: '2027-01', trashBytes: 7, versionBytes: 25 },
     ]);
     database.exec('delete from drive_versions; delete from drive_trash');
-    expect((await new DriveStatsReader(context).read(owner, probe)).purges).toEqual([]);
+    expect((await statsOf(owner, probe)).purges).toEqual([]);
   });
 
   it('shows growth and a full date only once the library spans two months', async () => {
     days.record({ rootId: HOME, day: '2026-09-05', items: 1, bytes: 100, added: 1, removed: 0 });
     days.record({ rootId: HOME, day: '2026-10-09', items: 2, bytes: 200, added: 1, removed: 0 });
-    let stats = await new DriveStatsReader(context).read(owner, probe);
+    let stats = await statsOf(owner, probe);
     expect(stats.growth).toBeNull();
     expect(stats.fullInMonths).toBeNull();
     days.record({ rootId: HOME, day: '2026-11-07', items: 4, bytes: 400, added: 2, removed: 0 });
-    stats = await new DriveStatsReader(context).read(owner, probe);
+    stats = await statsOf(owner, probe);
     expect(stats.growth).toEqual([
       { day: '2026-09-05', items: 1, bytes: 100, added: 1, removed: 0 },
       { day: '2026-10-09', items: 2, bytes: 200, added: 1, removed: 0 },
@@ -712,7 +735,7 @@ describe('stats', () => {
       removed: 0,
     });
     days.record({ rootId: HOME, day: '2026-11-01', items: 2, bytes: 150, added: 1, removed: 0 });
-    const growth = (await new DriveStatsReader(context).read(owner, probe)).growth ?? [];
+    const growth = (await statsOf(owner, probe)).growth ?? [];
     expect(growth.map((day) => [day.day, day.items, day.bytes])).toEqual([
       ['2026-08-01', 1, 100],
       ['2026-09-01', 6, 600],
@@ -742,7 +765,7 @@ describe('stats', () => {
 
   it('probes the data folder disk once and reports its space', async () => {
     let probed = 0;
-    const stats = await new DriveStatsReader(context).read(owner, () => {
+    const stats = await statsOf(owner, () => {
       probed += 1;
       return probe();
     });
@@ -758,7 +781,7 @@ describe('stats', () => {
       put(document(index, `sam ${String(index)}.txt`, { rootId: SAM_ROOT, bytes: 10 }));
     }
     trash(id(8), SAM_ROOT, 99, '2026-12-01T00:00:00.000Z');
-    const stats = await new DriveStatsReader(context).read(owner, probe);
+    const stats = await statsOf(owner, probe);
     expect(stats).toMatchObject({ items: 3, liveBytes: 30, trashBytes: 0 });
     expect(stats.roots.map((row) => row.rootId).sort()).toEqual([HOME, ROBIN_ROOT]);
     expect(stats.purges).toEqual([]);

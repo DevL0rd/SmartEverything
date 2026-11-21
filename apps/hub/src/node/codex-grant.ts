@@ -25,7 +25,7 @@ export class NodeCodexGrant implements CodexNativeGrantResolver {
     }
     if (this.grant !== null) {
       const verified = await this.request({ action: 'verify', token: this.grant.token });
-      if (verified.valid) return this.present(this.grant);
+      if (verified.valid) return await this.present(this.grant);
     }
     const issued = await this.request({ action: 'issue' });
     if (!issued.valid || issued.token === null)
@@ -34,7 +34,7 @@ export class NodeCodexGrant implements CodexNativeGrantResolver {
         'The hub did not issue a computer/runtime-scoped Codex MCP grant.',
       );
     this.grant = { url: issued.url, pin: issued.pin, token: issued.token };
-    return this.present(this.grant);
+    return await this.present(this.grant);
   }
   private assertActive(): void {
     if (this.stopped) throw new CodexRuntimeError('mcp', 'Native MCP owner stopped.');
@@ -44,15 +44,20 @@ export class NodeCodexGrant implements CodexNativeGrantResolver {
     this.options.mcp?.release('codex');
   }
   async revoke(): Promise<void> {
-    this.options.mcp?.revoke('codex');
+    await this.options.mcp?.revoke('codex');
     if (this.grant === null) return;
     await this.request({ action: 'revoke' });
     this.grant = null;
   }
-  private present(grant: CodexNativeGrant & { readonly pin: string | null }): CodexNativeGrant {
+  private async present(
+    grant: CodexNativeGrant & { readonly pin: string | null },
+  ): Promise<CodexNativeGrant> {
     this.assertActive();
     if (this.options.mcp !== undefined)
-      return { url: this.options.mcp.endpoint('codex', grant, grant.token), token: grant.token };
+      return {
+        url: await this.options.mcp.endpoint('codex', grant, grant.token),
+        token: grant.token,
+      };
     if (grant.pin !== null)
       throw new CodexRuntimeError(
         'mcp',

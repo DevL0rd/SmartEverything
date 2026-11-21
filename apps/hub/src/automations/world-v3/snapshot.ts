@@ -21,7 +21,7 @@ export function snapshotHandlers(deps: WorldReadDeps): ReadHandlers {
       const request = parseInputs('device.snapshot', SNAPSHOT, inputs);
       const keys = request.controls.map(controlKey);
       const taken: Record<string, Record<string, JsonValue>> = {};
-      for (const device of devicesOf(deps.store, request.target)) {
+      for (const device of devicesOf(deps.world, request.target)) {
         const values = keys.flatMap((key): [string, JsonValue][] => {
           const capability = capabilityOf(device, key);
           if (capability === undefined || capability.access === 'read') return [];

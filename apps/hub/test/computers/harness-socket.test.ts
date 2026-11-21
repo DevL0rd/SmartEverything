@@ -17,6 +17,7 @@ import { ComputerNodeAccess } from '../../src/computers/node-access';
 import { ComputerHarnessSockets } from '../../src/server/harness-socket';
 import { harnessRig, type Rig } from '../assistant/harness/support/rig';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
+import { refusingUpgrades } from '../support/socket-client';
 import { until } from '../support/wait';
 
 const MACHINE = 'b'.repeat(32);
@@ -61,8 +62,8 @@ beforeEach(async () => {
   const logs = captureLogs();
   const rig = await harnessRig();
   const access = new ComputerNodeAccess(rig.opened.store, () => new Date());
-  const { code } = access.pair('https://hub.example.com', rig.clientId);
-  const { paired } = access.claim(code, HELLO, 'test');
+  const { code } = await access.pair('https://hub.example.com', rig.clientId);
+  const { paired } = await access.claim(code, HELLO, 'test');
   const sockets = new ComputerHarnessSockets(
     rig.opened.store,
     access,
@@ -70,9 +71,10 @@ beforeEach(async () => {
     testLogger('sockets'),
   );
   const server = createServer();
-  server.on('upgrade', (request, socket, head) => {
-    sockets.upgrade(request, socket, head);
-  });
+  server.on(
+    'upgrade',
+    refusingUpgrades((request, socket, head) => sockets.upgrade(request, socket, head)),
+  );
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve);
   });

@@ -2,8 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DSH_SESSION_EVENTS_WRITE, DSH_SESSION_HEADER } from '@smarteverything/domain';
 import type { DshSessionEvent, DshWriterClaim } from '@smarteverything/domain';
-import { ConversationLog } from '../../../src/assistant/conversation-log';
-import { adoptNativeChild } from '../../../src/assistant/engines/dsh/children';
+import { adoptNativeChild } from '../../../src/assistant/engines/dsh/children-adoption';
 import { wakeInterruptedParents } from '../../../src/assistant/engines/dsh/helper-wake';
 import { harnessRig, type Rig } from './support/rig';
 
@@ -20,13 +19,13 @@ interface World {
   readonly parentSession: string;
   readonly childSession: string;
   readonly childClaim: DshWriterClaim;
-  readonly append: (claim: DshWriterClaim, events: readonly DshSessionEvent[]) => void;
+  readonly append: (claim: DshWriterClaim, events: readonly DshSessionEvent[]) => Promise<void>;
 }
 
-function world(made: Rig): World {
+async function world(made: Rig): Promise<World> {
   const { store } = made.opened;
   const chat = made.newChat(made.hub.target);
-  const open = made.service.prepare(made.owner, chat.id, made.authority, made.clientId);
+  const open = await made.service.prepare(made.owner, chat.id, made.authority, made.clientId);
   const host = made.service.directory.get(made.hub.target).host;
   const principal = made.service.hostPrincipal(made.owner.profileId, host);
   store.assistantChat.addMessage({
@@ -59,21 +58,30 @@ function world(made: Rig): World {
     origin: 'subagent',
     delegationDepth: 1,
   });
-  const child = adoptNativeChild(store, new ConversationLog(store), {
-    principal,
-    attach: {
-      target: open.claim.target,
-      runtime_instance: open.claim.runtime_instance,
-      connection_generation: open.claim.connection_generation,
-    },
-    header,
-    inherited: 0,
-    label: 'Slow job',
-    task: 'Do the slow part and report.',
-    now: NOW,
-  });
-  const append = (claim: DshWriterClaim, events: readonly DshSessionEvent[]): void => {
-    store.dshSessions.append(
+  const child = store.durableWrite(() =>
+    adoptNativeChild(
+      store,
+      {
+        principal,
+        attach: {
+          target: open.claim.target,
+          runtime_instance: open.claim.runtime_instance,
+          connection_generation: open.claim.connection_generation,
+        },
+        header,
+        inherited: 0,
+        label: 'Slow job',
+        task: 'Do the slow part and report.',
+        now: NOW,
+      },
+      store.live.chatWork.holds.held(),
+    ),
+  );
+  const append = async (
+    claim: DshWriterClaim,
+    events: readonly DshSessionEvent[],
+  ): Promise<void> => {
+    await store.live.dshSessions.append(
       { claim, operation_id: randomUUID(), events: DSH_SESSION_EVENTS_WRITE.parse(events) },
       principal,
     );
@@ -81,7 +89,7 @@ function world(made: Rig): World {
   const parentClaim = store.dshSessions.attached(open.claim.session_id, made.owner.profileId);
   if (parentClaim === null) throw new Error('The parent lost its writer.');
   const parentSeq = store.dshSessions.stat(open.claim.session_id, made.owner.profileId)?.next_seq;
-  append(parentClaim, [
+  await append(parentClaim, [
     {
       type: 'subagent/catalog',
       seq: parentSeq ?? 0,
@@ -120,8 +128,8 @@ function reopened(made: World): boolean {
 describe('a parent whose helper was cut off by a restart', () => {
   it('is reopened on its host so the helper notice can wake it', async () => {
     rig = await harnessRig();
-    const made = world(rig);
-    made.append(made.childClaim, [
+    const made = await world(rig);
+    await made.append(made.childClaim, [
       { type: 'turn/start', seq: childSeq(made), time: 1_100, data: { turn: 1 } },
     ]);
 
@@ -132,9 +140,9 @@ describe('a parent whose helper was cut off by a restart', () => {
 
   it('stays closed when every helper turn ended', async () => {
     rig = await harnessRig();
-    const made = world(rig);
+    const made = await world(rig);
     const seq = childSeq(made);
-    made.append(made.childClaim, [
+    await made.append(made.childClaim, [
       { type: 'turn/start', seq, time: 1_100, data: { turn: 1 } },
       {
         type: 'turn/end',

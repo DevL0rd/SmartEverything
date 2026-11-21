@@ -15,7 +15,7 @@ import {
   type WakeArbitrated,
   type WakeSensitivity,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { ReachRules } from '../reach/reach-rules';
 import type { Store } from '../store/store';
 import { ListeningLevels } from './listening-levels';
@@ -48,7 +48,7 @@ export interface ListeningViewer {
 }
 
 export interface ListeningRegistryOptions {
-  readonly store: ListeningRowStore & Pick<Store, 'cameras' | 'feed' | 'settingsKv'>;
+  readonly store: ListeningRowStore & Pick<Store, 'host' | 'feed'>;
   readonly rules: Pick<ReachRules, 'cameras' | 'wakeOff' | 'save' | 'onCamerasChanged'>;
   readonly cameraPauses: () => Promise<ReadonlyMap<string, TranscriptPauseReason>>;
   readonly announce: () => void;
@@ -98,14 +98,18 @@ export class ListeningRegistry {
     });
   }
 
-  start(): void {
+  async start(): Promise<void> {
+    await this.options.store.live.home.load();
     const sources = this.everything();
     this.signature = JSON.stringify(sources);
     this.states = signalStatesOf(sources);
     this.unsubscribe = [
       this.options.store.feed.subscribe((change) => {
         if (change.table === 'devices' && change.operation === 'DELETE') {
-          if (change.oldRecord !== null) this.switches.forget(change.oldRecord.id);
+          if (change.oldRecord !== null)
+            background(this.switches.forget(change.oldRecord.id), 'listening.forget_failed', {
+              deviceId: change.oldRecord.id,
+            });
         }
         if (this.concerns(change)) this.refresh();
       }),
@@ -152,8 +156,8 @@ export class ListeningRegistry {
     if (change.power_mode !== undefined && source.kind !== 'phone') {
       throw new ApiError('conflict', `${source.name} has no power mode; only phones do.`);
     }
-    if (source.kind === 'camera') this.changeCamera(viewer, source, change);
-    else this.switches.save(source.key, change);
+    if (source.kind === 'camera') await this.changeCamera(viewer, source, change);
+    else await this.switches.save(source.key, change);
     this.refresh(source.key);
     return this.source(viewer, key);
   }
@@ -215,21 +219,25 @@ export class ListeningRegistry {
     this.refresh();
   }
 
-  private changeCamera(
+  private async changeCamera(
     viewer: ListeningViewer,
     source: ListeningSource,
     change: ListeningSourceChange,
-  ): void {
-    if (change.wake !== undefined) this.switchCameraWake(viewer, source, change.wake);
+  ): Promise<void> {
+    if (change.wake !== undefined) await this.switchCameraWake(viewer, source, change.wake);
     if (change.transcribe !== undefined || change.sensitivity !== undefined) {
-      this.options.store.cameras.change(source.key, {
+      await this.options.store.host.call('cameras', 'change', source.key, {
         ...(change.transcribe === undefined ? {} : { transcribe: change.transcribe }),
         ...(change.sensitivity === undefined ? {} : { wake_sensitivity: change.sensitivity }),
       });
     }
   }
 
-  private switchCameraWake(viewer: ListeningViewer, source: ListeningSource, wake: boolean): void {
+  private async switchCameraWake(
+    viewer: ListeningViewer,
+    source: ListeningSource,
+    wake: boolean,
+  ): Promise<void> {
     const { rules } = this.options;
     if (wake && !rules.cameras().includes(source.key)) {
       throw new ApiError(
@@ -238,7 +246,7 @@ export class ListeningRegistry {
       );
     }
     const others = rules.wakeOff().filter((id) => id !== source.key);
-    rules.save(viewer.profileId, { wakeOff: wake ? others : [...others, source.key] });
+    await rules.save(viewer.profileId, { wakeOff: wake ? others : [...others, source.key] });
   }
 
   private everything(
@@ -266,7 +274,7 @@ export class ListeningRegistry {
   private concerns(change: RowChange): boolean {
     if (change.table === 'device_state') {
       const id = change.record?.device_id;
-      return id !== undefined && this.options.store.cameras.find(id) !== undefined;
+      return id !== undefined && this.options.store.live.home.cameras.find(id) !== undefined;
     }
     if (change.table === 'devices') return listenedDeviceChanged(change);
     return change.table === 'cameras' || change.table === 'talk_channels';

@@ -1,3 +1,4 @@
+import { Logger } from '@smarteverything/logging';
 import type { ProjectFilesService } from '../projects/service';
 import {
   NEW_CHAT_TITLE,
@@ -14,6 +15,7 @@ import {
   type EngineRequest,
 } from '@smarteverything/domain';
 import { NothingToMarkUnreadError } from '../store/repositories/ai-chats';
+import type { NewChat } from '../store/repositories/ai-chat-input';
 import type { Store } from '../store/store';
 import { snippetOf } from './chat-snippet';
 import type { AssistantFiles } from './files';
@@ -21,6 +23,7 @@ import type { StoredAttachment } from '../store/repositories/assistant-files';
 import { admitChatEngineChange, admitChatExecution, admitNativeEngine } from './native-helpers';
 import { completeEngine, defaultEngine, meteredCatalogue } from '../openrouter/metered-engine';
 
+const log = new Logger('hub.assistant');
 const CONVERSATION_SOURCE = 'conversation';
 export const REPAIR_CHAT_SOURCE = 'repair:server\0hub:service';
 
@@ -156,7 +159,7 @@ export class ChatDirectory {
   defaultChat(profileId: string): AiChatRow {
     return (
       this.store.aiChats.latest(profileId) ??
-      this.store.aiChats.create({
+      this.store.live.chatWork.create({
         profileId,
         kind: 'chat',
         title: NEW_CHAT_TITLE,
@@ -216,7 +219,7 @@ export class ChatDirectory {
   ): AiChatRow {
     return (
       this.store.aiChats.bySource(profileId, sourceKey) ??
-      this.store.aiChats.create({
+      this.store.live.chatWork.create({
         profileId,
         kind: shape.kind,
         title: title.slice(0, 80),
@@ -233,7 +236,7 @@ export class ChatDirectory {
     if (chatId !== undefined) {
       return this.own({ profileId, role: 'owner' }, chatId);
     }
-    return this.store.aiChats.create({
+    return this.store.live.chatWork.create({
       profileId,
       kind: 'chat',
       title: (title ?? NEW_CHAT_TITLE).slice(0, 80),
@@ -245,13 +248,27 @@ export class ChatDirectory {
     });
   }
 
+  private alreadyMade(owner: ChatOwner, id: string | undefined): AiChatRow | undefined {
+    const made = id === undefined ? undefined : this.store.aiChats.find(id);
+    if (made === undefined) return undefined;
+    log.debug('chat.duplicate_create_ignored', { chatId: made.id, profileId: owner.profileId });
+    return this.own(owner, made.id);
+  }
+
   create(owner: ChatOwner, input: AiChatNew, allowStandalone = false): AiChatRow {
+    const made = this.alreadyMade(owner, input.id);
+    if (made !== undefined) return made;
+    return this.store.live.chatWork.create(this.prepare(owner, input, allowStandalone));
+  }
+
+  prepare(owner: ChatOwner, input: AiChatNew, allowStandalone = false): NewChat {
     const engine =
       input.engine === undefined
         ? this.newChatEngine(owner.profileId)
         : this.complete(owner.profileId, input.engine);
     const standalone = this.admitCreation(owner, engine, input.parent_id, allowStandalone);
-    return this.store.aiChats.create({
+    return {
+      ...(input.id === undefined ? {} : { id: input.id }),
       profileId: owner.profileId,
       kind: input.parent_id === undefined ? 'chat' : 'subagent',
       title: input.title ?? NEW_CHAT_TITLE,
@@ -261,7 +278,7 @@ export class ChatDirectory {
       engine,
       ...(standalone ? { nativeAdmission: 'standalone' } : {}),
       titleAuto: input.title === undefined,
-    });
+    };
   }
 
   private admitCreation(
@@ -342,7 +359,7 @@ export class ChatDirectory {
     inactiveOnly = false,
   ): Promise<void> {
     const held = (): Promise<void> =>
-      this.store.aiChats.holdRemoval(ids, async () => {
+      this.store.live.chatWork.holdRemoval(ids, async () => {
         this.store.aiChats.deletion(ids, 'deleting', null);
         try {
           await work();
@@ -355,7 +372,7 @@ export class ChatDirectory {
           throw cause instanceof ApiError ? cause : new ApiError('conflict', reason);
         }
       });
-    return inactiveOnly ? this.store.assistantEvents.holdQueuedWork(ids, held) : held();
+    return inactiveOnly ? this.store.live.chatWork.holdQueued(ids, held) : held();
   }
 
   removalScope(owner: ChatOwner, chatId: string): AiChatRow[] {

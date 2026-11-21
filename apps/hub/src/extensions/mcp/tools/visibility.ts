@@ -26,14 +26,18 @@ export function toolInScope(
   return text !== undefined && areas.includes(text.area);
 }
 
-export function visibleTools(tools: readonly Tool[], context: ToolContext): readonly Tool[] {
+export async function visibleTools(
+  tools: readonly Tool[],
+  context: ToolContext,
+): Promise<readonly Tool[]> {
   const off = switchedOffTools(context.store.settings.read().mcp_disabled_tools);
   const readOnly = readOnlyCaller(context);
+  const updates = (await ownerUpdateRequester(context)) !== null;
   return tools.filter(
     (tool) =>
       !off.has(tool.name) &&
       toolInScope(context, tool.name) &&
-      (!OWNER_UPDATE_TOOLS.has(tool.name) || ownerUpdateRequester(context) !== null) &&
+      (!OWNER_UPDATE_TOOLS.has(tool.name) || updates) &&
       (!readOnly || tool.listing.annotations.readOnlyHint),
   );
 }

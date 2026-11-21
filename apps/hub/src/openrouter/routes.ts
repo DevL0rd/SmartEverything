@@ -118,19 +118,19 @@ function pickerRoutes(
     listAiModels: bound(E.listAiModels, ({ query }) =>
       catalogue.list(filterOf(query), pageRequestOf(query), (row) => pickerVisible(context, row)),
     ),
-    suggestedAiModels: bound(E.suggestedAiModels, ({ query, caller }) =>
+    suggestedAiModels: bound(E.suggestedAiModels, async ({ query, caller }) =>
       visibleSuggestions(
         context,
-        suggestionsOf(
+        await suggestionsOf(
           {
             catalogue,
-            models: context.store.aiModels,
+            models: context.store.live.aiModels,
             personal: context.store.personal,
           },
           {
             owner: {
               clientId: clientOf(caller).id,
-              profileId: profileIdOf(context.store, caller),
+              profileId: profileIdOf(caller),
             },
             kind: query.kind,
             current: query.current,

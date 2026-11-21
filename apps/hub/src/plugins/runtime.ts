@@ -27,6 +27,7 @@ export interface RuntimeTool {
 export interface ContributionSinks {
   readonly message: (message: InboundMessage) => void;
   readonly data: (point: PluginDataPoint) => void;
+  readonly viewerData: (point: PluginDataPoint, deviceId: string) => void;
   readonly event: (event: PluginEvent) => void;
   readonly search: (entries: readonly PluginSearchEntry[]) => void;
 }

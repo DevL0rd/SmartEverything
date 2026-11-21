@@ -26,20 +26,20 @@ function elevationRecords(): { type: string; data: object }[] {
   );
 }
 
-function walkWith(scale: InclineScale): void {
+async function walkWith(scale: InclineScale): Promise<void> {
   setScale(rig, scale);
-  walk(rig, 60, { kmh: 3.6, incline: 10 });
-  stopBelt(rig, 61, 60);
+  await walk(rig, 60, { kmh: 3.6, incline: 10 });
+  await stopBelt(rig, 61, 60);
 }
 
 describe('the climb in the walker’s health', () => {
-  it('writes no elevation while the incline scale is not confirmed', () => {
-    walkWith('unconfirmed');
+  it('writes no elevation while the incline scale is not confirmed', async () => {
+    await walkWith('unconfirmed');
     expect(elevationRecords().map((record) => record.type)).toEqual(['ExerciseSession']);
   });
 
-  it('writes the climb as ElevationGained once the scale is confirmed', () => {
-    walkWith('percent');
+  it('writes the climb as ElevationGained once the scale is confirmed', async () => {
+    await walkWith('percent');
     const records = elevationRecords();
     expect(records.map((record) => record.type).sort()).toEqual([
       'ElevationGained',

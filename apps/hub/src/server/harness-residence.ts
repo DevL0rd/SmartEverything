@@ -1,13 +1,11 @@
 import { ApiError } from '@smarteverything/domain';
 import type { HubHarnessControl } from '@smarteverything/domain';
-import type { ComputerNodeAccess } from '../computers/node-access';
 import type { HarnessService } from '../harness/service';
 import { RemoteHarness } from './harness-remote';
 
 export const RECONNECT_GRACE_MS = 60_000;
 
 export interface ResidenceLink {
-  readonly token: string | null;
   send(frame: HubHarnessControl): void;
   terminate(): void;
 }
@@ -33,7 +31,6 @@ export class HarnessResidence {
   constructor(
     service: HarnessService,
     readonly binding: ResidenceBinding,
-    private readonly access: Pick<ComputerNodeAccess, 'authenticate'>,
     private readonly gone: () => void,
   ) {
     this.remote = new RemoteHarness(service, binding, {
@@ -44,7 +41,8 @@ export class HarnessResidence {
         this.link?.terminate();
       },
       authenticate: (): void => {
-        this.access.authenticate(this.attachedLink().token);
+        if (this.ended) throw new ApiError('unauthorized', 'This computer runtime has ended.');
+        this.attachedLink();
       },
     });
   }

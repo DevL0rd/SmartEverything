@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LogRecord } from '@smarteverything/logging';
@@ -31,7 +31,8 @@ afterEach(async () => {
 describe('the running service log', () => {
   it('rotates while the service keeps running and keeps one older file', async () => {
     const path = join(folder, 'hub.log');
-    const file = await openLogFile(path);
+    const failures: unknown[] = [];
+    const file = await openLogFile(path, (cause) => failures.push(cause));
     for (let index = 0; index < 35; index += 1) file.sink(record(`event.${String(index)}`));
     await file.close();
     const current = (await stat(path)).size;
@@ -41,5 +42,18 @@ describe('the running service log', () => {
     expect(await readFile(path, 'utf8')).toContain('event.34');
     expect(await readFile(`${path}.1`, 'utf8')).toContain('event.');
     await expect(stat(`${path}.2`)).rejects.toThrow();
+    expect(failures).toEqual([]);
+  });
+
+  it('reports a rotation that fails and keeps writing to the same file', async () => {
+    const path = join(folder, 'hub.log');
+    await mkdir(`${path}.1`);
+    await writeFile(join(`${path}.1`, 'held'), 'x');
+    const failures: unknown[] = [];
+    const file = await openLogFile(path, (cause) => failures.push(cause));
+    for (let index = 0; index < 12; index += 1) file.sink(record(`event.${String(index)}`));
+    await file.close();
+    expect(failures).toHaveLength(1);
+    expect(await readFile(path, 'utf8')).toContain('event.11');
   });
 });

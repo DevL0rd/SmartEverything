@@ -1,6 +1,5 @@
 import {
   ApiError,
-  targetCapability,
   type ActionMode,
   type CommandRow,
   type DeviceTarget,
@@ -12,11 +11,7 @@ import {
 } from '@smarteverything/domain';
 import { failureLine } from '@smarteverything/logging';
 import type { CommandExecutor } from '../../commands/executor';
-import {
-  prepareTargetCommands,
-  resolveTarget,
-  skippedMembersNote,
-} from '../../device-groups/commands';
+import { skippedMembersNote } from '../../device-groups/commands';
 import type { Store } from '../../store/store';
 import type { CommandIssuer } from '../issue-commands';
 import { admitRun, awaitRun } from './run-abort';
@@ -66,17 +61,40 @@ export interface Planned {
 }
 
 export function admittedMembers(
-  store: Store,
+  store: Pick<Store, 'host'>,
   target: DeviceTarget,
   control: string,
-): readonly Member[] {
-  const members = resolveTarget(store, target).flatMap((device) => {
-    const presented = targetCapability(device, control);
-    return presented?.writable === true ? [{ deviceId: device.id, capability: presented.key }] : [];
+): Promise<readonly Member[]> {
+  return store.host.read('admittedDeviceMembers', { target, control });
+}
+
+export async function preparedPlans(
+  store: Pick<Store, 'host'>,
+  changes: readonly TargetChange[],
+): Promise<readonly GroupCommandPlan[]> {
+  return store.host.write('prepareTargetCommands', changes);
+}
+
+async function preparedPlan(
+  store: Pick<Store, 'host'>,
+  change: TargetChange,
+): Promise<GroupCommandPlan> {
+  const [plan] = await preparedPlans(store, [change]);
+  if (plan === undefined) throw new ApiError('conflict', 'Preparing the command returned no plan.');
+  return plan;
+}
+
+function steppedPlan(
+  store: Pick<Store, 'host'>,
+  members: readonly Member[],
+  request: DeviceSetRequest,
+): Promise<GroupCommandPlan> {
+  return store.host.write('steppedDevicePlan', {
+    members,
+    value: request.value(),
+    percent: request.percent,
+    snapped: request.snapped === true,
   });
-  return [...new Map(members.map((member) => [JSON.stringify(member), member])).entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([, member]) => member);
 }
 
 export function admitMembers<T>(
@@ -206,66 +224,6 @@ export function snappedValue(
   return Number(Math.min(descriptor.max, snapped).toFixed(10));
 }
 
-function nextValue(
-  store: Store,
-  member: Member,
-  presented: PresentedCapability,
-  request: DeviceSetRequest,
-): number | string {
-  return request.snapped === true
-    ? snappedValue(presented, request.value(), request.percent)
-    : steppedValue(
-        presented,
-        store.state.value(member.deviceId, member.capability),
-        request.value(),
-        request.percent,
-      );
-}
-
-function steppedPlan(
-  store: Store,
-  members: readonly Member[],
-  request: DeviceSetRequest,
-): GroupCommandPlan {
-  const steps = members.map((member) => {
-    const presented = targetCapability(store.devices.byId(member.deviceId), member.capability);
-    const next =
-      presented === undefined
-        ? 'This control is unsupported.'
-        : nextValue(store, member, presented, request);
-    return { member, next };
-  });
-  const reached = steps.flatMap(({ member, next }) =>
-    typeof next === 'number'
-      ? [
-          store.write(() =>
-            prepareTargetCommands(
-              store,
-              {
-                target: { kind: 'devices', deviceIds: [member.deviceId] },
-                capability: member.capability,
-                value: next,
-              },
-              null,
-            ),
-          ),
-        ]
-      : [],
-  );
-  const unsteppable = steps.flatMap(({ member, next }) =>
-    typeof next === 'string'
-      ? [{ deviceId: member.deviceId, reason: 'unsupported' as const, detail: next }]
-      : [],
-  );
-  return restrictedTo(
-    {
-      commands: reached.flatMap((planned) => planned.commands),
-      skipped: [...reached.flatMap((planned) => planned.skipped), ...unsteppable],
-    },
-    members,
-  );
-}
-
 export class DeviceSetter {
   constructor(private readonly ports: DeviceSetPorts) {}
 
@@ -279,10 +237,14 @@ export class DeviceSetter {
       value: request.value(),
       ...(percent ? { scale: 'percent' as const } : {}),
     });
-    const plan = (members?: readonly Member[]): GroupCommandPlan => {
+    const plan = async (members?: readonly Member[]): Promise<GroupCommandPlan> => {
       if (request.snapped === true)
-        return steppedPlan(store, members ?? admittedMembers(store, target, control), request);
-      const planned = store.write(() => prepareTargetCommands(store, change(), null));
+        return steppedPlan(
+          store,
+          members ?? (await admittedMembers(store, target, control)),
+          request,
+        );
+      const planned = await preparedPlan(store, change());
       return members === undefined ? planned : restrictedTo(planned, members);
     };
     const options = {
@@ -292,28 +254,30 @@ export class DeviceSetter {
     if (!request.serialised)
       return confirmed(
         this.ports,
-        submitPlan(this.ports, plan(), run, { ...options, admitted: false }),
+        plan().then((planned) =>
+          submitPlan(this.ports, planned, run, { ...options, admitted: false }),
+        ),
         request.mode,
         run,
       );
-    const members = admittedMembers(store, target, control);
+    const members = await admittedMembers(store, target, control);
     return confirmed(
       this.ports,
-      admitMembers(executor, members, run, () =>
-        submitPlan(this.ports, plan(members), run, { ...options, admitted: true }),
+      admitMembers(executor, members, run, async () =>
+        submitPlan(this.ports, await plan(members), run, { ...options, admitted: true }),
       ),
       request.mode,
       run,
     );
   }
 
-  private setRelative(request: DeviceSetRequest, run: EffectRun): Promise<DeviceSetResult> {
+  private async setRelative(request: DeviceSetRequest, run: EffectRun): Promise<DeviceSetResult> {
     const { store, executor } = this.ports;
-    const members = admittedMembers(store, request.target, request.control);
+    const members = await admittedMembers(store, request.target, request.control);
     return confirmed(
       this.ports,
-      admitMembers(executor, members, run, () =>
-        submitPlan(this.ports, steppedPlan(store, members, request), run, {
+      admitMembers(executor, members, run, async () =>
+        submitPlan(this.ports, await steppedPlan(store, members, request), run, {
           admitted: true,
           requireAll: request.requireAll === true,
           ...(request.at === undefined ? {} : { at: request.at }),
@@ -327,20 +291,23 @@ export class DeviceSetter {
   async setTogether(request: DeviceSetTogetherRequest, run: EffectRun): Promise<DeviceSetResult> {
     const { store, executor } = this.ports;
     const target: DeviceTarget = { kind: 'devices', deviceIds: [request.deviceId] };
+    const admitted = await Promise.all(
+      request.changes.map(({ control }) => admittedMembers(store, target, control)),
+    );
     const members = [
-      ...new Map(
-        request.changes
-          .flatMap(({ control }) => admittedMembers(store, target, control))
-          .map((member) => [JSON.stringify(member), member]),
-      ).values(),
+      ...new Map(admitted.flat().map((member) => [JSON.stringify(member), member])).values(),
     ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
-    const planned = admitMembers(executor, members, run, () => {
-      const plans = request.changes.map(({ control, value }) => ({
-        control,
-        plan: store.write(() =>
-          prepareTargetCommands(store, { target, capability: control, value }, null),
-        ),
-      }));
+    const planned = admitMembers(executor, members, run, async () => {
+      const prepared = await preparedPlans(
+        store,
+        request.changes.map(({ control, value }) => ({ target, capability: control, value })),
+      );
+      const plans = request.changes.map(({ control }, index) => {
+        const plan = prepared[index];
+        if (plan === undefined)
+          throw new ApiError('conflict', 'Preparing the commands returned too few plans.');
+        return { control, plan };
+      });
       const plan = restrictedTo(
         {
           commands: plans.flatMap(({ plan: planned }) => planned.commands),

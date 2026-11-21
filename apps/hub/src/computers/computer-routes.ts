@@ -24,7 +24,7 @@ export type ComputerEndpointName =
 const LINKS = z.array(CONNECT_LINK);
 
 export interface ComputerRouteOptions {
-  readonly store: Pick<Store, 'computerScopes'>;
+  readonly store: Pick<Store, 'host' | 'live'>;
   readonly service: ComputerService;
   readonly directory: ComputerDirectory;
   readonly history: Pick<MetricHistory, 'read'>;
@@ -43,14 +43,14 @@ export function computerRoutes(options: ComputerRouteOptions): Routes<ComputerCo
     ),
     listComputerLinks: bound(E.listComputerLinks, ({ params, caller }) =>
       guarded(async () => {
-        access.device(params.deviceId, service.viewer(caller));
+        await access.device(params.deviceId, service.viewer(caller));
         const session = directory.online(params.deviceId);
         return session === null ? [] : LINKS.parse(await session.call({ verb: 'links' }));
       }),
     ),
     readComputerMetrics: bound(E.readComputerMetrics, ({ params, query, caller }) =>
-      guarded(() => {
-        access.require(params.deviceId, 'metrics', service.viewer(caller));
+      guarded(async () => {
+        await access.require(params.deviceId, 'metrics', service.viewer(caller));
         return history.read(params.deviceId, query.capability, query.range);
       }),
     ),
@@ -68,9 +68,9 @@ export function computerRoutes(options: ComputerRouteOptions): Routes<ComputerCo
       guarded(() => access.scopes(params.deviceId, service.viewer(caller))),
     ),
     updateComputerScopes: bound(E.updateComputerScopes, ({ params, body, caller }) =>
-      guarded(() => {
-        access.device(params.deviceId, service.viewer(caller));
-        const scopes = store.computerScopes.update(params.deviceId, body);
+      guarded(async () => {
+        await access.device(params.deviceId, service.viewer(caller));
+        const scopes = await store.live.computerAccess.saveScopes(params.deviceId, body);
         directory.online(params.deviceId)?.allow(scopes);
         return scopes;
       }),

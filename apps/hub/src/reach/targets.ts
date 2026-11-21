@@ -6,7 +6,7 @@ import {
   type TalkChannelRow,
 } from '@smarteverything/domain';
 import type { PluginSpeaker, PluginSpeakers } from '../plugins/plugin-speakers';
-import { clientsOf, deviceName, type PresenceStore } from './presence';
+import { deviceName, type PresenceStore } from './presence';
 import { ReachRefusedError } from './reach-errors';
 import type { Asker } from './reach-guards';
 import type { ReachRules } from './reach-rules';
@@ -20,7 +20,12 @@ export type ResolvedTarget =
       readonly label: string;
     }
   | { readonly kind: 'channel'; readonly channel: TalkChannelRow; readonly label: string }
-  | { readonly kind: 'app'; readonly client: ClientRow; readonly label: string };
+  | {
+      readonly kind: 'app';
+      readonly client: ClientRow;
+      readonly owner: string;
+      readonly label: string;
+    };
 
 export type TargetStore = PresenceStore;
 
@@ -29,8 +34,12 @@ export interface TargetRules {
   readonly speakers: Pick<PluginSpeakers, 'forDevice'>;
 }
 
-function deviceTarget(store: TargetStore, access: TargetRules, deviceId: string): ResolvedTarget {
-  const device = store.devices.find(deviceId);
+async function deviceTarget(
+  store: TargetStore,
+  access: TargetRules,
+  deviceId: string,
+): Promise<ResolvedTarget> {
+  const device = store.live.home.devices.find(deviceId);
   if (device !== undefined) {
     const label = deviceName(device);
     if (isCamera(device) && !access.rules.cameras().includes(device.id)) {
@@ -47,45 +56,41 @@ function deviceTarget(store: TargetStore, access: TargetRules, deviceId: string)
     }
     return { kind: 'camera', device, label };
   }
-  const client = store.clients.list().find((candidate) => candidate.id === deviceId);
-  if (client === undefined) {
+  const app = await store.host.read('reachDeviceTarget', deviceId);
+  if (app === null) {
     throw new ReachRefusedError(
       'No camera or app has that id; take it from presence_read or device_find.',
     );
   }
-  return { kind: 'app', client, label: client.name };
+  return { kind: 'app', client: app.client, owner: app.owner, label: app.client.name };
 }
 
-function mayUseChannel(store: TargetStore, asker: Asker, channelId: string): void {
+async function mayUseChannel(store: TargetStore, asker: Asker, channelId: string): Promise<void> {
   if (asker.role === 'owner') {
     return;
   }
-  const mine = new Set(clientsOf(store, asker.profileId).map((client) => client.id));
-  const member = store.talk
-    .members()
-    .some((row) => row.channel_id === channelId && mine.has(row.member_id));
+  const member = await store.host.read('reachChannelMember', {
+    profileId: asker.profileId,
+    channelId,
+  });
   if (!member) {
     throw new ReachRefusedError('Your AI can only talk on channels you are in.');
   }
 }
 
-export function resolveTarget(
+export async function resolveTarget(
   store: TargetStore,
   access: TargetRules,
   asker: Asker,
   target: ReachTarget,
-): ResolvedTarget {
+): Promise<ResolvedTarget> {
   if (target.kind === 'device') {
     return deviceTarget(store, access, target.deviceId);
   }
-  const channel = store.talk.channels().find((row) => row.id === target.channelId);
+  const channel = store.live.home.talk.channels().find((row) => row.id === target.channelId);
   if (channel === undefined) {
     throw new ReachRefusedError('There is no walkie-talkie channel with that id.');
   }
-  mayUseChannel(store, asker, channel.id);
+  await mayUseChannel(store, asker, channel.id);
   return { kind: 'channel', channel, label: channel.name };
-}
-
-export function appOwner(store: TargetStore, client: ClientRow): string {
-  return store.profiles.activeOf(client.id).id;
 }

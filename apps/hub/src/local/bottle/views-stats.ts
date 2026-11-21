@@ -7,6 +7,8 @@ import {
   type BottleStatFill,
   type BottleStats,
   type BottleStatsRange,
+  type BottleView,
+  type DeviceRow,
 } from '@smarteverything/domain';
 import type { LocalDeviceEntry } from '../../store/repositories/local-devices';
 import { entryConfigOf } from './config';
@@ -21,20 +23,23 @@ export class StatsCache {
   private version = 0;
   private readonly entries = new Map<
     string,
-    { readonly version: number; readonly value: BottleStats }
+    { readonly version: number; readonly value: BottleView }
   >();
 
   invalidate(): void {
     this.version += 1;
   }
 
-  get(key: string, compute: () => BottleStats): BottleStats {
+  async get(key: string, compute: () => Promise<BottleView>): Promise<BottleView> {
     const known = this.entries.get(key);
     if (known?.version === this.version) {
       return known.value;
     }
-    const value = compute();
-    this.entries.set(key, { version: this.version, value });
+    const version = this.version;
+    const value = await compute();
+    if (version === this.version) {
+      this.entries.set(key, { version, value });
+    }
     return value;
   }
 }
@@ -94,11 +99,18 @@ export function statsView(
   entry: LocalDeviceEntry,
   range: BottleStatsRange,
 ): BottleStats {
-  const { deps, device, viewer } = context;
+  const { deps, viewer } = context;
   const config = entryConfigOf(entry);
   const profileId = config.binding.profileId ?? viewer.profileId;
   const today = deps.clock.dayOf(deps.now());
-  return deps.stats.get(`${device.id}|${profileId}|${range}|${today}`, () =>
-    compute(context, { entry, range, profileId, today }),
-  );
+  return compute(context, { entry, range, profileId, today });
+}
+
+export function statsKey(
+  device: Pick<DeviceRow, 'id'>,
+  profileId: string,
+  range: BottleStatsRange,
+  today: string,
+): string {
+  return `${device.id}|${profileId}|${range}|${today}`;
 }

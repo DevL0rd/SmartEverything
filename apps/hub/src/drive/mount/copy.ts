@@ -17,7 +17,7 @@ export interface CopyEnv {
   readonly commits: MountCommits;
   readonly staging: Staging;
   readonly files: DriveFiles;
-  readonly store: Pick<Store, 'driveRoots' | 'driveMountCommits'>;
+  readonly store: Pick<Store, 'host'>;
   readonly log: Logger;
 }
 
@@ -52,7 +52,7 @@ export class MountCopy {
   }
 
   private async probe(rootId: string): Promise<boolean> {
-    const root = this.env.store.driveRoots.byId(rootId);
+    const root = await this.env.store.host.call('driveRoots', 'byId', rootId);
     await this.env.files.mkdir(await locate(root, TMP_DIRECTORY));
     const name = randomUUID();
     const first = await locate(root, `${TMP_DIRECTORY}/reflink-probe-${name}`);
@@ -110,8 +110,7 @@ export class MountCopy {
       await this.env.staging.write(target, request.dstOffset + copied, chunk);
       copied += chunk.length;
     }
-    if (copied > 0)
-      this.env.commits.receive(row, [request.dstOffset, request.dstOffset + copied]);
+    if (copied > 0) this.env.commits.receive(row, [request.dstOffset, request.dstOffset + copied]);
     return { copied };
   }
 }

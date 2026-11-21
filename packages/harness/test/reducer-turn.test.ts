@@ -113,6 +113,42 @@ describe('a turn from the delivery that asked for it', () => {
       durable_seq: 4,
     });
     expect(discarded).not.toHaveProperty('native_turn');
+    expect(discarded).not.toHaveProperty('failure');
+  });
+
+  it('gives queued input discarded after a failed turn the failure of that turn', () => {
+    const rig = new ReducerRig();
+    rig.open();
+    claimTurn(rig, randomUUID(), 1);
+    const id = randomUUID();
+    rig.event('agent/inbox/spliced', 3, { data: { target: 'next-turn', inserted: [{ id }] } });
+    rig.event('turn/end', 4, {
+      data: { turn: 1, reason: { kind: 'error', error: { message: '403: limit', code: 'AUTH' } } },
+    });
+
+    const discarded = only(rig.send({ kind: 'discarded', message_id: id }));
+
+    expect(discarded).toMatchObject({
+      kind: 'completed',
+      delivery_id: id,
+      input_discarded: true,
+      interrupted: true,
+      failure: { code: 'route_unavailable', message: 'AUTH: 403: limit', retry_at: null },
+    });
+  });
+
+  it('forgets the failed turn once the next turn starts', () => {
+    const rig = new ReducerRig();
+    rig.open();
+    claimTurn(rig, randomUUID(), 1);
+    rig.event('turn/end', 3, {
+      data: { turn: 1, reason: { kind: 'error', error: { message: 'down' } } },
+    });
+    rig.event('turn/start', 4, { data: { turn: 2 } });
+    const id = randomUUID();
+    rig.event('agent/inbox/spliced', 5, { data: { target: 'next-turn', inserted: [{ id }] } });
+
+    expect(only(rig.send({ kind: 'discarded', message_id: id }))).not.toHaveProperty('failure');
   });
 
   it('ignores discarded input it never saw queued', () => {
@@ -149,6 +185,30 @@ describe('a turn from the delivery that asked for it', () => {
     expect(ended).toMatchObject({
       kind: 'failed',
       failure: { code: 'operation_failed', message, retry_at: null },
+    });
+  });
+
+  it.each([
+    ['AUTH', 'route_unavailable'],
+    ['MISSING_CREDENTIAL', 'route_unavailable'],
+    ['INVALID_CREDENTIAL', 'route_unavailable'],
+    ['QUOTA', 'quota_exhausted'],
+    ['ACCOUNT_QUOTA', 'quota_exhausted'],
+    ['RATE_LIMIT', 'operation_failed'],
+  ])('names a provider %s failure as %s', (code, failure) => {
+    const rig = new ReducerRig();
+    rig.open();
+    claimTurn(rig, randomUUID(), 1);
+
+    const ended = only(
+      rig.event('turn/end', 5, {
+        data: { turn: 1, reason: { kind: 'error', error: { message: '403: limit', code } } },
+      }),
+    );
+
+    expect(ended).toMatchObject({
+      kind: 'failed',
+      failure: { code: failure, message: `${code}: 403: limit`, retry_at: null },
     });
   });
 });

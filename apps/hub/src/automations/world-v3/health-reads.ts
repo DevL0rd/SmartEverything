@@ -14,6 +14,7 @@ import { currentExecutionAuthority, executionRole } from '../../assistant/turn-a
 import { scopesOf } from '../../server/person-scope';
 import type { Store } from '../../store/store';
 import type { WorldReadDeps } from './deps';
+import type { WorldSource } from './world-mirror';
 import { parseInputs } from './inputs';
 import { ReadFailure, outputsOf, type ReadHandlers, type ReadResult } from './read-port';
 import { PERSON_REF } from './refs';
@@ -51,8 +52,11 @@ export function millilitresOf(litres: number): number {
   return Number((litres * MILLILITRES_PER_LITRE).toPrecision(SIGNIFICANT_DIGITS));
 }
 
-export function todayAt(deps: Pick<WorldReadDeps, 'store' | 'clock'>): string {
-  const { year, month, day } = localClock(deps.clock.now(), homeZone(deps.store));
+export function todayAt(deps: {
+  readonly world: Pick<WorldSource, 'settings'>;
+  readonly clock: WorldReadDeps['clock'];
+}): string {
+  const { year, month, day } = localClock(deps.clock.now(), homeZone(deps.world));
   return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10);
 }
 
@@ -76,8 +80,8 @@ function admit(store: Store, person: string): void {
     throw new ReadFailure('Forbidden', 'Health is not part of your access; ask the owner.');
 }
 
-function profileOf(store: Store, person: string): ProfileRow {
-  const profile = store.profiles.list().find((each) => each.id === person);
+function profileOf(world: Pick<WorldSource, 'profiles'>, person: string): ProfileRow {
+  const profile = world.profiles.list().find((each) => each.id === person);
   if (profile === undefined) throw new ReadFailure('NotFound', `There is no person ${person}`);
   return profile;
 }
@@ -98,7 +102,7 @@ function amountsOf(
 
 function healthToday(deps: WorldReadDeps, person: string): ReadResult {
   admit(deps.store, person);
-  const profile = profileOf(deps.store, person);
+  const profile = profileOf(deps.world, person);
   const day = todayAt(deps);
   const amounts = amountsOf(
     deps.store.health.dailyRange(profile.id, day, day, Object.values(GOAL_METRICS)),
@@ -121,7 +125,7 @@ function healthRange(
   ask: { readonly person: string; readonly metric: HealthMetric; readonly days: number },
 ): ReadResult {
   admit(deps.store, ask.person);
-  const profile = profileOf(deps.store, ask.person);
+  const profile = profileOf(deps.world, ask.person);
   const today = todayAt(deps);
   const rows = deps.store.health.dailyRange(profile.id, daysBefore(today, ask.days - 1), today, [
     ask.metric,

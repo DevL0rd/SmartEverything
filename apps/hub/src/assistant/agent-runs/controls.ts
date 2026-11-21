@@ -7,7 +7,7 @@ import { computerEngine } from '../engine-kind';
 export interface AgentControlPorts {
   readonly store: Store;
   readonly interrupt: (chat: AiChatRow) => Promise<void>;
-  readonly send: (chat: AiChatRow, text: string) => void;
+  readonly send: (chat: AiChatRow, text: string) => Promise<void>;
   readonly computer: (runtime: 'claude' | 'codex') => ComputerRunner | undefined;
 }
 export async function controlAgent(
@@ -49,7 +49,7 @@ async function controlOwnAgent(
   if (control.action === 'interrupt') return ports.interrupt(child);
   if (control.action !== 'send')
     throw new ApiError('conflict', 'This child supports messages and interruption only.');
-  ports.send(child, control.text);
+  await ports.send(child, control.text);
 }
 
 function assertCurrentChild(

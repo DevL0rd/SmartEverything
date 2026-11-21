@@ -112,6 +112,7 @@ describe('ExchangeRateService', () => {
     clock.advanceTo('2026-10-10T12:00:00.000Z');
     const second = serviceWith(answering(200, RECORDED, calls));
     second.start();
+    await second.settled();
     expect(calls).toHaveLength(1);
     expect(clock.pending()).toStrictEqual(['2026-10-10T17:30:00.000Z']);
   });

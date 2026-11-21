@@ -5,7 +5,7 @@ import type { ComputerAiDirectory } from './ai-directory';
 
 export function computerMcpPolicyRoutes(
   directory: ComputerAiDirectory,
-  store: Store,
+  store: Pick<Store, 'host'>,
 ): Routes<'readComputerNativeMcpPolicy' | 'updateComputerNativeMcpPolicy'> {
   const target = (params: {
     readonly deviceId: string;
@@ -17,14 +17,17 @@ export function computerMcpPolicyRoutes(
   };
   return {
     readComputerNativeMcpPolicy: bound(E.readComputerNativeMcpPolicy, ({ params }) =>
-      store.computerNativeMcpPolicy.read(target(params)),
+      store.host.call('computerNativeMcpPolicy', 'read', target(params)),
     ),
-    updateComputerNativeMcpPolicy: bound(E.updateComputerNativeMcpPolicy, ({ params, body }) => {
-      const value = target(params);
-      const policy = store.computerNativeMcpPolicy.save(value, body);
-      if (value.runtime === 'claude') directory.changed(value.device_id);
-      else directory.runtimes.changed(value);
-      return policy;
-    }),
+    updateComputerNativeMcpPolicy: bound(
+      E.updateComputerNativeMcpPolicy,
+      async ({ params, body }) => {
+        const value = target(params);
+        const policy = await store.host.call('computerNativeMcpPolicy', 'save', value, body);
+        if (value.runtime === 'claude') directory.changed(value.device_id);
+        else directory.runtimes.changed(value);
+        return policy;
+      },
+    ),
   };
 }

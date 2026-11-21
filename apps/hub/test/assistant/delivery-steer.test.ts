@@ -4,6 +4,7 @@ import type { AiChatRow } from '@smarteverything/domain';
 import { AssistantDelivery, type DeliveryOptions } from '../../src/assistant/delivery';
 import type { Engine } from '../../src/assistant/engines/engine';
 import type { StoredEvent } from '../../src/store/repositories/assistant-events';
+import { mainDeliveryEvents } from '../support/delivery-events';
 import { testLogger } from '../support/logs';
 import { useRig, type Rig } from './harness/support/rig';
 
@@ -50,7 +51,7 @@ function fixture(steer: Engine['steer']): Fixture {
     interrupt: (): Promise<void> => Promise.resolve(),
   };
   const delivery = new AssistantDelivery({
-    events: store.assistantEvents,
+    events: mainDeliveryEvents(store),
     route: (): ReturnType<DeliveryOptions['route']> => ({ kind: 'engine', engine, chat }),
     delivered: (): undefined => undefined,
     failed: (): undefined => undefined,

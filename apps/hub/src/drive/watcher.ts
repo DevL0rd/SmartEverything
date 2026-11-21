@@ -4,11 +4,11 @@ import { join, matchesGlob } from 'node:path';
 import type { StoredDrive } from '../store/repositories/drive-roots';
 import { background, type Logger } from '@smarteverything/logging';
 import { fsCode } from '../fs-code';
-import type { DriveRootsRepository } from '../store/repositories/drive-roots';
 import { MARKER_DIRECTORY } from './root-marker';
 import { LOCKED_FOLDER } from './access';
 import { ORPHAN_DIRECTORY } from './paths';
 import type { DriveActivity } from './activity';
+import type { ScanPort } from './scan-port';
 import { outsideOf, type IndexReader, type OutsideChange } from './watch-reflect';
 
 export interface WatchHandle {
@@ -33,10 +33,10 @@ export const systemWatch: WatchFactory = (directory, onEvent) => {
 };
 
 export interface WatchEnvironment {
-  readonly roots: Pick<DriveRootsRepository, 'find' | 'update'>;
+  readonly roots: Pick<ScanPort, 'root' | 'update'>;
   readonly index: IndexReader;
   readonly activity: DriveActivity;
-  readonly mounted: (rootId: string) => boolean;
+  readonly mounted: (rootId: string) => Promise<boolean>;
   readonly onPlacementChange: (listener: (rootId: string) => void) => () => void;
   readonly enqueueScan: (rootId: string) => void;
   readonly enqueueReflect: (rootId: string, relPaths: readonly string[]) => void;
@@ -101,7 +101,8 @@ class RootWatch {
   private touched = new Set<string>();
   private unknown = new Set<string>();
   private opened = false;
-  private mounted: boolean;
+  private mounted = false;
+  private mountedTurn = 0;
   private readonly unsubscribe: () => void;
   private timer: NodeJS.Timeout | undefined;
   private problem: string | null = null;
@@ -113,13 +114,21 @@ class RootWatch {
     private readonly root: StoredDrive,
     private readonly report: (reason: string | null) => void,
   ) {
-    this.mounted = env.mounted(root.id);
     this.unsubscribe = env.onPlacementChange((rootId) => {
-      if (rootId === root.id) this.mounted = env.mounted(rootId);
+      if (rootId !== root.id) return;
+      background(this.readMounted(), 'drive.watch_mounted_failed', { rootId });
     });
   }
 
+  private async readMounted(): Promise<void> {
+    this.mountedTurn += 1;
+    const turn = this.mountedTurn;
+    const mounted = await this.env.mounted(this.root.id);
+    if (turn === this.mountedTurn) this.mounted = mounted;
+  }
+
   async open(): Promise<void> {
+    await this.readMounted();
     await this.attach(this.root.path);
     this.opened = true;
     this.env.log.info('drive.watch_started', {
@@ -336,6 +345,7 @@ class RootWatch {
 
 export class DriveWatchers {
   private readonly watches = new Map<string, RootWatch>();
+  private shows: Promise<void> = Promise.resolve();
 
   constructor(private readonly env: WatchEnvironment) {}
 
@@ -352,11 +362,12 @@ export class DriveWatchers {
     await watch.open();
     if (this.watches.get(rootId) !== watch) return;
     this.show(rootId, watch.reason);
+    await this.shows;
     this.env.enqueueScan(rootId);
   }
 
   async remounted(rootId: string): Promise<void> {
-    const root = this.env.roots.find(rootId);
+    const root = await this.env.roots.root(rootId);
     if (root === undefined) {
       this.stop(rootId);
       return;
@@ -385,9 +396,21 @@ export class DriveWatchers {
     for (const rootId of [...this.watches.keys()]) this.stop(rootId);
   }
 
+  idle(): Promise<void> {
+    return this.shows;
+  }
+
   private show(rootId: string, reason: string | null): void {
-    const root = this.env.roots.find(rootId);
+    this.shows = this.shows
+      .then(() => this.shown(rootId, reason))
+      .catch((cause: unknown) => {
+        this.env.log.error('drive.watch_reason_failed', cause, { rootId });
+      });
+  }
+
+  private async shown(rootId: string, reason: string | null): Promise<void> {
+    const root = await this.env.roots.root(rootId);
     if (root?.state !== 'ready' || root.stateReason === reason) return;
-    this.env.roots.update(rootId, { stateReason: reason });
+    await this.env.roots.update(rootId, { stateReason: reason });
   }
 }

@@ -51,7 +51,7 @@ beforeEach(async () => {
   observations = new PassiveObservations({
     store: opened.store,
     secrets,
-    state: { commitObservation: (_row, commit): Promise<boolean> => Promise.resolve(commit()) },
+    state: { commitObservation: (_row, commit): Promise<boolean> => commit() },
     now: (): Date => new Date(clock),
     eligible: (): boolean => true,
     sourceChanged: (_id, source): void => {
@@ -119,10 +119,10 @@ describe('passive door observations', () => {
 
   it('keeps cloud updates suppressed only while the last broadcast is fresh', async () => {
     await receive(7, true);
-    const status = observations.status(opened.store.devices.list()[0]?.id ?? '');
+    const status = await observations.status(opened.store.devices.list()[0]?.id ?? '');
     expect(status.blockedReason).toBeNull();
     clock += 200_000;
-    const stale = observations.status(opened.store.devices.list()[0]?.id ?? '');
+    const stale = await observations.status(opened.store.devices.list()[0]?.id ?? '');
     expect(stale.blockedReason).toBe('No recent Bluetooth broadcast; cloud updates are active.');
   });
 });

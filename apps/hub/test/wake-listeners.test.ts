@@ -59,6 +59,7 @@ function privacy(on: boolean): void {
 beforeEach(async () => {
   logs = captureLogs();
   opened = await testStore();
+  await opened.store.live.home.load();
   camera = insert();
   standbyOff = [];
   standbys = [];
@@ -103,24 +104,24 @@ function listening(): boolean {
 }
 
 describe('WakeListeners', () => {
-  it('does not listen to a camera whose privacy switch is on', () => {
+  it('does not listen to a camera whose privacy switch is on', async () => {
     privacy(true);
-    listeners.start();
+    await listeners.start();
     expect(listening()).toBe(false);
   });
 
-  it('starts listening when the privacy switch goes off and stops when it comes on', () => {
+  it('starts listening when the privacy switch goes off and stops when it comes on', async () => {
     privacy(true);
-    listeners.start();
+    await listeners.start();
     privacy(false);
     expect(listening()).toBe(true);
     privacy(true);
     expect(listening()).toBe(false);
   });
 
-  it('stops while the camera is offline and resumes when it is back', () => {
+  it('stops while the camera is offline and resumes when it is back', async () => {
     privacy(false);
-    listeners.start();
+    await listeners.start();
     expect(listening()).toBe(true);
     opened.store.devices.setOnline([camera], false);
     expect(listening()).toBe(false);
@@ -128,18 +129,18 @@ describe('WakeListeners', () => {
     expect(listening()).toBe(true);
   });
 
-  it('keeps the camera speaker standing by while it listens for the wake word', () => {
+  it('keeps the camera speaker standing by while it listens for the wake word', async () => {
     privacy(false);
-    listeners.start();
+    await listeners.start();
     expect(standbys).toEqual([`on ${camera}`]);
     privacy(true);
     expect(standbys).toEqual([`on ${camera}`, `off ${camera}`]);
   });
 
-  it('leaves the speaker closed for a camera that opted out of the standby', () => {
+  it('leaves the speaker closed for a camera that opted out of the standby', async () => {
     standbyOff = [camera];
     privacy(false);
-    listeners.start();
+    await listeners.start();
     expect(listening()).toBe(true);
     expect(standbys).toEqual([]);
   });

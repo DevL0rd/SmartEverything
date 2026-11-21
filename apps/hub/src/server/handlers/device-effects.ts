@@ -4,9 +4,9 @@ import { bound, DONE_REPLY } from '../router';
 
 export const deviceEffectRoutes = ({ store, hub }: ServerContext) =>
   ({
-    listDeviceEffects: bound(E.listDeviceEffects, () => store.deviceEffects.list()),
-    listDeviceEffectSupport: bound(E.listDeviceEffectSupport, () =>
-      store.devices.list().flatMap((device) =>
+    listDeviceEffects: bound(E.listDeviceEffects, () => store.host.call('deviceEffects', 'list')),
+    listDeviceEffectSupport: bound(E.listDeviceEffectSupport, async () =>
+      (await store.host.call('devices', 'list')).flatMap((device) =>
         device.capabilities.map((capability) => {
           const reason = deviceEffectSupport(capability);
           return {

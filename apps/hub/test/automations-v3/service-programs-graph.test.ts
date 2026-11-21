@@ -31,8 +31,12 @@ const CONTEXT: DescribeContext = {
   names: (): undefined => undefined,
 };
 
-function created(definition: AutomationV4): string {
-  const result = rig.service.create(rig.owner.caller, { name: 'Graph', enabled: true, definition });
+async function created(definition: AutomationV4): Promise<string> {
+  const result = await rig.service.create(rig.owner.caller, {
+    name: 'Graph',
+    enabled: true,
+    definition,
+  });
   if (result.id === null) throw new Error(`creating failed: ${result.summary}`);
   return result.id;
 }
@@ -47,16 +51,16 @@ function withoutStartWire(program: AutomationV4): AutomationV4 {
 }
 
 describe('layout completion at save', () => {
-  it('gives every node a position when the program comes without a layout', () => {
-    const id = created(automationOf([logLine('say', 'hi'), logLine('then', 'bye')]));
+  it('gives every node a position when the program comes without a layout', async () => {
+    const id = await created(automationOf([logLine('say', 'hi'), logLine('then', 'bye')]));
     const row = rig.programs.byId(id);
     for (const node of row.definition.nodes) expect(row.layout.nodes[node.id]).toBeDefined();
     expect(rig.revisions.byRevision(id, 1).layout).toStrictEqual(row.layout);
   });
 
-  it('places a node added by a patch to the right of the step it follows', () => {
-    const id = created(automationOf([logLine('say', 'hi')]));
-    const result = rig.service.patch(rig.owner.caller, id, {
+  it('places a node added by a patch to the right of the step it follows', async () => {
+    const id = await created(automationOf([logLine('say', 'hi')]));
+    const result = await rig.service.patch(rig.owner.caller, id, {
       expectedRevision: 1,
       ops: [
         {
@@ -76,8 +80,8 @@ describe('layout completion at save', () => {
     expect(twoAt?.x ?? 0).toBeGreaterThan(sayAt?.x ?? 0);
   });
 
-  it('keeps the positions the caller sent and fills only what is missing in a draft', () => {
-    const id = created(automationOf([logLine('say', 'hi')]));
+  it('keeps the positions the caller sent and fills only what is missing in a draft', async () => {
+    const id = await created(automationOf([logLine('say', 'hi')]));
     const base = rig.programs.byId(id);
     const say = base.definition.nodes.find((node) => node.key === 'say');
     const more = { id: randomUUID(), key: 'more', kind: 'debug.log', ports: { message: lit('x') } };
@@ -88,7 +92,7 @@ describe('layout completion at save', () => {
       ),
     };
     const kept = { x: 4000, y: 7 };
-    rig.service.saveDraft(id, {
+    await rig.service.saveDraft(id, {
       program,
       layout: { ...base.layout, nodes: { ...base.layout.nodes, [say?.id ?? '']: kept } },
       expectedRevision: 1,
@@ -100,10 +104,10 @@ describe('layout completion at save', () => {
 });
 
 describe('a draft that does not structure', () => {
-  it('is saved and names the graph problems, and publishing it is refused', () => {
-    const id = created(automationOf([logLine('say', 'hi')]));
+  it('is saved and names the graph problems, and publishing it is refused', async () => {
+    const id = await created(automationOf([logLine('say', 'hi')]));
     const loose = withoutStartWire(automationOf([logLine('say', 'hi'), logLine('lost', 'x')]));
-    const saved = rig.service.saveDraft(id, {
+    const saved = await rig.service.saveDraft(id, {
       program: loose,
       layout: rig.programs.byId(id).layout,
       expectedRevision: 1,
@@ -112,7 +116,7 @@ describe('a draft that does not structure', () => {
     expect(saved.problems).toContainEqual(
       expect.objectContaining({ code: 'never_runs', severity: 'error' }),
     );
-    const published = rig.service.publish(rig.owner.caller, id, 1);
+    const published = await rig.service.publish(rig.owner.caller, id, 1);
     expect(published.ok).toBe(false);
     expect(published.summary).toMatch(/^Refused/);
     expect(rig.programs.byId(id).revision).toBe(1);

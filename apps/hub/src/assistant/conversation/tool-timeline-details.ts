@@ -9,7 +9,7 @@ export interface ToolTimelineDetails {
   readonly output?: unknown;
   readonly state?: ChatTimelineTool['state'];
 }
-const RECORD = z.record(z.string(), z.unknown());
+const RECEIPT_KEYS = ['id', 'profile_id', 'chat_id'] as const;
 function decoded(value: unknown): unknown {
   if (typeof value !== 'string' || !/^\s*[[{]/.test(value)) return value;
   try {
@@ -19,13 +19,24 @@ function decoded(value: unknown): unknown {
     throw error;
   }
 }
+function mayHoldReceipt(value: unknown): boolean {
+  return typeof value !== 'string' || value.includes(RECEIPT_KEYS[2]);
+}
+function receiptShaped(value: object): boolean {
+  return RECEIPT_KEYS.every((key) => typeof Reflect.get(value, key) === 'string');
+}
+function receiptIdOf(value: object): string | null {
+  if (Array.isArray(value) || !receiptShaped(value)) return null;
+  const receipt = IMAGE_OPERATION_RECEIPT.safeParse(value);
+  return receipt.success ? receipt.data.id : null;
+}
 function imageOperationId(value: unknown, depth = 0): string | null {
-  if (depth > 5) return null;
+  if (depth > 5 || !mayHoldReceipt(value)) return null;
   const source = decoded(value);
-  const receipt = IMAGE_OPERATION_RECEIPT.safeParse(source);
-  if (receipt.success) return receipt.data.id;
-  const record = RECORD.safeParse(source);
-  const values = record.success ? Object.values(record.data) : Array.isArray(source) ? source : [];
+  if (typeof source !== 'object' || source === null) return null;
+  const own = receiptIdOf(source);
+  if (own !== null) return own;
+  const values: readonly unknown[] = Array.isArray(source) ? source : Object.values(source);
   for (const child of values) {
     const id = imageOperationId(child, depth + 1);
     if (id !== null) return id;

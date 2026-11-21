@@ -15,6 +15,7 @@ import { Inventory } from '../src/state/inventory';
 import { testDatabase, type TestDatabase } from './support/database';
 import { FakeAdapter } from './support/fake-provider';
 import { captureLogs, testLogger } from './support/logs';
+import { adapterDirectory } from './support/adapter-directory';
 
 const NOW = new Date('2026-10-08T12:00:00.000Z');
 
@@ -76,7 +77,7 @@ beforeEach(async () => {
   await inventory.apply('smartthings', [TELEVISION]);
   deviceId = inventory.deviceOf('smartthings', 'st-tv')?.id ?? '';
   smartthings = new FakeAdapter();
-  const adapters = { adapterFor: (): FakeAdapter => smartthings };
+  const adapters = adapterDirectory((): FakeAdapter => smartthings);
   const state = new Map<string, JsonValue>([['power', true]]);
   executor = new CommandExecutor({
     store: db.database,
@@ -87,13 +88,15 @@ beforeEach(async () => {
     television: new TelevisionRouting({
       adapters,
       valueOf: (_device, capability): JsonValue | undefined => state.get(capability),
-      settingsOf: (id): TelevisionSettingsRow | undefined => db.store.televisionSettings.find(id),
+      settingsOf: (id): Promise<TelevisionSettingsRow | undefined> =>
+        Promise.resolve(db.store.televisionSettings.find(id)),
       wake: new TelevisionWake({
         wake: (mac): Promise<void> => {
           woken.push(mac);
           return Promise.resolve();
         },
-        settingsOf: (id): TelevisionSettingsRow | undefined => db.store.televisionSettings.find(id),
+        settingsOf: (id): Promise<TelevisionSettingsRow | undefined> =>
+          Promise.resolve(db.store.televisionSettings.find(id)),
         woke: (id): void => {
           db.store.televisionSettings.recordWakeWorked(id, NOW.toISOString());
         },
@@ -179,9 +182,11 @@ describe('television commands through the executor', () => {
       listener(onlineSignal(deviceId));
     }
     await running;
-    expect(smartthings.executed).toStrictEqual([
-      { commandId: command.id, externalId: 'st-tv', capability: 'power', value: true },
-    ]);
+    await vi.waitFor(() => {
+      expect(smartthings.executed).toStrictEqual([
+        { commandId: command.id, externalId: 'st-tv', capability: 'power', value: true },
+      ]);
+    });
     expect(db.store.commands.byId(command.id).status).toBe('succeeded');
     expect(db.store.televisionSettings.find(deviceId)?.wake_worked_at).toBe(NOW.toISOString());
   });

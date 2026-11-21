@@ -19,6 +19,8 @@ import type {
 } from '../../../src/automations/world-v3/read-port';
 import type { Store } from '../../../src/store/store';
 import { testStore, type TestStore } from '../../support/store';
+import { loadedWorld } from '../../support/world-mirror';
+import type { WorldMirror } from '../../../src/automations/world-v3/world-mirror';
 
 export const NOW = '2026-10-18T12:00:00.000Z';
 
@@ -97,6 +99,7 @@ export interface Home {
   readonly people: PresenceReading[];
   readonly persistent: Map<string, PersistentVariable>;
   readonly clock: { current: Date };
+  readonly world: WorldMirror;
   readonly deps: WorldReadDeps;
   readonly read: (kind: string, inputs?: ReadInputs, scope?: Partial<ReadScope>) => ReadResult;
   readonly write: (device: DeviceRow, capability: string, value: JsonValue, at?: string) => void;
@@ -199,8 +202,10 @@ export async function furnish(): Promise<Home> {
   const intended = new Map<string, Intended>();
   const people: PresenceReading[] = [];
   const persistent = new Map<string, PersistentVariable>();
+  const world = await loadedWorld(store);
   const deps: WorldReadDeps = {
     store,
+    world,
     executor: executorOf(intended),
     clock: { now: () => clock.current },
     observed: (deviceId, capability) => store.state.value(deviceId, capability),
@@ -208,12 +213,14 @@ export async function furnish(): Promise<Home> {
     persistent: { read: (automationId, name) => persistent.get(`${automationId}:${name}`) },
     random: seededRandom,
     memory: transientNodeMemory(),
+    stateRows: { get: () => undefined, save: (): void => undefined },
     signals: { latest: () => [] },
     kinds: createKindCatalog(),
   };
-  const world = createWorldReads(deps);
+  const reads = createWorldReads(deps);
   return {
     test,
+    world,
     kitchen,
     study,
     lampA: stored(devices, 0),
@@ -226,7 +233,7 @@ export async function furnish(): Promise<Home> {
     persistent,
     clock,
     deps,
-    read: (kind, inputs = {}, scope = {}) => world.read(kind, inputs, { ...SCOPE, ...scope }),
+    read: (kind, inputs = {}, scope = {}) => reads.read(kind, inputs, { ...SCOPE, ...scope }),
     write: (device, capability, value, at = NOW): void => {
       store.state.write([{ deviceId: device.id, capability, value, observedAt: at }]);
     },

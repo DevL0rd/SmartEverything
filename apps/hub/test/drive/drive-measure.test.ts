@@ -182,13 +182,15 @@ describe('consistent database copy', () => {
     source.close();
   });
 
-  it('the backup API copies a database that keeps accepting writes while it runs', async () => {
+  it('the backup API copies a database that another connection keeps writing to', async () => {
     const source = openDatabase('live.db');
     insertRows(source, 0, 5000);
+    const writer = new DatabaseSync(join(directory, 'live.db'));
+    writer.exec('pragma busy_timeout = 60000');
     let writes = 0;
     const copying = backup(source, join(directory, 'live-copy.db'), { rate: 5 });
     while (writes < WRITES_DURING_BACKUP) {
-      insertRows(source, 5000 + writes, 5001 + writes);
+      insertRows(writer, 5000 + writes, 5001 + writes);
       writes++;
       await new Promise((resolve) => setImmediate(resolve));
     }
@@ -200,6 +202,7 @@ describe('consistent database copy', () => {
     expect(countRows(copy)).toBeGreaterThanOrEqual(5000);
     expect(countRows(copy)).toBeLessThanOrEqual(countRows(source));
     copy.close();
+    writer.close();
     source.close();
   });
 });

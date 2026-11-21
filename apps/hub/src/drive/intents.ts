@@ -8,6 +8,7 @@ import { committedElsewhere } from './intent-owners';
 import type { ContentPatch } from './patch-files';
 import { locateInRoot, ORPHAN_DIRECTORY } from './paths';
 import { MARKER_DIRECTORY } from './root-marker';
+import { DriveWriteError } from './write-error';
 
 export const TMP_DIRECTORY = `${MARKER_DIRECTORY}/tmp`;
 export const TRASH_DIRECTORY = `${MARKER_DIRECTORY}/trash`;
@@ -18,19 +19,6 @@ const DAY_MS = 86_400_000;
 
 export function purgeDeadline(at: string): string {
   return new Date(Date.parse(at) + RETENTION_DAYS * DAY_MS).toISOString();
-}
-
-export type DriveWriteFailure = 'exists' | 'missing' | 'corrupt';
-
-export class DriveWriteError extends Error {
-  override readonly name = 'DriveWriteError';
-
-  constructor(
-    readonly failure: DriveWriteFailure,
-    message: string,
-  ) {
-    super(message);
-  }
 }
 
 export interface DriveWriteRoot {
@@ -188,6 +176,7 @@ export type DriveFileStore = Pick<
   | 'driveRoots'
   | 'driveShortcuts'
   | 'driveUploads'
+  | 'host'
   | 'write'
 >;
 
@@ -199,7 +188,7 @@ export interface FileEnv {
 }
 
 export interface RecoveryEnv extends FileEnv {
-  readonly finishCommit: (intent: DriveIntent, root: DriveWriteRoot) => void;
+  readonly finishCommit: (intent: DriveIntent, root: DriveWriteRoot) => Promise<void>;
 }
 
 export interface RecoveryReport {
@@ -209,15 +198,22 @@ export interface RecoveryReport {
   readonly failed: number;
 }
 
+async function versionShared(
+  env: FileEnv,
+  root: DriveWriteRoot,
+  versionPath: string,
+): Promise<boolean> {
+  const sha = shaOfVersionPath(versionPath);
+  return (await env.store.host.call('driveVersions', 'references', root.id, sha)) > 0;
+}
+
 async function putBack(
   env: FileEnv,
   root: DriveWriteRoot,
   intent: DriveIntent,
   paths: { readonly from: string; readonly to: string },
 ): Promise<void> {
-  const shared =
-    intent.op === 'version' &&
-    env.store.driveVersions.references(root.id, shaOfVersionPath(intent.toPath)) > 0;
+  const shared = intent.op === 'version' && (await versionShared(env, root, intent.toPath));
   await (shared ? env.files.link(paths.to, paths.from) : env.files.rename(paths.to, paths.from));
   await env.files.syncDirectory(dirname(paths.from));
 }
@@ -295,7 +291,7 @@ async function restoreManifest(
   root: DriveWriteRoot,
   trashRel: string,
 ): Promise<void> {
-  const entry = env.store.driveTrash.find(basename(trashRel));
+  const entry = await env.store.host.call('driveTrash', 'find', basename(trashRel));
   const manifest = await locate(root, manifestPath(trashRel));
   if (entry !== undefined && (await env.files.stamp(manifest)) === null) {
     await writeManifest(env.files, root, trashRel, entry);
@@ -330,8 +326,7 @@ async function rollbackCommit(
   if (intent.versionPath !== null && (await env.files.stamp(live)) === null) {
     const version = await locate(root, intent.versionPath);
     if ((await env.files.stamp(version)) !== null) {
-      const shared =
-        env.store.driveVersions.references(root.id, shaOfVersionPath(intent.versionPath)) > 0;
+      const shared = await versionShared(env, root, intent.versionPath);
       await (shared ? env.files.link(version, live) : env.files.rename(version, live));
       await env.files.syncDirectory(dirname(live));
     }
@@ -344,7 +339,7 @@ export async function rollbackIntent(
   root: DriveWriteRoot,
   intent: DriveIntent,
 ): Promise<boolean> {
-  if (committedElsewhere(env.store, intent)) {
+  if (await committedElsewhere(env.store, intent)) {
     env.log.warn('drive.intent_owned_elsewhere', { rootId: root.id, op: intent.op });
     return true;
   }
@@ -373,7 +368,7 @@ export async function abandonIntent(
 ): Promise<void> {
   try {
     if (await rollbackIntent(env, root, intent)) {
-      env.store.driveIntents.clear(intent.id);
+      await env.store.host.call('driveIntents', 'clear', intent.id);
     } else {
       env.log.warn('drive.intent_left_open', { rootId: root.id, op: intent.op });
     }
@@ -390,8 +385,8 @@ async function resolveIntent(
   if (await rollbackIntent(env, root, intent)) {
     return 'rolledBack';
   }
-  env.finishCommit(intent, root);
-  if (env.store.driveIntents.find(intent.id) !== undefined) {
+  await env.finishCommit(intent, root);
+  if ((await env.store.host.call('driveIntents', 'find', intent.id)) !== undefined) {
     throw new DriveWriteError('corrupt', 'Finishing the commit left its intent open.');
   }
   return 'completed';
@@ -399,9 +394,9 @@ async function resolveIntent(
 
 async function removeOrphanTmp(env: FileEnv, root: DriveWriteRoot): Promise<number> {
   const directory = await locate(root, TMP_DIRECTORY);
-  const held = new Set(env.store.driveUploads.openIdsInRoot(root.id));
-  for (const placement of env.store.drivePlacements.forRoot(root.id)) {
-    for (const commit of env.store.driveMountCommits.open(placement.id)) {
+  const held = new Set(await env.store.host.call('driveUploads', 'openIdsInRoot', root.id));
+  for (const placement of await env.store.host.call('drivePlacements', 'forRoot', root.id)) {
+    for (const commit of await env.store.host.call('driveMountCommits', 'open', placement.id)) {
       held.add(basename(mountStagingRelPath(commit.id)));
     }
   }
@@ -418,7 +413,7 @@ export async function recoverIntents(
 ): Promise<RecoveryReport> {
   const tally = { rolledBack: 0, completed: 0, tmpRemoved: 0, failed: 0 };
   const byId = new Map(roots.map((root) => [root.id, root]));
-  for (const intent of env.store.driveIntents.all()) {
+  for (const intent of await env.store.host.call('driveIntents', 'all')) {
     const root = byId.get(intent.rootId);
     if (root === undefined) {
       continue;
@@ -426,7 +421,7 @@ export async function recoverIntents(
     try {
       const result = await resolveIntent(env, root, intent);
       if (result === 'rolledBack') {
-        env.store.driveIntents.clear(intent.id);
+        await env.store.host.call('driveIntents', 'clear', intent.id);
       }
       tally[result] += 1;
     } catch (cause) {
@@ -439,7 +434,7 @@ export async function recoverIntents(
     }
   }
   for (const root of roots) {
-    if (env.store.driveIntents.forRoot(root.id).length === 0) {
+    if ((await env.store.host.call('driveIntents', 'forRoot', root.id)).length === 0) {
       tally.tmpRemoved += await removeOrphanTmp(env, root);
     }
   }

@@ -22,11 +22,12 @@ describe('settings key/value store', () => {
     expect(settingsKv.read('any.key')).toEqual({ b: [2] });
   });
 
-  it('keeps reach quiet hours under their unchanged key', () => {
+  it('keeps reach quiet hours under their unchanged key', async () => {
     const { store } = opened;
     const profileId = store.profiles.first().id;
+    await store.live.home.load();
     const rules = new ReachRules(store, () => new Date());
-    rules.save(profileId, { quiet: { from: '22:00', to: '07:00', urgent: false } });
+    await rules.save(profileId, { quiet: { from: '22:00', to: '07:00', urgent: false } });
     expect(store.settingsKv.read('reach.quiet')).toEqual({
       people: { [profileId]: { from: '22:00', to: '07:00', urgent: false } },
     });

@@ -1,7 +1,8 @@
 import { lstat, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { fileDraft, folderDraft, identityOf, isoOf } from '../../../src/drive/changes';
+import { fileDraft, folderDraft } from '../../../src/drive/changes';
+import { identityOf, isoOf } from '../../../src/drive/change-rows';
 import type { FileStamp } from '../../../src/drive/intents';
 import {
   create,

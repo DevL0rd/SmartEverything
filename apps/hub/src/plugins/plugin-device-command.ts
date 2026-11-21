@@ -42,7 +42,7 @@ export function commandPorts(
       if (deviceId === undefined)
         throw new ApiError('not_found', 'The device inventory is not ready.');
       const capability = CAPABILITY_KEY.parse(rawCapability);
-      const device = options.store.devices.byId(deviceId);
+      const device = await options.store.host.call('devices', 'byId', deviceId);
       const checked = validateCommand(device, { capability, value });
       const [row] = options.submit([
         {
@@ -66,19 +66,43 @@ export function commandPorts(
     },
   };
 }
-function commandResult(
+interface Following {
+  readonly settled: Promise<JsonValue>;
+  readonly finish: (result: CommandRow) => void;
+  readonly cleanup: () => void;
+}
+
+async function commandResult(
   options: CommandPortOptions,
   session: CommandPortSession,
   row: CommandRow,
 ): Promise<JsonValue> {
-  return new Promise((resolve, reject) => {
+  const following = followCommand(options, session, row);
+  if (session.signal.aborted) return following.settled;
+  try {
+    following.finish(await options.store.host.call('commands', 'byId', row.id));
+  } catch (cause) {
+    following.cleanup();
+    throw cause;
+  }
+  return following.settled;
+}
+
+function followCommand(
+  options: CommandPortOptions,
+  session: CommandPortSession,
+  row: CommandRow,
+): Following {
+  let finish: (result: CommandRow) => void = () => undefined;
+  let cleanup: () => void = () => undefined;
+  const settled = new Promise<JsonValue>((resolve, reject) => {
     let unsubscribe: () => void = () => undefined;
-    const cleanup = (): void => {
+    cleanup = (): void => {
       clearTimeout(timer);
       unsubscribe();
       session.signal.removeEventListener('abort', aborted);
     };
-    const finish = (result: CommandRow): void => {
+    finish = (result: CommandRow): void => {
       if (!isFinished(result.status)) return;
       cleanup();
       if (result.status === 'succeeded') resolve(result.result);
@@ -106,6 +130,6 @@ function commandResult(
     });
     session.signal.addEventListener('abort', aborted, { once: true });
     if (session.signal.aborted) aborted();
-    else finish(options.store.commands.byId(row.id));
   });
+  return { settled, finish, cleanup };
 }

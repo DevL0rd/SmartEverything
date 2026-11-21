@@ -26,7 +26,7 @@ export interface FeedKindHandler {
     changes: PlannerFeedChanges,
   ) => Promise<PlannerCollectionRow>;
   readonly refresh: (collection: PlannerCollectionRow) => Promise<PlannerCollectionRow>;
-  readonly prepare: (collection: PlannerCollectionRow, window: FeedWindow) => void;
+  readonly prepare: (collection: PlannerCollectionRow, window: FeedWindow) => Promise<void>;
 }
 
 export class FeedKindUnavailableError extends Error {
@@ -50,9 +50,11 @@ export class FeedRegistry {
     return handler;
   }
 
-  prepare(collections: readonly PlannerCollectionRow[], window: FeedWindow): void {
-    for (const collection of collections) {
-      if (collection.feed !== null) this.of(collection.feed.kind).prepare(collection, window);
-    }
+  async prepare(collections: readonly PlannerCollectionRow[], window: FeedWindow): Promise<void> {
+    await Promise.all(
+      collections.flatMap((collection) =>
+        collection.feed === null ? [] : [this.of(collection.feed.kind).prepare(collection, window)],
+      ),
+    );
   }
 }

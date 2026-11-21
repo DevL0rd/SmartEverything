@@ -46,22 +46,22 @@ afterEach(async () => {
   await opened.close();
 });
 
-function started(): { readonly code: string; readonly hash: string } {
+async function started(): Promise<{ readonly code: string; readonly hash: string }> {
   const owner = opened.store.clients.owner();
   if (owner === undefined) throw new Error('the owner exists');
-  const pairing = access.startPairing('member', owner.id);
+  const pairing = await access.startPairing('member', owner.id);
   return { code: pairing.code, hash: hashPairingCode(pairing.code) };
 }
 
-function prove(proof: string): { readonly proof: string } {
+function prove(proof: string): Promise<{ readonly proof: string }> {
   return access.prove({ nonce: NONCE, proof, remote: 'phone' });
 }
 
 describe('pairing QR', () => {
-  it('always carries the identity and the endpoints with the url and the code', () => {
+  it('always carries the identity and the endpoints with the url and the code', async () => {
     const owner = opened.store.clients.owner();
     if (owner === undefined) throw new Error('the owner exists');
-    const pairing = access.startPairing('owner', owner.id);
+    const pairing = await access.startPairing('owner', owner.id);
     expect(pairing.qr).toStrictEqual({
       url: REMOTE,
       code: pairing.code,
@@ -72,29 +72,33 @@ describe('pairing QR', () => {
 });
 
 describe('pairing proof', () => {
-  it('answers a client that knows the code with a hub proof bound to the certificate', () => {
-    const { hash } = started();
-    expect(prove(pairingProof(hash, 'client', CERTIFICATE, NONCE))).toStrictEqual({
+  it('answers a client that knows the code with a hub proof bound to the certificate', async () => {
+    const { hash } = await started();
+    expect(await prove(pairingProof(hash, 'client', CERTIFICATE, NONCE))).toStrictEqual({
       proof: pairingProof(hash, 'hub', CERTIFICATE, NONCE),
     });
   });
 
-  it('refuses a proof made for another certificate or for another code', () => {
-    const { hash } = started();
+  it('refuses a proof made for another certificate or for another code', async () => {
+    const { hash } = await started();
     for (const proof of [
       pairingProof(hash, 'client', 'ef'.repeat(32), NONCE),
       pairingProof(hashPairingCode('ABCD-2345'), 'client', CERTIFICATE, NONCE),
     ])
-      expect(() => prove(proof)).toThrow(ApiError);
+      await expect(prove(proof)).rejects.toThrow(ApiError);
   });
 
-  it('keeps the code usable after a proof and refuses a proof once it is claimed', () => {
-    const { code, hash } = started();
+  it('keeps the code usable after a proof and refuses a proof once it is claimed', async () => {
+    const { code, hash } = await started();
     const proof = pairingProof(hash, 'client', CERTIFICATE, NONCE);
-    prove(proof);
-    expect(
-      access.claim({ code, name: 'Pixel', platform: 'android', remote: 'phone' }).client.name,
-    ).toBe('Pixel');
-    expect(() => prove(proof)).toThrow(ApiError);
+    await prove(proof);
+    const claimed = await access.claim({
+      code,
+      name: 'Pixel',
+      platform: 'android',
+      remote: 'phone',
+    });
+    expect(claimed.client.name).toBe('Pixel');
+    await expect(prove(proof)).rejects.toThrow(ApiError);
   });
 });

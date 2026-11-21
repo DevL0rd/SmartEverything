@@ -14,6 +14,8 @@
     "drive-fs-rig/suites/*.ts",
     "drive-fs-rig/bench/*.ts",
     "test-hub/*.ts",
+    "guards/main-thread-store.ts",
+    "guards/repository-files.ts",
     "../apps/desktop/packaging/web-runtime.ts",
     "../apps/desktop/src/package-layout.ts",
     "../apps/desktop/src/variant.ts",

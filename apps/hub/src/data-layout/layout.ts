@@ -10,6 +10,7 @@ import {
   PROFILE_ID,
   PROVIDER_ID,
 } from './ids';
+import { personDriveName, type DriveFolders, type PersonDriveNames } from './drive-folders';
 import { derivedShard, LAYOUT_SOURCE, LEGACY_NAMES, type LayoutSource } from './legacy';
 
 type Paths<K extends string> = Readonly<Record<K, string>>;
@@ -56,7 +57,7 @@ export interface LayoutNames {
   readonly migration: Paths<'journal' | 'orphans' | 'staging'>;
   readonly home: Paths<'drive' | 'talk' | 'homeMapScans'>;
   readonly cache: Paths<
-    'harness' | 'voiceSamples' | 'smartthingsCapabilities' | 'codexInputs' | 'buildHost'
+    'harness' | 'voiceSamples' | 'smartthingsCapabilities' | 'codexInputs' | 'buildHost' | 'compile'
   >;
   readonly backups: Paths<'releases' | 'manual' | 'legacyDatabase'>;
   readonly provider: (id: string) => string;
@@ -66,7 +67,7 @@ export interface LayoutNames {
   readonly derived: (itemId: string) => string;
   readonly person: {
     readonly root: (profileId: string) => string;
-    readonly drive: (profileId: string) => string;
+    readonly drive: PersonDriveNames;
     readonly attachments: (profileId: string) => string;
     readonly harnessAttachments: (profileId: string) => string;
   };
@@ -145,6 +146,7 @@ export const V1_NAMES: LayoutNames = {
     smartthingsCapabilities: 'cache/smartthings-capabilities',
     codexInputs: 'cache/codex-inputs',
     buildHost: 'cache/build-host',
+    compile: 'cache/compile',
   },
   backups: {
     releases: 'backups/releases',
@@ -158,7 +160,7 @@ export const V1_NAMES: LayoutNames = {
   derived: (itemId) => `cache/drive-derived/${derivedShard(itemId)}`,
   person: {
     root: (profileId) => `people/${profileId}`,
-    drive: (profileId) => `people/${profileId}/drive`,
+    drive: { parent: 'people', leaf: 'drive' },
     attachments: (profileId) => `people/${profileId}/attachments`,
     harnessAttachments: (profileId) => `people/${profileId}/ai/harness-attachments`,
   },
@@ -213,6 +215,7 @@ export interface HubLayout {
     readonly updates: LayoutNames['updates'];
     readonly migration: LayoutNames['migration'];
   };
+  readonly drives: DriveFolders;
   readonly home: {
     readonly drive: string;
     readonly recordings: (deviceId: string) => string;
@@ -228,6 +231,7 @@ export interface HubLayout {
     readonly smartthingsCapabilities: string;
     readonly codexInputs: string;
     readonly buildHost: string;
+    readonly compile: string;
   };
   readonly backups: LayoutNames['backups'];
 }
@@ -342,7 +346,7 @@ function personOf(names: LayoutNames, at: At, profileId: string): PersonLayout {
   const attachments = at(names.person.attachments(profile));
   return {
     root: at(names.person.root(profile)),
-    drive: at(names.person.drive(profile)),
+    drive: at(personDriveName(names.person.drive, profile)),
     attachments,
     attachment: (attachmentId, name) =>
       join(attachments, ATTACHMENT_ID.parse(attachmentId), ATTACHMENT_NAME.parse(name)),
@@ -360,6 +364,13 @@ function chatOf(names: LayoutNames, at: At, profileId: string, chatId: string): 
   };
 }
 
+function drivesOf(names: LayoutNames, at: At): DriveFolders {
+  return {
+    home: at(names.home.drive),
+    people: { parent: at(names.person.drive.parent), leaf: names.person.drive.leaf },
+  };
+}
+
 export function layoutFromNames(
   root: string,
   names: LayoutNames,
@@ -374,6 +385,7 @@ export function layoutFromNames(
     lock: at(names.lock),
     tmp: at(names.tmp),
     system: systemOf(names, at, environment),
+    drives: drivesOf(names, at),
     home: {
       drive: at(home.drive),
       recordings: (id) => at(names.recordings(DEVICE_ID.parse(id))),
@@ -389,6 +401,7 @@ export function layoutFromNames(
       smartthingsCapabilities: at(cache.smartthingsCapabilities),
       codexInputs: at(cache.codexInputs),
       buildHost: at(cache.buildHost),
+      compile: at(cache.compile),
     },
     backups: {
       releases: at(backups.releases),

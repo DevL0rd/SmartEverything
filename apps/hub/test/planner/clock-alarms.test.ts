@@ -11,6 +11,7 @@ import { AlarmScheduler, nextRing, ringsBetween } from '../../src/planner/alarms
 import { RingDesk } from '../../src/planner/rings';
 import { SunriseRamp } from '../../src/planner/sunrise';
 import { WakeRoutine } from '../../src/planner/wake-routine';
+import { advanceSettled } from '../support/host-settle';
 import { testLogger } from '../support/logs';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
 import { testStore, type TestStore } from '../support/store';
@@ -46,6 +47,10 @@ function build(): AlarmScheduler {
     log: testLogger(),
   });
   return new AlarmScheduler({ store: test.store, clock, rings, wake, sunrise, log: testLogger() });
+}
+
+async function advance(at: string): Promise<void> {
+  await advanceSettled(clock, at, () => scheduler.settled());
 }
 
 function alarm(change: Partial<PlannerAlarmInput> = {}): PlannerAlarmRow {
@@ -140,10 +145,10 @@ describe('next ring', () => {
 });
 
 describe('ringing', () => {
-  it('rings at the instant with a ring row, a notice and a signal, then arms the next day', () => {
+  it('rings at the instant with a ring row, a notice and a signal, then arms the next day', async () => {
     const saved = alarm();
-    scheduler.start();
-    clock.advanceTo('2026-11-09T06:00:00.000Z');
+    await scheduler.start();
+    await advance('2026-11-09T06:00:00.000Z');
     const [ring] = rings(saved.id);
     expect(ring).toMatchObject({ outcome: 'rang', due_at: '2026-11-09T06:00:00.000Z' });
     expect(notices).toEqual([
@@ -159,35 +164,35 @@ describe('ringing', () => {
     expect(clock.pending()).toEqual(['2026-11-10T06:00:00.000Z']);
   });
 
-  it('disables a once-only alarm after it rings', () => {
+  it('disables a once-only alarm after it rings', async () => {
     const saved = alarm({ days: [], once_on: '2026-11-08' });
-    scheduler.start();
-    clock.advanceTo('2026-11-08T06:00:00.000Z');
+    await scheduler.start();
+    await advance('2026-11-08T06:00:00.000Z');
     expect(rings(saved.id)).toHaveLength(1);
     expect(test.store.plannerAlarms.byId(saved.id, owner.profileId).enabled).toBe(false);
     expect(clock.pending()).toEqual([]);
   });
 
-  it('skip next moves the ring to the following day', () => {
+  it('skip next moves the ring to the following day', async () => {
     const saved = alarm();
-    scheduler.start();
-    const skipped = scheduler.skipNext(owner.profileId, saved.id);
+    await scheduler.start();
+    const skipped = await scheduler.skipNext(owner.profileId, saved.id);
     expect(skipped.skip_on).toBe('2026-11-09');
     expect(clock.pending()).toEqual(['2026-11-10T06:00:00.000Z']);
-    clock.advanceTo('2026-11-09T12:00:00.000Z');
+    await advance('2026-11-09T12:00:00.000Z');
     expect(rings(saved.id)).toHaveLength(0);
-    clock.advanceTo('2026-11-10T06:00:00.000Z');
+    await advance('2026-11-10T06:00:00.000Z');
     expect(rings(saved.id)).toHaveLength(1);
   });
 
-  it('refuses to skip the next ring of an alarm that does not repeat', () => {
+  it('refuses to skip the next ring of an alarm that does not repeat', async () => {
     const saved = alarm({ days: [], once_on: '2026-11-12' });
-    expect(() => scheduler.skipNext(owner.profileId, saved.id)).toThrow(/repeating/);
+    await expect(scheduler.skipNext(owner.profileId, saved.id)).rejects.toThrow(/repeating/);
   });
 
-  it('re-arms when the alarm time is edited', () => {
+  it('re-arms when the alarm time is edited', async () => {
     const saved = alarm();
-    scheduler.start();
+    await scheduler.start();
     test.store.plannerAlarms.update(saved.id, owner.profileId, { time: '06:00' });
     expect(clock.pending()).toEqual(['2026-11-09T05:00:00.000Z']);
     test.store.plannerAlarms.update(saved.id, owner.profileId, { enabled: false });
@@ -196,94 +201,94 @@ describe('ringing', () => {
 });
 
 describe('snooze and dismiss', () => {
-  function ringOnce(): { alarmId: string; ringId: string } {
+  async function ringOnce(): Promise<{ alarmId: string; ringId: string }> {
     const saved = alarm();
-    scheduler.start();
-    clock.advanceTo('2026-11-09T06:00:00.000Z');
+    await scheduler.start();
+    await advance('2026-11-09T06:00:00.000Z');
     const [ring] = rings(saved.id);
     if (ring === undefined) throw new Error('the alarm did not ring');
     return { alarmId: saved.id, ringId: ring.id };
   }
 
-  it('rings again after the alarm snooze length', () => {
-    const { ringId } = ringOnce();
+  it('rings again after the alarm snooze length', async () => {
+    const { ringId } = await ringOnce();
     notices.length = 0;
-    const snoozed = scheduler.snooze(owner.profileId, ringId);
+    const snoozed = await scheduler.snooze(owner.profileId, ringId);
     expect(snoozed.snoozes).toBe(1);
     expect(snoozed.rang_at).toBe('2026-11-09T06:09:00.000Z');
     expect(signals.at(-1)).toMatchObject({ kind: 'alarm_snoozed' });
     expect(test.store.plannerRings.ringing(owner.profileId)).toHaveLength(1);
-    clock.advanceTo('2026-11-09T06:09:00.000Z');
+    await advance('2026-11-09T06:09:00.000Z');
     expect(signals.filter((signal) => signal.kind === 'alarm_rang')).toHaveLength(2);
     expect(notices.map((notice) => notice.ringId)).toEqual([ringId, ringId]);
   });
 
-  it('dismiss closes the ring, tells the clients and stops a pending snooze', () => {
-    const { ringId } = ringOnce();
-    scheduler.snooze(owner.profileId, ringId, 5);
+  it('dismiss closes the ring, tells the clients and stops a pending snooze', async () => {
+    const { ringId } = await ringOnce();
+    await scheduler.snooze(owner.profileId, ringId, 5);
     notices.length = 0;
-    const dismissed = scheduler.dismiss(owner.profileId, ringId);
+    const dismissed = await scheduler.dismiss(owner.profileId, ringId);
     expect(dismissed.dismissed_at).toBe('2026-11-09T06:00:00.000Z');
     expect(notices).toHaveLength(1);
     expect(signals.at(-1)).toMatchObject({ kind: 'alarm_dismissed' });
-    clock.advanceTo('2026-11-09T06:30:00.000Z');
+    await advance('2026-11-09T06:30:00.000Z');
     expect(signals.filter((signal) => signal.kind === 'alarm_rang')).toHaveLength(1);
-    expect(() => scheduler.dismiss(owner.profileId, ringId)).toThrow(/no longer ringing/);
+    await expect(scheduler.dismiss(owner.profileId, ringId)).rejects.toThrow(/no longer ringing/);
   });
 
-  it('refuses a snooze past the alarm limit and keeps the ring open', () => {
+  it('refuses a snooze past the alarm limit and keeps the ring open', async () => {
     const saved = alarm({ snooze_limit: 2 });
-    scheduler.start();
-    clock.advanceTo('2026-11-09T06:00:00.000Z');
+    await scheduler.start();
+    await advance('2026-11-09T06:00:00.000Z');
     const [ring] = rings(saved.id);
     if (ring === undefined) throw new Error('the alarm did not ring');
-    scheduler.snooze(owner.profileId, ring.id);
-    scheduler.snooze(owner.profileId, ring.id);
-    expect(() => scheduler.snooze(owner.profileId, ring.id)).toThrow(/2 snoozes/);
+    await scheduler.snooze(owner.profileId, ring.id);
+    await scheduler.snooze(owner.profileId, ring.id);
+    await expect(scheduler.snooze(owner.profileId, ring.id)).rejects.toThrow(/2 snoozes/);
     expect(test.store.plannerRings.find(ring.id)?.snoozes).toBe(2);
-    expect(scheduler.dismiss(owner.profileId, ring.id).dismissed_at).not.toBeNull();
+    expect((await scheduler.dismiss(owner.profileId, ring.id)).dismissed_at).not.toBeNull();
   });
 
-  it('allows unlimited snoozes when the alarm has no limit', () => {
-    const { ringId } = ringOnce();
-    for (let count = 0; count < 5; count += 1) scheduler.snooze(owner.profileId, ringId);
+  it('allows unlimited snoozes when the alarm has no limit', async () => {
+    const { ringId } = await ringOnce();
+    for (let count = 0; count < 5; count += 1) await scheduler.snooze(owner.profileId, ringId);
     expect(test.store.plannerRings.find(ringId)?.snoozes).toBe(5);
   });
 
-  it('keeps one person from dismissing another person ring', () => {
-    const { ringId } = ringOnce();
-    expect(() => scheduler.dismiss(other.profileId, ringId)).toThrow(/does not exist/);
+  it('keeps one person from dismissing another person ring', async () => {
+    const { ringId } = await ringOnce();
+    await expect(scheduler.dismiss(other.profileId, ringId)).rejects.toThrow(/does not exist/);
   });
 });
 
 describe('wake routine', () => {
-  it('runs the scene the lead minutes before the ring', () => {
+  it('runs the scene the lead minutes before the ring', async () => {
     alarm({ wake_automation_id: SCENE, wake_lead_minutes: 20 });
-    scheduler.start();
+    await scheduler.start();
     expect(clock.pending()).toEqual(['2026-11-09T05:40:00.000Z', '2026-11-09T06:00:00.000Z']);
-    clock.advanceTo('2026-11-09T05:40:00.000Z');
+    await advance('2026-11-09T05:40:00.000Z');
     expect(scenes).toHaveBeenCalledExactlyOnceWith(SCENE, owner.profileId);
   });
 
-  it('does not run the scene late when the lead moment has already passed', () => {
+  it('does not run the scene late when the lead moment has already passed', async () => {
     const saved = alarm({ time: '09:00', days: [], once_on: '2026-11-07' });
     clock.jumpTo('2026-11-07T07:50:00.000Z');
-    scheduler.start();
+    await scheduler.start();
     test.store.plannerAlarms.update(saved.id, owner.profileId, {
       wake_automation_id: SCENE,
       wake_lead_minutes: 30,
     });
-    clock.advanceTo('2026-11-07T08:00:00.000Z');
+    await advance('2026-11-07T08:00:00.000Z');
     expect(scenes).not.toHaveBeenCalled();
     expect(rings(saved.id)).toHaveLength(1);
   });
 });
 
 describe('overdue after a restart', () => {
-  it('records a missed ring with its reason and never rings late', () => {
+  it('records a missed ring with its reason and never rings late', async () => {
     const saved = alarm();
     clock.jumpTo('2026-11-09T09:00:00.000Z');
-    scheduler.start();
+    await scheduler.start();
     const [missed] = rings(saved.id);
     expect(missed).toMatchObject({
       outcome: 'missed',
@@ -295,13 +300,13 @@ describe('overdue after a restart', () => {
     expect(clock.pending()).toEqual(['2026-11-10T06:00:00.000Z']);
   });
 
-  it('records every ring the hub slept through, once', () => {
+  it('records every ring the hub slept through, once', async () => {
     const saved = alarm();
     clock.jumpTo('2026-11-11T09:00:00.000Z');
-    scheduler.start();
+    await scheduler.start();
     scheduler.stop();
     scheduler = build();
-    scheduler.start();
+    await scheduler.start();
     expect(rings(saved.id).map((ring) => ring.due_at)).toEqual([
       '2026-11-09T06:00:00.000Z',
       '2026-11-10T06:00:00.000Z',
@@ -309,11 +314,11 @@ describe('overdue after a restart', () => {
     ]);
   });
 
-  it('records a computer that slept through an alarm as asleep', () => {
+  it('records a computer that slept through an alarm as asleep', async () => {
     const saved = alarm();
-    scheduler.start();
+    await scheduler.start();
     clock.jumpTo('2026-11-09T07:00:00.000Z');
-    scheduler.resumed();
+    await scheduler.resumed();
     expect(rings(saved.id)).toMatchObject([
       { outcome: 'missed', missed_reason: 'computer_asleep' },
     ]);
@@ -321,32 +326,32 @@ describe('overdue after a restart', () => {
     expect(clock.pending()).toEqual(['2026-11-10T06:00:00.000Z']);
   });
 
-  it('disables a once-only alarm that was missed', () => {
+  it('disables a once-only alarm that was missed', async () => {
     const saved = alarm({ days: [], once_on: '2026-11-08' });
     clock.jumpTo('2026-11-08T09:00:00.000Z');
-    scheduler.start();
+    await scheduler.start();
     expect(rings(saved.id)).toMatchObject([{ outcome: 'missed' }]);
     expect(test.store.plannerAlarms.byId(saved.id, owner.profileId).enabled).toBe(false);
   });
 
-  it('closes a snooze that came due while the hub was down and resumes a pending one', () => {
+  it('closes a snooze that came due while the hub was down and resumes a pending one', async () => {
     const saved = alarm();
-    scheduler.start();
-    clock.advanceTo('2026-11-09T06:00:00.000Z');
+    await scheduler.start();
+    await advance('2026-11-09T06:00:00.000Z');
     const [ring] = rings(saved.id);
     if (ring === undefined) throw new Error('the alarm did not ring');
-    scheduler.snooze(owner.profileId, ring.id, 10);
+    await scheduler.snooze(owner.profileId, ring.id, 10);
     scheduler.stop();
     clock.jumpTo('2026-11-09T06:05:00.000Z');
     scheduler = build();
-    scheduler.start();
-    clock.advanceTo('2026-11-09T06:10:00.000Z');
+    await scheduler.start();
+    await advance('2026-11-09T06:10:00.000Z');
     expect(signals.filter((signal) => signal.kind === 'alarm_rang')).toHaveLength(2);
-    scheduler.snooze(owner.profileId, ring.id, 10);
+    await scheduler.snooze(owner.profileId, ring.id, 10);
     scheduler.stop();
     clock.jumpTo('2026-11-09T07:00:00.000Z');
     scheduler = build();
-    scheduler.start();
+    await scheduler.start();
     expect(test.store.plannerRings.byId(ring.id).dismissed_at).toBe('2026-11-09T07:00:00.000Z');
   });
 });

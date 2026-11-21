@@ -46,6 +46,7 @@ beforeEach(async () => {
   files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now,
   });
   chats = new ChatDirectory(store, files);
@@ -161,6 +162,7 @@ describe('parent conversation helper messages', () => {
     store.assistantEvents.mark(event.id, 'answered_at');
     delegation.finished(event, 'Only in landscape.', true);
     delegation.finished(event, 'Only in landscape.', true);
+    await delegation.settled();
     const response = store.assistantChat.message(event.id);
     expect(response).toMatchObject({
       chat_id: parent.id,
@@ -256,8 +258,16 @@ describe('parent conversation helper messages', () => {
       const second = { ...sendBody(target), text: 'Second question' };
       await send(parent, second);
       const current = onlyPending();
-      const reply = conversation.startReply(target, previous.message_id, 'opus');
-      conversation.finishReply(reply.id, 'First answer', { model: 'opus', steps: [], sources: [] });
+      const reply = await conversation.startReply({
+        chat: target,
+        replyTo: previous.message_id,
+        model: 'opus',
+      });
+      await conversation.finishReply(reply.id, 'First answer', {
+        model: 'opus',
+        steps: [],
+        sources: [],
+      });
       await send(parent, { ...sendBody(target), text: 'Later question' });
       const messages = await providerMessages({ store, files, runtime }, target, current, false);
       expect(messages).toEqual([
@@ -294,16 +304,20 @@ describe('parent conversation helper messages', () => {
     const target = helper(parent);
     const first = await send(parent, sendBody(target));
     const event = onlyPending();
-    const reply = conversation.startReply(target, event.message_id, 'opus');
-    conversation.finishReply(reply.id, 'The saved answer.', {
+    const reply = await conversation.startReply({
+      chat: target,
+      replyTo: event.message_id,
+      model: 'opus',
+    });
+    await conversation.finishReply(reply.id, 'The saved answer.', {
       model: 'opus',
       steps: [],
       sources: [],
     });
-    conversation.stateOf(event.message_id, 'working');
+    await conversation.stateOf(event.message_id, 'working');
     opened.store.assistantEvents.mark(event.id, 'delivered_at');
-    delegation.restart();
-    delegation.restart();
+    await Promise.all([delegation.restart(), delegation.restart()]);
+    await delegation.settled();
     expect(opened.store.assistantChat.message(first.id).state).toBe('answered');
     expect(opened.store.assistantChat.message(event.id).text).toBe('The saved answer.');
   });

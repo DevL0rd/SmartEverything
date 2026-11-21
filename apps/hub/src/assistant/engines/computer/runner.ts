@@ -24,7 +24,7 @@ import { computerEngineStatus } from './engine-status';
 import { providerAgents } from './agents';
 import { observeNativeSubscription, subscriptionUsage } from './subscription-usage';
 import { noteContext } from './context-meter';
-import { settleSteered, steerTurn } from './steer';
+import { afterTurnWrites, settleSteered, steerTurn } from './steer';
 import { bridgeTool, receiveToolResult } from './tool-feed';
 import { streamNativeTools, streamDelta, isReplyEvent, type ReplyEvent } from './runtime-tools';
 export type { Turn, ComputerRunnerDeps } from './ports';
@@ -209,7 +209,7 @@ export class ComputerRunner {
       const reason = messageOf(cause);
       if (turn !== null) this.fail(turn, reason, this.submitFailureLifecycle(turn));
       else {
-        this.deps.conversation.failedMessage(event.message_id, reason, 'unknown');
+        await this.deps.conversation.failedMessage(event.message_id, reason, 'unknown');
         this.deps.finished(event, reason, false);
       }
     }
@@ -354,12 +354,15 @@ export class ComputerRunner {
     if (this.turns.get(turn.chat.id) !== turn) return;
     const text = turn.replies.fullText();
     this.trace.finished(turn, text.length);
-    turn.replies.finish(turn.stream.settled());
-    this.deps.conversation.stateOf(turn.event.message_id, 'answered');
+    const written = Promise.all([
+      turn.replies.finish(turn.stream.settled()),
+      this.deps.conversation.stateOf(turn.event.message_id, 'answered'),
+    ]);
     turn.stream.snapshot('idle', 'stop', null);
-    this.deps.finished(turn.event, text, true);
-    settleSteered(this.deps, turn, { ok: true, text });
-    this.close(turn);
+    this.settle(turn, written, () => {
+      this.deps.finished(turn.event, text, true);
+      settleSteered(this.deps, turn, { ok: true, text });
+    });
   }
 
   private fail(
@@ -370,9 +373,11 @@ export class ComputerRunner {
   ): void {
     if (this.turns.get(turn.chat.id) !== turn) return;
     this.trace.failed(turn, { lifecycle, code, reason });
-    turn.replies.fail(reason, turn.stream.settled(), code);
+    const written = Promise.all([
+      turn.replies.fail(reason, turn.stream.settled(), code),
+      this.deps.conversation.failedMessage(turn.event.message_id, reason, code),
+    ]);
     if (lifecycle === 'close') this.release(turn);
-    this.deps.conversation.failedMessage(turn.event.message_id, reason, code);
     turn.stream.snapshot('failed', 'error', reason.slice(0, 400));
     const state = this.state.read(turn.chat);
     if (state.job_id === turn.jobId) {
@@ -390,9 +395,17 @@ export class ComputerRunner {
           : { ...failed, state: 'failed' },
       );
     }
-    this.deps.finished(turn.event, reason, false);
-    settleSteered(this.deps, turn, { ok: false, reason, code });
-    this.close(turn);
+    this.settle(turn, written, () => {
+      this.deps.finished(turn.event, reason, false);
+      settleSteered(this.deps, turn, { ok: false, reason, code });
+    });
+  }
+
+  private settle(turn: Turn, written: Promise<unknown>, after: () => void): void {
+    this.trace.closed(turn.chat.id);
+    turn.stream.close();
+    this.turns.delete(turn.chat.id);
+    afterTurnWrites(this.deps, turn, written, after);
   }
 
   private release(turn: Turn): void {
@@ -405,12 +418,5 @@ export class ComputerRunner {
         failure: messageOf(cause),
       });
     });
-  }
-
-  private close(turn: Turn): void {
-    this.trace.closed(turn.chat.id);
-    turn.stream.close();
-    this.turns.delete(turn.chat.id);
-    turn.finish();
   }
 }

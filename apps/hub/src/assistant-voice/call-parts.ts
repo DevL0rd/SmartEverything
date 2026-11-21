@@ -64,6 +64,7 @@ export class CallLive {
 export interface Call {
   readonly id: string;
   readonly chatId: string;
+  readonly chatTools: readonly string[] | null;
   readonly endpoint: EndpointSlot;
   readonly link: SocketLink;
   readonly source: CallSource | null;
@@ -114,21 +115,19 @@ export function meter(
   usage: UsageMetadata,
   model: string,
 ): void {
-  try {
-    recordLiveTurn(options.store.ledger, options.prices, {
-      profileId: call.caller.profileId,
-      clientId: call.caller.clientId,
-      pluginId: call.pluginId,
-      callId: call.id,
-      chatId: call.chatId,
-      messageId: call.record.messageId,
-      model,
-      usage,
-    });
-  } catch (cause) {
+  recordLiveTurn(options.store.host, options.prices, {
+    profileId: call.caller.profileId,
+    clientId: call.caller.clientId,
+    pluginId: call.pluginId,
+    callId: call.id,
+    chatId: call.chatId,
+    messageId: call.record.messageId,
+    model,
+    usage,
+  }).catch((cause: unknown) => {
     options.log.error('voice.usage_unrecorded', {
       callId: call.id,
       reason: messageOf(cause),
     });
-  }
+  });
 }

@@ -98,20 +98,20 @@ function legacyEvents(
   return DSH_SESSION_EVENTS_WRITE.parse(events);
 }
 
-export function seedConversation(
+export async function seedConversation(
   rig: Rig,
   lines: readonly Line[],
   target: Rig['hub']['target'] = { kind: 'server' },
-): SeededConversation {
+): Promise<SeededConversation> {
   const chat = rig.newChat(target);
   const rows = lines.map((line) => addMessage(rig, chat.id, line));
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   const principal = rig.service.hostPrincipal(
     rig.owner.profileId,
     rig.service.directory.get(target).host,
   );
   const { store } = rig.opened;
-  store.dshSessions.append(
+  await store.live.dshSessions.append(
     {
       claim: open.claim,
       operation_id: randomUUID(),
@@ -296,14 +296,14 @@ function admitExchange(
   return { delivery, rows: [question, answer], events };
 }
 
-export function nativeConversation(
+export async function nativeConversation(
   rig: Rig,
   exchanges: readonly Exchange[],
   target: Rig['hub']['target'] = { kind: 'server' },
-): NativeConversation {
+): Promise<NativeConversation> {
   const chat = rig.newChat(target);
   const { store } = rig.opened;
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   const first = nextSeq(rig, open.claim.session_id);
   const events: DshSessionEvent[] = [systemEvent(first)];
   const rows: AssistantMessageRow[] = [];
@@ -320,7 +320,7 @@ export function nativeConversation(
     rig.service.directory.get(target).host,
   );
   const written = DSH_SESSION_EVENTS_WRITE.parse(events);
-  store.dshSessions.append(
+  await store.live.dshSessions.append(
     { claim: open.claim, operation_id: randomUUID(), events: written },
     principal,
   );

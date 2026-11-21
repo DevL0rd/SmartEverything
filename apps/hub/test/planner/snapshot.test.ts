@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { plannerTablesOf } from '../../src/server/handlers/snapshot';
+import { plannerTablesOf } from '../../src/server/snapshot-tables';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
 import { testStore, type TestStore } from '../support/store';
 

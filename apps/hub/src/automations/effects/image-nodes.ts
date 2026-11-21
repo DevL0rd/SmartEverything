@@ -96,12 +96,12 @@ interface Who {
   readonly name: string;
 }
 
-function whoOf(store: Store, run: EffectRun): Who {
-  const row = store.automations.find(run.automationId);
+async function whoOf(store: Store, run: EffectRun): Promise<Who> {
+  const author = await store.host.read('automationAuthor', run.automationId);
   return {
-    profileId: row?.author?.profile_id ?? store.profiles.first().id,
+    profileId: author.profileId,
     automationId: run.automationId,
-    name: row?.name ?? run.automationId,
+    name: author.name ?? run.automationId,
   };
 }
 
@@ -109,10 +109,8 @@ export function automationChatKey(automationId: string): string {
   return `automation:${automationId}`;
 }
 
-function chatOf(store: Store, source: AutomationImageSource, who: Who): AiChatRow {
-  const existing = store.aiChats.bySource(who.profileId, automationChatKey(who.automationId));
-  if (existing !== undefined) return existing;
-  return store.aiChats.create({
+function chatOf(store: Store, source: AutomationImageSource, who: Who): Promise<AiChatRow> {
+  return store.host.write('automationChat', {
     profileId: who.profileId,
     kind: 'chat',
     title: `Automation: ${who.name}`.slice(0, 80),
@@ -132,9 +130,9 @@ function operationIdOf(key: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function attachmentOf(store: Store, id: string): StoredAttachment | undefined {
+async function attachmentOf(store: Store, id: string): Promise<StoredAttachment | undefined> {
   try {
-    return store.assistantChat.attachment(id);
+    return await store.host.call('assistantChat', 'attachment', id);
   } catch (cause) {
     if (cause instanceof StoreNotFoundError) return undefined;
     throw cause;
@@ -180,7 +178,7 @@ async function imported(
   inChat: ReadonlySet<string>,
 ): Promise<StoredAttachment | string> {
   if (inChat.has(id)) return id;
-  const file = attachmentOf(importing.ports.store, id);
+  const file = await attachmentOf(importing.ports.store, id);
   return file === undefined ? importedPicture(importing, id) : importedCopy(importing, file);
 }
 
@@ -191,7 +189,9 @@ async function referencesOf(
 ): Promise<readonly string[]> {
   if (ids.length === 0) return [];
   const { store } = importing.ports;
-  const inChat = new Set(store.assistantChat.attachmentsOfChat(chat.id).map((file) => file.id));
+  const inChat = new Set(
+    (await store.host.call('assistantChat', 'attachmentsOfChat', chat.id)).map((file) => file.id),
+  );
   const resolved: (StoredAttachment | string)[] = [];
   for (const id of ids) resolved.push(await imported(importing, id, inChat));
   const fresh = resolved.filter((entry) => typeof entry !== 'string');
@@ -226,8 +226,8 @@ async function start(
 ): Promise<Started> {
   admitRun(run);
   const source = ports.images.current();
-  const who = whoOf(ports.store, run);
-  const chat = chatOf(ports.store, source, who);
+  const who = await whoOf(ports.store, run);
+  const chat = await chatOf(ports.store, source, who);
   const references = await referencesOf(
     { ports, source, who, signal: run.signal },
     chat,
@@ -274,14 +274,12 @@ function deadline(
 }
 
 function cancelLate(started: Started): void {
-  try {
-    started.source.service.cancel(started.actor, started.receipt.id);
-  } catch (cause) {
+  started.source.service.cancel(started.actor, started.receipt.id).catch((cause: unknown) => {
     log.warn('automation.image_cancel_failed', {
       operationId: started.receipt.id,
       reason: messageOf(cause),
     });
-  }
+  });
 }
 
 async function settledWithin(

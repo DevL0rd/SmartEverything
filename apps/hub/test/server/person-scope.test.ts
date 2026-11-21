@@ -17,8 +17,8 @@ import {
   type TalkFloorsNotice,
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { checkedCommands } from '../../src/server/commands';
-import { visibleDevices, visibleState } from '../../src/computers/computer-access';
+import { checkedCommands, type CommandPrincipal } from '../../src/server/commands';
+import { visibleDevices, visibleState } from '../../src/computers/computer-visibility';
 import { OwnerAlerts, type OwnerAlert } from '../../src/extensions/owner-alerts';
 import { Budget } from '../../src/ledger/budget';
 import { CreditsWatch } from '../../src/ledger/budget-credits';
@@ -120,6 +120,16 @@ function refusal(work: () => unknown): ApiError {
   throw new Error('expected a refusal');
 }
 
+async function refusalAsync(work: () => Promise<unknown>): Promise<ApiError> {
+  try {
+    await work();
+  } catch (error) {
+    if (error instanceof ApiError) return error;
+    throw error;
+  }
+  throw new Error('expected a refusal');
+}
+
 describe('reading the stored limits', () => {
   it('gives a person with an unreadable or missing row no access at all', () => {
     const kid = member('Kid', {});
@@ -161,20 +171,35 @@ describe('the devices a person sees and commands', () => {
     expect(visibleDevices(opened.store, asOwner)).toHaveLength(2);
   });
 
-  it('refuses a command to a device out of scope, audits it and still sends to the others', () => {
+  it('refuses a command to a device out of scope, audits it and still sends to the others', async () => {
     const { lamp, camera, hall } = home();
     const kid = member('Kid', { devices: { mode: 'except', rooms: [hall], devices: [] } });
     const command = (deviceId: string): Parameters<typeof checkedCommands>[1] => [
       { device_id: deviceId, capability: 'power', value: true, source: 'app' },
     ];
-    expect(checkedCommands(opened.store, command(lamp), kid.client)).toHaveLength(1);
-    const refused = refusal(() => checkedCommands(opened.store, command(camera), kid.client));
-    expect(refused.code).toBe('forbidden');
-    expect(opened.store.accessAudit.list(10, kid.profile.id).map((entry) => entry.kind)).toContain(
-      'refused_scope',
+    const principal = (person: Person): CommandPrincipal => ({
+      clientId: person.client.id,
+      role: person.client.role,
+      profileId: person.profile.id,
+      devices:
+        person.client.role === 'owner' ? null : scopesOf(opened.store, person.profile.id).devices,
+    });
+    await expect(
+      checkedCommands(opened.store, command(lamp), principal(kid)),
+    ).resolves.toHaveLength(1);
+    const refused = await refusalAsync(() =>
+      checkedCommands(opened.store, command(camera), principal(kid)),
     );
+    expect(refused.code).toBe('forbidden');
+    expect(
+      (await opened.store.host.call('accessAudit', 'list', 10, kid.profile.id)).map(
+        (entry) => entry.kind,
+      ),
+    ).toContain('refused_scope');
     const parent = owner();
-    expect(checkedCommands(opened.store, command(camera), parent.client)).toHaveLength(1);
+    await expect(
+      checkedCommands(opened.store, command(camera), principal(parent)),
+    ).resolves.toHaveLength(1);
   });
 
   it('hides what belongs to an out-of-scope device from the live feed of a member', () => {
@@ -214,7 +239,7 @@ describe('the devices a person sees and commands', () => {
 });
 
 describe('the models a person may use', () => {
-  it('lets an owner person and an open list use any model and holds a limited person to the list', () => {
+  it('lets an owner person and an open list use any model and holds a limited person to the list', async () => {
     const open = member('Open', {});
     const limited = member('Limited', { models: { mode: 'only', ids: ['openai/gpt-6'] } });
     const parent = owner();
@@ -226,12 +251,14 @@ describe('the models a person may use', () => {
     });
     expect(refused.code).toBe('forbidden');
     expect(refused.message).toContain('google/gemini-3');
-    expect(opened.store.accessAudit.list(10, limited.profile.id)).toHaveLength(1);
+    await expect(
+      opened.store.host.call('accessAudit', 'list', 10, limited.profile.id),
+    ).resolves.toHaveLength(1);
   });
 });
 
 describe('the walkie-talkie channels a person hears', () => {
-  it('drops a channel outside the list from the membership of their devices and brings it back', () => {
+  it('drops a channel outside the list from the membership of their devices and brings it back', async () => {
     const house = opened.store.talk.createChannel({
       name: 'House',
       icon: 'radio',
@@ -255,12 +282,13 @@ describe('the walkie-talkie channels a person hears', () => {
       );
     }
     const membership = new TalkMembership(opened.store);
+    await membership.reload();
     expect(membership.channelsOf(kid.client.id)).toStrictEqual([house.id]);
     expect(membership.hears(kid.client.id, garage.id)).toBe(false);
     opened.store.personAccess.change(kid.profile.id, {
       scopes: { ...TEMPLATE_SCOPES.adult, channels: { mode: 'all', ids: [] } },
     });
-    membership.reload();
+    await membership.reload();
     expect([...membership.channelsOf(kid.client.id)].sort()).toStrictEqual(
       [house.id, garage.id].sort(),
     );

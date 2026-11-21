@@ -63,12 +63,12 @@ export class ComputerService {
   }
 
   viewer(caller: Caller): ComputerViewer {
-    return viewerOf(this.options.store, caller);
+    return viewerOf(caller);
   }
 
-  detail(deviceId: string, viewer: ComputerViewer): z.input<typeof COMPUTER_DETAIL> {
-    const device = this.access.device(deviceId, viewer);
-    const scopes = this.access.scopes(deviceId, viewer);
+  async detail(deviceId: string, viewer: ComputerViewer): Promise<z.input<typeof COMPUTER_DETAIL>> {
+    const device = await this.access.device(deviceId, viewer);
+    const scopes = await this.access.scopes(deviceId, viewer);
     const view = this.options.directory.online(deviceId)?.view() ?? null;
     return {
       deviceId,
@@ -86,7 +86,7 @@ export class ComputerService {
     deviceId: string,
     viewer: ComputerViewer,
   ): Promise<z.input<typeof COMPUTER_DETAIL>> {
-    this.access.device(deviceId, viewer);
+    await this.access.device(deviceId, viewer);
     await this.options.directory.online(deviceId)?.sampled();
     return this.detail(deviceId, viewer);
   }
@@ -107,8 +107,8 @@ export class ComputerService {
     const { deviceId, request } = call;
     return guarded(async () => {
       const scope = NODE_VERB_SCOPES[request.verb];
-      if (scope === null) this.access.device(deviceId, viewer);
-      else this.access.require(deviceId, scope, viewer);
+      if (scope === null) await this.access.device(deviceId, viewer);
+      else await this.access.require(deviceId, scope, viewer);
       const startedAt = performance.now();
       const session = this.options.directory.byDevice(deviceId);
       const guard = { role: session.role, hubPid: this.options.hubPid ?? process.pid };

@@ -70,8 +70,8 @@ function commandControl(action: (typeof VACUUM_COMMANDS)[number]): Control {
     : { control: CLEANING_CONTROL, value: action };
 }
 
-function ensureVacuum(store: Store, deviceId: string, control: string): string {
-  const device = store.devices.byId(deviceId);
+async function ensureVacuum(store: Store, deviceId: string, control: string): Promise<string> {
+  const device = await store.host.call('devices', 'byId', deviceId);
   if (targetCapability(device, control)?.writable !== true)
     throw new ApiError('command_refused', `${device.name} does not support this.`);
   return device.name;
@@ -83,7 +83,7 @@ async function send(
   { control, value }: Control,
   { request, run }: Call,
 ): Promise<void> {
-  ensureVacuum(ports.store, deviceId, control);
+  await ensureVacuum(ports.store, deviceId, control);
   await ports.setter.set(
     {
       target: { kind: 'devices', deviceIds: [deviceId] },
@@ -137,8 +137,10 @@ function planRooms(store: Store, deviceId: string, wanted: readonly string[]): R
   };
 }
 
-function roomNames(store: Store, ids: readonly string[]): string {
-  const known = new Map(store.rooms.list().map((room) => [room.id, room.name]));
+async function roomNames(store: Store, ids: readonly string[]): Promise<string> {
+  const known = new Map(
+    (await store.host.call('rooms', 'list')).map((room) => [room.id, room.name]),
+  );
   return ids.map((id) => known.get(id) ?? id).join(', ');
 }
 
@@ -163,12 +165,12 @@ function cleanRooms(ports: VacuumEffectPorts): EffectHandlers[string] {
     if (!checked.ok) return checked;
     const ask = checked.value;
     try {
-      const name = ensureVacuum(ports.store, ask.vacuum, CLEAN_ROOMS_CONTROL);
+      const name = await ensureVacuum(ports.store, ask.vacuum, CLEAN_ROOMS_CONTROL);
       const plan = planRooms(ports.store, ask.vacuum, ask.rooms);
       if (plan.mapRoomIds.length === 0)
         throw new ApiError(
           'command_refused',
-          `${roomNames(ports.store, plan.unlinked)} ${plan.unlinked.length === 1 ? 'is' : 'are'} not linked to a room of the map of ${name}. Link the rooms on its page first.`,
+          `${await roomNames(ports.store, plan.unlinked)} ${plan.unlinked.length === 1 ? 'is' : 'are'} not linked to a room of the map of ${name}. Link the rooms on its page first.`,
         );
       await send(
         ports,

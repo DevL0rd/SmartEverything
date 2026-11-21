@@ -7,6 +7,7 @@ import {
   type DriveRootScope,
 } from '@smarteverything/domain';
 import type { SQLInputValue } from 'node:sqlite';
+import { driveFolderOf, type DriveFolders } from '../../data-layout/drive-folders';
 import { z } from 'zod';
 import { storedRow } from '../codec';
 import { assignments, found, type StoreContext } from '../context';
@@ -14,7 +15,13 @@ import { flag, jsonText, whenDefined } from '../sql';
 
 export type StoredDrive = DriveRoot & { readonly path: string };
 
-export type DrivePathOf = (scope: DriveRootScope, ownerProfileId: string | null) => string;
+export class DriveFoldersMissingError extends Error {
+  override readonly name = 'DriveFoldersMissingError';
+
+  constructor() {
+    super('This store was opened without drive folders, so it cannot place a drive.');
+  }
+}
 
 const COLUMNS = `id, scope, owner_profile_id, index_id, state, state_reason, items, folders, bytes,
   scanned_at, hashed_share, verified_share, corrupt, last_scrub_at, last_backup_at, versions,
@@ -192,25 +199,37 @@ export class DriveRootsRepository {
 
   constructor(
     private readonly context: StoreContext,
-    private readonly drivePathOf: DrivePathOf,
+    private readonly folders: DriveFolders | null,
   ) {
     this.totals = driveRootTotals(context);
     this.totals.onSettled((rootId) => {
       this.cached.delete(rootId);
     });
+    context.onForeignCommit(() => {
+      this.cached.clear();
+    });
   }
 
   list(): StoredDrive[] {
-    return this.context.sql
-      .all(STORED_ROOT, `select ${COLUMNS} from drive_roots order by scope, owner_profile_id, id`)
-      .map((root) => this.stored(root));
+    return this.records().map((root) => this.stored(root));
+  }
+
+  records(): DriveRoot[] {
+    return this.context.sql.all(
+      STORED_ROOT,
+      `select ${COLUMNS} from drive_roots order by scope, owner_profile_id, id`,
+    );
   }
 
   find(id: string): StoredDrive | undefined {
+    const root = this.record(id);
+    return root === undefined ? undefined : this.stored(root);
+  }
+
+  record(id: string): DriveRoot | undefined {
     const root = this.cached.get(id) ?? this.row(id);
-    if (root === undefined) return undefined;
-    if (!this.context.sql.inTransaction()) this.cached.set(id, root);
-    return this.stored(root);
+    if (root !== undefined && !this.context.sql.inTransaction()) this.cached.set(id, root);
+    return root;
   }
 
   byId(id: string): StoredDrive {
@@ -268,6 +287,7 @@ export class DriveRootsRepository {
   }
 
   private stored(root: DriveRoot): StoredDrive {
-    return { ...root, path: this.drivePathOf(root.scope, root.ownerProfileId) };
+    if (this.folders === null) throw new DriveFoldersMissingError();
+    return { ...root, path: driveFolderOf(this.folders, root.scope, root.ownerProfileId) };
   }
 }

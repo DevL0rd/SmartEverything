@@ -1,7 +1,7 @@
 import type { DriveNotification, DriveNotificationsRead } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
 import type { DriveActor } from '../access';
-import { DRIVE_PAGE_SIZE } from '../service-read';
+import { DRIVE_PAGE_SIZE } from '../page-size';
 
 export interface NotificationPage {
   readonly items: readonly DriveNotification[];
@@ -9,10 +9,12 @@ export interface NotificationPage {
 }
 
 export class DriveInbox {
-  constructor(private readonly store: Pick<Store, 'driveNotifications'>) {}
+  constructor(private readonly store: Pick<Store, 'host'>) {}
 
-  list(actor: DriveActor, cursor: string | undefined): NotificationPage {
-    const { notifications, next } = this.store.driveNotifications.list(
+  async list(actor: DriveActor, cursor: string | undefined): Promise<NotificationPage> {
+    const { notifications, next } = await this.store.host.call(
+      'driveNotifications',
+      'list',
       actor.profileId,
       cursor ?? null,
       DRIVE_PAGE_SIZE,
@@ -20,7 +22,7 @@ export class DriveInbox {
     return { items: notifications, next };
   }
 
-  markRead(actor: DriveActor, read: DriveNotificationsRead): void {
-    this.store.driveNotifications.markRead(actor.profileId, read);
+  async markRead(actor: DriveActor, read: DriveNotificationsRead): Promise<void> {
+    await this.store.host.call('driveNotifications', 'markRead', actor.profileId, read);
   }
 }

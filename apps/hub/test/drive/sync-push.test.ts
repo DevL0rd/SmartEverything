@@ -17,13 +17,20 @@ import {
   type SyncHubMessage,
   type SyncIndexEntry,
 } from '@smarteverything/domain/drive-sync';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ContentHasher } from '../../src/drive/hasher';
+import { bundleHashWorker, type BundledWorker } from './drive-fixture';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
 import { commitContent } from '../../src/drive/changes';
 import { TMP_DIRECTORY } from '../../src/drive/intents';
 import { specialDraft } from '../../src/drive/posix/drafts';
 import { resolveScope } from '../../src/drive/sync/placement-scope';
-import { entriesForRows, indexPages } from '../../src/drive/sync/server-index';
+import {
+  entriesForRows,
+  firstIndexCursor,
+  indexPage,
+  type IndexCursor,
+} from '../../src/drive/sync/server-index';
 import { createDriveSync, type DriveSyncParts } from '../../src/drive/sync/server-push';
 import { syncAuthentication, type SyncEnv } from '../../src/drive/sync/server-ops';
 import type { SyncOperation, SyncSession } from '../../src/drive/sync/server-socket';
@@ -65,7 +72,6 @@ let owner: Peer;
 let laptop: Peer;
 let sam: Peer;
 let nodeCount = 0;
-let conflictRows = new Map<string, DriveConflict>();
 let free = Number.MAX_SAFE_INTEGER;
 
 function shaOf(bytes: Uint8Array | string): string {
@@ -166,12 +172,23 @@ function peerFor(profileId: string, os = 'CachyOS'): Peer {
   return peer;
 }
 
+let hashWorker: BundledWorker;
+let hasher: ContentHasher;
+
+beforeAll(async () => {
+  hashWorker = await bundleHashWorker();
+  hasher = new ContentHasher(hashWorker.script);
+}, 60_000);
+
+afterAll(() => {
+  hashWorker.dispose();
+});
+
 beforeEach(async () => {
   opened = await driveTestStore(() => NOW);
   directory = await mkdtemp(join(tmpdir(), 'drive-sync-push-'));
   ownerId = opened.store.profiles.first().id;
   samId = opened.store.profiles.create({ name: 'Sam' }).id;
-  conflictRows = new Map();
   free = Number.MAX_SAFE_INTEGER;
   env = {
     files: nodeFiles,
@@ -180,21 +197,10 @@ beforeEach(async () => {
     now: (): Date => NOW,
     purge: { rearm: (): void => undefined },
     posix: syncPosixOf(opened.store, () => NOW),
-    conflicts: {
-      insert: (conflict): void => {
-        conflictRows.set(conflict.id, conflict);
-      },
-      find: (id): DriveConflict | undefined => conflictRows.get(id),
-      resolve: (id, resolution, at): DriveConflict => {
-        const found = conflictRows.get(id);
-        if (found === undefined) throw new Error('missing');
-        const resolved = { ...found, resolution, resolvedAt: at };
-        conflictRows.set(id, resolved);
-        return resolved;
-      },
-    },
+    conflicts: opened.store.driveConflicts,
     space: (): ReturnType<SyncEnv['space']> =>
       Promise.resolve({ totalBytes: Number.MAX_SAFE_INTEGER, freeBytes: free }),
+    hasher,
     authenticate: (request): ReturnType<SyncEnv['authenticate']> =>
       syncAuthentication(opened.store, new ComputerNodeAccess(opened.store, () => NOW))(request),
   };
@@ -338,6 +344,10 @@ async function transfer(
     txn: first.txn,
   });
   return last(peer);
+}
+
+function conflictsOf(root: StoredDrive): DriveConflict[] {
+  return opened.store.driveConflicts.page({ rootIds: [root.id], after: null, limit: 100 });
 }
 
 function item(root: StoredDrive, relPath: string): DriveItem {
@@ -690,7 +700,7 @@ describe('conflicts', () => {
     expect(await onDisk(root, reply.conflictPath ?? '')).toEqual(stale);
     const copy = item(root, reply.conflictPath ?? '');
     expect(opened.store.driveBlocks.find(copy.id, copy.rev)).toBeDefined();
-    expect([...conflictRows.values()]).toMatchObject([
+    expect(conflictsOf(root)).toMatchObject([
       { relPath: 'c.txt', conflictRelPath: reply.conflictPath, deviceId: laptop.row.device_id },
     ]);
     expect(item(root, 'c.txt').rev).toBe(base1.rev + 1);
@@ -816,7 +826,7 @@ describe('operation ids', () => {
     const reply = await transfer(laptop, root, message, stale);
     await open(laptop, root, message);
     expect(last(laptop)).toEqual(reply);
-    expect(conflictRows.size).toBe(1);
+    expect(conflictsOf(root)).toHaveLength(1);
   });
 });
 
@@ -847,7 +857,7 @@ describe('quota and space', () => {
     await expect(
       sync.operations.handle(sam.session(root.id), { type: 'commit', opId: 'op-1', txn: need.txn }),
     ).rejects.toMatchObject({ code: 'payload_too_large' });
-    expect(conflictRows.size).toBe(0);
+    expect(conflictsOf(root)).toHaveLength(0);
   });
 
   it('refuses a commit when the disk has no room', async () => {
@@ -1130,7 +1140,14 @@ function inodeOf(
 
 function indexed(placement: DrivePlacement): readonly SyncIndexEntry[] {
   const scope = resolveScope(opened.store, placement.id, placement.deviceId, 'sync');
-  return [...indexPages(opened.store, scope)].flat();
+  const entries: SyncIndexEntry[] = [];
+  let cursor: IndexCursor | null = firstIndexCursor(scope);
+  while (cursor !== null) {
+    const page = indexPage(opened.store, scope, cursor);
+    entries.push(...page.entries);
+    cursor = page.cursor;
+  }
+  return entries;
 }
 
 async function sendMeta(

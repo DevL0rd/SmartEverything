@@ -37,7 +37,7 @@ const recolour = (
   kind: string,
   variant: string | null,
   actor = USER,
-): HomeMapApplied =>
+): Promise<HomeMapApplied> =>
   service.apply(
     [
       {
@@ -51,19 +51,19 @@ const recolour = (
     actor,
   );
 
-beforeEach(() => {
+beforeEach(async () => {
   logs = captureLogs();
-  service = storedService();
+  service = await storedService();
   links = [];
   sent = [];
   failing = false;
   counter = 0;
   const plan = planFor(service.get(), syntheticScene);
   if (plan.kind === 'noop') throw new Error('no import');
-  service.apply(plan.ops, plan.actor);
+  await service.apply(plan.ops, plan.actor);
   roomLinks = new HomeMapRoomLinks({
     maps: service,
-    links: { list: (): StoredRoomLink[] => links },
+    links: { list: (): Promise<StoredRoomLink[]> => Promise.resolve(links) },
     setRoomFloor: (deviceId, mapRoomId, floor): Promise<void> => {
       if (failing) return Promise.reject(new Error('robot offline'));
       sent.push([deviceId, mapRoomId, floor]);
@@ -76,48 +76,48 @@ beforeEach(() => {
 });
 
 describe('room links derived from the robot links', () => {
-  it('puts the linked home rooms on the map rooms as the robot source, in one revision', () => {
+  it('puts the linked home rooms on the map rooms as the robot source, in one revision', async () => {
     links = [storedLink(1, HOME_HALL, 'Hall'), storedLink(2, HOME_DEN, 'Den')];
-    expect(roomLinks.sync(DEVICE)).toBe(1);
+    expect(await roomLinks.sync(DEVICE)).toBe(1);
     expect(homeRoomsOf()).toEqual([HOME_HALL, HOME_DEN]);
     expect(service.revision()).toBe(2);
-    expect(service.revisions({ after: 1 }).map((entry) => entry.actor)).toEqual([ROBOT]);
+    expect((await service.revisions({ after: 1 })).map((entry) => entry.actor)).toEqual([ROBOT]);
     expect(roomNamed('Hall').origin).toMatchObject({ overridden: [] });
   });
 
-  it('makes no revision when nothing changed', () => {
+  it('makes no revision when nothing changed', async () => {
     links = [storedLink(1, HOME_HALL, 'Hall')];
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     const before = service.revision();
-    expect(roomLinks.sync(DEVICE)).toBe(0);
+    expect(await roomLinks.sync(DEVICE)).toBe(0);
     expect(service.revision()).toBe(before);
   });
 
-  it('clears the home room when the robot room is unlinked', () => {
+  it('clears the home room when the robot room is unlinked', async () => {
     links = [storedLink(1, HOME_HALL, 'Hall')];
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     links = [];
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     expect(homeRoomsOf()).toEqual([null, null]);
   });
 
-  it('moves a link between map rooms', () => {
+  it('moves a link between map rooms', async () => {
     links = [storedLink(1, HOME_HALL, 'Hall')];
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     links = [storedLink(2, HOME_HALL, 'Hall')];
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     expect(homeRoomsOf()).toEqual([null, HOME_HALL]);
   });
 
-  it('does nothing for a robot that is not a source of the map', () => {
+  it('does nothing for a robot that is not a source of the map', async () => {
     links = [storedLink(1, HOME_HALL, 'Hall')];
-    expect(roomLinks.sync('9c3e2f50-4d6b-4e8c-8fb0-2b3c4d5e6f70')).toBe(0);
+    expect(await roomLinks.sync('9c3e2f50-4d6b-4e8c-8fb0-2b3c4d5e6f70')).toBe(0);
     expect(homeRoomsOf()).toEqual([null, null]);
   });
 
-  it('never takes a home room that a hand room holds on the same floor, and says so', () => {
+  it('never takes a home room that a hand room holds on the same floor, and says so', async () => {
     const floor = service.get().floors[0];
-    service.apply(
+    await service.apply(
       [
         {
           op: 'add',
@@ -140,7 +140,7 @@ describe('room links derived from the robot links', () => {
       USER,
     );
     links = [storedLink(1, HOME_HALL, 'Hall')];
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     expect(roomNamed('Hall').homeRoomId).toBeNull();
     expect(roomNamed('Study').homeRoomId).toBe(HOME_HALL);
     expect(logs.events()).toContain('home_map.room_link_taken');
@@ -151,27 +151,27 @@ describe('stale links', () => {
   const noticesOf = (map: HomeMap): string[] =>
     map.notices.filter((n) => n.kind === 'link_stale').map((n) => `${n.elementId}:${n.detail}`);
 
-  it('keeps the home room and raises one notice on the room, then clears it when the room returns', () => {
+  it('keeps the home room and raises one notice on the room, then clears it when the room returns', async () => {
     links = [storedLink(1, HOME_HALL, 'Hall')];
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     links = [storedLink(1, HOME_HALL, 'Hall', NOW)];
-    roomLinks.sync(DEVICE);
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     expect(roomNamed('Hall').homeRoomId).toBe(HOME_HALL);
     expect(noticesOf(service.get())).toEqual([
       `${roomNamed('Hall').id}:The robot's map no longer has Robot 1. It was linked to Hall.`,
     ]);
     links = [storedLink(1, HOME_HALL, 'Hall')];
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     expect(noticesOf(service.get())).toEqual([]);
   });
 
-  it('clears the notice when the link is removed altogether', () => {
+  it('clears the notice when the link is removed altogether', async () => {
     links = [storedLink(1, HOME_HALL, 'Hall', NOW)];
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     expect(noticesOf(service.get())).toHaveLength(1);
     links = [];
-    roomLinks.sync(DEVICE);
+    await roomLinks.sync(DEVICE);
     expect(noticesOf(service.get())).toEqual([]);
     expect(roomNamed('Hall').homeRoomId).toBeNull();
   });
@@ -179,24 +179,24 @@ describe('stale links', () => {
 
 describe('writing the material through to the robot', () => {
   it('sends a material the robot knows to its room through the room settings command', async () => {
-    const outcomes = await roomLinks.writeThrough(recolour('Den', 'marble', null), USER);
+    const outcomes = await roomLinks.writeThrough(await recolour('Den', 'marble', null), USER);
     expect(outcomes).toEqual([{ roomId: roomNamed('Den').id, status: 'sent', floor: 4030 }]);
     expect(sent).toEqual([[DEVICE, 2, 4030]]);
   });
 
   it('sends the same material for the variants the robot knows', async () => {
-    await roomLinks.writeThrough(recolour('Den', 'wood', 'horizontal'), USER);
+    await roomLinks.writeThrough(await recolour('Den', 'wood', 'horizontal'), USER);
     expect(sent).toEqual([[DEVICE, 2, 4011]]);
   });
 
   it('does not resend the floor the robot already has', async () => {
-    const outcomes = await roomLinks.writeThrough(recolour('Hall', 'wood', null), USER);
+    const outcomes = await roomLinks.writeThrough(await recolour('Hall', 'wood', null), USER);
     expect(outcomes.map((o) => o.status)).toEqual(['unchanged']);
     expect(sent).toEqual([]);
   });
 
   it('sends nothing for a material the robot does not know and keeps the map as picked', async () => {
-    const outcomes = await roomLinks.writeThrough(recolour('Den', 'carpet', 'shag'), USER);
+    const outcomes = await roomLinks.writeThrough(await recolour('Den', 'carpet', 'shag'), USER);
     expect(outcomes.map((o) => o.status)).toEqual(['unknown_to_robot']);
     expect(sent).toEqual([]);
     expect(roomNamed('Den').floorMaterial).toMatchObject({ kind: 'carpet', variant: 'shag' });
@@ -204,7 +204,7 @@ describe('writing the material through to the robot', () => {
 
   it('sends nothing for a room that is not the robot map room', async () => {
     const floor = service.get().floors[0];
-    const applied = service.apply(
+    const applied = await service.apply(
       [
         {
           op: 'add',
@@ -227,7 +227,7 @@ describe('writing the material through to the robot', () => {
       USER,
     );
     expect(await roomLinks.writeThrough(applied, USER)).toEqual([]);
-    const recoloured = service.apply(
+    const recoloured = await service.apply(
       [
         {
           op: 'update',
@@ -245,14 +245,17 @@ describe('writing the material through to the robot', () => {
   });
 
   it('never writes back what the robot itself imported', async () => {
-    const outcomes = await roomLinks.writeThrough(recolour('Den', 'marble', null, ROBOT), ROBOT);
+    const outcomes = await roomLinks.writeThrough(
+      await recolour('Den', 'marble', null, ROBOT),
+      ROBOT,
+    );
     expect(outcomes).toEqual([]);
     expect(sent).toEqual([]);
   });
 
   it('reports a failed robot write in the log without undoing the map edit', async () => {
     failing = true;
-    const outcomes = await roomLinks.writeThrough(recolour('Den', 'marble', null), USER);
+    const outcomes = await roomLinks.writeThrough(await recolour('Den', 'marble', null), USER);
     expect(outcomes).toEqual([
       { roomId: roomNamed('Den').id, status: 'failed', error: 'Error: robot offline' },
     ]);
@@ -261,7 +264,7 @@ describe('writing the material through to the robot', () => {
   });
 
   it('ignores edits that do not touch the floor material', async () => {
-    const applied = service.apply(
+    const applied = await service.apply(
       [
         {
           op: 'update',

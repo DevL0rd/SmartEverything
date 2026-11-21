@@ -1,6 +1,5 @@
 import { statfs } from 'node:fs/promises';
 import { ApiError } from '@smarteverything/domain';
-import type { Store } from '../store/store';
 import type { DataSpaceProbe } from './data-space';
 import type { DriveQuotaSource } from './quotas';
 import type { DriveReadService } from './service-read';
@@ -13,8 +12,7 @@ export interface FsSpace {
 }
 
 export interface FsSpaceEnv {
-  readonly read: Pick<DriveReadService, 'rootFor' | 'readItem'>;
-  readonly store: Pick<Store, 'driveRoots'>;
+  readonly read: Pick<DriveReadService, 'rootFor' | 'readItemAndRoot'>;
   readonly quota: DriveQuotaSource;
   readonly probe: Pick<DataSpaceProbe, 'space'>;
 }
@@ -32,25 +30,24 @@ function quotaFree(env: FsSpaceEnv, profileId: string | null): number | null {
   return Math.max(0, quota - (usage.live + usage.versions + usage.trash));
 }
 
-function measured(
+async function measured(
   env: FsSpaceEnv,
   actor: DriveActor,
   rootId: string,
   base: string | undefined,
-): Measured {
+): Promise<Measured> {
   if (base === undefined) {
-    const drive = env.read.rootFor(actor, rootId);
+    const drive = await env.read.rootFor(actor, rootId);
     return {
       used: drive.bytes,
       path: drive.path,
       quotaOf: drive.scope === 'person' ? drive.ownerProfileId : null,
     };
   }
-  const folder = env.read.readItem(actor, base);
+  const { item: folder, root: drive } = await env.read.readItemAndRoot(actor, base);
   if (folder.rootId !== rootId || folder.kind !== 'folder') {
     throw new ApiError('not_found', 'There is no such folder in this drive.');
   }
-  const drive = env.store.driveRoots.byId(rootId);
   const own = drive.scope === 'person' && drive.ownerProfileId === actor.profileId;
   return { used: folder.bytes, path: drive.path, quotaOf: own ? actor.profileId : null };
 }
@@ -68,7 +65,7 @@ export async function fsSpace(
   rootId: string,
   base: string | undefined,
 ): Promise<FsSpace> {
-  return spaceOf(env, measured(env, actor, rootId, base));
+  return spaceOf(env, await measured(env, actor, rootId, base));
 }
 
 export interface InodeCounts {
@@ -98,7 +95,7 @@ export async function fsStatfs(
   rootId: string,
   base: string | undefined,
 ): Promise<FsStatfs> {
-  const target = measured(env, actor, rootId, base);
+  const target = await measured(env, actor, rootId, base);
   const space = await spaceOf(env, target);
   const counts = await env.inodes(target.path);
   return { ...space, files: counts.files, freeFiles: counts.free };

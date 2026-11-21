@@ -4,9 +4,10 @@ import { blockCount, blockSizeFor, type SyncIndexEntry } from '@smarteverything/
 import type { DriveBlocks } from '../../store/repositories/drive-blocks';
 import { FILE_MODE, FOLDER_MODE, nsOfMoment } from '../../store/repositories/drive-inodes';
 import type { Store } from '../../store/store';
-import { DRIVE_PAGE_SIZE } from '../service-read';
-import { inScope, toWirePath, type SyncScope } from './placement-scope';
-import { metaOf } from './server-meta';
+import { DRIVE_PAGE_SIZE } from '../page-size';
+import type { SyncScope } from './placement-scope';
+import { inScope, toWirePath } from './sync-paths';
+import { metaOf } from './item-meta';
 
 export type SyncIndexStore = Pick<
   Store,
@@ -31,15 +32,6 @@ export interface SyncCatchUp {
 
 export function blocksHashOf(hashes: Uint8Array): string {
   return createHash('sha256').update(hashes).digest('hex');
-}
-
-export function indexIsStale(
-  store: SyncIndexStore,
-  scope: SyncScope,
-  indexId: string | null,
-  afterSeq: number,
-): boolean {
-  return indexId !== scope.indexId || afterSeq > store.driveFeed.latestSeqInRoot(scope.drive.id);
 }
 
 function blocksMatch(
@@ -167,41 +159,41 @@ export function changesAfter(store: SyncIndexStore, scope: SyncScope, after: num
   };
 }
 
-function* liveItems(store: SyncIndexStore, scope: SyncScope): Generator<DriveItem> {
-  const parents: (string | null)[] = [scope.base?.id ?? null];
-  for (const parent of parents) {
-    let after: string | null = null;
-    do {
-      const window = store.driveItems.children({
-        rootId: scope.drive.id,
-        parentId: parent,
-        after,
-        limit: DRIVE_PAGE_SIZE,
-        viewer: null,
-      });
-      for (const { item } of window.entries) {
-        if (!inScope(scope, item.relPath)) continue;
-        yield item;
-        if (item.kind === 'folder') parents.push(item.id);
-      }
-      after = window.next;
-    } while (after !== null);
-  }
+export interface IndexCursor {
+  readonly parents: readonly (string | null)[];
+  readonly at: number;
+  readonly after: string | null;
 }
 
-export function* indexPages(
-  store: SyncIndexStore,
-  scope: SyncScope,
-): Generator<readonly SyncIndexEntry[]> {
-  let page: SyncIndexEntry[] = [];
-  for (const item of liveItems(store, scope)) {
-    const entry = entryOf(store, scope, item);
-    if (entry === null) continue;
-    page.push(entry);
-    if (page.length === DRIVE_PAGE_SIZE) {
-      yield page;
-      page = [];
+export interface IndexPage {
+  readonly entries: readonly SyncIndexEntry[];
+  readonly cursor: IndexCursor | null;
+}
+
+export function firstIndexCursor(scope: SyncScope): IndexCursor {
+  return { parents: [scope.base?.id ?? null], at: 0, after: null };
+}
+
+export function indexPage(store: SyncIndexStore, scope: SyncScope, cursor: IndexCursor): IndexPage {
+  const parents = [...cursor.parents];
+  let { at, after } = cursor;
+  const entries: SyncIndexEntry[] = [];
+  while (at < parents.length && entries.length < DRIVE_PAGE_SIZE) {
+    const window = store.driveItems.children({
+      rootId: scope.drive.id,
+      parentId: parents[at] ?? null,
+      after,
+      limit: DRIVE_PAGE_SIZE - entries.length,
+      viewer: null,
+    });
+    for (const { item } of window.entries) {
+      if (!inScope(scope, item.relPath)) continue;
+      if (item.kind === 'folder') parents.push(item.id);
+      const entry = entryOf(store, scope, item);
+      if (entry !== null) entries.push(entry);
     }
+    after = window.next;
+    if (after === null) at += 1;
   }
-  yield page;
+  return { entries, cursor: at < parents.length ? { parents, at, after } : null };
 }

@@ -8,7 +8,6 @@ import {
   type BrushSessionRules,
   type BrushingSession,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
 import type { Store } from '../../store/store';
 import type { RetainedDraft } from './brand';
 import type { HomeClock } from './clock';
@@ -17,13 +16,12 @@ import type { ObservedSession } from './session-machine';
 export interface LogDeps {
   readonly store: Store;
   readonly clock: HomeClock;
-  readonly log: Logger;
-  readonly changed: (deviceId: string) => void;
 }
 
 export interface Logged {
   readonly session: BrushingSession;
   readonly created: boolean;
+  readonly changed: boolean;
 }
 
 export interface LogContext {
@@ -103,9 +101,8 @@ export class BrushingLog {
           : existing;
       if (kept !== existing) {
         store.brushingSessions.update(kept);
-        this.deps.changed(context.deviceId);
       }
-      return { session: kept, created: false };
+      return { session: kept, created: false, changed: kept !== existing };
     }
     const made: BrushingSession = {
       id: randomUUID(),
@@ -129,8 +126,7 @@ export class BrushingLog {
       details: session.details,
     };
     store.brushingSessions.add(made);
-    this.deps.changed(context.deviceId);
-    return { session: made, created: true };
+    return { session: made, created: true, changed: true };
   }
 
   retained(context: LogContext, draft: RetainedDraft): Logged {
@@ -142,8 +138,7 @@ export class BrushingLog {
     } else {
       store.brushingSessions.update(made);
     }
-    this.deps.changed(context.deviceId);
-    return { session: made, created: existing === undefined };
+    return { session: made, created: existing === undefined, changed: true };
   }
 
   private retainedSession(

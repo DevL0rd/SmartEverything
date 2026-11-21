@@ -11,10 +11,7 @@ function authorizeParent(
   chatId: string,
   caller: Caller,
 ): asserts caller is ClientCaller {
-  if (
-    caller.kind !== 'client' ||
-    store.aiChats.chat(chatId).profile_id !== profileIdOf(store, caller)
-  )
+  if (caller.kind !== 'client' || store.aiChats.chat(chatId).profile_id !== profileIdOf(caller))
     throw new ApiError('not_found', 'This parent chat is not available to this profile.');
 }
 function authorizeRun(store: Store, chatId: string, id: string, caller: ClientCaller): AiAgentRun {

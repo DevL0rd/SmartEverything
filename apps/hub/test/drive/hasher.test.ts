@@ -8,19 +8,19 @@ import type { DriveItem } from '@smarteverything/domain';
 import { blockSizeFor, unpackHashes } from '@smarteverything/domain/drive-sync';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hashHandle, hashRequested } from '../../src/drive/blocks';
+import { hashHandler, type HashEnvironment } from '../../src/drive/hasher';
 import {
-  byPriority,
   collectBacklog,
-  hashHandler,
-  type HashEnvironment,
-} from '../../src/drive/hasher';
+  hashStart,
+  recordHash,
+  recordHashHealth,
+} from '../../src/drive/units/hash';
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
-import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
-import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import { updateDriveSettings } from '../../src/drive/settings';
 import { testLogger } from '../support/logs';
 import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
+import { localScans } from './local-ports';
 
 const ROOT = '0d000000-0000-4000-8000-000000000002';
 
@@ -90,17 +90,15 @@ const signal = (): AbortSignal => new AbortController().signal;
 
 async function scan(): Promise<void> {
   const env: ScanEnvironment = {
-    store: {
-      driveRoots: roots,
-      driveItems: items,
-      driveInodes: new DriveInodesRepository(context),
-      driveMissing: new DriveMissingRepository(context),
+    ...localScans({
+      roots,
+      items,
+      context,
       feed,
-      write: (work) => context.write(work),
       now: () => new Date(NOW),
-    },
+    }),
     availability: () => Promise.resolve('online'),
-    mounted: (): boolean => false,
+    mounted: () => Promise.resolve(false),
     workerScript: scannerScript,
     lanes: new DriveRootLanes(),
     log: testLogger(),
@@ -109,18 +107,25 @@ async function scan(): Promise<void> {
 }
 
 function hashEnvironment(): HashEnvironment {
+  const hashStore = {
+    driveRoots: roots,
+    driveItems: items,
+    driveBlocks: blocks,
+    drivePlacements: fixture.placements,
+    settingsKv: settings,
+  };
   return {
-    store: {
-      driveRoots: roots,
-      driveItems: items,
-      driveBlocks: blocks,
-      drivePlacements: fixture.placements,
-      driveOpens: fixture.opens,
-      settingsKv: settings,
-      feed,
-      write: (work) => context.write(work),
-    },
+    store: { feed },
     availability: () => Promise.resolve('online'),
+    start: (rootId) => Promise.resolve(hashStart(hashStore, rootId)),
+    backlog: (rootId) => Promise.resolve(collectBacklog(hashStore, rootId)),
+    record: (input) => Promise.resolve(context.write(() => recordHash(hashStore, input))),
+    health: (input): Promise<void> => {
+      context.write(() => {
+        recordHashHealth(hashStore, input);
+      });
+      return Promise.resolve();
+    },
     workerScript: hasherScript,
     log: testLogger(),
   };
@@ -365,12 +370,8 @@ describe('the backlog order', () => {
     fixture.opens.record(reader, idOf('opened-old.bin'), '2026-01-01T00:00:00.000Z');
     fixture.opens.record(reader, idOf('opened-new.bin'), '2026-06-01T00:00:00.000Z');
     const backlog = collectBacklog(
-      {
-        driveItems: items,
-        drivePlacements: fixture.placements,
-        driveOpens: fixture.opens,
-      },
-      roots.byId(ROOT),
+      { driveItems: items, drivePlacements: fixture.placements },
+      ROOT,
     );
     expect(backlog.candidates.map((candidate) => candidate.relPath)).toEqual([
       'opened-new.bin',
@@ -390,27 +391,22 @@ describe('the backlog order', () => {
     expect(indexed('link.bin').kind).toBe('link');
     expect(indexed('pipe').kind).toBe('special');
     const backlog = collectBacklog(
-      {
-        driveItems: items,
-        drivePlacements: fixture.placements,
-        driveOpens: fixture.opens,
-      },
-      roots.byId(ROOT),
+      { driveItems: items, drivePlacements: fixture.placements },
+      ROOT,
     );
     expect(backlog.candidates.map((candidate) => candidate.relPath)).toEqual(['real.bin']);
     expect(backlog).toMatchObject({ files: 1, hashed: 0 });
   });
 
-  it('orders two equal files by path', () => {
-    const base = {
-      id: 'x',
-      bytes: 1,
-      openedAt: null,
-      dev: '1',
-      ino: '1',
-      wantBlocks: false,
-    } as const;
-    expect(byPriority({ ...base, relPath: 'a' }, { ...base, relPath: 'b' })).toBeLessThan(0);
-    expect(byPriority({ ...base, relPath: 'b' }, { ...base, relPath: 'a' })).toBeGreaterThan(0);
+  it('orders two equal files by path', async () => {
+    useRoot(false);
+    put('b.bin', Buffer.alloc(10));
+    put('a.bin', Buffer.alloc(10));
+    await scan();
+    const backlog = collectBacklog(
+      { driveItems: items, drivePlacements: fixture.placements },
+      ROOT,
+    );
+    expect(backlog.candidates.map((candidate) => candidate.relPath)).toEqual(['a.bin', 'b.bin']);
   });
 });

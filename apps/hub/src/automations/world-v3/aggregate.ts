@@ -157,7 +157,7 @@ export function aggregateHandlers(deps: WorldReadDeps): ReadHandlers {
     'device.aggregate': (inputs): ReadResult => {
       const request = parseInputs('device.aggregate', AGGREGATE, inputs);
       const key = controlKey(request.control);
-      const { online, offline } = controlReadings(deps, devicesOf(deps.store, request.target), key);
+      const { online, offline } = controlReadings(deps, devicesOf(deps.world, request.target), key);
       const result = combined(deps, request, online);
       return {
         ...result,

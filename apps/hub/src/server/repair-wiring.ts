@@ -8,6 +8,7 @@ import {
 import { REPAIR_CHAT_SOURCE } from '../assistant/chat-directory';
 import { withExecutionAuthority } from '../assistant/turn-authority';
 import type { RuntimeLogRow } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
 import type { HubLayout } from '../data-layout';
 import type { LogFailure, StoredLogRecord } from '../store/repositories/runtime-log-types';
 import type { ServerContext } from './context';
@@ -18,12 +19,15 @@ type RepairContext = Pick<ServerContext, 'store' | 'logs' | 'log'> & {
   readonly assistant: { readonly repair: Pick<RepairDispatch, 'admit'> };
 };
 
-function profileOf(context: RepairContext, record: StoredLogRecord): string | undefined {
-  const owners = context.store.personAccess.ownerIds();
+async function profileOf(
+  context: RepairContext,
+  record: StoredLogRecord,
+): Promise<string | undefined> {
+  const owners = await context.store.host.call('personAccess', 'ownerIds');
   if (record.runtime === 'app' && record.clientId !== null)
     return owners.find((owner) => owner === record.clientId);
   if (record.runtime === 'desktop' && record.deviceId !== null) {
-    const client = context.store.clients.find(record.deviceId);
+    const client = await context.store.host.call('clients', 'find', record.deviceId);
     return client?.profile_id !== null && client?.profile_id !== undefined
       ? owners.find((owner) => owner === client.profile_id)
       : undefined;
@@ -44,10 +48,15 @@ export function repairLogOrigin(
   return record.repairOrigin === undefined ? 'ordinary' : 'repair';
 }
 
-function observe(context: RepairContext, record: StoredLogRecord, fingerprint: string): void {
+async function observe(
+  context: RepairContext,
+  record: StoredLogRecord,
+  fingerprint: string,
+): Promise<void> {
   try {
-    const profileId = profileOf(context, record);
+    const profileId = await profileOf(context, record);
     if (profileId === undefined) return;
+    const retained = await retainedLogOf(context.store, context.logs, fingerprint, profileId);
     const result = withExecutionAuthority(undefined, () =>
       context.assistant.repair.admit({
         id: repairEventId(fingerprint, null),
@@ -58,13 +67,15 @@ function observe(context: RepairContext, record: StoredLogRecord, fingerprint: s
         kind: 'automatic',
         origin: repairLogOrigin(record),
         evidence: repairEvidenceOf(record),
-        retained: retainedLogOf(context.store, context.logs, fingerprint, profileId),
+        retained,
       }),
     );
     if (result.kind === 'held' && result.reason !== 'disabled')
       context.log.info('repair.held', { reason: result.reason, component: record.scope });
   } catch (cause) {
-    context.store.aiRepairInbox.recordAutomaticFailure(
+    await context.store.host.call(
+      'aiRepairInbox',
+      'recordAutomaticFailure',
       fingerprint,
       repairEventId(fingerprint, null),
     );
@@ -92,22 +103,25 @@ function retainedRecord(record: RuntimeLogRow, clientId: string | null): StoredL
   };
 }
 
-function catchUp(context: RepairContext, profileId?: string): void {
+async function catchUp(context: RepairContext, profileId?: string): Promise<void> {
   const { store, logs } = context;
   if (!readAiRepairSettings(store).enabled) return;
   const since = repairEnabledAt(store);
-  for (const { fingerprint, logId } of store.aiRepairInbox.pendingAutomatic(true)) {
-    const retained = logs.around(
-      { owner: true, profileId: null },
-      { id: logId, before: 0, after: 0 },
-    );
-    const client = logs.clientOf(logId);
+  for (const { fingerprint, logId } of await store.host.call(
+    'aiRepairInbox',
+    'pendingAutomatic',
+    true,
+  )) {
+    const [retained, client] = await Promise.all([
+      logs.around({ owner: true, profileId: null }, { id: logId, before: 0, after: 0 }),
+      logs.clientOf(logId),
+    ]);
     if (retained === null || client === null || (since !== null && retained.anchor.at < since))
       continue;
     const record = retainedRecord(retained.anchor, client.clientId);
-    if (profileId !== undefined && profileOf(context, record) !== profileId) continue;
-    store.aiRepairInbox.retryAutomaticFailure(fingerprint);
-    observe(context, record, fingerprint);
+    if (profileId !== undefined && (await profileOf(context, record)) !== profileId) continue;
+    await store.host.call('aiRepairInbox', 'retryAutomaticFailure', fingerprint);
+    await observe(context, record, fingerprint);
   }
 }
 
@@ -118,7 +132,7 @@ export function startRepair(context: RepairContext, _layout: HubLayout): () => v
     const enabledAt = repairEnabledAt(store);
     if (!readAiRepairSettings(store).enabled || (enabledAt !== null && record.at < enabledAt))
       return;
-    observe(context, record, fingerprint);
+    background(observe(context, record, fingerprint), 'repair.observe_failed');
   });
   const unsubscribe = store.feed.subscribe((change) => {
     if (change.table !== 'ai_chats') return;
@@ -138,13 +152,13 @@ export function startRepair(context: RepairContext, _layout: HubLayout): () => v
     )
       return;
     queueMicrotask(() => {
-      if (active) catchUp(context, chat.profile_id);
+      if (active) background(catchUp(context, chat.profile_id), 'repair.catch_up_failed');
     });
   });
-  const unobserveDefaults = store.aiEngineDefaults.onChanged(() => {
-    catchUp(context);
+  const unobserveDefaults = store.live.engineDefaults.onChanged(() => {
+    background(catchUp(context), 'repair.catch_up_failed');
   });
-  catchUp(context);
+  background(catchUp(context), 'repair.catch_up_failed');
   return (): void => {
     active = false;
     unobserve();

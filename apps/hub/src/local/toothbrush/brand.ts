@@ -28,6 +28,7 @@ import type {
   LocalDriver,
   SessionPressure,
 } from '@smarteverything/domain';
+import type { StoredHead } from '../../store/repositories/brushing-sessions';
 import type { LocalDeviceEntry } from '../../store/repositories/local-devices';
 import type { ResolvedSetup } from '../setup-types';
 import type { Actor, ActDeps } from './acts';
@@ -139,6 +140,7 @@ export interface ViewContext {
   readonly deps: ViewDeps;
   readonly device: DeviceRow;
   readonly entry: LocalDeviceEntry;
+  readonly heads: readonly StoredHead[];
   readonly brushedSeconds: number;
   readonly faulty: boolean;
 }

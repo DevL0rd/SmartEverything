@@ -31,16 +31,16 @@ function isOwner(caller: Caller): boolean {
   return clientOf(caller).role === 'owner';
 }
 
-function visibleTo(context: ServerContext, caller: Caller): (signal: SignalInput) => boolean {
+function visibleTo(caller: Caller): (signal: SignalInput) => boolean {
   if (isOwner(caller)) {
     return () => true;
   }
-  const profileId = profileIdOf(context.store, caller);
+  const profileId = profileIdOf(caller);
   return (signal) => signal.profileId === null || signal.profileId === profileId;
 }
 
-function wakesProfile(context: ServerContext, caller: Caller, asked: string | undefined): string {
-  const own = profileIdOf(context.store, caller);
+function wakesProfile(caller: Caller, asked: string | undefined): string {
+  const own = profileIdOf(caller);
   if (asked === undefined || asked === own) {
     return own;
   }
@@ -62,13 +62,20 @@ export const signalRoutes = (context: ServerContext) =>
         .map(sourceInfo),
     ),
     readSignal: bound(E.readSignal, ({ query, caller }) => {
-      const visible = visibleTo(context, caller);
+      const visible = visibleTo(caller);
       return context.hub.signals.latest(query).filter(visible).slice(0, query.limit);
     }),
     listTriggerCatalogue: bound(E.listTriggerCatalogue, ({ query, caller }) =>
       triggerCatalogueView(context.store, deviceScopeOf(context.store, caller), query),
     ),
-    listWakes: bound(E.listWakes, ({ query, caller }) =>
-      context.store.aiWakes.recent(wakesProfile(context, caller, query.profileId), query.limit),
+    listWakes: bound(
+      E.listWakes,
+      async ({ query, caller }) =>
+        await context.store.host.call(
+          'aiWakes',
+          'recent',
+          wakesProfile(caller, query.profileId),
+          query.limit,
+        ),
     ),
   }) as const;

@@ -2,11 +2,11 @@ import type { AiOutreachRow, ClientRow } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { PushCommandChannel } from '../extensions/push/commands';
 import type { Store } from '../store/store';
-import { clientsOf, type PresenceStore } from './presence';
+import { clientsOf } from './presence';
 import type { RingDevice, RingTransport } from './ringing';
 
 export interface TransportDeps {
-  readonly store: PresenceStore & Pick<Store, 'personal'>;
+  readonly store: Pick<Store, 'host'>;
   readonly online: () => ReadonlySet<string>;
   readonly push: Pick<PushCommandChannel, 'send'>;
   readonly pushConfigured: () => boolean;
@@ -16,24 +16,25 @@ export interface TransportDeps {
 
 const SCREEN_PLATFORMS: ReadonlySet<ClientRow['platform']> = new Set(['desktop', 'web']);
 
-function connectedOf(
+async function connectedOf(
   deps: TransportDeps,
   personId: string,
   platforms: ReadonlySet<string>,
-): ClientRow[] {
+): Promise<ClientRow[]> {
+  const clients = await clientsOf(deps.store, personId);
   const online = deps.online();
-  return clientsOf(deps.store, personId).filter(
-    (client) => platforms.has(client.platform) && online.has(client.id),
-  );
+  return clients.filter((client) => platforms.has(client.platform) && online.has(client.id));
 }
 
 function desktopTransport(deps: TransportDeps): RingTransport {
   return {
-    targets: (personId): ClientRow[] => connectedOf(deps, personId, SCREEN_PLATFORMS),
+    targets: (personId): Promise<ClientRow[]> => connectedOf(deps, personId, SCREEN_PLATFORMS),
     ring: (): Promise<string | null> => Promise.resolve(null),
     cancel: (): void => undefined,
-    unreachable: (_personId, name): string =>
-      `Can't reach ${name}'s computer: the SmartEverything desktop app isn't open.`,
+    unreachable: (_personId, name): Promise<string> =>
+      Promise.resolve(
+        `Can't reach ${name}'s computer: the SmartEverything desktop app isn't open.`,
+      ),
   };
 }
 
@@ -56,17 +57,18 @@ function callKeyOf(outreachId: string): string {
 class PhoneTransport implements RingTransport {
   constructor(private readonly deps: TransportDeps) {}
 
-  targets(personId: string): ClientRow[] {
-    const connected = connectedOf(this.deps, personId, ANDROID);
-    const pushed = this.pushable(personId).filter(
-      (client) => !connected.some((other) => other.id === client.id),
-    );
+  async targets(personId: string): Promise<ClientRow[]> {
+    const [connected, pushable] = await Promise.all([
+      connectedOf(this.deps, personId, ANDROID),
+      this.pushable(personId),
+    ]);
+    const pushed = pushable.filter((client) => !connected.some((other) => other.id === client.id));
     return [...connected, ...pushed];
   }
 
   async ring(row: AiOutreachRow, clients: readonly ClientRow[]): Promise<string | null> {
+    const reachable = new Set(await this.pushTargets());
     const online = this.deps.online();
-    const reachable = new Set(this.pushTargets());
     const outcomes = await Promise.all(
       clients
         .filter((client) => reachable.has(client.id) || !online.has(client.id))
@@ -98,7 +100,21 @@ class PhoneTransport implements RingTransport {
   }
 
   cancel(row: AiOutreachRow, clients: readonly ClientRow[]): void {
-    const reachable = new Set(this.pushTargets());
+    this.pushTargets().then(
+      (targets) => {
+        this.cancelOn(row, clients, new Set(targets));
+      },
+      (cause: unknown) => {
+        this.deps.log.error('reach.ring_cancel_failed', cause, { outreachId: row.id });
+      },
+    );
+  }
+
+  private cancelOn(
+    row: AiOutreachRow,
+    clients: readonly ClientRow[],
+    reachable: ReadonlySet<string>,
+  ): void {
     clients
       .filter((client) => reachable.has(client.id))
       .forEach((client) => {
@@ -125,8 +141,8 @@ class PhoneTransport implements RingTransport {
       });
   }
 
-  unreachable(personId: string, name: string): string {
-    const phones = clientsOf(this.deps.store, personId).filter(
+  async unreachable(personId: string, name: string): Promise<string> {
+    const phones = (await clientsOf(this.deps.store, personId)).filter(
       (client) => client.platform === 'android',
     );
     if (phones.length === 0) {
@@ -138,17 +154,17 @@ class PhoneTransport implements RingTransport {
     return `Can't reach ${name}'s phone: the app isn't connected and hasn't signed up for push messages yet; open SmartEverything on the phone once.`;
   }
 
-  private pushTargets(): readonly string[] {
-    return this.deps.pushConfigured()
-      ? this.deps.store.personal.pushTargets().map((target) => target.client_id)
-      : [];
+  private async pushTargets(): Promise<readonly string[]> {
+    return this.deps.pushConfigured() ? this.deps.store.host.read('reachPushTargets', null) : [];
   }
 
-  private pushable(personId: string): ClientRow[] {
-    const reachable = new Set(this.pushTargets());
-    return clientsOf(this.deps.store, personId).filter(
-      (client) => client.platform === 'android' && reachable.has(client.id),
-    );
+  private async pushable(personId: string): Promise<ClientRow[]> {
+    const [targets, clients] = await Promise.all([
+      this.pushTargets(),
+      clientsOf(this.deps.store, personId),
+    ]);
+    const reachable = new Set(targets);
+    return clients.filter((client) => client.platform === 'android' && reachable.has(client.id));
   }
 }
 

@@ -2,17 +2,18 @@ import {
   CLIENT_PREFS,
   PLANNER_SIGNAL,
   type PlannerBedtime,
+  type PlannerPreferences,
   type SignalInput,
 } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { clockTextIn } from '../../src/clock/person-clock';
 import { SimulatedClock } from '../../src/clock/simulated';
 import { BedtimeDesk, type BedtimeDelivery } from '../../src/planner/bedtime/desk';
 import { momentsOf, upcomingWindows, windowOn } from '../../src/planner/bedtime/schedule';
-import { plannerPreferencesOf } from '../../src/planner/preferences';
-import { AlarmSounds } from '../../src/planner/alarm-sound';
+import { loadPlannerPreferences, plannerPreferencesOf } from '../../src/planner/preferences';
 import { SleepSoundControl } from '../../src/planner/sleep-sound';
 import type { OwnerAlert } from '../../src/extensions/owner-alerts';
+import { advanceSettled } from '../support/host-settle';
 import { testLogger } from '../support/logs';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
 import { testStore, type TestStore } from '../support/store';
@@ -135,15 +136,14 @@ beforeEach(async () => {
   signals = [];
   scenes = [];
   reachable = true;
-  const preferencesOf = (profileId: string): ReturnType<typeof plannerPreferencesOf> =>
-    plannerPreferencesOf(test.store, profileId);
+  const preferencesOf = (profileId: string): Promise<PlannerPreferences> =>
+    loadPlannerPreferences(test.store, profileId);
   const deliver = (clientId: string, notice: BedtimeDelivery): Promise<boolean> => {
     delivered.push({ clientId, notice });
     return Promise.resolve(reachable);
   };
   sleepSound = new SleepSoundControl({
     store: test.store,
-    sounds: new AlarmSounds(test.store, testLogger('alarm-sound')),
     deliver,
     preferencesOf,
     log: testLogger('sleep-sound'),
@@ -176,9 +176,7 @@ afterEach(async () => {
 });
 
 async function advance(iso: string): Promise<void> {
-  clock.advanceTo(iso);
-  await vi.waitFor(() => undefined);
-  await Promise.resolve();
+  await advanceSettled(clock, iso, () => desk.settled());
 }
 
 function kinds(): string[] {
@@ -186,16 +184,16 @@ function kinds(): string[] {
 }
 
 describe('bedtime desk', () => {
-  it('arms nothing while bedtime is off', () => {
+  it('arms nothing while bedtime is off', async () => {
     setBedtime({ enabled: false });
-    desk.start();
+    await desk.start();
     expect(clock.pending()).toEqual([]);
   });
 
   it('writes the reminder time on the person’s 12-hour clock', async () => {
     setBedtime({});
     setClockFormat(false);
-    desk.start();
+    await desk.start();
     await advance('2026-11-09T22:00:00.000Z');
     expect(pushes.map((push) => push.body)).toEqual([
       `Time to get ready for bed at ${clockTextIn('2026-11-09T22:30:00Z', test.store.settings.read().time_zone, false)}.`,
@@ -206,7 +204,7 @@ describe('bedtime desk', () => {
   it('sends the reminder to the phones, pushes it and raises the signal', async () => {
     setBedtime({});
     setClockFormat(true);
-    desk.start();
+    await desk.start();
     await advance('2026-11-09T22:00:00.000Z');
     expect(delivered.filter((entry) => entry.notice.type === 'planner_bedtime')).toEqual([
       {
@@ -231,7 +229,7 @@ describe('bedtime desk', () => {
   it('starts wind-down by running the scene, telling the phones and raising the signal', async () => {
     const automationId = '3b5c0b6c-7f0c-4a54-9a49-0b8d9e5f4a10';
     setBedtime({ wind_down_automation_id: automationId });
-    desk.start();
+    await desk.start();
     await advance('2026-11-09T21:45:00.000Z');
     expect(scenes).toEqual([automationId]);
     expect(delivered.map((entry) => entry.notice)).toContainEqual({
@@ -245,7 +243,7 @@ describe('bedtime desk', () => {
 
   it('skips the scene when none is chosen and the wind-down when it is off', async () => {
     setBedtime({ wind_down_minutes: null });
-    desk.start();
+    await desk.start();
     await advance('2026-11-09T22:30:00.000Z');
     expect(scenes).toEqual([]);
     expect(kinds()).toEqual(['bedtime_reminder']);
@@ -253,7 +251,7 @@ describe('bedtime desk', () => {
 
   it('plays the bedtime sleep sound at bed time and stops it at the wake time', async () => {
     setBedtime({ sleep_sound: NOISE });
-    desk.start();
+    await desk.start();
     await advance('2026-11-09T22:30:00.000Z');
     const played = delivered
       .map((entry) => entry.notice)
@@ -277,7 +275,7 @@ describe('bedtime desk', () => {
 
   it('raises the wake signal and arms the next night after the wake time', async () => {
     setBedtime({});
-    desk.start();
+    await desk.start();
     await advance('2026-11-10T06:30:00.000Z');
     expect(kinds()).toEqual(['wind_down_started', 'bedtime_reminder', 'wake_time']);
     expect(clock.pending()[0]).toBe('2026-11-10T21:45:00.000Z');
@@ -285,28 +283,28 @@ describe('bedtime desk', () => {
 
   it('rearms at once when the schedule changes and cancels what no longer applies', async () => {
     setBedtime({});
-    desk.start();
+    await desk.start();
     setBedtime({ schedule: [{ days: EVERY_DAY, bed: '23:30', wake: '07:30' }] });
-    desk.refresh(person.profileId);
+    await desk.refresh(person.profileId);
     await advance('2026-11-09T22:30:00.000Z');
     expect(signals).toEqual([]);
     await advance('2026-11-09T23:00:00.000Z');
     expect(kinds()).toEqual(['wind_down_started', 'bedtime_reminder']);
   });
 
-  it('cancels every armed moment when bedtime is switched off', () => {
+  it('cancels every armed moment when bedtime is switched off', async () => {
     setBedtime({});
-    desk.start();
+    await desk.start();
     setBedtime({ enabled: false });
-    desk.refresh(person.profileId);
-    clock.advanceTo('2026-11-10T08:00:00.000Z');
+    await desk.refresh(person.profileId);
+    await advance('2026-11-10T08:00:00.000Z');
     expect(signals).toEqual([]);
   });
 
   it('does not fire moments that already passed when it starts', async () => {
     setBedtime({});
     clock.jumpTo('2026-11-09T22:20:00.000Z');
-    desk.start();
+    await desk.start();
     await advance('2026-11-10T06:30:00.000Z');
     expect(kinds()).toEqual(['wake_time']);
   });

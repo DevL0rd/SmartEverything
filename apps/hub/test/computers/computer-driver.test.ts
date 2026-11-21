@@ -43,9 +43,9 @@ function options(bound: string[]): ComputerDriverOptions {
     directory: new ComputerDirectory(),
     placements: NO_PLACEMENTS,
     records: {
-      originOf: () => ({ source: 'app', client: null, clientId: null }),
-      visibleTo: () => true,
-      macsOf: () => [],
+      originOf: () => Promise.resolve({ source: 'app', client: null, clientId: null }),
+      visibleTo: () => Promise.resolve(true),
+      macsOf: () => Promise.resolve([]),
       wake: () => Promise.resolve(),
       approve: () => Promise.resolve(),
     },
@@ -54,8 +54,9 @@ function options(bound: string[]): ComputerDriverOptions {
     personOf: () => null,
     hub: { hostname: 'nas', osName: 'Linux' },
     createLocal: () => ({ start: () => undefined, stop: () => undefined }),
-    bindHubDevice: (deviceId): void => {
+    bindHubDevice: (deviceId): Promise<void> => {
       bound.push(deviceId);
+      return Promise.resolve();
     },
     now: () => NOW,
     log: testLogger('computers'),

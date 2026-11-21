@@ -32,7 +32,7 @@ function hubOf(names: readonly string[]): ToolHub {
       tools: (): HubTool[] => names.map(hubTool),
       call: (): Promise<HubToolResult> =>
         Promise.resolve({ response: { ran: true }, line: '', pictures: [] }),
-      validate: (): null => null,
+      validate: (): Promise<null> => Promise.resolve(null),
       changes: (): (() => void) => (): void => undefined,
     },
   ]);
@@ -57,7 +57,7 @@ async function parentAndHelper(
 ): Promise<{ readonly parent: string; readonly helper: string }> {
   const chat = made.newChat(made.hub.target);
   if (parentTools !== null) made.opened.store.aiChats.update(chat.id, { tools: [...parentTools] });
-  const open = made.service.prepare(made.owner, chat.id, made.authority, made.clientId);
+  const open = await made.service.prepare(made.owner, chat.id, made.authority, made.clientId);
   const persistence = new LocalHarnessPersistence(made.service);
   persistence.bind(open.claim);
   const header = subagentHeader(open.claim.session_id);

@@ -10,7 +10,8 @@ import { AndroidBuilds } from '../../src/app-updates/android-builds';
 import { bound } from '../../src/server/router';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore, unusedDrivePath } from '../support/store';
+import { testStore, type TestStore } from '../support/store';
+import { testStoreHost } from '../support/store-host';
 
 const NOW = new Date('2026-11-05T10:00:00Z');
 const LATER = new Date('2026-11-05T10:01:00Z');
@@ -61,11 +62,12 @@ describe('reported Android builds', () => {
     expect(builds.read({ ...client, id: OUTCOME.updateId ?? '' })).toBeNull();
 
     const reopened = openStore({
+      host: testStoreHost(),
       path: join(opened.directory, 'test.db'),
       log: testLogger('app-updates'),
       now: () => LATER,
       systemTimeZone: 'UTC',
-      drivePathOf: unusedDrivePath,
+      driveFolders: null,
     });
     try {
       expect(new AndroidBuilds(reopened.androidBuildObservations).read(client)).toEqual(expected);

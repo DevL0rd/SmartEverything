@@ -28,19 +28,29 @@ const UNCONFIRMED: NativeCompletion = {
 };
 
 interface DeliveryHistory {
-  readonly metadata: NonNullable<ReturnType<Store['dshSessions']['stat']>>;
+  readonly metadata: NonNullable<Awaited<ReturnType<Store['dshSessions']['stat']>>>;
   readonly events: ReturnType<typeof readNativeHistory>;
 }
 
-function deliveryHistory(
+async function deliveryHistory(
   store: Store,
   delivery: HarnessDelivery,
   event: StoredEvent,
-): DeliveryHistory {
-  const metadata = store.dshSessions.stat(delivery.session_id, event.profile_id);
+): Promise<DeliveryHistory> {
+  const metadata = await store.host.call(
+    'dshSessions',
+    'stat',
+    delivery.session_id,
+    event.profile_id,
+  );
   if (metadata?.chat_id !== event.chat_id)
     throw new ApiError('forbidden', 'Retained delivery/native conversation binding differs.');
-  const records = store.dshSessions.readAll(delivery.session_id, event.profile_id);
+  const records = await store.host.call(
+    'dshSessions',
+    'readAll',
+    delivery.session_id,
+    event.profile_id,
+  );
   return { metadata, events: readNativeHistory(metadata.header, records) };
 }
 
@@ -55,14 +65,14 @@ function completionOf(projection: DeliveryProjection): NativeCompletion {
       };
 }
 
-export function reconcileNativeReplies(
+export async function reconcileNativeReplies(
   projector: ConversationProjector,
   pendingInput?: (input: NativeInputHistory) => readonly string[],
-): void {
+): Promise<void> {
   const { store } = projector.options.service;
-  for (const delivery of store.harnessDeliveries.unsettled()) {
-    const event = store.assistantEvents.event(delivery.delivery_id);
-    const history = deliveryHistory(store, delivery, event);
+  for (const delivery of await store.host.call('harnessDeliveries', 'unsettled')) {
+    const event = await store.host.call('assistantEvents', 'event', delivery.delivery_id);
+    const history = await deliveryHistory(store, delivery, event);
     const received = history.events.some(
       (record) =>
         record.type === 'user/message' && nativeInputId(record.data) === delivery.delivery_id,
@@ -71,26 +81,34 @@ export function reconcileNativeReplies(
     if (!received) {
       if (helperParentMessageId(event) !== null) {
         if (delivery.state === 'admitted')
-          reconcile(projector, delivery, { entered: false, end: null, ops: [] });
+          await reconcile(projector, { delivery, event }, { entered: false, end: null, ops: [] });
       } else if (pending) {
-        restorePending(store, delivery, event.message_id);
+        await restorePending(store, delivery, event.message_id);
       } else if (delivery.state === 'admitted') {
-        requeue(store, delivery, event);
+        await requeue(store, delivery, event);
       }
       continue;
     }
     if (delivery.state === 'admitted')
-      reconcile(projector, delivery, projectDelivery(history.events, delivery.delivery_id));
+      await reconcile(
+        projector,
+        { delivery, event },
+        projectDelivery(history.events, delivery.delivery_id),
+      );
   }
 }
 
-function reconcile(
+interface Replayed {
+  readonly delivery: HarnessDelivery;
+  readonly event: StoredEvent;
+}
+
+async function reconcile(
   projector: ConversationProjector,
-  delivery: HarnessDelivery,
+  { delivery, event }: Replayed,
   projection: DeliveryProjection,
-): void {
+): Promise<void> {
   const { store } = projector.options.service;
-  const event = store.assistantEvents.event(delivery.delivery_id);
   const completion = completionOf(projection);
   log.warn('reply.reconciled', {
     delivery_id: delivery.delivery_id,
@@ -101,10 +119,16 @@ function reconcile(
     ops: projection.ops.length,
   });
   const outcome = { projection, completion };
-  if (delivery.reply_id === null) settleDetached(projector, delivery, outcome);
-  else replayReply(projector, { event, replyId: delivery.reply_id }, outcome);
+  if (delivery.reply_id === null) await settleDetached(projector, { delivery, event }, outcome);
+  else await replayReply(projector, { event, replyId: delivery.reply_id }, outcome);
   if (projection.end !== null)
-    store.harnessDeliveries.cut(delivery.delivery_id, delivery.start_seq ?? 0, projection.end.seq);
+    await store.host.call(
+      'harnessDeliveries',
+      'cut',
+      delivery.delivery_id,
+      delivery.start_seq ?? 0,
+      projection.end.seq,
+    );
 }
 
 interface Outcome {
@@ -112,21 +136,19 @@ interface Outcome {
   readonly completion: NativeCompletion;
 }
 
-function replayReply(
+async function replayReply(
   projector: ConversationProjector,
   target: { readonly event: StoredEvent; readonly replyId: string },
   { projection, completion }: Outcome,
-): void {
+): Promise<void> {
   const { event, replyId } = target;
   const { store } = projector.options.service;
-  const reply = store.assistantChat.message(replyId);
+  const reply = await store.host.call('assistantChat', 'message', replyId);
   const model = z.string().parse(reply.model);
   const saved = reply.embeds.find((embed) => embed.kind === 'chat_timeline');
   const timeline = saved === undefined ? undefined : CHAT_TIMELINE_EMBED.parse(saved);
-  background(
-    projector.start(event, store.aiChats.chat(event.chat_id), replyId, true),
-    'turns.replay_failed',
-  );
+  const chat = await store.host.call('aiChats', 'chat', event.chat_id);
+  background(projector.start(event, chat, replyId, true), 'turns.replay_failed');
   const turn = projector.active.get(event.id);
   if (turn === undefined)
     throw new ApiError('conflict', 'The replayed native turn did not open a conversation stream.');
@@ -138,60 +160,51 @@ function replayReply(
   });
 }
 
-function settleDetached(
+async function settleDetached(
   projector: ConversationProjector,
-  delivery: HarnessDelivery,
+  { delivery, event }: Replayed,
   { projection, completion }: Outcome,
-): void {
-  const { service, conversation, finished } = projector.options;
-  const event = service.store.assistantEvents.event(delivery.delivery_id);
+): Promise<void> {
+  const { service, finished } = projector.options;
   const ok = completion.kind === 'completed' && !completion.interrupted;
   const failure = completionFailure(completion, false, HUB_RESTARTED);
-  service.store.harnessDeliveries.update(
-    delivery.delivery_id,
-    projection.end === null ? 'unknown' : 'completed',
-    () => {
-      if (ok) conversation.stateOf(event.message_id, 'answered');
-      else conversation.failedMessage(event.message_id, failure.reason, failure.code);
-      finished(event, ok ? '' : failure.reason, ok);
-    },
-  );
+  await service.store.host.write('nativeReplaySettle', {
+    deliveryId: delivery.delivery_id,
+    state: projection.end === null ? 'unknown' : 'completed',
+    op: ok
+      ? { kind: 'state', messageId: event.message_id, state: 'answered', reason: null }
+      : {
+          kind: 'failedMessage',
+          messageId: event.message_id,
+          reason: failure.reason,
+          code: failure.code,
+        },
+  });
+  finished(event, ok ? '' : failure.reason, ok);
 }
 
-function requeue(store: Store, delivery: HarnessDelivery, event: StoredEvent): void {
+async function requeue(store: Store, delivery: HarnessDelivery, event: StoredEvent): Promise<void> {
   log.warn('reply.requeued', {
     delivery_id: delivery.delivery_id,
     session_id: delivery.session_id,
     chat_id: event.chat_id,
   });
-  store.harnessDeliveries.requeue(delivery.delivery_id, () => {
-    if (delivery.reply_id !== null) store.assistantChat.removeMessages([delivery.reply_id]);
-    if (
-      event.message_id !== null &&
-      store.assistantChat.message(event.message_id).role === 'person'
-    )
-      store.assistantChat.updateMessage(event.message_id, {
-        state: 'queued',
-        reason: null,
-        reason_code: null,
-      });
+  await store.host.write('nativeReplayRequeue', {
+    deliveryId: delivery.delivery_id,
+    replyId: delivery.reply_id,
+    messageId: event.message_id,
   });
 }
 
-function restorePending(store: Store, delivery: HarnessDelivery, messageId: string | null): void {
-  store.harnessDeliveries.restorePending(delivery.delivery_id, () => {
-    if (messageId !== null)
-      store.assistantChat.updateMessage(messageId, {
-        state: 'delivered',
-        reason: null,
-        reason_code: null,
-      });
-    if (delivery.reply_id !== null)
-      store.assistantChat.updateMessage(delivery.reply_id, {
-        state: 'working',
-        reason: null,
-        reason_code: null,
-      });
+async function restorePending(
+  store: Store,
+  delivery: HarnessDelivery,
+  messageId: string | null,
+): Promise<void> {
+  await store.host.write('nativeReplayRestore', {
+    deliveryId: delivery.delivery_id,
+    replyId: delivery.reply_id,
+    messageId,
   });
 }
 

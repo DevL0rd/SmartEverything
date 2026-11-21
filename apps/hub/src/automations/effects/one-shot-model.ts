@@ -87,7 +87,7 @@ export class OneShotModel {
     this.admit(request.profileId);
     this.assertTools(request.tools);
     const run = new DshAgentRun(
-      this.ports.agents.open({
+      await this.ports.agents.open({
         profileId: request.profileId,
         role: request.role,
         automationId: request.automationId,

@@ -46,9 +46,10 @@ function clientCaller(client: ClientRow): Caller {
   return { kind: 'client', client };
 }
 
-function peopleOf(caller: Caller): readonly unknown[] {
-  const summary = healthSummary(opened.store, caller, { ...RANGE, metrics: ['steps'] });
-  return Array.isArray(summary['people']) ? summary['people'] : [];
+async function peopleOf(caller: Caller): Promise<readonly unknown[]> {
+  const summary = await healthSummary(opened.store, caller, { ...RANGE, metrics: ['steps'] });
+  const people: unknown = summary['people'];
+  return Array.isArray(people) ? Array.from<unknown>(people) : [];
 }
 
 beforeEach(async () => {
@@ -79,8 +80,8 @@ afterEach(async () => {
 });
 
 describe('get_health_summary', () => {
-  it('gives an owner every person', () => {
-    expect(peopleOf(clientCaller(owner))).toStrictEqual([
+  it('gives an owner every person', async () => {
+    expect(await peopleOf(clientCaller(owner))).toStrictEqual([
       {
         person: ownerProfile.name,
         days: [{ day: '2026-10-08', metric: 'steps', value: 8000, unit: 'count' }],
@@ -92,8 +93,8 @@ describe('get_health_summary', () => {
     ]);
   });
 
-  it('gives a member only their own profile', () => {
-    expect(peopleOf(clientCaller(member))).toStrictEqual([
+  it('gives a member only their own profile', async () => {
+    expect(await peopleOf(clientCaller(member))).toStrictEqual([
       {
         person: memberProfile.name,
         days: [{ day: '2026-10-08', metric: 'steps', value: 3000, unit: 'count' }],
@@ -103,12 +104,12 @@ describe('get_health_summary', () => {
 });
 
 describe('list_homes', () => {
-  function roleFor(caller: Caller): unknown {
-    return HOMES.parse(homesOf(opened.store, caller)).homes[0]?.role;
+  async function roleFor(caller: Caller): Promise<unknown> {
+    return HOMES.parse(await homesOf(opened.store, caller)).homes[0]?.role;
   }
 
-  it('reports the role of whoever asks', () => {
-    expect(roleFor(clientCaller(owner))).toBe('owner');
-    expect(roleFor(clientCaller(member))).toBe('member');
+  it('reports the role of whoever asks', async () => {
+    expect(await roleFor(clientCaller(owner))).toBe('owner');
+    expect(await roleFor(clientCaller(member))).toBe('member');
   });
 });

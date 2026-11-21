@@ -1,9 +1,9 @@
 import type { PlannerRadioResult } from '@smarteverything/domain';
 import { SimulatedClock } from '../../src/clock/simulated';
-import { AlarmSounds } from '../../src/planner/alarm-sound';
+import { AlarmSoundCheck } from '../../src/planner/alarm-sound-check';
 import { AlarmScheduler } from '../../src/planner/alarms';
 import { PhoneRings } from '../../src/planner/phone-rings';
-import { plannerPreferencesOf } from '../../src/planner/preferences';
+import { loadPlannerPreferences } from '../../src/planner/preferences';
 import { RingDesk } from '../../src/planner/rings';
 import { StopwatchService } from '../../src/planner/stopwatch';
 import { SunriseRamp } from '../../src/planner/sunrise';
@@ -12,6 +12,7 @@ import { WakeRoutine } from '../../src/planner/wake-routine';
 import type { Caller } from '../../src/server/auth';
 import { plannerClockRoutes } from '../../src/server/handlers/planner-clock';
 import type { Bound } from '../../src/server/router';
+import { advanceSettled } from './host-settle';
 import { testLogger } from './logs';
 import { addPerson, type TestPerson } from './phone-fixtures';
 import { testStore, type TestStore } from './store';
@@ -37,6 +38,7 @@ export interface ClockHarness {
   timers: TimerService;
   phoneRings: PhoneRings;
   routes: ReturnType<typeof plannerClockRoutes>;
+  advance: (at: string) => Promise<void>;
   close: () => Promise<void>;
 }
 
@@ -81,19 +83,19 @@ function alarmScheduler(test: TestStore, clock: SimulatedClock): AlarmScheduler 
   });
 }
 
-function clockServices(
+async function clockServices(
   test: TestStore,
   clock: SimulatedClock,
   scheduler: AlarmScheduler,
-): {
-  sounds: AlarmSounds;
-  preferencesOf: (profileId: string) => ReturnType<typeof plannerPreferencesOf>;
+): Promise<{
+  sounds: AlarmSoundCheck;
+  preferencesOf: (profileId: string) => ReturnType<typeof loadPlannerPreferences>;
   timers: TimerService;
   phoneRings: PhoneRings;
-} {
-  const sounds = new AlarmSounds(test.store, testLogger());
-  const preferencesOf = (profileId: string): ReturnType<typeof plannerPreferencesOf> =>
-    plannerPreferencesOf(test.store, profileId);
+}> {
+  const sounds = new AlarmSoundCheck(test.store);
+  const preferencesOf = (profileId: string): ReturnType<typeof loadPlannerPreferences> =>
+    loadPlannerPreferences(test.store, profileId);
   const timers = new TimerService({
     store: test.store,
     clock,
@@ -103,13 +105,11 @@ function clockServices(
   const phoneRings = new PhoneRings({
     store: test.store,
     channel: { send: (): Promise<boolean> => Promise.resolve(true) },
-    sounds,
-    preferencesOf,
     now: clock.now,
     log: testLogger(),
   });
-  scheduler.start();
-  timers.start();
+  await scheduler.start();
+  await timers.start();
   phoneRings.start();
   return { sounds, preferencesOf, timers, phoneRings };
 }
@@ -122,7 +122,7 @@ export async function buildClockHarness(): Promise<ClockHarness> {
   const ann = addPerson(test, 'Ann', 'member');
   const bob = addPerson(test, 'Bob', 'member');
   const scheduler = alarmScheduler(test, clock);
-  const { sounds, preferencesOf, timers, phoneRings } = clockServices(test, clock, scheduler);
+  const { sounds, preferencesOf, timers, phoneRings } = await clockServices(test, clock, scheduler);
   const routes = plannerClockRoutes(
     { store: test.store },
     {
@@ -146,7 +146,14 @@ export async function buildClockHarness(): Promise<ClockHarness> {
     timers,
     phoneRings,
     routes,
+    advance: (at): Promise<void> =>
+      advanceSettled(clock, at, async () => {
+        await scheduler.settled();
+        await timers.settled();
+        await phoneRings.settled();
+      }),
     close: async (): Promise<void> => {
+      await phoneRings.settled();
       phoneRings.stop();
       timers.stop();
       scheduler.stop();

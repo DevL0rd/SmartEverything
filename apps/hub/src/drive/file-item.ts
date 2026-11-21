@@ -1,6 +1,6 @@
 import type { DriveItem } from '@smarteverything/domain';
 import type { DrivePlaced } from '../store/repositories/drive-item-lookups';
-import { DriveWriteError } from './intents';
+import { DriveWriteError } from './write-error';
 
 export type FileItem = Exclude<DriveItem, { readonly kind: 'folder' | 'link' | 'special' }>;
 

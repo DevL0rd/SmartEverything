@@ -31,7 +31,7 @@ interface Fixture {
   readonly callers: ToolCaller[];
 }
 
-function fixture(beforeResult: () => Promise<void> = async () => undefined): Fixture {
+function fixture(beforeResult: () => Promise<void> = () => Promise.resolve()): Fixture {
   const callers: ToolCaller[] = [];
   const tools = [
     tool('home_read', true),
@@ -54,7 +54,7 @@ function fixture(beforeResult: () => Promise<void> = async () => undefined): Fix
             entry.name === 'camera_snapshot' ? [{ data: PICTURE, mimeType: 'image/png' }] : [],
         };
       },
-      validate: (): null => null,
+      validate: (): Promise<null> => Promise.resolve(null),
       changes: (): (() => void) => (): void => undefined,
     },
   ]);
@@ -113,12 +113,12 @@ describe('the read-only classification the catalogue carries to a computer', () 
 });
 
 describe('the hub transport of the home tools', () => {
-  function transport(
+  async function transport(
     beforeResult?: () => Promise<void>,
-  ): { readonly home: HubHomeTools; readonly session: string } & Fixture {
+  ): Promise<{ readonly home: HubHomeTools; readonly session: string } & Fixture> {
     const made = fixture(beforeResult);
     const chat = rig.newChat(rig.hub.target);
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
     const access = new HarnessHubTools(rig.service, made.hub);
     return { ...made, home: new HubHomeTools(access, made.hub), session: open.claim.session_id };
   }
@@ -138,7 +138,7 @@ describe('the hub transport of the home tools', () => {
   }
 
   it('runs a call as the session caller and returns the response as it is', async () => {
-    const { home, session, callers } = transport();
+    const { home, session, callers } = await transport();
 
     const result = await home.call(request(session, 'home_read', { text: 'hello there' }));
 
@@ -153,7 +153,7 @@ describe('the hub transport of the home tools', () => {
   });
 
   it('returns pictures as base64 with their media type', async () => {
-    const { home, session } = transport();
+    const { home, session } = await transport();
 
     const result = await home.call(request(session, 'camera_snapshot'));
 
@@ -163,14 +163,14 @@ describe('the hub transport of the home tools', () => {
   });
 
   it('fails a call whose tool answered with an error', async () => {
-    const { home, session } = transport();
+    const { home, session } = await transport();
 
     await expect(home.call(request(session, 'broken'))).rejects.toThrow('It is broken.');
   });
 
   it('propagates a stopped hub turn to asynchronous tool work', async () => {
     const stopped = new AbortController();
-    const { home, session } = transport(async () => {
+    const { home, session } = await transport(async () => {
       await Promise.resolve();
       stopped.abort(new Error('The hub turn stopped.'));
       const signal = currentRequestSignal();
@@ -184,7 +184,7 @@ describe('the hub transport of the home tools', () => {
   });
 
   it('offers the tool list once per change and the declared names per session', async () => {
-    const { home, session } = transport();
+    const { home, session } = await transport();
 
     const first = home.tools();
     const offered = await home.session(session);

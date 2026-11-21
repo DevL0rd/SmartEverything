@@ -7,10 +7,12 @@ import { ApiError, type DriveConflict, type DrivePlacementSet } from '@smartever
 import { Logger, messageOf } from '@smarteverything/logging';
 import WebSocket from 'ws';
 import { ComputerNodeAccess } from '../../../hub/src/computers/node-access';
+import { ContentHasher } from '../../../hub/src/drive/hasher';
 import { nodeFiles } from '../../../hub/src/drive/versions';
 import { syncAuthentication, type SyncEnv } from '../../../hub/src/drive/sync/server-ops';
 import { createDriveSync, type DriveSyncParts } from '../../../hub/src/drive/sync/server-push';
 import { DriveSyncServer } from '../../../hub/src/drive/sync/server-socket';
+import { bundleHashWorker } from '../../../hub/test/drive/drive-fixture';
 import { status } from '../../../hub/test/drive/placement-fixture';
 import { syncPosixOf } from '../../../hub/test/drive/sync-posix';
 import { driveTestStore } from '../../../hub/test/drive/spaces-fixture';
@@ -101,7 +103,11 @@ function routeOf(
   return undefined;
 }
 
-function syncEnv(opened: TestStore, conflicts: Map<string, DriveConflict>): SyncEnv {
+function syncEnv(
+  opened: TestStore,
+  conflicts: Map<string, DriveConflict>,
+  hasher: ContentHasher,
+): SyncEnv {
   return {
     files: nodeFiles,
     store: opened.store,
@@ -110,18 +116,9 @@ function syncEnv(opened: TestStore, conflicts: Map<string, DriveConflict>): Sync
     purge: { rearm: (): void => undefined },
     posix: syncPosixOf(opened.store, () => NOW),
     conflicts: {
-      insert: (conflict): void => {
-        conflicts.set(conflict.id, conflict);
-      },
       find: (id): DriveConflict | undefined => conflicts.get(id),
-      resolve: (id, resolution, at): DriveConflict => {
-        const found = conflicts.get(id);
-        if (found === undefined) throw new Error('missing');
-        const resolved = { ...found, resolution, resolvedAt: at };
-        conflicts.set(id, resolved);
-        return resolved;
-      },
     },
+    hasher,
     space: (): ReturnType<SyncEnv['space']> =>
       Promise.resolve({ totalBytes: Number.MAX_SAFE_INTEGER, freeBytes: Number.MAX_SAFE_INTEGER }),
     authenticate: (request): ReturnType<SyncEnv['authenticate']> =>
@@ -232,12 +229,10 @@ async function listen(sync: DriveSyncParts, hub: DriveSyncServer): Promise<Liste
     upgrades += 1;
     sockets.add(socket);
     socket.once('close', () => sockets.delete(socket));
-    try {
-      hub.upgrade(request, socket, head);
-    } catch (cause) {
+    hub.upgrade(request, socket, head).catch((cause: unknown) => {
       if (!(cause instanceof ApiError)) throw cause;
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
-    }
+    });
   });
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve);
@@ -261,7 +256,8 @@ async function sharedDrive(opened: TestStore): Promise<StoredDrive> {
 export async function startFakeHub(): Promise<FakeHub> {
   const opened = await driveTestStore(() => NOW);
   const ownerId = opened.store.profiles.first().id;
-  const sync = createDriveSync(syncEnv(opened, new Map()));
+  const hashWorker = await bundleHashWorker();
+  const sync = createDriveSync(syncEnv(opened, new Map(), new ContentHasher(hashWorker.script)));
   const hub = new DriveSyncServer(
     opened.store,
     new ComputerNodeAccess(opened.store, () => NOW),
@@ -298,6 +294,7 @@ export async function startFakeHub(): Promise<FakeHub> {
       listening.server.closeAllConnections();
       listening.server.close();
       await opened.close();
+      hashWorker.dispose();
     },
   };
 }

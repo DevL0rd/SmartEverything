@@ -25,7 +25,7 @@ import type { Wearable } from '@smarteverything/xiaomi';
 import type { WearableSource } from './setup-types';
 import { cloudRowOf, externalIdOfWatch } from './watch-setup';
 import type { WatchActionTarget } from './watch-actions';
-import { saveWatchUpload, type UploadResult, type WatchUpload } from './watch-uploads';
+import type { UploadResult, WatchUpload } from './watch-uploads';
 import { WatchBridges } from './watch-bridge';
 
 export interface LocalWatchesOptions {
@@ -54,37 +54,47 @@ export class LocalWatches {
     });
   }
 
-  takeOverBridge(device: DeviceRow, profileId: string, client: ClientRow): Promise<WatchBridge> {
-    this.ownedBy(device, profileId);
-    return this.bridges.takeOver(device, client);
+  async takeOverBridge(
+    device: DeviceRow,
+    profileId: string,
+    client: ClientRow,
+  ): Promise<WatchBridge> {
+    await this.ownedBy(device, profileId);
+    return await this.bridges.takeOver(device, client);
   }
 
   async candidates(): Promise<WatchCandidates> {
     const list = await this.options.wearables();
-    const watches = list.wearables.map((wearable) => this.candidateOf(wearable));
+    const entries = await this.entries();
+    const watches = await Promise.all(
+      list.wearables.map((wearable) => this.candidateOf(entries, wearable)),
+    );
     return { watches, skipped: list.skipped.length };
   }
 
-  private candidateOf(wearable: Wearable): WatchCandidate {
-    const added = this.entries().find(
-      (entry) => entry.externalId === externalIdOfWatch(wearable.mac),
-    );
+  private async candidateOf(
+    entries: readonly LocalDeviceEntry[],
+    wearable: Wearable,
+  ): Promise<WatchCandidate> {
+    const added = entries.find((entry) => entry.externalId === externalIdOfWatch(wearable.mac));
     return {
       family: 'xiaomi',
       name: wearable.name,
       model: wearable.model,
       address: wearable.mac,
-      deviceId: added === undefined ? null : (this.options.local.deviceOf(added)?.id ?? null),
-      replaces: cloudRowOf(this.options.store, wearable)?.id ?? null,
+      deviceId:
+        added === undefined ? null : ((await this.options.local.deviceOf(added))?.id ?? null),
+      replaces: (await cloudRowOf(this.options.store, wearable))?.id ?? null,
     };
   }
 
   async mine(profileId: string, client: ClientRow): Promise<{ watches: PhoneWatch[] }> {
     const watches: PhoneWatch[] = [];
-    for (const entry of this.entries().filter((candidate) => profileOf(candidate) === profileId)) {
-      const device = this.options.local.deviceOf(entry);
+    const entries = await this.entries();
+    for (const entry of entries.filter((candidate) => profileOf(candidate) === profileId)) {
+      const device = await this.options.local.deviceOf(entry);
       if (device === undefined || (await this.bridges.acquire(device, client)) === null) {
-        watches.push(this.phoneWatchOf(entry));
+        watches.push(await this.phoneWatchOf(entry));
       }
     }
     this.options.log.info('watch.keys_served', {
@@ -101,7 +111,7 @@ export class LocalWatches {
     state: WatchState,
     client: ClientRow,
   ): Promise<void> {
-    const entry = this.ownedBy(device, profileId);
+    const entry = await this.ownedBy(device, profileId);
     await this.bridges.require(device, client);
     const { at, config, workout, ...rest } = state;
     if (state.phase === 'connected') {
@@ -142,9 +152,12 @@ export class LocalWatches {
     upload: WatchUpload,
     client: ClientRow,
   ): Promise<UploadResult> {
-    this.ownedBy(device, profileId);
+    await this.ownedBy(device, profileId);
     await this.bridges.require(device, client);
-    const result = saveWatchUpload(this.options.store, { profileId, deviceId: device.id }, upload);
+    const result = await this.options.store.host.write('watchUpload', {
+      owner: { profileId, deviceId: device.id },
+      upload,
+    });
     this.options.log.info('watch.records_saved', {
       device: device.id,
       by: client.id,
@@ -161,8 +174,8 @@ export class LocalWatches {
     return this.bridges.holderOf(device)?.clientId ?? null;
   }
 
-  target(device: DeviceRow): WatchActionTarget {
-    const entry = this.watchOf(device);
+  async target(device: DeviceRow): Promise<WatchActionTarget> {
+    const entry = await this.watchOf(device);
     const profileId = profileOf(entry);
     if (profileId === null) {
       throw new ApiError('conflict', `${device.name} is not assigned to anyone yet.`);
@@ -175,8 +188,8 @@ export class LocalWatches {
     };
   }
 
-  config(device: DeviceRow): WatchConfigReport {
-    const target = this.target(device);
+  async config(device: DeviceRow): Promise<WatchConfigReport> {
+    const target = await this.target(device);
     const parsed = WATCH_CONFIG.safeParse(device.details['config']);
     if (!parsed.success) {
       throw new ApiError(
@@ -195,8 +208,8 @@ export class LocalWatches {
     };
   }
 
-  workout(device: DeviceRow): WatchWorkoutReport {
-    const target = this.target(device);
+  async workout(device: DeviceRow): Promise<WatchWorkoutReport> {
+    const target = await this.target(device);
     const config = WATCH_CONFIG.safeParse(device.details['config']);
     const raw = device.details['workout'];
     const workout = raw === undefined || raw === null ? null : WATCH_WORKOUT.parse(raw);
@@ -208,28 +221,28 @@ export class LocalWatches {
     };
   }
 
-  days(profileId: string, from: string, to: string): { days: WatchDayRow[] } {
-    return { days: this.options.store.watchDays.window(profileId, from, to) };
+  async days(profileId: string, from: string, to: string): Promise<{ days: WatchDayRow[] }> {
+    return { days: await this.options.store.host.call('watchDays', 'window', profileId, from, to) };
   }
 
-  private ownedBy(device: DeviceRow, profileId: string): LocalDeviceEntry {
-    const entry = this.watchOf(device);
+  private async ownedBy(device: DeviceRow, profileId: string): Promise<LocalDeviceEntry> {
+    const entry = await this.watchOf(device);
     if (profileOf(entry) !== profileId) {
       throw new ApiError('forbidden', `${device.name} belongs to another person’s phone.`);
     }
     return entry;
   }
 
-  private entries(): LocalDeviceEntry[] {
-    return this.options.store.localDevices
-      .list()
-      .filter((entry) => entry.driver === 'xiaomi_watch');
+  private async entries(): Promise<LocalDeviceEntry[]> {
+    return (await this.options.store.host.call('localDevices', 'list')).filter(
+      (entry) => entry.driver === 'xiaomi_watch',
+    );
   }
 
-  private watchOf(device: DeviceRow): LocalDeviceEntry {
+  private async watchOf(device: DeviceRow): Promise<LocalDeviceEntry> {
     const entry =
       device.provider === 'local'
-        ? this.entries().find((candidate) => candidate.externalId === device.external_id)
+        ? (await this.entries()).find((candidate) => candidate.externalId === device.external_id)
         : undefined;
     if (entry === undefined) {
       throw new ApiError('invalid_request', `${device.name} is not a watch this hub knows.`);
@@ -237,8 +250,8 @@ export class LocalWatches {
     return entry;
   }
 
-  private phoneWatchOf(entry: LocalDeviceEntry): PhoneWatch {
-    const device = this.options.local.deviceOf(entry);
+  private async phoneWatchOf(entry: LocalDeviceEntry): Promise<PhoneWatch> {
+    const device = await this.options.local.deviceOf(entry);
     const key = WATCH_AUTH_KEY.safeParse(this.options.secrets.deviceKey(entry.externalId));
     if (device === undefined || !key.success) {
       throw new ApiError(

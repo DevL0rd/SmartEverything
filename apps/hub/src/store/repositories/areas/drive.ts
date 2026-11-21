@@ -29,7 +29,8 @@ import { DriveXattrsRepository } from '../drive-xattrs';
 import { DrivePlacementsRepository } from '../drive-placements';
 import { DriveQuotasRepository } from '../drive-quotas';
 import { DriveGrantsRepository } from '../drive-grants';
-import { DriveRootsRepository, type DrivePathOf } from '../drive-roots';
+import type { DriveFolders } from '../../../data-layout/drive-folders';
+import { DriveRootsRepository } from '../drive-roots';
 import { DriveStarsRepository } from '../drive-stars';
 import { DriveScrubRepository } from '../drive-scrub';
 import { DriveSharesRepository } from '../drive-shares';
@@ -83,10 +84,10 @@ export interface DriveRepositories {
 
 export function driveRepositories(
   context: StoreContext,
-  drivePathOf: DrivePathOf,
+  driveFolders: DriveFolders | null,
 ): DriveRepositories {
   return {
-    driveRoots: new DriveRootsRepository(context, drivePathOf),
+    driveRoots: new DriveRootsRepository(context, driveFolders),
     driveItems: new DriveItemsRepository(context),
     driveInodes: new DriveInodesRepository(context),
     driveXattrs: new DriveXattrsRepository(context),

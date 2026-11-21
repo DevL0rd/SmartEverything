@@ -1,19 +1,9 @@
 import { PHOTOS_ENDPOINTS } from '@smarteverything/domain';
-import { homeLocation } from '../automations/world-v3/zone';
-import { localDay } from '../server/handlers/photos';
 import { bound, type Bound } from '../server/router';
 import type { Store } from '../store/store';
 import { photoActor } from './actor';
-import type { InsightsReader } from './insights';
-import type { InsightsContext } from './insights-shapes';
-import type { RailCountsReader } from './insights-rail';
 
 const E = PHOTOS_ENDPOINTS;
-
-export interface PhotoInsightReaders {
-  readonly insights: InsightsReader;
-  readonly rail: RailCountsReader;
-}
 
 export interface PhotoInsightRoutes {
   readonly readPhotoInsights: Bound<typeof E.readPhotoInsights>;
@@ -22,36 +12,27 @@ export interface PhotoInsightRoutes {
   readonly listPhotoBusiestDays: Bound<typeof E.listPhotoBusiestDays>;
 }
 
-function contextOf(store: Store): InsightsContext {
-  return {
-    today: localDay(store.now(), store.settings.read().time_zone),
-    home: homeLocation(store),
-  };
-}
-
-export function photoInsightRoutes(store: Store, readers: PhotoInsightReaders): PhotoInsightRoutes {
+export function photoInsightRoutes(store: Store): PhotoInsightRoutes {
   return {
     readPhotoInsights: bound(E.readPhotoInsights, ({ query, caller }) =>
-      readers.insights.read(photoActor(store, caller), query.range, contextOf(store)),
+      store.host.read('photoInsights', { actor: photoActor(caller), range: query.range }),
     ),
     listPhotoLargestVideos: bound(E.listPhotoLargestVideos, ({ query, caller }) =>
-      readers.insights.largestVideosPage(
-        photoActor(store, caller),
-        query.range,
-        query.cursor,
-        contextOf(store),
-      ),
+      store.host.read('photoLargestVideos', {
+        actor: photoActor(caller),
+        range: query.range,
+        cursor: query.cursor,
+      }),
     ),
     listPhotoBusiestDays: bound(E.listPhotoBusiestDays, ({ query, caller }) =>
-      readers.insights.busiestDaysPage(
-        photoActor(store, caller),
-        query.range,
-        query.cursor,
-        contextOf(store),
-      ),
+      store.host.read('photoBusiestDays', {
+        actor: photoActor(caller),
+        range: query.range,
+        cursor: query.cursor,
+      }),
     ),
     readPhotoRailCounts: bound(E.readPhotoRailCounts, ({ caller }) =>
-      readers.rail.read(photoActor(store, caller)),
+      store.host.read('photoRailCounts', { actor: photoActor(caller) }),
     ),
   };
 }

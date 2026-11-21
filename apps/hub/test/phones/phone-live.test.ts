@@ -32,6 +32,7 @@ beforeEach(async () => {
     name: 'Pixel',
   }).device;
   const nodes = idlePhoneNodes(test);
+  await test.store.live.home.load();
   live = new PhoneLive({
     store: test.store,
     viewers,

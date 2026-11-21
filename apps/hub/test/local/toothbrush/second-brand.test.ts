@@ -169,9 +169,9 @@ describe('a brand that times its zones and measures force', () => {
     const brushed = await sonicareRig(identityOf(), {}, 'owner', STUB_BRAND);
     rig = brushed;
     brushed.watched.value = true;
-    brushed.batch(0, [brushed.frame('ff0b', hex(0, 0, 0, 0), 0)]);
+    await brushed.batch(0, [brushed.frame('ff0b', hex(0, 0, 0, 0), 0)]);
     for (let second = 1; second <= 30; second += 1) {
-      brushed.batch(second, [brushed.frame('ff0b', hex(1, second, 25, 0), second)]);
+      await brushed.batch(second, [brushed.frame('ff0b', hex(1, second, 25, 0), second)]);
     }
     const live = brushed.notices.at(-1)?.notices;
     expect(live?.[0]?.frame).toMatchObject({
@@ -191,7 +191,7 @@ describe('a brand that times its zones and measures force', () => {
       face: null,
       detailVisible: false,
     });
-    brushed.batch(31, [brushed.frame('ff0b', hex(0, 30, 0, 1), 31)]);
+    await brushed.batch(31, [brushed.frame('ff0b', hex(0, 30, 0, 1), 31)]);
     const [session] = brushed.test.store.brushingSessions.all(brushed.device.id, undefined);
     expect(session).toMatchObject({
       durationS: 30,

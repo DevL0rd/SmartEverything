@@ -43,7 +43,7 @@ export async function startHubUpdateCompletion(
         if (announce && status !== previousStatus)
           context.live.announce({ type: 'hub_update_status_changed' }, 'owners');
         previousStatus = status;
-        reconcileHubUpdateNotes(context.store, ledger);
+        await reconcileHubUpdateNotes(context.store, ledger);
         await settleHubJobsFromLedger(context.layout);
       })
       .catch((cause: unknown) => {

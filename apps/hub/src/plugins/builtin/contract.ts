@@ -80,6 +80,7 @@ export interface PluginConfiguration {
 
 export interface PluginViewers {
   readonly watchDevice: (externalId: string, onChange: (viewed: boolean) => void) => Unsubscribe;
+  readonly publish: (externalId: string, stream: string, value: JsonValue) => void;
 }
 
 interface PluginClients {
@@ -95,10 +96,10 @@ interface PluginMessages {
 }
 
 export interface PluginPeopleView {
-  readonly save: (externalId: string, change: PluginPersonChange) => PluginPerson;
+  readonly save: (externalId: string, change: PluginPersonChange) => Promise<PluginPerson>;
   readonly find: (externalId: string) => PluginPerson | null;
   readonly list: () => readonly PluginPerson[];
-  readonly requesterOf: (externalId: string) => PluginRequester;
+  readonly requesterOf: (externalId: string) => Promise<PluginRequester>;
   readonly watch: (listener: () => void) => Unsubscribe;
 }
 
@@ -132,8 +133,8 @@ export interface PluginAssistant {
     readonly activitySteps: boolean;
     readonly compactAtPercent: number;
   };
-  readonly conversation: (key: string, actor?: string) => PluginConversationState | null;
-  readonly usage: (actor?: string) => PluginUsageView;
+  readonly conversation: (key: string, actor?: string) => Promise<PluginConversationState | null>;
+  readonly usage: (actor?: string) => Promise<PluginUsageView>;
   readonly compact: (key: string, actor?: string) => Promise<boolean>;
   readonly startOver: (key: string, actor?: string) => Promise<boolean>;
   readonly stop: (key: string, actor?: string) => Promise<boolean>;
@@ -148,7 +149,7 @@ interface MachineFile {
 export interface PluginFiles {
   readonly folder: string;
   readonly outbox: string;
-  readonly attachmentsOf: (chatId: string) => readonly string[];
+  readonly attachmentsOf: (chatId: string) => Promise<readonly string[]>;
   readonly fromUpload: (caller: ToolCaller, uploadId: string) => Promise<MachineFile | null>;
   readonly fromPicture: (caller: ToolCaller, pictureId: string) => Promise<MachineFile | null>;
   readonly fromMachine: (

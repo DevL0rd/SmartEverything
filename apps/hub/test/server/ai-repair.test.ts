@@ -25,7 +25,9 @@ import type {
 import { openStore } from '../../src/store/store';
 import { TEST_ENGINE } from '../support/engine';
 import { testLogger } from '../support/logs';
-import { testStore, type TestStore, unusedDrivePath } from '../support/store';
+import { testStore, type TestStore } from '../support/store';
+import { testStoreHost } from '../support/store-host';
+import { settleWithHost } from '../support/host-settle';
 
 const NOW = '2026-11-05T10:00:00.000Z';
 const EARLIER = '2026-11-05T09:59:00.000Z';
@@ -156,7 +158,7 @@ it('groups accepted owner errors, retains distinct failures at the same moment, 
     ]),
   );
   const repeated = groups.find((group) => group.observations === 2);
-  const evidence = logs.around(
+  const evidence = await logs.around(
     { owner: true, profileId: owner.id },
     { id: repeated?.latestLogId ?? 0, before: 0, after: 0 },
   );
@@ -171,13 +173,14 @@ it('keeps its grouped evidence across an independent database open after its log
   await logs.drop({ owner: true, profileId: owner.id }, undefined);
   const [group] = opened.store.aiRepairInbox.list({ limit: 1 }).groups;
   if (group === undefined) throw new Error('Expected a retained group.');
-  expect(retainedLogOf(opened.store, logs, group.fingerprint, owner.id)).toBeNull();
+  expect(await retainedLogOf(opened.store, logs, group.fingerprint, owner.id)).toBeNull();
   const reader = openStore({
+    host: testStoreHost(),
     path: join(opened.directory, 'test.db'),
     log,
     now: () => new Date(NOW),
     systemTimeZone: 'UTC',
-    drivePathOf: unusedDrivePath,
+    driveFolders: null,
   });
   try {
     expect(reader.aiRepairInbox.list({ limit: 100 }).groups).toMatchObject([
@@ -306,8 +309,12 @@ it('dismisses only the observed version of an error and keeps its diagnostic evi
   expect(store.aiRepairInbox.list({ limit: 1 }).groups).toEqual([]);
   expect(store.aiRepairInbox.mayAutoAdmit(fingerprint)).toBe(false);
   expect(
-    logs.around({ owner: true, profileId: owner.id }, { id: latestLogId ?? 0, before: 0, after: 0 })
-      ?.anchor.id,
+    (
+      await logs.around(
+        { owner: true, profileId: owner.id },
+        { id: latestLogId ?? 0, before: 0, after: 0 },
+      )
+    )?.anchor.id,
   ).toBe(latestLogId);
 
   expect(await ingest(owner, record('Request failed', EARLIER))).toBe(1);
@@ -376,10 +383,11 @@ it('recovers visible unadmitted and legacy held errors once at startup without r
   const context = { store, logs, log, assistant: { repair } };
   const layout = hubLayout(opened.directory, {});
   let stop = startRepair(context, layout);
-  expect(store.assistantEvents.pending()).toHaveLength(1);
+  await expect.poll(() => store.assistantEvents.pending(), { timeout: 10_000 }).toHaveLength(1);
   expect(store.assistantEvents.pending()[0]?.chat_id).toBe(chat.id);
   stop();
   stop = startRepair(context, layout);
+  await settleWithHost();
   expect(store.assistantEvents.pending()).toHaveLength(1);
   for (let index = 0; index < 216; index += 1)
     await ingest(
@@ -390,8 +398,7 @@ it('recovers visible unadmitted and legacy held errors once at startup without r
   expect(
     await ingest(owner, { ...record('New error during repair'), event: 'arbitrary.failed' }),
   ).toBe(1);
-  await Promise.resolve();
-  expect(store.assistantEvents.pending()).toHaveLength(2);
+  await expect.poll(() => store.assistantEvents.pending(), { timeout: 10_000 }).toHaveLength(2);
   expect(store.assistantEvents.pending().every((event) => event.chat_id === chat.id)).toBe(true);
   stop();
 });

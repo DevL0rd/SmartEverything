@@ -1,6 +1,7 @@
 import { relative, isAbsolute, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  driveFolderOf,
   hubLayout,
   layoutFromNames,
   LEGACY_NAMES,
@@ -27,8 +28,11 @@ function strings(value: unknown): readonly string[] {
 }
 
 function allPaths(layout: HubLayout): readonly string[] {
+  const { drives, ...placed } = layout;
   return [
-    ...strings(layout),
+    ...strings(placed),
+    drives.home,
+    drives.people.parent,
     ...strings(layout.person('p1')),
     ...strings(layout.chat('p1', 'c1')),
     layout.person('p1').attachment('a1', 'photo.png'),
@@ -58,6 +62,12 @@ describe.each(TABLES)('hubLayout %s names', (_name, names) => {
       expect(isAbsolute(path)).toBe(true);
       expect(inside(path)).toBe(true);
     }
+  });
+
+  it('places drive folders as plain data a store host can read', () => {
+    expect(driveFolderOf(layout.drives, 'home', null)).toBe(layout.home.drive);
+    expect(driveFolderOf(layout.drives, 'person', 'p1')).toBe(layout.person('p1').drive);
+    expect(structuredClone(layout.drives)).toStrictEqual(layout.drives);
   });
 
   it('gives every entry a distinct path', () => {

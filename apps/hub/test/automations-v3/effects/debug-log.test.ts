@@ -106,7 +106,7 @@ describe('debug.log effect', () => {
     const row = rig.add(
       program([node('shout', 'debug.log', { message: lit('hello'), level: lit('warn') })]),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.start(row.id, {}, null);
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id)[0]).toMatchObject({ status: 'succeeded' });

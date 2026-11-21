@@ -1,3 +1,4 @@
+import type { HubLogReceipt } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
 import { NodeAiRuntime } from '../../src/node/ai-runtime';
 import { NodeLogShip } from '../../src/node/log-ship';
@@ -34,25 +35,31 @@ describe('paired computer runtime logs', () => {
       deviceId: 'forged-device',
       payload: { password: 'unshippable-secret' },
     });
+    const receive = logs.receive.bind(logs);
+    const stored = new Promise<void>((resolve) => {
+      vi.spyOn(logs, 'receive').mockImplementation((receipt: HubLogReceipt): void => {
+        receive(receipt);
+        if (receipt.stored) resolve();
+      });
+    });
     runtime.start();
     const path = `/api/runtime-logs?source=node%3A${paired.deviceId}`;
     try {
-      await vi.waitFor(async () => {
-        const read = await call(booted.base, booted.owner, { method: 'GET', path });
-        expect(read.status).toBe(200);
-        expect(read.body).toMatchObject({
-          rows: [
-            {
-              deviceId: paired.deviceId,
-              source: `node:${paired.deviceId}`,
-              event: 'sample.failed',
-              runtime: 'hub',
-              platform: 'server',
-            },
-          ],
-        });
-        expect(JSON.stringify(read.body)).not.toMatch(/unshippable-secret|forged-device/u);
+      await stored;
+      const read = await call(booted.base, booted.owner, { method: 'GET', path });
+      expect(read.status).toBe(200);
+      expect(read.body).toMatchObject({
+        rows: [
+          {
+            deviceId: paired.deviceId,
+            source: `node:${paired.deviceId}`,
+            event: 'sample.failed',
+            runtime: 'hub',
+            platform: 'server',
+          },
+        ],
       });
+      expect(JSON.stringify(read.body)).not.toMatch(/unshippable-secret|forged-device/u);
       const member = await guestMember(booted);
       const hidden = await call(booted.base, member, { method: 'GET', path });
       expect(hidden.status).toBe(200);

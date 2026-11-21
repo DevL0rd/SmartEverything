@@ -8,7 +8,7 @@ interface Awaiting {
   readonly supplier: LedgerTokens;
 }
 interface UsageRows {
-  readonly amend: (id: string, change: LedgerChange) => unknown;
+  readonly amend: (id: string, change: LedgerChange) => Promise<unknown>;
 }
 
 export function dshChange(usage: SettledUsage): LedgerChange {
@@ -47,11 +47,20 @@ export class DshUsageLedger {
     const waiting = this.awaiting.get(sessionId);
     if (usage === undefined || waiting === undefined) return;
     this.awaiting.delete(sessionId);
-    this.rows.amend(waiting.rowId, dshChange(usage));
+    this.amended(sessionId, waiting.rowId, dshChange(usage));
   }
 
   private abandon(sessionId: string, stale: Awaiting): void {
     this.log.warn('harness.dsh_usage_missing', { sessionId, rowId: stale.rowId });
-    this.rows.amend(stale.rowId, { ...stale.supplier, meta: { tokens_source: 'supplier' } });
+    this.amended(sessionId, stale.rowId, {
+      ...stale.supplier,
+      meta: { tokens_source: 'supplier' },
+    });
+  }
+
+  private amended(sessionId: string, rowId: string, change: LedgerChange): void {
+    this.rows.amend(rowId, change).catch((cause: unknown) => {
+      this.log.error('harness.dsh_usage_failed', cause, { sessionId, rowId });
+    });
   }
 }

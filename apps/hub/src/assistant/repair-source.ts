@@ -45,8 +45,8 @@ export function repairSourceDigest(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-function checkoutRoot(layout: HubLayout): string {
-  const source = findCheckoutSource(layout);
+async function checkoutRoot(layout: HubLayout): Promise<string> {
+  const source = await findCheckoutSource(layout);
   if (source === undefined)
     throw new ApiError(
       'conflict',
@@ -105,7 +105,7 @@ export async function sealRepairSource(
   layout: HubLayout,
   request: AiRepairPatchRequest,
 ): Promise<RepairPatch> {
-  const root = checkoutRoot(layout);
+  const root = await checkoutRoot(layout);
   const { revision, paths } = request;
   if ((await readGit(root, ['cat-file', '-t', revision])).trim() !== 'commit')
     throw new ApiError('invalid_request', 'Choose the full ID of a Git commit.');

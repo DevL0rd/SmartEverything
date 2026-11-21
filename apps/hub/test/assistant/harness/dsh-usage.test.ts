@@ -15,12 +15,12 @@ interface Opened {
   readonly chatId: string;
   readonly sessionId: string;
   readonly epoch: number;
-  readonly log: (events: readonly DshSessionEvent[]) => void;
+  readonly log: (events: readonly DshSessionEvent[]) => Promise<void>;
 }
 
 async function open(): Promise<Opened> {
   const chat = rig.newChat(rig.hub.target);
-  const request = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const request = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), request);
   const principal = rig.service.hostPrincipal(
     rig.owner.profileId,
@@ -37,9 +37,9 @@ async function open(): Promise<Opened> {
     chatId: chat.id,
     sessionId: request.claim.session_id,
     epoch: request.claim.epoch,
-    log: (events): void => {
+    log: async (events): Promise<void> => {
       const stat = rig.opened.store.dshSessions.stat(request.claim.session_id, rig.owner.profileId);
-      const appended = rig.opened.store.dshSessions.append(
+      const appended = await rig.opened.store.live.dshSessions.append(
         {
           claim: request.claim,
           operation_id: randomUUID(),
@@ -111,6 +111,10 @@ const SNAPSHOT: SupplierUsageSnapshot = {
 };
 const SUPPLIER_TOKENS = supplierTokens(SUPPLIER_USAGE);
 
+async function written(opened: Opened): Promise<void> {
+  await rig.opened.store.host.call('aiChats', 'chat', opened.chatId);
+}
+
 function supplierCost(row: AiUsageRow, tokensFromDsh: boolean): AiUsageRow {
   return rig.opened.store.ledger.amend(row.id, ledgerChange(SNAPSHOT, row, tokensFromDsh));
 }
@@ -122,7 +126,7 @@ describe('ledger tokens of an agent loop request', () => {
     expect(row).toMatchObject({ tokens_in: 0, cost_micros: 4200, generation_id: 'gen-1' });
     rig.service.dshUsage.expect(opened.sessionId, row.id, SUPPLIER_TOKENS);
 
-    opened.log([
+    await opened.log([
       reply({
         inputTokens: 100,
         outputTokens: 40,
@@ -131,6 +135,7 @@ describe('ledger tokens of an agent loop request', () => {
         reasoningTokens: 12,
       }),
     ]);
+    await written(opened);
 
     expect(rig.opened.store.ledger.get(row.id)).toMatchObject({
       tokens_in: 1025,
@@ -148,10 +153,11 @@ describe('ledger tokens of an agent loop request', () => {
     const opened = await open();
     const first = supplierCost(metered(opened), true);
     rig.service.dshUsage.expect(opened.sessionId, first.id, SUPPLIER_TOKENS);
-    opened.log([reply({ inputTokens: 10, outputTokens: 1 })]);
+    await opened.log([reply({ inputTokens: 10, outputTokens: 1 })]);
     const second = supplierCost(metered(opened), true);
     rig.service.dshUsage.expect(opened.sessionId, second.id, SUPPLIER_TOKENS);
-    opened.log([reply({ inputTokens: 20, outputTokens: 2 })]);
+    await opened.log([reply({ inputTokens: 20, outputTokens: 2 })]);
+    await written(opened);
 
     expect(rig.opened.store.ledger.get(first.id)).toMatchObject({ tokens_in: 10, tokens_out: 1 });
     expect(rig.opened.store.ledger.get(second.id)).toMatchObject({ tokens_in: 20, tokens_out: 2 });
@@ -164,6 +170,7 @@ describe('ledger tokens of an agent loop request', () => {
     const next = supplierCost(metered(opened), true);
 
     rig.service.dshUsage.expect(opened.sessionId, next.id, SUPPLIER_TOKENS);
+    await written(opened);
 
     expect(rig.opened.store.ledger.get(lost.id)).toMatchObject({
       tokens_in: 1025,
@@ -191,7 +198,7 @@ describe('ledger tokens of an agent loop request', () => {
     const opened = await open();
     const row = metered(opened);
 
-    opened.log([reply({ inputTokens: 5, outputTokens: 5 })]);
+    await opened.log([reply({ inputTokens: 5, outputTokens: 5 })]);
 
     expect(rig.opened.store.ledger.get(row.id).tokens_in).toBe(0);
   });
@@ -201,7 +208,7 @@ describe('context pressure of a chat', () => {
   it('shows the same percent for the numbers the stored reply measured', async () => {
     const opened = await open();
 
-    opened.log([requestContext(1000), reply({ inputTokens: 90, outputTokens: 3 })]);
+    await opened.log([requestContext(1000), reply({ inputTokens: 90, outputTokens: 3 })]);
 
     expect(rig.service.state(rig.owner, opened.chatId).context).toMatchObject({
       capacity_tokens: 1000,
@@ -213,7 +220,7 @@ describe('context pressure of a chat', () => {
 
   it('is not changed by an event from a stale writer epoch', async () => {
     const opened = await open();
-    opened.log([requestContext(1000), reply({ inputTokens: 90, outputTokens: 3 })]);
+    await opened.log([requestContext(1000), reply({ inputTokens: 90, outputTokens: 3 })]);
     const stale = AI_HARNESS_EVENT.parse({
       session_id: opened.sessionId,
       chat_id: opened.chatId,

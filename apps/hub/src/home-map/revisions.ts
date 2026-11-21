@@ -13,10 +13,13 @@ import type {
 export type HistoryDirection = 'undo' | 'redo';
 
 export interface RevisionLog {
-  revisions(filter?: HomeMapRevisionFilter): HomeMapRevisionEntry[];
+  revisions(filter: HomeMapRevisionFilter): Promise<HomeMapRevisionEntry[]>;
 }
 
-export type ApplyInverse = (ops: readonly HomeMapOp[], mark: HomeMapHistoryMark) => HomeMapApplied;
+export type ApplyInverse = (
+  ops: readonly HomeMapOp[],
+  mark: HomeMapHistoryMark,
+) => Promise<HomeMapApplied>;
 
 interface ActorStacks {
   readonly done: number[];
@@ -47,18 +50,18 @@ export class RevisionHistory {
 
   constructor(private readonly log: RevisionLog) {}
 
-  walk(
+  async walk(
     actor: HomeMapActor,
     direction: HistoryDirection,
     apply: ApplyInverse,
-  ): HomeMapApplied | null {
-    const stacks = this.synced(actor);
+  ): Promise<HomeMapApplied | null> {
+    const stacks = await this.synced(actor);
     const from = direction === 'undo' ? stacks.done : stacks.undone;
     const to = direction === 'undo' ? stacks.undone : stacks.done;
     let dropped: HomeMapApplied | null = null;
     for (let revision = from.at(-1); revision !== undefined; revision = from.at(-1)) {
       const mark = direction === 'undo' ? { undoes: revision } : { redoes: revision };
-      const result = apply(this.entryOf(actor, revision).inverse, mark);
+      const result = await apply((await this.entryOf(actor, revision)).inverse, mark);
       from.pop();
       if (result.applied.length > 0) {
         to.push(result.revision);
@@ -70,9 +73,9 @@ export class RevisionHistory {
     return dropped;
   }
 
-  private synced(actor: HomeMapActor): ActorStacks {
+  private async synced(actor: HomeMapActor): Promise<ActorStacks> {
     const stacks = this.actors.get(actor) ?? { done: [], undone: [], seen: 0 };
-    for (const entry of this.log.revisions({ actor, after: stacks.seen })) {
+    for (const entry of await this.log.revisions({ actor, after: stacks.seen })) {
       replay(stacks, entry);
       stacks.seen = entry.revision;
     }
@@ -80,8 +83,8 @@ export class RevisionHistory {
     return stacks;
   }
 
-  private entryOf(actor: HomeMapActor, revision: number): HomeMapRevisionEntry {
-    const entry = this.log.revisions({ actor, after: revision - 1 })[0];
+  private async entryOf(actor: HomeMapActor, revision: number): Promise<HomeMapRevisionEntry> {
+    const entry = (await this.log.revisions({ actor, after: revision - 1 }))[0];
     if (entry?.revision !== revision) {
       throw new ApiError(
         'internal',

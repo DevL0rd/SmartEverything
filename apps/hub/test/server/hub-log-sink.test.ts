@@ -75,7 +75,7 @@ describe('the hub keeping its own log records', () => {
     owned.sink(record());
     owned.flush();
     await logs.settled();
-    const [row] = logs.search(ALL, { limit: 10 }).rows;
+    const [row] = (await logs.search(ALL, { limit: 10 })).rows;
     expect(row?.source).toBe('hub:service');
     expect(row?.component).toBe('service\u0000hub:service');
     expect(row?.event).toBe('service.started');
@@ -88,10 +88,10 @@ describe('the hub keeping its own log records', () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
     await logs.settled();
     const access = ALL;
-    expect(logs.search(access, { source: 'plugin:discord', limit: 5 }).rows).toMatchObject([
+    expect((await logs.search(access, { source: 'plugin:discord', limit: 5 })).rows).toMatchObject([
       { component: 'plugins\u0000plugin:discord', event: 'plugin.status' },
     ]);
-    expect(logs.sources(access).sources).toEqual(
+    expect((await logs.sources(access)).sources).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ source: 'plugin:discord', records: 1 }),
         expect.objectContaining({ source: 'hub:service', records: 1 }),
@@ -115,15 +115,17 @@ describe('the hub keeping its own log records', () => {
     owned.flush();
     await logs.settled();
     const access = ALL;
-    const [row] = logs.search(access, { limit: 10 }).rows;
+    const [row] = (await logs.search(access, { limit: 10 })).rows;
     expect(row?.payload).toEqual({ attempt: [{ explanation: 'password=examplephrase' }] });
     expect(row?.failure).toEqual({
       name: 'Error',
       message: 'authorization: Bearer examplecredential',
       stack: 'Error: at 192.0.2.1\n    at start (file:///private/service.mjs:24:7)',
     });
-    expect(logs.search(access, { text: 'examplecredential', limit: 10 }).rows).toHaveLength(1);
-    expect(logs.search(access, { text: 'examplephrase', limit: 10 }).rows).toHaveLength(1);
+    expect((await logs.search(access, { text: 'examplecredential', limit: 10 })).rows).toHaveLength(
+      1,
+    );
+    expect((await logs.search(access, { text: 'examplephrase', limit: 10 })).rows).toHaveLength(1);
   });
 
   it('keeps writing the log file and reports a store that fails', async () => {
@@ -168,12 +170,12 @@ describe('the hub keeping its own log records', () => {
     stop();
     await logs.settled();
     expect(already).toHaveBeenCalledTimes(1);
-    const count = (): number => logs.search(ALL, { limit: 10 }).rows.length;
-    expect(count()).toBe(1);
+    const count = async (): Promise<number> => (await logs.search(ALL, { limit: 10 })).rows.length;
+    expect(await count()).toBe(1);
     new Logger('hub.service').info('after.stop');
     await logs.settled();
     expect(already).toHaveBeenCalledTimes(2);
-    expect(count()).toBe(1);
+    expect(await count()).toBe(1);
   });
 
   it('keeps store warnings visible without writing them back into the store', async () => {
@@ -195,7 +197,7 @@ describe('the hub keeping its own log records', () => {
     expect(
       base.mock.calls.filter(([entry]) => entry.event === 'store.statement_slow'),
     ).toHaveLength(1);
-    expect(logs.search(ALL, { limit: 1 }).rows[0]?.event).toBe('service.started');
+    expect((await logs.search(ALL, { limit: 1 })).rows[0]?.event).toBe('service.started');
   });
 
   it('reports a failed full batch only once without recursively writing the failure', async () => {

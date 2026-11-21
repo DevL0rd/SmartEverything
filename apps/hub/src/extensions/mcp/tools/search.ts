@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { shortcutsForQuery } from '../../../drive/social/shortcuts';
 import { driveHits, type DriveHit } from '../../../drive/search-provider';
 import type { DriveActor } from '../../../drive/access';
-import { deviceHidden, deviceIdReachable } from '../../../server/person-scope';
+import { deviceHidden } from '../../../server/person-scope';
 import { flatAutomation } from '../../../store/repositories/automation-trees';
 import type { Store } from '../../../store/store';
 import { operate, profileFor, type OperatingContext } from './acting';
@@ -48,13 +48,12 @@ function nodeHits(
     }));
 }
 
-export function automationHits(
-  store: Store,
+export async function automationHits(
+  store: Pick<Store, 'host'>,
   { query, limit }: Search,
   kinds: NodeKindLookup,
-): Record<string, unknown>[] {
-  return store.automations
-    .list()
+): Promise<Record<string, unknown>[]> {
+  return (await store.host.call('automations', 'list'))
     .flatMap((row) => {
       const nodes = nodeHits(row, query, kinds);
       const named = matches(
@@ -77,47 +76,42 @@ export function automationHits(
     .slice(0, limit);
 }
 
-function homeHits(
+async function homeHits(
   store: Store,
   scope: DeviceScope | null,
   { query, limit }: Search,
   kinds: NodeKindLookup,
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
+  const rows = await store.host.read('mcpSearchRows', scope);
   return {
-    devices: listedDevices(store, scope, { search: query, includeHidden: false, limit }),
-    rooms: store.rooms
-      .list()
+    devices: await listedDevices(store, scope, { search: query, includeHidden: false, limit }),
+    rooms: rows.rooms
       .filter((room) => matches(query, room.name))
       .slice(0, limit)
       .map((room) => ({ id: room.id, name: room.name })),
-    automations: automationHits(store, { query, limit }, kinds),
-    values: store.automationValues
-      .list()
+    automations: await automationHits(store, { query, limit }, kinds),
+    values: rows.values
       .filter((value) => matches(query, value.content.name, value.content.kind, 'value'))
       .slice(0, limit)
       .map((value) => ({ id: value.id, name: value.content.name, kind: value.content.kind })),
-    remotes: store.infrared
-      .remotes()
-      .filter(
-        (remote) =>
-          matches(query, remote.name, remote.category, remote.brand) &&
-          deviceIdReachable(store, scope, remote.blaster_id),
-      )
+    remotes: rows.remotes
+      .filter((remote) => matches(query, remote.name, remote.category, remote.brand))
       .slice(0, limit)
       .map((remote) => ({ id: remote.id, name: remote.name, category: remote.category })),
-    people: store.profiles
-      .list()
+    people: rows.people
       .filter((profile) => matches(query, profile.name))
       .map((profile) => ({ id: profile.id, name: profile.name })),
   };
 }
 
-function capabilityHits(
+async function capabilityHits(
   store: Store,
   scope: DeviceScope | null,
   { query, limit }: Search,
-): Record<string, unknown>[] {
-  const devices = store.devices.list().filter((device) => !deviceHidden(scope, device));
+): Promise<Record<string, unknown>[]> {
+  const devices = (await store.host.call('devices', 'list')).filter(
+    (device) => !deviceHidden(scope, device),
+  );
   return Object.entries(CAPABILITY_CATALOGUE)
     .filter(([key, entry]) => matches(query, key, entry.label, entry.group, ...entry.keywords))
     .slice(0, limit)
@@ -138,18 +132,21 @@ function appHits({ query, limit }: Search): Record<string, unknown> {
   };
 }
 
-function driveActorOf(context: ToolContext): DriveActor {
-  return { profileId: profileFor(context, {}) };
+async function driveActorOf(context: ToolContext): Promise<DriveActor> {
+  return { profileId: await profileFor(context, {}) };
 }
 
-function fileHits(context: ToolContext, { query, limit }: Search): DriveHit[] {
+async function fileHits(context: ToolContext, { query, limit }: Search): Promise<DriveHit[]> {
   const areas = reachableAreas(context);
   if (areas !== undefined && !areas.includes('drive')) {
     return [];
   }
   const { store } = context;
-  return driveHits(store.driveSearch, driveActorOf(context), { query, limit }, (viewer, request) =>
-    shortcutsForQuery({ store, context: store.context }, viewer, request),
+  return driveHits(
+    (viewer, request, size) => store.host.call('driveSearch', 'search', viewer, request, size),
+    await driveActorOf(context),
+    { query, limit },
+    (viewer, request) => shortcutsForQuery(store, viewer, request),
   );
 }
 
@@ -190,10 +187,10 @@ export const SEARCH_TOOL: Tool = defineTool({
     const scope = deviceScopeOfActor(context);
     return {
       structured: {
-        ...homeHits(context.store, scope, input, context.hub.automationKinds),
-        files: fileHits(context, input),
+        ...(await homeHits(context.store, scope, input, context.hub.automationKinds)),
+        files: await fileHits(context, input),
         planner: await plannerHits(context, input),
-        capabilities: capabilityHits(context.store, scope, input),
+        capabilities: await capabilityHits(context.store, scope, input),
         ...appHits(input),
       },
     };

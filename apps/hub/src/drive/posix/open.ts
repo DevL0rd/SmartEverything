@@ -1,7 +1,7 @@
 import type { RequestMeta } from '@smarteverything/domain/drive-mount';
-import { itemAccess } from '../access';
 import { orphanRelPath } from '../intents';
 import { requireExport } from '../sharing/export-guard';
+import { writeDriveOps } from '../units/ops';
 import { posix } from './errors';
 import { nowNs, relatimeDue } from './times';
 import type { PosixEnv, PosixScope } from './env';
@@ -21,8 +21,8 @@ export class PosixOpen {
     private readonly nodes: PosixNodes,
   ) {}
 
-  target(scope: PosixScope, ino: number, write: boolean): OpenTarget {
-    const node = this.nodes.node(scope, ino);
+  async target(scope: PosixScope, ino: number, write: boolean): Promise<OpenTarget> {
+    const node = await this.nodes.node(scope, ino);
     if (node.inode.type === 'dir')
       throw posix('EISDIR', 'A folder cannot be opened for its bytes.');
     if (node.inode.type !== 'file') throw posix('EINVAL', 'Only a file has bytes to open.');
@@ -37,8 +37,7 @@ export class PosixOpen {
         etag: `inode-${String(node.inode.id)}`,
       };
     }
-    const { store } = this.env.change;
-    requireExport(itemAccess(store, scope.caller, store.driveRoots.byId(item.rootId), item), item);
+    requireExport(node.access, item);
     return {
       inodeId: node.inode.id,
       relPath: item.relPath,
@@ -48,10 +47,12 @@ export class PosixOpen {
     };
   }
 
-  access(scope: PosixScope, request: RequestMeta<'ACCESS'>): void {
-    const { inode } = this.nodes.node(scope, request.ino);
+  async access(scope: PosixScope, request: RequestMeta<'ACCESS'>): Promise<void> {
+    const { inode } = await this.nodes.node(scope, request.ino);
     const now = nowNs(this.env.change);
     if (!request.strict && !relatimeDue(inode, now)) return;
-    this.env.change.store.driveInodes.setTimes(inode.id, { atimeNs: now });
+    await writeDriveOps(this.env.change.store, [
+      { kind: 'times', inodeId: inode.id, times: { atimeNs: now } },
+    ]);
   }
 }

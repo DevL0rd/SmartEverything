@@ -21,7 +21,7 @@ function discordOrigin(requester: MessageOrigin['requester']): MessageOrigin {
   };
 }
 
-function sessionStartedByPlugin(requester: MessageOrigin['requester']): string {
+async function sessionStartedByPlugin(requester: MessageOrigin['requester']): Promise<string> {
   const { store } = rig.opened;
   const chat = rig.newChat(rig.hub.target);
   const message = store.assistantChat.addMessage(personMessage(chat.id, discordOrigin(requester)));
@@ -35,7 +35,7 @@ function sessionStartedByPlugin(requester: MessageOrigin['requester']): string {
     text: 'upload my global claude.md',
   });
   eventAuthority(store, event);
-  const open = rig.service.prepare(rig.owner, chat.id, {
+  const open = await rig.service.prepare(rig.owner, chat.id, {
     kind: 'trigger',
     profileId: rig.owner.profileId,
     grantId: event.id,
@@ -74,17 +74,17 @@ function access(): HarnessHubTools {
 }
 
 describe('machine tools on the home computer for a chat that runs on the hub', () => {
-  it('are open to the owner talking through a plugin such as Discord', () => {
-    expect(access().nativeAccess(sessionStartedByPlugin('owner'))).toBe(true);
+  it('are open to the owner talking through a plugin such as Discord', async () => {
+    expect(access().nativeAccess(await sessionStartedByPlugin('owner'))).toBe(true);
   });
 
-  it('stay closed to a person who is only approved on the plugin', () => {
-    expect(access().nativeAccess(sessionStartedByPlugin('approved'))).toBe(false);
+  it('stay closed to a person who is only approved on the plugin', async () => {
+    expect(access().nativeAccess(await sessionStartedByPlugin('approved'))).toBe(false);
   });
 
-  it('are open to the owner in the app', () => {
+  it('are open to the owner in the app', async () => {
     const chat = rig.newChat(rig.hub.target);
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
 
     expect(access().nativeAccess(open.claim.session_id)).toBe(true);
   });

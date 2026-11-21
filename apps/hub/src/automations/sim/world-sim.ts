@@ -125,7 +125,7 @@ export class ScenarioWorld {
   }
 
   deviceIds(target: JsonValue): readonly string[] {
-    return devicesOf(this.base.store, TARGET_VALUE.parse(target)).map((device) => device.id);
+    return devicesOf(this.base.world, TARGET_VALUE.parse(target)).map((device) => device.id);
   }
 
   lightsOf(target: JsonValue): {
@@ -134,7 +134,7 @@ export class ScenarioWorld {
   } {
     const lights: DeviceRow[] = [];
     const skipped: { device: string; reason: string }[] = [];
-    for (const device of devicesOf(this.base.store, TARGET_VALUE.parse(target))) {
+    for (const device of devicesOf(this.base.world, TARGET_VALUE.parse(target))) {
       if (deviceFamily(device) !== 'light')
         skipped.push({ device: device.id, reason: 'It is not a light.' });
       else if (!device.online) skipped.push({ device: device.id, reason: 'It is offline.' });
@@ -152,10 +152,7 @@ export class ScenarioWorld {
   }
 
   stateMemory(): StateMemoryPort {
-    return overlaidStateMemory(
-      this.states,
-      stateMemoryFromRows(this.base.store.automationNodeState),
-    );
+    return overlaidStateMemory(this.states, stateMemoryFromRows(this.base.stateRows));
   }
 
   private persistent(

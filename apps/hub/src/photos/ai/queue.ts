@@ -1,13 +1,8 @@
 import type { PhotoAiStage, PhotosAiNotice } from '@smarteverything/domain';
-import { z } from 'zod';
-import type { StoreContext } from '../../store/context';
-import type {
-  DriveMediaJob,
-  DriveMediaJobKind,
-  DriveMediaJobRequest,
-} from '../../store/repositories/drive-media-jobs';
-import { inList } from '../../store/sql';
-import type { JobHandler } from '../pipeline/jobs';
+import type { StoreHost } from '../../store/host/host';
+import type { DriveMediaJob, DriveMediaJobKind } from '../../store/repositories/drive-media-jobs';
+import type { JobHandler, MediaJobRunner } from '../pipeline/jobs';
+import type { AiJobRequest } from './job-units';
 
 export type PhotoAiKind = 'faces' | 'vision' | 'embed' | 'pet_embed';
 
@@ -20,13 +15,11 @@ export const STAGE_OF: Readonly<Record<PhotoAiKind, PhotoAiStage>> = {
   embed: 'index',
 };
 
-export interface JobRequester {
-  readonly request: (request: DriveMediaJobRequest) => DriveMediaJob;
-}
+export type JobRequester = Pick<MediaJobRunner, 'adopt'>;
 
 export type AiNotice = (notice: PhotosAiNotice) => void;
 
-const PRESENT = z.strictObject({ found: z.int() });
+export type AiRequest = Omit<AiJobRequest, 'rerun'>;
 
 class StageTally {
   private readonly pending = new Set<string>();
@@ -71,7 +64,7 @@ export class PhotoAiQueue {
   private readonly drainListeners = new Set<(stage: PhotoAiStage) => void>();
 
   constructor(
-    private readonly context: StoreContext,
+    private readonly host: StoreHost,
     private readonly runner: JobRequester,
     private readonly notice: AiNotice,
   ) {}
@@ -83,33 +76,32 @@ export class PhotoAiQueue {
     };
   }
 
-  request(kind: PhotoAiKind, itemId: string, rev: number, modelVersion: string): boolean {
-    if (this.exists(kind, itemId, rev)) return false;
-    const job = this.runner.request({ kind, itemId, rev, modelVersion });
-    this.tally(kind).add(job.id);
-    return true;
+  request(requests: readonly AiRequest[]): Promise<number> {
+    return this.queue(requests.map((request) => ({ ...request, rerun: false })));
   }
 
-  rerun(kind: PhotoAiKind, itemId: string, rev: number, modelVersion: string): boolean {
-    this.context.sql.run(
-      'forget the finished photo AI job so it can run again',
-      `delete from drive_media_jobs
-        where item_id = $itemId and rev = $rev and kind = $kind and state in ('done', 'failed')`,
-      { itemId, rev, kind },
-    );
-    return this.request(kind, itemId, rev, modelVersion);
+  rerun(requests: readonly AiRequest[]): Promise<number> {
+    return this.queue(requests.map((request) => ({ ...request, rerun: true })));
+  }
+
+  private async queue(requests: readonly AiJobRequest[]): Promise<number> {
+    if (requests.length === 0) return 0;
+    const jobs = await this.host.write('photoAiRequest', requests);
+    for (const job of jobs) this.tally(kindOf(job.kind)).add(job.id);
+    this.runner.adopt(jobs);
+    return jobs.length;
   }
 
   started(job: DriveMediaJob): void {
     this.tally(kindOf(job.kind)).add(job.id);
   }
 
-  finished(job: DriveMediaJob): void {
+  async finished(job: DriveMediaJob): Promise<void> {
     const kind = kindOf(job.kind);
     const stage = STAGE_OF[kind];
     const tally = this.tally(kind);
     tally.finish(job.id);
-    if (this.busy(stage)) return;
+    if (await this.busy(stage)) return;
     tally.reset();
     for (const listener of this.drainListeners) listener(stage);
   }
@@ -122,37 +114,14 @@ export class PhotoAiQueue {
         this.started(job);
         await handler.run(job, signal);
       },
-      fail: (job, cause): void => {
-        handler.fail(job, cause);
-      },
-      settled: (job): void => {
-        this.finished(job);
-      },
+      fail: (job, cause): Promise<void> => handler.fail(job, cause),
+      settled: (job): Promise<void> => this.finished(job),
     };
   }
 
-  private busy(stage: PhotoAiStage): boolean {
+  private busy(stage: PhotoAiStage): Promise<boolean> {
     const kinds = PHOTO_AI_KINDS.filter((kind) => STAGE_OF[kind] === stage);
-    const filter = inList('kind', 'kinds', kinds);
-    return (
-      this.context.sql.get(
-        PRESENT,
-        `select 1 as found from drive_media_jobs
-          where state <> 'done' and state in ('queued', 'running') and ${filter.text} limit 1`,
-        filter.parameters,
-      ) !== undefined
-    );
-  }
-
-  private exists(kind: PhotoAiKind, itemId: string, rev: number): boolean {
-    return (
-      this.context.sql.get(
-        PRESENT,
-        `select 1 as found from drive_media_jobs
-          where item_id = $itemId and rev = $rev and kind = $kind`,
-        { itemId, rev, kind },
-      ) !== undefined
-    );
+    return this.host.read('photoAiBusy', { kinds });
   }
 
   private tally(kind: PhotoAiKind): StageTally {

@@ -1,3 +1,4 @@
+import { background } from '@smarteverything/logging';
 import type { ServerContext } from './context';
 import type { BuildOptions, Serving } from './build';
 import { ingestOwnLogs } from './hub-log-sink';
@@ -27,7 +28,7 @@ function startClocks(context: ServerContext): void {
   context.access.lifecycle.start();
   context.weather.start();
   context.exchangeRates.start();
-  context.openRouter.start();
+  background(context.openRouter.start(), 'openrouter.start_failed');
   context.harness.skillUpdates.start();
 }
 

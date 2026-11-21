@@ -108,10 +108,10 @@ function depsOf(): DavDeps {
       space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
     },
     nodes: {
-      authenticate: (token): ComputerNodeRow => {
+      authenticate: (token): Promise<ComputerNodeRow> => {
         const deviceId = token === null ? undefined : NODE_IDS[token];
         if (deviceId === undefined) throw new ApiError('unauthorized', 'unknown node token');
-        return nodeRow(deviceId);
+        return Promise.resolve(nodeRow(deviceId));
       },
       actorOf: (node): DriveActor => {
         if (node.device_id === NODE_IDS[OWNER_NODE]) return { profileId: ownerProfile };

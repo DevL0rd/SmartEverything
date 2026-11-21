@@ -27,7 +27,7 @@ import WebSocket from 'ws';
 import { ComputerNodeAccess } from '../../src/computers/node-access';
 import type { DiskSpace } from '../../src/drive/data-space';
 import type { WatchStatus } from '../../src/drive/watcher';
-import { DriveAlbumsService } from '../../src/drive/albums';
+import { DriveAlbums } from '../../src/drive/service-write-albums';
 import { DriveGrants } from '../../src/drive/grants';
 import { DriveHealthReader } from '../../src/drive/health';
 import { nodeCaller } from '../../src/drive/node-caller';
@@ -60,6 +60,7 @@ import {
 import { actorOf } from '../../src/server/handlers/drive-services';
 import { MediaLinks } from '../../src/server/media-links';
 import { DriveActivity } from '../../src/drive/activity';
+import { loadDriveSettings } from '../../src/drive/settings';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 import { personalDriveRoot } from '../store/drive-roots-fixture';
@@ -187,11 +188,7 @@ beforeEach(async () => {
       now: () => NOW,
       purge: { rearm: (): void => undefined },
       conflicts: {
-        insert: (): void => undefined,
         find: () => undefined,
-        resolve: (): never => {
-          throw new Error('unused');
-        },
       },
     },
     services: {
@@ -207,16 +204,22 @@ beforeEach(async () => {
         links: new MediaLinks(() => NOW),
         nodes: {
           authenticate: (token) => nodes.authenticate(token),
-          actorOf: (node) => actorOf(store, nodeCaller(store, node)),
+          actorOf: (node) => actorOf(nodeCaller(store, node)),
         },
         now: () => NOW,
       },
       probe: {
         space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
       },
+      hasher: {
+        hash: (): never => {
+          throw new Error('a refused request must not hash a file');
+        },
+      },
     },
     nodes,
     log: testLogger('drive-sync'),
+    settings: await loadDriveSettings(store),
   });
   server = createServer((request, response) => {
     dispatch(surfaces.routes, request, response);
@@ -359,23 +362,10 @@ function driveServices(): DriveServices {
     now: (): Date => NOW,
     purge: { rearm: (): void => undefined },
     conflicts: {
-      insert: (): void => undefined,
       find: (): undefined => undefined,
-      resolve: (): never => {
-        throw new Error('unused');
-      },
     },
   };
-  const albums = new DriveAlbumsService({
-    albums: store.driveAlbums,
-    items: store.driveItems,
-    roots: store.driveRoots,
-    grants: store.driveGrants,
-    runner: { rows: (): [] => [], count: (): number => 0 },
-    newId: randomUUID,
-    now: (): string => NOW.toISOString(),
-    timeZone: 'UTC',
-  });
+  const albums = new DriveAlbums(store);
   const shares = new DriveShares({
     store,
     origin: (): { url: string; public: boolean } => ({ url: 'http://hub.test', public: false }),
@@ -386,10 +376,14 @@ function driveServices(): DriveServices {
   const dataSpace = (): Promise<DriveDataSpace> =>
     Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12, fsType: 'ext4' });
   const idle: DriveScrubState = { state: 'idle', lastFinishedAt: null, corrupt: 0 };
-  const scrub = { start: (): DriveScrubState => idle, state: (): DriveScrubState => idle };
+  const scrub = {
+    start: (): Promise<DriveScrubState> => Promise.resolve(idle),
+    state: (): Promise<DriveScrubState> => Promise.resolve(idle),
+  };
   const backups = {
-    report: (input: DriveBackupReportInput): DriveBackupReport => store.driveBackups.record(input),
-    status: (): DriveBackupStatus => store.driveBackups.status(),
+    report: (input: DriveBackupReportInput): Promise<DriveBackupReport> =>
+      store.host.write('driveBackupReport', input),
+    status: (): Promise<DriveBackupStatus> => store.host.call('driveBackups', 'status'),
   };
   return {
     read,
@@ -409,11 +403,11 @@ function driveServices(): DriveServices {
     shares,
     scrub,
     backups,
-    health: new DriveHealthReader(store.context, {
-      roots: () => store.driveRoots.list(),
+    health: new DriveHealthReader({
+      figures: (actor) => store.host.read('driveHealthFigures', { actor }),
       watcher: (): WatchStatus => ({ watching: true, unreadable: [], problem: null }),
       scrub: scrub.state,
-      backup: backups.status,
+      backup: () => backups.status(),
       space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12, fsType: 'ext4' }),
     }),
     files: {
@@ -421,7 +415,7 @@ function driveServices(): DriveServices {
       links: new MediaLinks(() => NOW),
       nodes: {
         authenticate: (token) => nodes.authenticate(token),
-        actorOf: (node) => actorOf(store, nodeCaller(store, node)),
+        actorOf: (node) => actorOf(nodeCaller(store, node)),
       },
       now: (): Date => NOW,
     },
@@ -431,8 +425,13 @@ function driveServices(): DriveServices {
     listings: driveListings({
       store,
       read,
-      duplicates: { groups: () => ({ groups: [], next: null }) },
+      duplicates: { groups: () => Promise.resolve({ groups: [], next: null }) },
     }),
+    hasher: {
+      hash: (): never => {
+        throw new Error('the route table test does not hash files');
+      },
+    },
   };
 }
 
@@ -441,10 +440,7 @@ describe('Drive route table', () => {
     const { store } = opened;
     const table = {
       ...driveRoutes(store, driveServices()),
-      ...drivePlacementRoutes(
-        store,
-        new DrivePlacements({ store, context: store.context, newId: randomUUID }),
-      ),
+      ...drivePlacementRoutes(new DrivePlacements({ store, newId: randomUUID })),
     };
     const registered = [
       ...Object.keys(DRIVE_LIBRARY_ENDPOINTS),

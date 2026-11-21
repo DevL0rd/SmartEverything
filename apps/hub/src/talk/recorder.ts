@@ -1,9 +1,11 @@
-import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { mkdir, rm } from 'node:fs/promises';
+import { PassThrough } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { dirname, resolve, sep } from 'node:path';
 import { randomInt } from 'node:crypto';
 import type { TalkChannelRow, TalkMessageRow } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { messageOf, type Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import { OggOpusWriter } from './ogg';
 import type { PacketSink } from './transmission';
@@ -24,18 +26,10 @@ export interface Recording extends PacketSink {
 }
 
 export interface RecorderOptions {
-  readonly store: Store;
+  readonly store: Pick<Store, 'host'>;
   readonly directory: string;
   readonly now: () => Date;
   readonly log: Logger;
-}
-
-function closed(stream: WriteStream): Promise<boolean> {
-  return new Promise((done) => {
-    stream.once('close', () => {
-      done(!stream.errored);
-    });
-  });
 }
 
 export class TalkRecorder {
@@ -56,14 +50,16 @@ export class TalkRecorder {
   open(channelId: string, messageId: string): Recording {
     const storagePath = `${channelId}/${messageId}.ogg`;
     const path = this.pathOf(storagePath);
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    const stream = createWriteStream(path, { mode: 0o600 });
-    const done = closed(stream);
-    stream.on('error', (cause) => {
-      this.options.log.warn('talk.recording_failed', { messageId, reason: cause.message });
-    });
+    const pages = new PassThrough();
+    const done = this.save(pages, path).then(
+      () => true,
+      (cause: unknown) => {
+        this.options.log.warn('talk.recording_failed', { messageId, reason: messageOf(cause) });
+        return false;
+      },
+    );
     const writer = new OggOpusWriter(randomInt(1, 0x7fffffff), (page) => {
-      stream.write(page);
+      pages.write(page);
     });
     writer.start();
     return {
@@ -73,10 +69,20 @@ export class TalkRecorder {
       },
       end: (): void => {
         writer.end();
-        stream.end();
+        pages.end();
       },
       saved: () => done,
     };
+  }
+
+  private async save(pages: PassThrough, path: string): Promise<void> {
+    try {
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    } catch (cause) {
+      pages.destroy();
+      throw cause;
+    }
+    await pipeline(pages, createWriteStream(path, { mode: 0o600 }));
   }
 
   async remove(storagePath: string): Promise<void> {
@@ -93,15 +99,16 @@ export class TalkRecorder {
 
   async prune(channel: TalkChannelRow): Promise<void> {
     const before = new Date(this.options.now().getTime() - channel.keep_hours * HOUR_MS);
-    const expired = this.options.store.talk.expired(channel.id, before.toISOString());
-    expired.forEach((message) => this.options.store.talk.removeMessage(message.id));
+    const expired = await this.options.store.host.write('talkPrune', {
+      channelId: channel.id,
+      before: before.toISOString(),
+    });
     await this.discard(expired);
   }
 
   async clearUnfinished(): Promise<void> {
-    const unfinished = this.options.store.talk.unfinished();
-    unfinished.forEach((message) => this.options.store.talk.removeMessage(message.id));
-    await this.discard(unfinished);
-    await Promise.all(this.options.store.talk.channels().map((channel) => this.prune(channel)));
+    const { removed, channels } = await this.options.store.host.write('talkClearUnfinished', null);
+    await this.discard(removed);
+    await Promise.all(channels.map((channel) => this.prune(channel)));
   }
 }

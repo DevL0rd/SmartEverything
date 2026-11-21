@@ -8,6 +8,7 @@ import {
 } from '@smarteverything/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEVICE_SYNC_ACTOR, HomeMapDeviceSync } from '../../src/home-map/device-sync';
+import type { HomeMapDeviceModel } from '../../src/home-map/map-units';
 import type { HomeMapService } from '../../src/home-map/service';
 import { ChangeFeed } from '../../src/store/feed';
 import { captureLogs, testLogger, type CapturedLogs } from '../support/logs';
@@ -83,8 +84,8 @@ const room = ({ id, name, homeRoomId, x0, x1 }: Block): HomeMapOp => ({
   },
 });
 
-const handMap = (): void => {
-  service.apply(
+const handMap = async (): Promise<void> => {
+  await service.apply(
     [
       {
         op: 'addFloor',
@@ -142,105 +143,110 @@ const rowChange = (
   seq: (seq += 1),
 });
 
-const arrive = (row: DeviceRow): void => {
+const arrive = async (row: DeviceRow): Promise<void> => {
   devices.push(row);
-  sync.handle(rowChange('INSERT', row, null));
+  await sync.handle(rowChange('INSERT', row, null));
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   logs = captureLogs();
-  service = storedService();
+  service = await storedService();
   devices = [];
   models = new Map();
-  handMap();
+  await handMap();
   sync = new HomeMapDeviceSync({
     maps: service,
     devices: { list: (): readonly DeviceRow[] => devices },
-    modelOf: (row): string | null => models.get(row.id) ?? null,
+    modelsOf: (rows): Promise<HomeMapDeviceModel[]> =>
+      Promise.resolve(
+        rows.map((row) => ({ deviceId: row.id, modelId: models.get(row.id) ?? null })),
+      ),
     log: testLogger('home-map'),
   });
 });
 
 describe('a device that arrives in a room that is on the map', () => {
-  it('is placed inside that room by the hub, as an automatic placement, in one revision', () => {
+  it('is placed inside that room by the hub, as an automatic placement, in one revision', async () => {
     const before = service.revision();
     const lamp = device(1, 'light', HOME_HALL);
     models.set(lamp.id, FLOOR_LAMP);
-    arrive(lamp);
+    await arrive(lamp);
     const placed = placementOf(lamp);
     expect(inside(HALL_ROOM, placed)).toBe(true);
     expect(placed).toMatchObject({ auto: true, mount: 'floor', floorId: FLOOR, height: 0 });
     expect(service.revision()).toBe(before + 1);
-    expect(service.revisions({ after: before }).map((entry) => entry.actor)).toEqual([
+    expect((await service.revisions({ after: before })).map((entry) => entry.actor)).toEqual([
       DEVICE_SYNC_ACTOR,
     ]);
   });
 
-  it('takes the mount from the real placement facts of its model, and from its family without one', () => {
+  it('takes the mount from the real placement facts of its model, and from its family without one', async () => {
     const lamp = device(1, 'light', HOME_HALL);
     models.set(lamp.id, FLOOR_LAMP);
     const bulb = device(2, 'light', HOME_HALL);
-    arrive(lamp);
-    arrive(bulb);
+    await arrive(lamp);
+    await arrive(bulb);
     expect(placementOf(lamp)?.mount).toBe('floor');
     expect(placementOf(bulb)).toMatchObject({ mount: 'ceiling', height: 2.6 });
   });
 
-  it('leaves the map alone when its room has no place on the map or it has no room', () => {
+  it('leaves the map alone when its room has no place on the map or it has no room', async () => {
     const before = service.revision();
-    arrive(device(1, 'light', uuid(900)));
-    arrive(device(2, 'light', null));
+    await arrive(device(1, 'light', uuid(900)));
+    await arrive(device(2, 'light', null));
     expect(service.revision()).toBe(before);
     expect(placements()).toEqual([]);
   });
 
-  it('places devices through the change feed without anyone calling it', () => {
+  it('places devices through the change feed without anyone calling it', async () => {
     const feed = new ChangeFeed(testLogger('feed'));
     const stop = sync.start(feed);
     const lamp = device(1, 'light', HOME_HALL);
     devices.push(lamp);
     feed.emit(rowChange('INSERT', lamp, null));
+    await service.settled();
     expect(inside(HALL_ROOM, placementOf(lamp))).toBe(true);
     stop();
     const other = device(2, 'light', HOME_HALL);
     devices.push(other);
     feed.emit(rowChange('INSERT', other, null));
+    await service.settled();
     expect(placementOf(other)).toBeUndefined();
   });
 });
 
 describe('a device that changes room', () => {
-  it('moves into the new room when its place lies outside it', () => {
+  it('moves into the new room when its place lies outside it', async () => {
     const lamp = device(1, 'light', HOME_HALL);
-    arrive(lamp);
+    await arrive(lamp);
     const moved = { ...lamp, room_id: HOME_DEN };
-    sync.handle(rowChange('UPDATE', moved, lamp));
+    await sync.handle(rowChange('UPDATE', moved, lamp));
     const placed = placementOf(lamp);
     expect(inside(DEN_ROOM, placed)).toBe(true);
     expect(placements()).toHaveLength(1);
   });
 
-  it('keeps the place when it already lies inside the new room', () => {
+  it('keeps the place when it already lies inside the new room', async () => {
     const lamp = device(1, 'light', HOME_HALL);
-    arrive(lamp);
+    await arrive(lamp);
     const before = service.revision();
     const moved = { ...lamp, room_id: HOME_HALL };
-    sync.handle(rowChange('UPDATE', moved, { ...lamp, room_id: HOME_DEN }));
+    await sync.handle(rowChange('UPDATE', moved, { ...lamp, room_id: HOME_DEN }));
     expect(service.revision()).toBe(before);
   });
 
-  it('does nothing for an update that did not change its room', () => {
+  it('does nothing for an update that did not change its room', async () => {
     const lamp = device(1, 'light', HOME_HALL);
-    arrive(lamp);
+    await arrive(lamp);
     const before = service.revision();
-    sync.handle(rowChange('UPDATE', { ...lamp, online: false }, lamp));
+    await sync.handle(rowChange('UPDATE', { ...lamp, online: false }, lamp));
     expect(service.revision()).toBe(before);
   });
 
-  it('never moves a hand placed device when its room changes', () => {
+  it('never moves a hand placed device when its room changes', async () => {
     const lamp = device(1, 'light', HOME_HALL);
-    arrive(lamp);
-    service.apply(
+    await arrive(lamp);
+    await service.apply(
       [
         {
           op: 'update',
@@ -253,36 +259,36 @@ describe('a device that changes room', () => {
       'profile:me',
     );
     const before = service.revision();
-    sync.handle(rowChange('UPDATE', { ...lamp, room_id: HOME_DEN }, lamp));
+    await sync.handle(rowChange('UPDATE', { ...lamp, room_id: HOME_DEN }, lamp));
     expect(placementOf(lamp)).toMatchObject({ at: { x: 1, y: 1 }, auto: false });
     expect(service.revision()).toBe(before);
   });
 
-  it('still moves an automatic placement into the new room', () => {
+  it('still moves an automatic placement into the new room', async () => {
     const lamp = device(1, 'light', HOME_HALL);
-    arrive(lamp);
+    await arrive(lamp);
     expect(placementOf(lamp)?.auto).toBe(true);
-    sync.handle(rowChange('UPDATE', { ...lamp, room_id: HOME_DEN }, lamp));
+    await sync.handle(rowChange('UPDATE', { ...lamp, room_id: HOME_DEN }, lamp));
     expect(placementOf(lamp)).toMatchObject({ auto: true });
     expect(inside(DEN_ROOM, placementOf(lamp))).toBe(true);
   });
 
-  it('returns an automatic placement to the tray when the new room is not on the map or there is none', () => {
+  it('returns an automatic placement to the tray when the new room is not on the map or there is none', async () => {
     const lamp = device(1, 'light', HOME_HALL);
-    arrive(lamp);
-    sync.handle(rowChange('UPDATE', { ...lamp, room_id: uuid(900) }, lamp));
+    await arrive(lamp);
+    await sync.handle(rowChange('UPDATE', { ...lamp, room_id: uuid(900) }, lamp));
     expect(placementOf(lamp)).toBeUndefined();
     const other = device(2, 'light', HOME_HALL);
-    arrive(other);
-    sync.handle(rowChange('UPDATE', { ...other, room_id: null }, other));
+    await arrive(other);
+    await sync.handle(rowChange('UPDATE', { ...other, room_id: null }, other));
     expect(placementOf(other)).toBeUndefined();
     expect(placements()).toEqual([]);
   });
 
-  it('keeps a hand placement where it is when its room leaves the map', () => {
+  it('keeps a hand placement where it is when its room leaves the map', async () => {
     const lamp = device(1, 'light', HOME_HALL);
-    arrive(lamp);
-    service.apply(
+    await arrive(lamp);
+    await service.apply(
       [
         {
           op: 'update',
@@ -294,27 +300,27 @@ describe('a device that changes room', () => {
       ],
       'profile:me',
     );
-    sync.handle(rowChange('UPDATE', { ...lamp, room_id: null }, lamp));
+    await sync.handle(rowChange('UPDATE', { ...lamp, room_id: null }, lamp));
     expect(placementOf(lamp)).toMatchObject({ at: { x: 1, y: 1 }, auto: false });
   });
 });
 
 describe('removals', () => {
-  it('removes the place of a device that is deleted', () => {
+  it('removes the place of a device that is deleted', async () => {
     const lamp = device(1, 'light', HOME_HALL);
-    arrive(lamp);
-    sync.handle(rowChange('DELETE', null, lamp));
+    await arrive(lamp);
+    await sync.handle(rowChange('DELETE', null, lamp));
     expect(placementOf(lamp)).toBeUndefined();
   });
 
-  it('ignores the deletion of a device that was never placed', () => {
+  it('ignores the deletion of a device that was never placed', async () => {
     const before = service.revision();
-    sync.handle(rowChange('DELETE', null, device(1, 'light', null)));
+    await sync.handle(rowChange('DELETE', null, device(1, 'light', null)));
     expect(service.revision()).toBe(before);
   });
 
-  it('lets a room that is deleted lose its link and keep its name and shape', () => {
-    sync.handle({
+  it('lets a room that is deleted lose its link and keep its name and shape', async () => {
+    await sync.handle({
       type: 'change',
       table: 'rooms',
       operation: 'DELETE',
@@ -332,10 +338,10 @@ describe('removals', () => {
 });
 
 describe('placing on request', () => {
-  it('places only the devices that have no place, for one room, and never moves a placed one', () => {
+  it('places only the devices that have no place, for one room, and never moves a placed one', async () => {
     const handPlaced = device(1, 'light', HOME_HALL);
-    arrive(handPlaced);
-    service.apply(
+    await arrive(handPlaced);
+    await service.apply(
       [
         {
           op: 'update',
@@ -350,44 +356,45 @@ describe('placing on request', () => {
     const waiting = device(2, 'light', HOME_HALL);
     const elsewhere = device(3, 'light', HOME_DEN);
     devices.push(waiting, elsewhere);
-    const outcome = sync.place({ roomId: HOME_HALL }, 'profile:me');
+    const outcome = await sync.place({ roomId: HOME_HALL }, 'profile:me');
     expect(outcome.placed).toBe(1);
     expect(outcome.revision).toBe(service.revision());
     expect(inside(HALL_ROOM, placementOf(waiting))).toBe(true);
     expect(placementOf(elsewhere)).toBeUndefined();
     expect(placementOf(handPlaced)).toMatchObject({ at: { x: 3.5, y: 2.5 }, auto: false });
-    expect(service.revisions({ after: outcome.revision - 1 })[0]?.actor).toBe('profile:me');
+    expect((await service.revisions({ after: outcome.revision - 1 }))[0]?.actor).toBe('profile:me');
   });
 
-  it('places the devices named, and every unplaced one when none are named', () => {
+  it('places the devices named, and every unplaced one when none are named', async () => {
     const a = device(1, 'light', HOME_HALL);
     const b = device(2, 'light', HOME_DEN);
     devices.push(a, b);
-    expect(sync.place({ deviceIds: [b.id] }, 'ai:me').placed).toBe(1);
+    expect((await sync.place({ deviceIds: [b.id] }, 'ai:me')).placed).toBe(1);
     expect(placementOf(a)).toBeUndefined();
-    expect(sync.place({}, 'ai:me').placed).toBe(1);
+    expect((await sync.place({}, 'ai:me')).placed).toBe(1);
     expect(placements()).toHaveLength(2);
   });
 
-  it('answers the current revision when nothing needed placing', () => {
+  it('answers the current revision when nothing needed placing', async () => {
     const before = service.revision();
-    expect(sync.place({}, 'profile:me')).toEqual({ revision: before, placed: 0 });
+    expect(await sync.place({}, 'profile:me')).toEqual({ revision: before, placed: 0 });
   });
 
-  it('gives the same result whatever order the devices come in', () => {
+  it('gives the same result whatever order the devices come in', async () => {
     const rows = [1, 2, 3, 4].map((n) => device(n, 'light', HOME_HALL));
     devices.push(...rows);
-    sync.place({}, 'profile:me');
+    await sync.place({}, 'profile:me');
     const forward = rows.map((row) => placementOf(row)?.at);
-    const other = storedService();
-    other.apply(service.revisions()[0]?.ops ?? [], 'profile:me');
+    const other = await storedService();
+    await other.apply((await service.revisions())[0]?.ops ?? [], 'profile:me');
     const reversed = new HomeMapDeviceSync({
       maps: other,
       devices: { list: (): readonly DeviceRow[] => [...rows].reverse() },
-      modelOf: (): null => null,
+      modelsOf: (rows): Promise<HomeMapDeviceModel[]> =>
+        Promise.resolve(rows.map((row) => ({ deviceId: row.id, modelId: null }))),
       log: testLogger('home-map'),
     });
-    reversed.place({}, 'profile:me');
+    await reversed.place({}, 'profile:me');
     const backward = rows.map(
       (row) =>
         other
@@ -398,12 +405,12 @@ describe('placing on request', () => {
     expect(backward).toEqual(forward);
   });
 
-  it('leaves a device with no free place in the tray and says so in the log', () => {
+  it('leaves a device with no free place in the tray and says so in the log', async () => {
     const lamps = Array.from({ length: 40 }, (_, index) =>
       device(index + 1, 'air_purifier', HOME_HALL),
     );
     devices.push(...lamps);
-    const outcome = sync.place({ roomId: HOME_HALL }, 'profile:me');
+    const outcome = await sync.place({ roomId: HOME_HALL }, 'profile:me');
     expect(
       outcome.placed + logs.events().filter((event) => event === 'home_map.device_unplaced').length,
     ).toBe(lamps.length);

@@ -4,7 +4,7 @@ import { messageOf } from '@smarteverything/logging';
 import type { DriveActor } from '../../drive/access';
 import { searchWordsOf } from '../../drive/search';
 import type { MeaningHit } from '../ai/index';
-import type { LibraryReader, PageQuery } from '../library';
+import type { LibraryPages, PageQuery } from '../library';
 
 export const MEANING_MIN_SCORE = 0.4;
 
@@ -28,7 +28,7 @@ export class PhotoSearch {
   private readonly cache = new Map<string, Cached>();
 
   constructor(
-    private readonly reader: LibraryReader,
+    private readonly reader: LibraryPages,
     private readonly meaning: MeaningSource,
     private readonly log: Logger,
     private readonly now: () => number,

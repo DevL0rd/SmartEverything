@@ -6,13 +6,18 @@ import type {
   HarnessTransportRequest,
   HarnessSubscriptionUse,
 } from '@smarteverything/domain';
-import { ConversationLog } from '../assistant/conversation-log';
-import { adoptSubagentSession } from '../assistant/engines/dsh/children';
+import { adoptSubagentSession } from '../assistant/engines/dsh/children-adoption';
 import type { DshSessionPrincipal } from '../store/repositories/dsh-session-claims';
 import { DshSessionStorageError } from '../store/repositories/dsh-session-errors';
 import type { Store } from '../store/store';
 import type { HarnessGrant } from './grant';
 import type { HarnessDirectory } from './directory';
+import { checkedGrant } from './grant-check';
+
+type HarnessBinding = Pick<
+  HarnessTransportRequest,
+  'device_id' | 'generation' | 'runtime_instance'
+>;
 
 export class HarnessStorage {
   constructor(
@@ -20,23 +25,7 @@ export class HarnessStorage {
     private readonly directory: HarnessDirectory,
   ) {}
   grant(id: string): HarnessGrant {
-    const grant = this.store.harnessSessions.grant(id);
-    if (grant === undefined)
-      throw new ApiError(
-        'forbidden',
-        'This native session has no active conversation execution grant.',
-      );
-    const metadata = this.store.dshSessions.stat(id, grant.profile_id);
-    if (metadata === undefined)
-      throw new ApiError('forbidden', 'This native session has no stored conversation.');
-    const chat = this.store.aiChats.chat(metadata.chat_id);
-    if (
-      chat.profile_id !== grant.profile_id ||
-      chat.engine.kind !== 'dsh' ||
-      chat.engine.session_id !== id
-    )
-      throw new ApiError('forbidden', 'The conversation no longer authorizes this native session.');
-    return grant;
+    return checkedGrant(this.store, id);
   }
   reader(id: string, runtimeInstance: string): string {
     const metadata = this.store.dshSessions.ownerOf(id);
@@ -51,11 +40,13 @@ export class HarnessStorage {
       return id;
     return parent;
   }
-  principal(
-    id: string,
-    binding: Pick<HarnessTransportRequest, 'device_id' | 'generation' | 'runtime_instance'>,
-  ): DshSessionPrincipal {
-    const grant = this.grant(id);
+  principal(id: string, binding: HarnessBinding): DshSessionPrincipal {
+    return this.principalOf(this.grant(id), binding);
+  }
+  async readPrincipal(id: string, binding: HarnessBinding): Promise<DshSessionPrincipal> {
+    return this.principalOf(await this.store.host.read('harnessGrant', id), binding);
+  }
+  private principalOf(grant: HarnessGrant, binding: HarnessBinding): DshSessionPrincipal {
     const connection = this.directory.bound(
       binding.device_id,
       binding.generation,
@@ -75,14 +66,14 @@ export class HarnessStorage {
       platform: host.platform,
     };
   }
-  execute(input: HarnessTransportRequest): unknown {
+  async execute(input: HarnessTransportRequest): Promise<unknown> {
     const request = input.request;
     if (request.operation === 'stat' || request.operation === 'read') {
       const id = request.operation === 'stat' ? request.session_id : request.input.session_id;
-      const principal = this.principal(this.reader(id, input.runtime_instance), input);
+      const principal = await this.readPrincipal(this.reader(id, input.runtime_instance), input);
       return request.operation === 'stat'
-        ? this.store.dshSessions.stat(id, principal.profile_id)
-        : this.store.dshSessions.read(request.input, principal.profile_id);
+        ? this.store.host.call('dshSessions', 'stat', id, principal.profile_id)
+        : this.store.host.call('dshSessions', 'read', request.input, principal.profile_id);
     }
     if (request.operation === 'verify')
       return this.verify(request.claim, input, request.subscription);
@@ -110,40 +101,36 @@ export class HarnessStorage {
       });
     throw new ApiError('invalid_request', 'This operation is not native persistence.');
   }
-  adoptChild(
+  async adoptChild(
     header: unknown,
     inherited: number,
     principal: DshSessionPrincipal,
     parentClaim: DshWriterClaim,
-  ): DshSessionOpened {
+  ): Promise<DshSessionOpened> {
     const native = DSH_SESSION_HEADER.parse(header);
     if (native.origin !== 'subagent' || native.parentSession !== parentClaim.session_id)
       throw new ApiError(
         'forbidden',
         'A helper session must name the conversation that is starting it as its parent.',
       );
-    return adoptSubagentSession(this.store, new ConversationLog(this.store), {
+    const adopted = await adoptSubagentSession(this.store, {
       principal,
       parentClaim,
       parentGrant: this.grant(parentClaim.session_id),
       header: native,
       inherited,
       now: new Date().toISOString(),
-    }).opened;
+    });
+    return adopted.opened;
   }
-  private write(
+  private async write(
     input: HarnessTransportRequest,
     request: Extract<HarnessTransportRequest['request'], { operation: 'append' | 'flush' }>,
-  ): unknown {
+  ): Promise<unknown> {
+    const principal = await this.readPrincipal(request.input.claim.session_id, input);
     if (request.operation === 'append')
-      return this.store.dshSessions.append(
-        request.input,
-        this.principal(request.input.claim.session_id, input),
-      );
-    return this.store.dshSessions.flush(
-      request.input,
-      this.principal(request.input.claim.session_id, input),
-    );
+      return this.store.live.dshSessions.append(request.input, principal);
+    return this.store.host.call('dshSessions', 'flush', request.input, principal);
   }
   private admitSubscription(id: string, input: HarnessSubscriptionUse): void {
     const selection = this.grant(id).route;
@@ -169,9 +156,9 @@ export class HarnessStorage {
   }
 }
 
-function writtenOrFenced<T>(write: () => T): T {
+async function writtenOrFenced<T>(write: () => Promise<T>): Promise<T> {
   try {
-    return write();
+    return await write();
   } catch (error) {
     if (!(error instanceof DshSessionStorageError)) throw error;
     throw new ApiError(

@@ -7,6 +7,7 @@ import {
 } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { StoreContext } from '../store/context';
+import type { Store } from '../store/store';
 import { DriveDaysRepository, type DriveDay } from '../store/repositories/drive-days';
 import { inList } from '../store/sql';
 import { driveFilter, type DriveActor } from './access';
@@ -165,6 +166,51 @@ export function purgesOf(
   return out;
 }
 
+type RootRow = z.output<typeof ROOT_ROW>;
+
+export interface DriveStatsFigures {
+  readonly roots: readonly RootRow[];
+  readonly series: readonly (readonly DriveDay[])[];
+  readonly versionBytes: number;
+  readonly trashBytes: number;
+  readonly kinds: readonly KindRow[];
+  readonly purges: DriveStats['purges'];
+}
+
+export function driveStatsOf(figures: DriveStatsFigures, space: DriveDataSpace): DriveStats {
+  const { roots, series, versionBytes, trashBytes, kinds } = figures;
+  const liveBytes = roots.reduce((sum, root) => sum + root.bytes, 0);
+  return DRIVE_STATS.parse({
+    items: roots.reduce((sum, root) => sum + root.items, 0),
+    folders: roots.reduce((sum, root) => sum + root.folders, 0),
+    bytes: liveBytes + versionBytes + trashBytes,
+    liveBytes,
+    versionBytes,
+    trashBytes,
+    kinds: kindsOf(kinds),
+    roots: roots.map((root) => ({
+      rootId: root.id,
+      items: root.items,
+      folders: root.folders,
+      bytes: root.bytes,
+      kinds: kindsOf(kinds.filter((row) => row.root_id === root.id)),
+    })),
+    space,
+    fullInMonths: fullInMonths(series, space.freeBytes),
+    purges: figures.purges,
+    growth: growthOf(series),
+  });
+}
+
+export async function readDriveStats(
+  store: Pick<Store, 'host'>,
+  actor: DriveActor,
+  probe: () => Promise<DriveDataSpace>,
+): Promise<DriveStats> {
+  const figures = await store.host.call('driveStats', 'figures', actor);
+  return driveStatsOf(figures, await probe());
+}
+
 export class DriveStatsReader {
   private readonly days: DriveDaysRepository;
 
@@ -172,40 +218,20 @@ export class DriveStatsReader {
     this.days = new DriveDaysRepository(context);
   }
 
-  async read(actor: DriveActor, probe: () => Promise<DriveDataSpace>): Promise<DriveStats> {
+  figures(actor: DriveActor): DriveStatsFigures {
     const roots = this.openable(actor);
     const ids = roots.map((root) => root.id);
-    const series = new Map(
-      roots.map((root) => [root.id, this.days.range(root.id, FIRST_DAY, LAST_DAY)]),
-    );
-    const liveBytes = roots.reduce((sum, root) => sum + root.bytes, 0);
-    const versionBytes = this.versionBytes(ids);
-    const trashBytes = this.trashBytes(ids);
-    const space = await probe();
-    const kinds = this.kindRows(ids);
-    return DRIVE_STATS.parse({
-      items: roots.reduce((sum, root) => sum + root.items, 0),
-      folders: roots.reduce((sum, root) => sum + root.folders, 0),
-      bytes: liveBytes + versionBytes + trashBytes,
-      liveBytes,
-      versionBytes,
-      trashBytes,
-      kinds: kindsOf(kinds),
-      roots: roots.map((root) => ({
-        rootId: root.id,
-        items: root.items,
-        folders: root.folders,
-        bytes: root.bytes,
-        kinds: kindsOf(kinds.filter((row) => row.root_id === root.id)),
-      })),
-      space,
-      fullInMonths: fullInMonths([...series.values()], space.freeBytes),
+    return {
+      roots,
+      series: roots.map((root) => this.days.range(root.id, FIRST_DAY, LAST_DAY)),
+      versionBytes: this.versionBytes(ids),
+      trashBytes: this.trashBytes(ids),
+      kinds: this.kindRows(ids),
       purges: this.purges(ids),
-      growth: growthOf([...series.values()]),
-    });
+    };
   }
 
-  private openable(actor: DriveActor): z.output<typeof ROOT_ROW>[] {
+  private openable(actor: DriveActor): RootRow[] {
     const filter = driveFilter(actor);
     return this.context.sql.all(
       ROOT_ROW,

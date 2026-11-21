@@ -238,7 +238,7 @@ describe('the library pack', () => {
   const keys = { kind: 'keys', keys: { Power: 'AAA=' } } as const;
   const sources = [{ source: 'flipper-irdb', licence: 'CC0-1.0', commit: 'abc' }] as const;
 
-  it('stores each model in its own compressed slice that the index points at', () => {
+  it('stores each model in its own compressed slice that the index points at', async () => {
     const pack = buildPack(sources, [
       { entry, model: keys },
       {
@@ -246,26 +246,26 @@ describe('the library pack', () => {
         model: { kind: 'keys', keys: { Mute: 'AAA=' } },
       },
     ]);
-    const index = readPackIndex(pack.index);
+    const index = await readPackIndex(pack.index);
     expect(index.sources).toStrictEqual(sources);
     const [first, second] = index.entries.map((one) => LIBRARY_ENTRY.parse(one));
     expect(first?.offset).toBe(0);
     expect(second?.offset).toBe(first?.length);
     const slice = (one: typeof first): Buffer =>
       pack.models.subarray(one?.offset ?? 0, (one?.offset ?? 0) + (one?.length ?? 0));
-    expect(first && readPackModel(first, slice(first))).toStrictEqual(keys);
-    expect(second && readPackModel(second, slice(second))).toStrictEqual({
+    expect(first && (await readPackModel(first, slice(first)))).toStrictEqual(keys);
+    expect(second && (await readPackModel(second, slice(second)))).toStrictEqual({
       kind: 'keys',
       keys: { Mute: 'AAA=' },
     });
   });
 
-  it('refuses a slice of the wrong length and a model that does not fit its schema', () => {
+  it('refuses a slice of the wrong length and a model that does not fit its schema', async () => {
     const pack = buildPack(sources, [{ entry, model: keys }]);
-    const [placed] = readPackIndex(pack.index).entries;
-    expect(() => readPackModel(LIBRARY_ENTRY.parse(placed), pack.models.subarray(1))).toThrow(
-      LibraryPackError,
-    );
+    const [placed] = (await readPackIndex(pack.index)).entries;
+    await expect(
+      readPackModel(LIBRARY_ENTRY.parse(placed), pack.models.subarray(1)),
+    ).rejects.toThrow(LibraryPackError);
     expect(() =>
       buildPack(sources, [{ entry, model: { kind: 'keys', keys: { Power: '' } } }]),
     ).toThrow();

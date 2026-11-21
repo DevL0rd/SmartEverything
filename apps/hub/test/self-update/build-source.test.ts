@@ -12,12 +12,7 @@ import {
 } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { HubLayout } from '../../src/data-layout';
-import {
-  BuildSourceMissingError,
-  buildSourceOf,
-  readBuildSources,
-  updateBuildSources,
-} from '../../src/self-update/build-source';
+import { BuildSourceMissingError, buildSourceOf } from '../../src/self-update/build-source';
 import {
   hubBuildRefusal,
   requireHubBuild,
@@ -26,6 +21,7 @@ import {
 import { openStore, type Store } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import { testLayout } from '../support/test-layout';
+import { testStoreHost } from '../support/store-host';
 
 let scratch: string;
 let layout: HubLayout;
@@ -36,11 +32,12 @@ beforeEach(async () => {
   layout = await testLayout(scratch);
   await mkdir(dirname(layout.system.database.file), { recursive: true });
   store = openStore({
+    host: testStoreHost(),
     path: layout.system.database.file,
     log: testLogger('store'),
     now: () => new Date('2026-11-14T10:00:00.000Z'),
     systemTimeZone: 'UTC',
-    drivePathOf: () => scratch,
+    driveFolders: null,
   });
 });
 
@@ -59,9 +56,9 @@ describe('the build source setting', () => {
     ]);
   });
 
-  it('starts as provided for every artifact', () => {
-    expect(readBuildSources(store)).toEqual(DEFAULT_BUILD_SOURCES);
-    expect(Object.values(readBuildSources(store))).toEqual([
+  it('starts as provided for every artifact', async () => {
+    expect(await store.host.read('buildSources', null)).toEqual(DEFAULT_BUILD_SOURCES);
+    expect(Object.values(await store.host.read('buildSources', null))).toEqual([
       'provided',
       'provided',
       'provided',
@@ -69,10 +66,10 @@ describe('the build source setting', () => {
     ]);
   });
 
-  it('changes only the named artifacts', () => {
-    const next = updateBuildSources(store, { apk: 'github', ui: 'hub' });
+  it('changes only the named artifacts', async () => {
+    const next = await store.host.write('buildSourcesUpdate', { apk: 'github', ui: 'hub' });
     expect(next).toEqual({ hub: 'provided', apk: 'github', ui: 'hub', desktop: 'provided' });
-    expect(readBuildSources(store)).toEqual(next);
+    expect(await store.host.read('buildSources', null)).toEqual(next);
   });
 
   it('refuses an update that names nothing or an unknown source', () => {
@@ -103,15 +100,15 @@ describe('the Hub build gate reading the setting', () => {
     }).toThrow(HubBuildRefusedError);
   });
 
-  it('points a github artifact at its release', () => {
-    updateBuildSources(store, { apk: 'github' });
+  it('points a github artifact at its release', async () => {
+    await store.host.write('buildSourcesUpdate', { apk: 'github' });
     expect(hubBuildRefusal(layout, 'app')).toMatch(
       /build source is github, not hub\. Publish it as a GitHub release/u,
     );
   });
 
-  it('lets only the artifact set to hub build, mapping app to apk', () => {
-    updateBuildSources(store, { apk: 'hub' });
+  it('lets only the artifact set to hub build, mapping app to apk', async () => {
+    await store.host.write('buildSourcesUpdate', { apk: 'hub' });
     expect(buildSourceOf(layout, 'app')).toBe('hub');
     expect(hubBuildRefusal(layout, 'app')).toBeNull();
     expect(hubBuildRefusal(layout, 'hub')).not.toBeNull();

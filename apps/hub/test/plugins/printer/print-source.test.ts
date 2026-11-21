@@ -22,7 +22,7 @@ function portsWith(
         return Promise.resolve(data === undefined ? null : { data, name: `picture-${id}` });
       },
       fromMachine: () => Promise.resolve(null),
-      attachmentsOf: () => Object.keys(files),
+      attachmentsOf: () => Promise.resolve(Object.keys(files)),
       readAttachment: (path) => Promise.resolve(files[path] ?? Buffer.alloc(0)),
     },
   };

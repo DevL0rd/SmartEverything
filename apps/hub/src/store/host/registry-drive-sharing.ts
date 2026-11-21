@@ -1,0 +1,177 @@
+import {
+  DRIVE_COMMENT_ADD_UNIT,
+  DRIVE_COMMENT_EDIT_UNIT,
+  DRIVE_COMMENT_REMOVE_UNIT,
+  DRIVE_COMMENT_RESOLVE_UNIT,
+  DRIVE_COMMENTS_UNIT,
+} from '../../drive/units/comments';
+import { DRIVE_ARCHIVE_UNIT, DRIVE_ITEM_TEXT_UNIT } from '../../drive/units/content-reads';
+import { DRIVE_BACKUP_REPORT_UNIT, DRIVE_HEALTH_FIGURES_UNIT } from '../../drive/units/health';
+import { DRIVE_EDIT_NOTICES_UNIT } from '../../drive/units/edit-notices';
+import { DRIVE_FOLDER_COLOUR_SET_UNIT } from '../../drive/units/folder-colours';
+import {
+  DRIVE_OFFLINE_GATHER_UNIT,
+  DRIVE_OFFLINE_REPORT_UNIT,
+  DRIVE_OFFLINE_SET_UNIT,
+} from '../../drive/units/offline';
+import {
+  DRIVE_BROWSE_FOLDER_UNIT,
+  DRIVE_ITEM_ACTIVITY_UNIT,
+  DRIVE_ITEM_VERSIONS_UNIT,
+  DRIVE_LIST_ALBUMS_UNIT,
+  DRIVE_LIST_ROOTS_UNIT,
+  DRIVE_READ_ACTIVITY_UNIT,
+  DRIVE_READ_ITEM_ROOT_UNIT,
+  DRIVE_READ_ITEM_UNIT,
+  DRIVE_READ_RECENT_UNIT,
+  DRIVE_RECORD_OPEN_UNIT,
+  DRIVE_ROOT_FOR_UNIT,
+  DRIVE_ROOT_OF_ITEM_UNIT,
+  DRIVE_WRITABLE_ITEM_ROOT_UNIT,
+} from '../../drive/units/read';
+import {
+  DRIVE_SHORTCUT_CREATE_UNIT,
+  DRIVE_SHORTCUT_REMOVE_UNIT,
+  DRIVE_SHORTCUT_UPDATE_UNIT,
+  DRIVE_SHORTCUTS_FOR_QUERY_UNIT,
+} from '../../drive/units/shortcuts';
+import {
+  DRIVE_ALBUM_ADD_ITEMS_UNIT,
+  DRIVE_ALBUM_CREATE_UNIT,
+  DRIVE_ALBUM_MEMBERS_UNIT,
+  DRIVE_ALBUM_REMOVE_ITEMS_UNIT,
+  DRIVE_ALBUM_REMOVE_UNIT,
+  DRIVE_ALBUM_UPDATE_UNIT,
+  DRIVE_ALBUMS_LIST_UNIT,
+} from '../../drive/units/albums';
+import { DRIVE_REPATH_UNIT, DRIVE_SYNC_RELOCATE_UNIT } from '../../drive/units/repath';
+import { DRIVE_SUGGESTIONS_UNIT } from '../../drive/units/suggestions';
+import {
+  DRIVE_ANNOUNCE_UNIT,
+  DRIVE_COPY_SPECIAL_UNIT,
+  DRIVE_ITEM_ACCESS_UNIT,
+  DRIVE_STAR_UNIT,
+} from '../../drive/units/tree';
+import {
+  DRIVE_ACCESS_ANSWER_UNIT,
+  DRIVE_ACCESS_OPEN_UNIT,
+  DRIVE_ACCESS_REQUEST_UNIT,
+  DRIVE_ACCESS_REQUESTS_UNIT,
+} from '../../drive/units/access-requests';
+import {
+  DRIVE_FILE_REQUEST_BY_TOKEN_UNIT,
+  DRIVE_FILE_REQUEST_CLOSE_UNIT,
+  DRIVE_FILE_REQUEST_CREATE_UNIT,
+  DRIVE_FILE_REQUEST_UPDATE_UNIT,
+  DRIVE_FILE_REQUEST_UPLOADS_UNIT,
+} from '../../drive/units/file-requests';
+import {
+  DRIVE_GRANT_REMOVE_UNIT,
+  DRIVE_GRANT_SET_UNIT,
+  DRIVE_GRANTS_OF_ITEM_UNIT,
+  DRIVE_SHARED_BY_ME_UNIT,
+  DRIVE_SHARED_WITH_ME_UNIT,
+} from '../../drive/units/grants';
+import { DRIVE_LOCK_SET_UNIT } from '../../drive/units/locks';
+import {
+  DRIVE_SHARE_ALBUM_ITEMS_UNIT,
+  DRIVE_SHARE_CHILDREN_UNIT,
+  DRIVE_SHARE_LINKS_ALLOWED_UNIT,
+  DRIVE_SHARE_OPEN_UNIT,
+  DRIVE_SHARE_REVOKE_UNIT,
+  DRIVE_SHARE_ROOT_PATH_UNIT,
+  DRIVE_SHARE_TARGET_UNIT,
+  DRIVE_SHARE_WITHIN_UNIT,
+  DRIVE_SHARES_MADE_BY_UNIT,
+  DRIVE_SHARES_OF_ITEM_UNIT,
+} from '../../drive/units/shares';
+import {
+  DRIVE_TRANSFER_OFFER_UNIT,
+  DRIVE_TRANSFER_PLAN_UNIT,
+  DRIVE_TRANSFER_REWRITE_UNIT,
+  DRIVE_TRANSFER_SETTLE_UNIT,
+  DRIVE_TRANSFER_TRASHED_UNIT,
+  DRIVE_TRANSFER_UNREFERENCED_UNIT,
+} from '../../drive/units/transfers';
+
+export const DRIVE_SHARING_READ_UNITS = {
+  driveShareTarget: DRIVE_SHARE_TARGET_UNIT,
+  driveShareLinksAllowed: DRIVE_SHARE_LINKS_ALLOWED_UNIT,
+  driveSharesOfItem: DRIVE_SHARES_OF_ITEM_UNIT,
+  driveSharesMadeBy: DRIVE_SHARES_MADE_BY_UNIT,
+  driveShareOpen: DRIVE_SHARE_OPEN_UNIT,
+  driveShareWithin: DRIVE_SHARE_WITHIN_UNIT,
+  driveShareRootPath: DRIVE_SHARE_ROOT_PATH_UNIT,
+  driveShareAlbumItems: DRIVE_SHARE_ALBUM_ITEMS_UNIT,
+  driveShareChildren: DRIVE_SHARE_CHILDREN_UNIT,
+  driveGrantsOfItem: DRIVE_GRANTS_OF_ITEM_UNIT,
+  driveSharedWithMe: DRIVE_SHARED_WITH_ME_UNIT,
+  driveSharedByMe: DRIVE_SHARED_BY_ME_UNIT,
+  driveAccessOpen: DRIVE_ACCESS_OPEN_UNIT,
+  driveAccessRequests: DRIVE_ACCESS_REQUESTS_UNIT,
+  driveFileRequestUploads: DRIVE_FILE_REQUEST_UPLOADS_UNIT,
+  driveFileRequestByToken: DRIVE_FILE_REQUEST_BY_TOKEN_UNIT,
+  driveTransferPlan: DRIVE_TRANSFER_PLAN_UNIT,
+  driveTransferTrashed: DRIVE_TRANSFER_TRASHED_UNIT,
+  driveTransferUnreferenced: DRIVE_TRANSFER_UNREFERENCED_UNIT,
+  driveOfflineGather: DRIVE_OFFLINE_GATHER_UNIT,
+  driveListRoots: DRIVE_LIST_ROOTS_UNIT,
+  driveRootFor: DRIVE_ROOT_FOR_UNIT,
+  driveRootOfItem: DRIVE_ROOT_OF_ITEM_UNIT,
+  driveReadItem: DRIVE_READ_ITEM_UNIT,
+  driveReadItemRoot: DRIVE_READ_ITEM_ROOT_UNIT,
+  driveBrowseFolder: DRIVE_BROWSE_FOLDER_UNIT,
+  driveListAlbums: DRIVE_LIST_ALBUMS_UNIT,
+  driveReadRecent: DRIVE_READ_RECENT_UNIT,
+  driveReadActivity: DRIVE_READ_ACTIVITY_UNIT,
+  driveItemVersions: DRIVE_ITEM_VERSIONS_UNIT,
+  driveItemActivity: DRIVE_ITEM_ACTIVITY_UNIT,
+  driveWritableItemRoot: DRIVE_WRITABLE_ITEM_ROOT_UNIT,
+  driveItemAccess: DRIVE_ITEM_ACCESS_UNIT,
+  driveArchive: DRIVE_ARCHIVE_UNIT,
+  driveHealthFigures: DRIVE_HEALTH_FIGURES_UNIT,
+  driveItemText: DRIVE_ITEM_TEXT_UNIT,
+  driveShortcutsForQuery: DRIVE_SHORTCUTS_FOR_QUERY_UNIT,
+  driveComments: DRIVE_COMMENTS_UNIT,
+  driveSuggestions: DRIVE_SUGGESTIONS_UNIT,
+  driveAlbumsList: DRIVE_ALBUMS_LIST_UNIT,
+  driveAlbumMembers: DRIVE_ALBUM_MEMBERS_UNIT,
+} as const;
+
+export const DRIVE_SHARING_WRITE_UNITS = {
+  driveShareRevoke: DRIVE_SHARE_REVOKE_UNIT,
+  driveGrantSet: DRIVE_GRANT_SET_UNIT,
+  driveGrantRemove: DRIVE_GRANT_REMOVE_UNIT,
+  driveAccessRequest: DRIVE_ACCESS_REQUEST_UNIT,
+  driveAccessAnswer: DRIVE_ACCESS_ANSWER_UNIT,
+  driveLockSet: DRIVE_LOCK_SET_UNIT,
+  driveFileRequestCreate: DRIVE_FILE_REQUEST_CREATE_UNIT,
+  driveFileRequestUpdate: DRIVE_FILE_REQUEST_UPDATE_UNIT,
+  driveFileRequestClose: DRIVE_FILE_REQUEST_CLOSE_UNIT,
+  driveTransferOffer: DRIVE_TRANSFER_OFFER_UNIT,
+  driveTransferSettle: DRIVE_TRANSFER_SETTLE_UNIT,
+  driveTransferRewrite: DRIVE_TRANSFER_REWRITE_UNIT,
+  driveOfflineSet: DRIVE_OFFLINE_SET_UNIT,
+  driveOfflineReport: DRIVE_OFFLINE_REPORT_UNIT,
+  driveRecordOpen: DRIVE_RECORD_OPEN_UNIT,
+  driveShortcutCreate: DRIVE_SHORTCUT_CREATE_UNIT,
+  driveShortcutUpdate: DRIVE_SHORTCUT_UPDATE_UNIT,
+  driveShortcutRemove: DRIVE_SHORTCUT_REMOVE_UNIT,
+  driveCommentAdd: DRIVE_COMMENT_ADD_UNIT,
+  driveCommentEdit: DRIVE_COMMENT_EDIT_UNIT,
+  driveCommentResolve: DRIVE_COMMENT_RESOLVE_UNIT,
+  driveCommentRemove: DRIVE_COMMENT_REMOVE_UNIT,
+  driveFolderColourSet: DRIVE_FOLDER_COLOUR_SET_UNIT,
+  driveEditNotices: DRIVE_EDIT_NOTICES_UNIT,
+  driveStar: DRIVE_STAR_UNIT,
+  driveBackupReport: DRIVE_BACKUP_REPORT_UNIT,
+  driveAnnounce: DRIVE_ANNOUNCE_UNIT,
+  driveCopySpecial: DRIVE_COPY_SPECIAL_UNIT,
+  driveRepath: DRIVE_REPATH_UNIT,
+  driveSyncRelocate: DRIVE_SYNC_RELOCATE_UNIT,
+  driveAlbumCreate: DRIVE_ALBUM_CREATE_UNIT,
+  driveAlbumUpdate: DRIVE_ALBUM_UPDATE_UNIT,
+  driveAlbumRemove: DRIVE_ALBUM_REMOVE_UNIT,
+  driveAlbumAddItems: DRIVE_ALBUM_ADD_ITEMS_UNIT,
+  driveAlbumRemoveItems: DRIVE_ALBUM_REMOVE_ITEMS_UNIT,
+} as const;

@@ -62,7 +62,7 @@ function owned(
       'Native commands require the owner’s direct authenticated app request.',
     );
   const chat = context.assistant.chats.own(
-    { profileId: profileIdOf(context.store, caller), role: 'owner' },
+    { profileId: profileIdOf(caller), role: 'owner' },
     chatId,
   );
   admitChatExecution(chat);

@@ -103,15 +103,16 @@ async function probe(
   const result = stamp(outcome, identityOf(state.entry).firmware, deps.now());
   const live = id === 'advert_log' && !outcome.ok;
   const { entry } = state;
-  deps.store.localDevices.updateConfig(
-    entry.externalId,
-    withOralb(entry.config, (block) => ({
-      ...block,
-      live: live ? 'connected' : block.live,
-      probes: { ...block.probes, [id]: result },
-    })),
+  state.useEntry(
+    await deps.store.host.write('localConfig', {
+      externalId: entry.externalId,
+      config: withOralb(entry.config, (block) => ({
+        ...block,
+        live: live ? 'connected' : block.live,
+        probes: { ...block.probes, [id]: result },
+      })),
+    }),
   );
-  state.useEntry(deps.store.localDevices.byExternalId(entry.externalId));
   await deps.local.observe(device.external_id, {});
   return outcome.ok
     ? { ok: true, detail: `The handle test passed (${id}).` }

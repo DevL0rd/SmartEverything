@@ -8,6 +8,7 @@ let pause: EndOfSpeechPause;
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   pause = new EndOfSpeechPause(opened.store);
 });
 

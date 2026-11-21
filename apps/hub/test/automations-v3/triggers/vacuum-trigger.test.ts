@@ -53,7 +53,7 @@ async function drive(
       { triggers: [vacuum] },
     ),
   );
-  rig.engine.sync();
+  await rig.engine.sync();
   rig.engine.observe(signal);
   await rig.until(() => rig.finished.length === 1);
 }
@@ -132,7 +132,7 @@ describe('trigger.vacuum reaches the run as its typed outputs', () => {
         triggers: [trigger('trigger.vacuum', { vacuum: lit('robot-2'), event: lit('finished') })],
       }),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.observe(robotSignal('cycle_finished', { outcome: 'finished' }));
     await rig.settle();
     expect(rig.finished).toHaveLength(0);

@@ -11,7 +11,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { actTreadmill } from '../../../src/local/treadmill/acts';
 import { runTreadmillCommand, type CommandDeps } from '../../../src/local/treadmill/commands';
 import { NoStepsGuard } from '../../../src/local/treadmill/guard';
-import { TreadmillHealth } from '../../../src/local/treadmill/health';
 import { captureLogs } from '../../support/logs';
 import { testLogger } from '../../support/logs';
 import {
@@ -34,13 +33,11 @@ let sent: Sent[];
 let answer: TreadmillActionResult;
 let guard: NoStepsGuard;
 let deps: CommandDeps;
-let walker: string;
 
 beforeEach(async () => {
   captureLogs();
   rig = await treadmillRig();
   sent = [];
-  walker = rig.owner.profile.id;
   answer = { ok: true, detail: 'Done.' };
   guard = new NoStepsGuard();
   deps = {
@@ -54,12 +51,11 @@ beforeEach(async () => {
     },
     guard,
     holderOf: (): string | null => rig.holder.clientId,
-    walkerOf: (): string => walker,
     holderName: (): string => 'Owner phone',
     now: rig.clock.now,
     log: testLogger('treadmill'),
   };
-  rig.batch(0, [statusHex({ state: IDLE })]);
+  await rig.batch(0, [statusHex({ state: IDLE })]);
 });
 
 afterEach(async () => {
@@ -99,7 +95,6 @@ async function setPolicy(policy: Record<string, unknown>): Promise<void> {
       fleet: rig.fleet,
       local: { observe: () => Promise.resolve() },
       bridges: { takeOver: () => Promise.reject(new Error('unused')) },
-      health: new TreadmillHealth(rig.test.store),
       broker: deps.broker,
       holderOf: deps.holderOf,
       now: rig.clock.now,
@@ -117,9 +112,9 @@ async function setPolicy(policy: Record<string, unknown>): Promise<void> {
   );
 }
 
-function walking(speed10 = 30): void {
-  rig.batch(1, [statusHex({ state: COUNTDOWN })]);
-  rig.batch(2, [statusHex({ state: RUNNING, speed10, time: 1, steps: 0 })]);
+async function walking(speed10 = 30): Promise<void> {
+  await rig.batch(1, [statusHex({ state: COUNTDOWN })]);
+  await rig.batch(2, [statusHex({ state: RUNNING, speed10, time: 1, steps: 0 })]);
 }
 
 const ON_PHONE = { source: 'app', client: null } as const;
@@ -150,16 +145,20 @@ describe('starting the belt', () => {
     await setPolicy({ remoteStart: true });
     await run('belt_command', 'start', { source: 'assistant', client: rig.owner });
     expect(sent).toHaveLength(1);
-    rig.batch(3, [statusHex({ state: RUNNING, speed10: 8, time: 1, steps: 0 })]);
+    await rig.batch(3, [statusHex({ state: RUNNING, speed10: 8, time: 1, steps: 0 })]);
     rig.clock.advanceTo('2026-10-18T10:01:00.000Z');
+    await rig.ingest.idle();
+    await rig.ingest.idle();
     expect(guard.expired(rig.fleet.of(rig.row()), rig.clock.now().getTime())).toBe(true);
   });
 
   it('does not stop a remote start that has steps', async () => {
     await setPolicy({ remoteStart: true });
     await run('belt_command', 'start', { source: 'assistant', client: rig.owner });
-    rig.batch(3, [statusHex({ state: RUNNING, speed10: 8, time: 1, steps: 5 })]);
+    await rig.batch(3, [statusHex({ state: RUNNING, speed10: 8, time: 1, steps: 5 })]);
     rig.clock.advanceTo('2026-10-18T10:01:00.000Z');
+    await rig.ingest.idle();
+    await rig.ingest.idle();
     expect(guard.expired(rig.fleet.of(rig.row()), rig.clock.now().getTime())).toBe(false);
   });
 
@@ -170,7 +169,6 @@ describe('starting the belt', () => {
     ).rejects.toThrow('owner only');
     await setPolicy({ remoteWho: 'owner_and_walker' });
     rig.holder.clientId = rig.member.client.id;
-    walker = rig.member.profile.id;
     await run('belt_command', 'start', { source: 'assistant', client: rig.member });
     expect(sent).toHaveLength(1);
   });
@@ -245,29 +243,31 @@ describe('speed', () => {
   });
 
   it('sets a speed on a moving belt and slows down from anywhere', async () => {
-    walking(80);
+    await walking(80);
     await run('belt_speed', 4.5, { source: 'app', client: rig.owner });
     await run('belt_speed', 3, { source: 'assistant', client: rig.member });
     expect(sent.map((call) => call.steps[0]?.hex)).toEqual(['f7a2012dd0fd', 'f7a2011ec1fd']);
   });
 
   it('caps a remote speed-up and the pad’s own limit', async () => {
-    walking();
+    await walking();
     await setPolicy({ remoteStart: true, remoteMaxKmh: 5 });
     await expect(run('belt_speed', 7, { source: 'assistant', client: rig.owner })).rejects.toThrow(
       'capped at 5 km/h',
     );
     await run('belt_speed', 5, { source: 'assistant', client: rig.owner });
-    rig.batch(5, ['f8a60000000000000000003c0500000000000000a9fd'.slice(0, 0) + prefsWithMax(60)]);
+    await rig.batch(5, [
+      'f8a60000000000000000003c0500000000000000a9fd'.slice(0, 0) + prefsWithMax(60),
+    ]);
     await expect(run('belt_speed', 7, { source: 'app', client: rig.owner })).rejects.toThrow(
       'limited to 6 km/h',
     );
   });
 
   it('waits for the countdown to finish before it sets a speed', async () => {
-    rig.batch(1, [statusHex({ state: COUNTDOWN })]);
+    await rig.batch(1, [statusHex({ state: COUNTDOWN })]);
     const pending = run('belt_speed', 4, { source: 'app', client: rig.owner });
-    rig.batch(2, [statusHex({ state: RUNNING, speed10: 8, time: 1 })]);
+    await rig.batch(2, [statusHex({ state: RUNNING, speed10: 8, time: 1 })]);
     await pending;
     expect(sent).toHaveLength(1);
   });
@@ -285,7 +285,7 @@ function prefsWithMax(max10: number): string {
 
 describe('mode and the settings stored on the pad', () => {
   it('refuses a mode change while the belt moves', async () => {
-    walking();
+    await walking();
     await expect(run('belt_mode', 'auto', ON_PHONE)).rejects.toThrow('after stopping the belt');
   });
 
@@ -320,7 +320,7 @@ describe('when the link or the phone fails', () => {
   });
 
   it('says so when the link is lost', async () => {
-    rig.ingest.process(rig.row(), rig.owner.client, {
+    await rig.ingest.process(rig.row(), rig.owner.client, {
       frames: [],
       link: { phase: 'lost', rssi: null, reconnects: 1, detail: 'gatt 133' },
     });

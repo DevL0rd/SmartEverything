@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import type { DriveIntent } from '../store/repositories/drive-intents';
 import {
   abandonIntent,
-  DriveWriteError,
   locate,
   tmpRelPath,
   undoRelPath,
@@ -11,6 +10,8 @@ import {
   type FileEnv,
   type FileStamp,
 } from './intents';
+import { DriveWriteError } from './write-error';
+import { openIntent } from './intent-batch';
 import type { ContentPatch } from './patch-files';
 
 export interface PatchRequest {
@@ -108,7 +109,7 @@ export async function commitPatch(env: FileEnv, request: PatchRequest): Promise<
     previousSha256: request.previousSha256,
   });
   const versionPath = captured === null ? null : versionRelPath(captured);
-  const intent = env.store.driveIntents.open({
+  const intent = await openIntent(env.store, {
     rootId: root.id,
     op: 'patch',
     fromPath: staged.relPath,

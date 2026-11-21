@@ -159,6 +159,7 @@ beforeEach(async () => {
     now: () => new Date(NOW),
     log: testLogger('home-map'),
   });
+  await runtime.load();
   routes = homeMapRoutes({ homeMap: runtime, store: opened.store });
   client = opened.store.clients.create(
     { name: 'Owner', platform: 'desktop', role: 'owner', tokenHash: 'c'.repeat(64) },
@@ -187,7 +188,7 @@ describe('reading the map', () => {
     const store = opened.store.rooms.create('Hall', 0);
     const lamp = device('light', store.id);
     await edit(person, [floorOp(), roomOp(store.id), sofaOp('sofa-1')]);
-    runtime.devices.place({}, 'profile:me');
+    await runtime.devices.place({}, 'profile:me');
     const compact = HOME_MAP_COMPACT.parse(
       await call(routes.getHomeMap, person, { query: { view: 'compact' } }),
     );
@@ -243,12 +244,12 @@ describe('editing the map', () => {
   it('answers the new revision and writes the person as the actor', async () => {
     const answer = await edit(person, [floorOp()], 0);
     expect(answer).toEqual({ revision: 1, conflicts: [] });
-    expect(runtime.service.revisions()[0]?.actor).toMatch(/^profile:/u);
+    expect((await runtime.service.revisions())[0]?.actor).toMatch(/^profile:/u);
   });
 
   it('writes the assistant as its own actor', async () => {
     await edit(assistant, [floorOp()], 0);
-    expect(runtime.service.revisions()[0]?.actor).toMatch(/^ai:/u);
+    expect((await runtime.service.revisions())[0]?.actor).toMatch(/^ai:/u);
   });
 
   it('refuses an edit made on a revision the hub has not reached', async () => {

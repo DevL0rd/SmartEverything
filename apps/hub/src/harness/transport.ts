@@ -9,46 +9,27 @@ import { harnessTargetKey } from '@smarteverything/domain';
 import { once } from 'node:events';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import { ApiError, DSH_WRITER_CLAIM_WRITE, JSON_VALUE } from '@smarteverything/domain';
+import { ApiError } from '@smarteverything/domain';
 import type { HarnessTransportRequest } from '@smarteverything/domain';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { RawRoute } from '../server/http-server';
-import { readBody, parseJsonBody, BODY_LIMIT } from '../server/http';
+import { readBody, assertJsonBody, BODY_LIMIT } from '../server/http';
+import { decodedBodyValue } from '../server/request-body';
+import type { ResponseEncoder } from '../server/responses/encoder';
 import type { ServerContext } from '../server/context';
 import type { HarnessService } from './service';
 import { nativeMediaNote } from './native-media-notes';
 import { acceptPublication } from './native-publication';
 import { InferenceTrace } from './inference-trace';
+import type { InferenceRequest } from './inference-request';
 
-export const INFERENCE = z.strictObject({
-  device_id: z.uuid(),
-  generation: z.uuid(),
-  runtime_instance: z.uuid(),
-  claim: DSH_WRITER_CLAIM_WRITE,
-  route_id: z.uuid(),
-  request: z.strictObject({
-    model: z.string().min(1),
-    stream: z.literal(true),
-    messages: z.array(JSON_VALUE),
-    stream_options: z.strictObject({ include_usage: z.literal(true) }).optional(),
-    store: z.literal(false).optional(),
-    max_tokens: z.int().positive().optional(),
-    max_completion_tokens: z.int().positive().optional(),
-    temperature: z.number().min(0).max(2).optional(),
-    tools: z.array(JSON_VALUE).optional(),
-    tool_choice: JSON_VALUE.optional(),
-    reasoning: z.strictObject({ effort: z.string().min(1) }).optional(),
-    reasoning_effort: z.string().min(1).optional(),
-    prompt_cache_key: z.string().optional(),
-    prompt_cache_retention: z.literal('24h').optional(),
-  }),
-});
 const log = new Logger('hub.harness');
 
 export function harnessTransportRoutes(
   context: ServerContext,
   service: HarnessService,
   fetcher: typeof fetch,
+  encoder: ResponseEncoder,
 ): readonly RawRoute[] {
   return [
     subscriptionConsumerRoute(context, service),
@@ -63,7 +44,7 @@ export function harnessTransportRoutes(
       method: 'POST',
       path: '/api/ai/harness/inference',
       handle: async (request, response): Promise<void> => {
-        await inference({ context, service, fetcher }, request, response);
+        await inference({ context, service, fetcher, encoder }, request, response);
       },
     },
   ];
@@ -164,7 +145,7 @@ export async function attachmentBytes(
   params: Readonly<Record<string, string>>,
 ): Promise<void> {
   const { context, service } = ports;
-  const node = authenticate(context, request);
+  const node = await authenticate(context, request);
   const sessionId = z.uuid().parse(params['sessionId']);
   if (
     harnessTargetKey(service.storage.grant(sessionId).target) !==
@@ -180,19 +161,24 @@ export async function attachmentBytes(
   });
   response.end(file.data);
 }
-interface InferencePorts {
+interface ForwardPorts {
   readonly context: ServerContext;
   readonly service: HarnessService;
   readonly fetcher: typeof fetch;
+}
+interface InferencePorts extends ForwardPorts {
+  readonly encoder: ResponseEncoder;
 }
 async function inference(
   ports: InferencePorts,
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
-  const { context, service, fetcher } = ports;
-  const body = INFERENCE.parse(parseJsonBody(request, await readBody(request, BODY_LIMIT)));
-  authenticate(context, request, body.device_id);
+  const { context, service, fetcher, encoder } = ports;
+  const raw = await readBody(request, BODY_LIMIT);
+  assertJsonBody(request);
+  const body = decodedBodyValue(await encoder.decodeInference(raw));
+  await authenticate(context, request, body.device_id);
   const ordinaryRequest =
     z.literal('true').optional().parse(request.headers['x-smarteverything-ordinary-request']) ===
     'true';
@@ -228,9 +214,9 @@ function upstreamHeaders(upstream: Response): Record<string, string> {
   };
 }
 interface InferenceBody {
-  readonly request: z.infer<typeof INFERENCE>['request'];
-  readonly claim: z.infer<typeof INFERENCE>['claim'];
-  readonly identity: z.infer<typeof INFERENCE>;
+  readonly request: InferenceRequest['request'];
+  readonly claim: InferenceRequest['claim'];
+  readonly identity: InferenceRequest;
   readonly ordinaryRequest: boolean;
 }
 
@@ -246,7 +232,7 @@ export function upstreamBody(request: InferenceBody['request'], sessionId: strin
 }
 
 function forwardUpstream(
-  ports: InferencePorts,
+  ports: ForwardPorts,
   body: InferenceBody,
   key: string,
   signal: AbortSignal,
@@ -267,7 +253,7 @@ function forwardUpstream(
   });
 }
 async function streamInference(
-  ports: InferencePorts,
+  ports: ForwardPorts,
   body: InferenceBody,
   response: ServerResponse,
 ): Promise<void> {
@@ -313,8 +299,8 @@ async function streamInference(
 function inferenceAccounting(
   service: HarnessService,
   body: {
-    readonly claim: z.infer<typeof INFERENCE>['claim'];
-    readonly identity: z.infer<typeof INFERENCE>;
+    readonly claim: InferenceRequest['claim'];
+    readonly identity: InferenceRequest;
     readonly ordinaryRequest: boolean;
   },
 ): Parameters<typeof meteredAccountingFetch>[3] {

@@ -113,23 +113,27 @@ describe('unattended work started for the owner', () => {
     expect(calls[0]).toMatchObject({ kind: 'client', client: { id: rig.clientId } });
   });
 
-  it('can act for another person', () => {
-    const acting = callerFor(context(unattended(rig.owner.profileId), []), { personId: member });
+  it('can act for another person', async () => {
+    const acting = await callerFor(context(unattended(rig.owner.profileId), []), {
+      personId: member,
+    });
     expect(acting).toMatchObject({ kind: 'client', profileId: member });
   });
 });
 
 describe('unattended work started for a member', () => {
-  it('stays a member and is refused owner-only operations', () => {
+  it('stays a member and is refused owner-only operations', async () => {
     const authority = unattended(member);
     expect(executionRole(authority)).toBe('member');
-    expect(() => operate(context(authority, []), OWNER_ONLY, {})).toThrow(/Only an owner may use/);
+    await expect(operate(context(authority, []), OWNER_ONLY, {})).rejects.toThrow(
+      /Only an owner may use/,
+    );
   });
 
-  it('cannot act for another person', () => {
-    expect(() =>
+  it('cannot act for another person', async () => {
+    await expect(
       callerFor(context(unattended(member), []), { personId: rig.owner.profileId }),
-    ).toThrow(/Only an owner/);
+    ).rejects.toThrow(/Only an owner/);
   });
 });
 
@@ -147,10 +151,12 @@ describe('unattended work that came from a plugin conversation', () => {
     expect(executionRole(authority)).toBe('owner');
   });
 
-  it('stays a member when the person on the plugin is only approved', () => {
+  it('stays a member when the person on the plugin is only approved', async () => {
     const authority = unattended(rig.owner.profileId, { ...FROM_PLUGIN, requester: 'approved' });
     expect(executionRole(authority)).toBe('member');
-    expect(() => operate(context(authority, []), OWNER_ONLY, {})).toThrow(/Only an owner may use/);
+    await expect(operate(context(authority, []), OWNER_ONLY, {})).rejects.toThrow(
+      /Only an owner may use/,
+    );
   });
 
   it('stays a member when a plugin acts on its own', () => {
@@ -163,7 +169,7 @@ describe('unattended work that came from a plugin conversation', () => {
     expect(executionRole(authority)).toBe('member');
   });
 
-  it('is refused owner-only operations when an unlisted person talks through the owner phone', () => {
+  it('is refused owner-only operations when an unlisted person talks through the owner phone', async () => {
     const chat: OperatingContext = {
       ...context(unattended(rig.owner.profileId), []),
       actor: {
@@ -174,6 +180,6 @@ describe('unattended work that came from a plugin conversation', () => {
         pluginRequester: 'unlisted',
       },
     };
-    expect(() => operate(chat, OWNER_ONLY, {})).toThrow(/Only an owner may use/);
+    await expect(operate(chat, OWNER_ONLY, {})).rejects.toThrow(/Only an owner may use/);
   });
 });

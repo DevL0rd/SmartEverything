@@ -1,4 +1,3 @@
-import { setImmediate as nextTurn } from 'node:timers/promises';
 import {
   CommandRefusedError,
   IR_APPLIANCE_APPLY,
@@ -8,7 +7,7 @@ import {
   type JsonValue,
 } from '@smarteverything/domain';
 import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DeviceSetter } from '../../../src/automations/effects/device-set';
 import { irEffects } from '../../../src/automations/effects/ir-nodes';
 import { CommandIssuer } from '../../../src/automations/issue-commands';
@@ -24,6 +23,7 @@ import { FakeClock } from '../../support/fake-clock';
 import { FakeAdapter, LAMP } from '../../support/fake-provider';
 import { testLogger } from '../../support/logs';
 import { testRun } from './support';
+import { adapterDirectory } from '../../support/adapter-directory';
 
 const open: TestDatabase[] = [];
 
@@ -160,14 +160,14 @@ async function home(category = 'air conditioner', published = true): Promise<Rig
     store: db.database,
     inventory,
     drivers,
-    adapters: { adapterFor: (): FakeAdapter => new FakeAdapter() },
+    adapters: adapterDirectory((): FakeAdapter => new FakeAdapter()),
     hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
     log: testLogger(),
     now: clock.now,
   });
   const issuer = new CommandIssuer({ store: db.store, database: db.database, executor, clock });
   const setter = new DeviceSetter({ store: db.store, executor, issuer });
-  const handler = irEffects({ store: db.store, clock, setter })['ir.appliance_set'];
+  const handler = irEffects({ store: db.store, setter })['ir.appliance_set'];
   const perform: Rig['perform'] = (params, mode) => {
     if (handler === undefined) throw new Error('ir.appliance_set has no handler');
     return handler(params, request(params, mode), testRun());
@@ -182,10 +182,6 @@ async function home(category = 'air conditioner', published = true): Promise<Rig
   };
 }
 
-async function settle(): Promise<void> {
-  for (let turn = 0; turn < 20; turn += 1) await nextTurn();
-}
-
 describe('ir.appliance_set brings the appliance to one state in one apply', () => {
   it('sends every asked control together and the driver turns them into one apply goal', async () => {
     const rig = await home();
@@ -197,7 +193,12 @@ describe('ir.appliance_set brings the appliance to one state in one apply', () =
       fan: 3,
     });
     expect(result).toMatchObject({ ok: true, value: { device: { device: rig.deviceId } } });
-    expect(batches(rig.driver)).toHaveLength(1);
+    await vi.waitFor(
+      () => {
+        expect(batches(rig.driver)).toHaveLength(1);
+      },
+      { timeout: 10_000 },
+    );
     const [sent] = batches(rig.driver);
     expect(valuesOf(sent ?? [])).toStrictEqual({
       power: true,
@@ -227,7 +228,12 @@ describe('ir.appliance_set brings the appliance to one state in one apply', () =
       temperature: 22,
     });
     expect(result).toMatchObject({ ok: true });
-    expect(batches(rig.driver)).toHaveLength(1);
+    await vi.waitFor(
+      () => {
+        expect(batches(rig.driver)).toHaveLength(1);
+      },
+      { timeout: 10_000 },
+    );
   });
 
   it('in wait mode continues when the blaster has sent, as an infrared appliance reports no state back', async () => {
@@ -239,8 +245,12 @@ describe('ir.appliance_set brings the appliance to one state in one apply', () =
       .finally(() => {
         finished = true;
       });
-    await settle();
-    expect(batches(rig.driver)).toHaveLength(1);
+    await vi.waitFor(
+      () => {
+        expect(batches(rig.driver)).toHaveLength(1);
+      },
+      { timeout: 10_000 },
+    );
     expect(finished).toBe(false);
     release();
     expect(await result).toMatchObject({ ok: true });

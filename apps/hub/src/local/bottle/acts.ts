@@ -1,4 +1,4 @@
-import { EMPTY_CLASSIFIER, fitCalibration } from '@smarteverything/ble';
+import { fitCalibration } from '@smarteverything/ble';
 import {
   ApiError,
   type BottleAction,
@@ -9,23 +9,20 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import type { LocalDeviceEntry } from '../../store/repositories/local-devices';
 import type { Store } from '../../store/store';
+import type { FleetRoster } from '../fleet-roster';
 import type { LocalDevices } from '../local-devices';
+import { replayNotes } from '../unit-notes';
 import type { WatchBridges } from '../watch-bridge';
 import { assertStanding, standingOf, type Viewer } from './access';
 import type { BottleActions } from './actions';
+import type { RederiveOutcome } from './bottle-units';
 import type { HomeClock } from './clock';
-import { entryConfigOf, saveConfig, type BottleEntryConfig } from './config';
-import type { DrinksDeps } from './drinks';
-import { rederive } from './rederive';
-import type { ReadingsDeps } from './readings';
-import { SNAP } from './snapshots';
+import { entryConfigOf, storedConfigOf, type BottleEntryConfig } from './config';
 import type { StatsCache } from './views-stats';
 
 export interface ActDeps {
-  readonly store: Store;
-  readonly readings: ReadingsDeps['readings'];
-  readonly snapshots: ReadingsDeps['snapshots'];
-  readonly drinks: DrinksDeps;
+  readonly store: Pick<Store, 'host'>;
+  readonly roster: Pick<FleetRoster, 'entryOf' | 'use'>;
   readonly actions: Pick<BottleActions, 'run'>;
   readonly bridges: Pick<WatchBridges, 'takeOver'>;
   readonly local: Pick<LocalDevices, 'observe'>;
@@ -58,21 +55,36 @@ function ok(detail: string): BottleActResult {
   return { ok: true, detail };
 }
 
-function readingsDepsOf(deps: ActDeps): ReadingsDeps {
-  return { readings: deps.readings, snapshots: deps.snapshots, now: deps.now };
-}
-
-function forgetClassifier(target: Target): void {
+async function forgetClassifier(target: Target): Promise<void> {
   const { deps, device } = target;
-  deps.snapshots.save(device.id, SNAP.classifier, deps.now().toISOString(), EMPTY_CLASSIFIER);
+  await deps.store.host.write('bottleForgetClassifier', {
+    deviceId: device.id,
+    now: deps.now().toISOString(),
+  });
   deps.stats.invalidate();
 }
 
 async function changed(target: Target, patch: Partial<BottleEntryConfig>): Promise<void> {
   const { deps, entry } = target;
-  saveConfig(deps.store, entry, { ...entryConfigOf(entry), ...patch });
+  deps.roster.use(
+    await deps.store.host.write('localConfig', {
+      externalId: entry.externalId,
+      config: storedConfigOf({ ...entryConfigOf(entry), ...patch }),
+    }),
+  );
   deps.stats.invalidate();
   await deps.local.observe(entry.externalId, {});
+}
+
+async function rederived(target: Target): Promise<RederiveOutcome> {
+  const { deps, device } = target;
+  const done = await deps.store.host.write('bottleRederive', {
+    deviceId: device.id,
+    now: deps.now().toISOString(),
+  });
+  replayNotes(deps.log, done.notes);
+  deps.stats.invalidate();
+  return done;
 }
 
 function pushed(
@@ -81,10 +93,8 @@ function pushed(
   return ({ deps, device, entry }) => deps.actions.run(device, entry, command);
 }
 
-function recomputed(target: Target): BottleActResult {
-  const { deps, device, entry } = target;
-  const done = rederive({ ...readingsDepsOf(deps), drinks: deps.drinks }, device.id, entry);
-  deps.stats.invalidate();
+async function recomputed(target: Target): Promise<BottleActResult> {
+  const done = await rederived(target);
   return ok(
     `Recomputed ${String(done.readings)} readings: ${String(done.added)} drinks added, ${String(done.corrected)} corrected.`,
   );
@@ -96,7 +106,7 @@ async function bind(target: Target, personId: string | null): Promise<BottleActR
     throw new ApiError('forbidden', 'Only the owner can give a bottle to another person.');
   }
   if (personId !== null) {
-    deps.store.profiles.byId(personId);
+    await deps.store.host.call('profiles', 'byId', personId);
   }
   await changed(target, {
     binding:
@@ -112,12 +122,7 @@ async function bind(target: Target, personId: string | null): Promise<BottleActR
   if (personId === null) {
     return ok('The bottle no longer saves drinks. Drinks already in the water log stay.');
   }
-  const done = rederive(
-    { ...readingsDepsOf(deps), drinks: deps.drinks },
-    target.device.id,
-    deps.store.localDevices.byExternalId(target.entry.externalId),
-  );
-  deps.stats.invalidate();
+  const done = await rederived(target);
   return ok(`Drinks now go into the water log. ${String(done.added)} past drinks were added.`);
 }
 
@@ -160,7 +165,7 @@ async function calibrate(
       fittedAt: target.deps.now().toISOString(),
     },
   });
-  forgetClassifier(target);
+  await forgetClassifier(target);
   return ok(`Calibration saved. The curve is within ${fit.rmseMl.toFixed(1)} ml of your cup.`);
 }
 
@@ -184,12 +189,12 @@ const HANDLERS: Handlers = {
   read_orientation: pushed('read_orientation'),
   uv_stop: pushed('uv_stop'),
   take_over: takeOver,
-  rederive: (target) => Promise.resolve(recomputed(target)),
+  rederive: recomputed,
   set_reminder: (target, action) => wish(target, 'reminder', action.reminder),
   set_quiet_hours: (target, action) => wish(target, 'quiet', action.quiet),
   set_body: async (target, action) => {
     await changed(target, { body: action.body });
-    forgetClassifier(target);
+    await forgetClassifier(target);
     return ok('Saved. Past drinks keep their size; use rederive to recompute them.');
   },
   set_filter: filtered,
@@ -209,7 +214,7 @@ const HANDLERS: Handlers = {
   set_calibration: calibrate,
   clear_calibration: async (target) => {
     await changed(target, { calibration: null });
-    forgetClassifier(target);
+    await forgetClassifier(target);
     return ok('Calibration removed. The standard curve is used again.');
   },
 };
@@ -228,7 +233,7 @@ export async function actBottle(
   actor: Actor,
   action: BottleAction,
 ): Promise<BottleActResult> {
-  const entry = deps.store.localDevices.byExternalId(device.external_id);
+  const entry = deps.roster.entryOf(device.external_id);
   if (action.action !== 'uv_stop') {
     assertStanding(actor, entryConfigOf(entry), device.display_name ?? device.name);
   }

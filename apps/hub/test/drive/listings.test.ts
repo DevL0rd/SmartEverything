@@ -1,7 +1,8 @@
 import type { DriveConflict } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
-import { DRIVE_PAGE_SIZE, DriveReadService } from '../../src/drive/service-read';
+import { DriveReadService } from '../../src/drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../../src/drive/page-size';
 import { driveListings } from '../../src/server/handlers/drive-listings';
 import type { DriveListings } from '../../src/server/handlers/drive-services';
 import type { TestStore } from '../support/store';
@@ -97,7 +98,7 @@ beforeEach(async () => {
   listings = driveListings({
     store,
     read: new DriveReadService(store),
-    duplicates: { groups: () => ({ groups: [], next: null }) },
+    duplicates: { groups: () => Promise.resolve({ groups: [], next: null }) },
   });
 });
 
@@ -120,27 +121,30 @@ describe('drive conflicts', () => {
     });
   });
 
-  it('lists only the conflicts of folders the person may see, newest first, a page at a time', () => {
+  it('lists only the conflicts of folders the person may see, newest first, a page at a time', async () => {
     const hidden = conflict(SAMS, '2026-11-07T00:30:00.000Z');
     const made = Array.from({ length: DRIVE_PAGE_SIZE + 1 }, (_, index) =>
       conflict(HOME, new Date(Date.parse('2026-11-07T01:00:00.000Z') + index * 1000).toISOString()),
     );
-    const first = listings.conflicts(owner, { rootId: HOME });
+    const first = await listings.conflicts(owner, { rootId: HOME });
     expect(first.items).toHaveLength(DRIVE_PAGE_SIZE);
     expect(first.items[0]?.id).toBe(made.at(-1)?.id);
     expect(first.next).not.toBeNull();
-    const second = listings.conflicts(owner, { rootId: HOME, cursor: first.next ?? undefined });
+    const second = await listings.conflicts(owner, {
+      rootId: HOME,
+      cursor: first.next ?? undefined,
+    });
     expect(second).toEqual({ items: [made[0]], next: null });
-    expect(listings.conflicts(sam, { rootId: SAMS }).items).toEqual([hidden]);
+    expect((await listings.conflicts(sam, { rootId: SAMS })).items).toEqual([hidden]);
     const outsider = opened.store.profiles.create({ name: 'Ann' }).id;
-    expect(() => listings.conflicts({ profileId: outsider }, { rootId: SAMS })).toThrow();
-    expect(() => listings.conflicts(owner, { rootId: SAMS })).toThrow();
-    expect(() => listings.conflicts(sam, { rootId: HOME, cursor: hidden.id })).toThrow();
+    await expect(listings.conflicts({ profileId: outsider }, { rootId: SAMS })).rejects.toThrow();
+    await expect(listings.conflicts(owner, { rootId: SAMS })).rejects.toThrow();
+    await expect(listings.conflicts(sam, { rootId: HOME, cursor: hidden.id })).rejects.toThrow();
   });
 });
 
 describe('drive shares', () => {
-  it('lists the links the person made, for one item or all, a page at a time', () => {
+  it('lists the links the person made, for one item or all, a page at a time', async () => {
     const item = file(HOME);
     const other = file(HOME);
     const minute = (offset: number): string =>
@@ -150,18 +154,18 @@ describe('drive shares', () => {
     );
     const onOther = share(other, owner.profileId, minute(500));
     share(item, sam.profileId, minute(600));
-    const first = listings.shares(owner, { itemId: item });
+    const first = await listings.shares(owner, { itemId: item });
     expect(first.items).toHaveLength(DRIVE_PAGE_SIZE);
     expect(first.items[0]?.id).toBe(made.at(-1));
-    const second = listings.shares(owner, { itemId: item, cursor: first.next ?? undefined });
+    const second = await listings.shares(owner, { itemId: item, cursor: first.next ?? undefined });
     expect(second.items.map((one) => one.id)).toEqual([made[0]]);
     expect(second.next).toBeNull();
-    expect(listings.shares(owner, {}).items[0]?.id).toBe(onOther);
-    expect(listings.shares(sam, {}).items).toHaveLength(1);
-    expect(() => listings.shares(sam, { cursor: onOther })).toThrow();
+    expect((await listings.shares(owner, {})).items[0]?.id).toBe(onOther);
+    expect((await listings.shares(sam, {})).items).toHaveLength(1);
+    await expect(listings.shares(sam, { cursor: onOther })).rejects.toThrow();
   });
 
-  it('lists the links of one album', () => {
+  it('lists the links of one album', async () => {
     const item = file(HOME);
     const itemLink = share(item, owner.profileId, '2026-11-07T01:00:00.000Z');
     const album = opened.store.driveAlbums.insert({
@@ -185,10 +189,13 @@ describe('drive shares', () => {
       createdBy: owner.profileId,
       createdAt: '2026-11-07T02:00:00.000Z',
     });
-    expect(listings.shares(owner, { albumId: album.id }).items.map((one) => one.id)).toEqual([
+    expect(
+      (await listings.shares(owner, { albumId: album.id })).items.map((one) => one.id),
+    ).toEqual([albumLink]);
+    expect((await listings.shares(owner, {})).items.map((one) => one.id)).toEqual([
       albumLink,
+      itemLink,
     ]);
-    expect(listings.shares(owner, {}).items.map((one) => one.id)).toEqual([albumLink, itemLink]);
-    expect(listings.shares(sam, { albumId: album.id }).items).toEqual([]);
+    expect((await listings.shares(sam, { albumId: album.id })).items).toEqual([]);
   });
 });

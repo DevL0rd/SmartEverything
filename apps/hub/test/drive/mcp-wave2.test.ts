@@ -241,17 +241,19 @@ describe('Drive wave 2 actions', () => {
     });
   });
 
-  it('refuses a shortcut without a place and a shortcut update that changes nothing', () => {
-    expect(() => run(DRIVE_EDIT, 'shortcut_create', { itemId: ID.item, name: 'x' })).toThrow();
-    expect(() => run(DRIVE_EDIT, 'shortcut_update', { shortcutId: ID.shortcut })).toThrow();
-    expect(() =>
+  it('refuses a shortcut without a place and a shortcut update that changes nothing', async () => {
+    await expect(
+      run(DRIVE_EDIT, 'shortcut_create', { itemId: ID.item, name: 'x' }),
+    ).rejects.toThrow();
+    await expect(run(DRIVE_EDIT, 'shortcut_update', { shortcutId: ID.shortcut })).rejects.toThrow();
+    await expect(
       run(DRIVE_EDIT, 'shortcut_create', {
         itemId: ID.item,
         name: 'x',
         parentId: ID.folder,
         rootId: ID.root,
       }),
-    ).toThrow();
+    ).rejects.toThrow();
   });
 
   it('asks for view access unless told otherwise and sends the message', async () => {
@@ -259,10 +261,10 @@ describe('Drive wave 2 actions', () => {
     expect(call.body).toEqual({ itemId: ID.item, role: 'view', message: 'Please' });
   });
 
-  it('refuses to approve an access request without a role', () => {
-    expect(() =>
+  it('refuses to approve an access request without a role', async () => {
+    await expect(
       run(DRIVE_EDIT, 'access_answer', { requestId: ID.request, decision: 'approve' }),
-    ).toThrow();
+    ).rejects.toThrow();
   });
 
   it('turns a transfer offer into the person to receive it', async () => {
@@ -278,8 +280,8 @@ describe('Drive wave 2 actions', () => {
     expect(call.body).toEqual({ itemId: ID.folder, colour: null });
   });
 
-  it('refuses to mark notifications read without naming which', () => {
-    expect(() => run(DRIVE_EDIT, 'notifications_read', {})).toThrow();
+  it('refuses to mark notifications read without naming which', async () => {
+    await expect(run(DRIVE_EDIT, 'notifications_read', {})).rejects.toThrow();
   });
 
   it('gives people access with an end date and without one', async () => {

@@ -38,7 +38,6 @@ beforeEach(async () => {
       write: { change: () => Promise.reject(new Error('The test never moves files.')) },
       links: new MediaLinks(() => new Date()),
       now: () => new Date(),
-      timeZone: () => 'UTC',
     }),
   );
 });

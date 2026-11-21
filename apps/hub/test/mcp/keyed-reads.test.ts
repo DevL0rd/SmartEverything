@@ -66,11 +66,10 @@ function finished(deviceId: string, count: number): CommandRow[] {
 }
 
 describe('a command report', () => {
-  it('names every command from one read of the devices', () => {
-    const devices = vi.spyOn(opened.store.devices, 'list');
-    const rooms = vi.spyOn(opened.store.rooms, 'list');
-    const states = vi.spyOn(opened.store.state, 'list');
-    const report = reported(
+  it('names every command from one read of the devices', async () => {
+    const reads = vi.spyOn(opened.store.host, 'read');
+    const calls = vi.spyOn(opened.store.host, 'call');
+    const report = await reported(
       { store: opened.store },
       {
         commands: finished(home.lamp.id, 4),
@@ -81,12 +80,11 @@ describe('a command report', () => {
     expect(report['commands']).toMatchObject(
       Array.from({ length: 4 }, () => ({ device: 'Desk lamp', now: null })),
     );
-    expect(devices).toHaveBeenCalledTimes(1);
-    expect(rooms).not.toHaveBeenCalled();
-    expect(states).not.toHaveBeenCalled();
+    expect(reads.mock.calls.map(([unit]) => unit)).toEqual(['mcpReported']);
+    expect(calls).not.toHaveBeenCalled();
   });
 
-  it('gives no device name to a command that targets no device', () => {
+  it('gives no device name to a command that targets no device', async () => {
     const [command] = opened.store.commands.insert([
       {
         deviceId: null,
@@ -96,7 +94,7 @@ describe('a command report', () => {
         requestedBy: null,
       },
     ]);
-    const report = reported(
+    const report = await reported(
       { store: opened.store },
       {
         commands: command ? [command] : [],
@@ -108,7 +106,7 @@ describe('a command report', () => {
 });
 
 describe('device details', () => {
-  it('reads the state and camera of just that device', () => {
+  it('reads the state and camera of just that device', async () => {
     opened.store.state.write([
       {
         deviceId: home.lamp.id,
@@ -123,24 +121,18 @@ describe('device details', () => {
         observedAt: '2026-10-08T10:00:00.000Z',
       },
     ]);
-    const all = vi.spyOn(opened.store.state, 'list');
-    const cameras = vi.spyOn(opened.store.cameras, 'list');
-    const ofDevice = vi.spyOn(opened.store.state, 'ofDevice');
-    const details = deviceDetails(
-      opened.store,
-      null,
-      OWNER,
-      placedDevice(opened.store, null, home.lamp.id),
-    );
+    const placed = await placedDevice(opened.store, null, home.lamp.id);
+    const reads = vi.spyOn(opened.store.host, 'read');
+    const details = await deviceDetails(opened.store, null, OWNER, placed);
     expect(details['capabilities']).toMatchObject([{ key: 'power', value: true }]);
-    expect(all).not.toHaveBeenCalled();
-    expect(cameras).not.toHaveBeenCalled();
-    expect(ofDevice).toHaveBeenCalledExactlyOnceWith(home.lamp.id);
+    expect(reads.mock.calls).toEqual([
+      ['mcpDeviceFacts', { deviceIds: [home.lamp.id], scope: null, viewer: OWNER }],
+    ]);
   });
 
-  it('describes every device of a detailed listing from one read of the devices', () => {
-    const devices = vi.spyOn(opened.store.devices, 'list');
-    const found = foundDevices(opened.store, null, OWNER, {
+  it('describes every device of a detailed listing from one read of the devices', async () => {
+    const reads = vi.spyOn(opened.store.host, 'read');
+    const found = await foundDevices(opened.store, null, OWNER, {
       includeHidden: false,
       limit: 200,
       detail: true,
@@ -151,20 +143,20 @@ describe('device details', () => {
       (entries: unknown) =>
         Array.isArray(entries) && entries.every((entry) => 'capabilities' in entry),
     );
-    expect(devices).toHaveBeenCalledTimes(1);
+    expect(reads.mock.calls.map(([unit]) => unit)).toEqual(['mcpHomeDevices', 'mcpDeviceFacts']);
   });
 
-  it('names an unknown device in the refusal without scanning the devices', () => {
-    const devices = vi.spyOn(opened.store.devices, 'list');
-    expect(() => placedDevice(opened.store, null, '0d000000-0000-4000-8000-000000000001')).toThrow(
-      /There is no device/,
-    );
-    expect(devices).not.toHaveBeenCalled();
+  it('names an unknown device in the refusal without scanning the devices', async () => {
+    const reads = vi.spyOn(opened.store.host, 'read');
+    await expect(
+      placedDevice(opened.store, null, '0d000000-0000-4000-8000-000000000001'),
+    ).rejects.toThrow(/There is no device/);
+    expect(reads.mock.calls.map(([unit]) => unit)).toEqual(['mcpDeviceWithRooms']);
   });
 });
 
 describe('the newest saved snapshot', () => {
-  it('is found with one query however many clips are newer', () => {
+  it('is found with one query however many clips are newer', async () => {
     opened.store.cameras.addRecording({
       deviceId: home.camera.id,
       eventId: null,
@@ -185,13 +177,13 @@ describe('the newest saved snapshot', () => {
         bytes: 10,
       });
     }
-    const query = vi.spyOn(opened.store.cameras, 'recordings');
-    expect(latestSnapshot(opened.store, home.camera.id).storage_path).toBe('old.jpg');
+    const query = vi.spyOn(opened.store.host, 'call');
+    expect((await latestSnapshot(opened.store, home.camera.id)).storage_path).toBe('old.jpg');
     expect(query).toHaveBeenCalledTimes(1);
   });
 
-  it('says so when the camera has none', () => {
-    expect(() => latestSnapshot(opened.store, home.camera.id)).toThrow(/no saved snapshot/);
+  it('says so when the camera has none', async () => {
+    await expect(latestSnapshot(opened.store, home.camera.id)).rejects.toThrow(/no saved snapshot/);
   });
 });
 
@@ -218,7 +210,11 @@ describe('a live camera look', () => {
   it('is withheld while the camera privacy mode is on, without reading all device state', async () => {
     write(true);
     const all = vi.spyOn(opened.store.state, 'list');
-    const shot = await shotOf(context(), placedDevice(opened.store, null, home.camera.id), 'full');
+    const shot = await shotOf(
+      context(),
+      await placedDevice(opened.store, null, home.camera.id),
+      'full',
+    );
     expect(shot.item).toMatchObject({ status: 'privacy_on' });
     expect(shot.image).toBeNull();
     expect(all).not.toHaveBeenCalled();
@@ -226,14 +222,18 @@ describe('a live camera look', () => {
 
   it('is taken while the privacy mode is off', async () => {
     write(false);
-    const shot = await shotOf(context(), placedDevice(opened.store, null, home.camera.id), 'full');
+    const shot = await shotOf(
+      context(),
+      await placedDevice(opened.store, null, home.camera.id),
+      'full',
+    );
     expect(shot.item).toMatchObject({ status: 'ok' });
     expect(shot.image?.data).toBe(Buffer.from([1, 2, 3]).toString('base64'));
   });
 });
 
 describe('the events listing', () => {
-  it('loads the recordings of all listed events in one query', () => {
+  it('loads the recordings of all listed events in one query', async () => {
     const rows = opened.store.events.insert(
       (['motion', 'person', 'sound'] as const).map((kind, index) => ({
         deviceId: home.camera.id,
@@ -258,9 +258,9 @@ describe('the events listing', () => {
         bytes: 1,
       });
     }
-    const batched = vi.spyOn(opened.store.cameras, 'recordingsOfEvents');
+    const batched = vi.spyOn(opened.store.host, 'read');
     const single = vi.spyOn(opened.store.cameras, 'recordingsOfEvent');
-    const listed = eventsOf(opened.store, null, OWNER, { limit: 50 });
+    const listed = await eventsOf(opened.store, null, OWNER, { limit: 50 });
     expect(listed).toHaveLength(3);
     const counts = new Map(
       listed.map((entry) => [
@@ -271,13 +271,16 @@ describe('the events listing', () => {
     expect([first?.id, second?.id, rows[2]?.id].map((id) => counts.get(id ?? ''))).toEqual([
       2, 1, 0,
     ]);
-    expect(batched).toHaveBeenCalledTimes(1);
+    expect(batched.mock.calls.map(([unit]) => unit)).toEqual([
+      'mcpHomeDevices',
+      'mcpVisibleEvents',
+    ]);
     expect(single).not.toHaveBeenCalled();
   });
 });
 
 describe('the people listing', () => {
-  it('attaches each app to its person without a lookup per app', () => {
+  it('attaches each app to its person without a lookup per app', async () => {
     const robin = opened.store.profiles.create({ name: 'Robin' });
     const client = opened.store.clients.create({
       name: 'Robin phone',
@@ -287,7 +290,7 @@ describe('the people listing', () => {
     });
     opened.store.clients.useProfile(client.id, robin.id);
     const active = vi.spyOn(opened.store.profiles, 'activeOf');
-    const people = peopleOf(opened.store);
+    const people = await peopleOf(opened.store);
     expect(people.find((person) => person['id'] === robin.id)).toMatchObject({
       apps: [{ id: client.id, name: 'Robin phone' }],
     });

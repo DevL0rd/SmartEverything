@@ -127,12 +127,12 @@ function startExtras(deps: DriveDeps, runtime: DriveRuntime): () => void {
 }
 
 export async function startDrive(deps: DriveDeps): Promise<RunningDrive> {
-  assertPhotosFolderPrepared(deps.store.context.sql);
+  await assertPhotosFolderPrepared(deps.store.host);
   const runtime = createDrive(deps);
   const follower = new RootFollower(deps, runtime);
   await ensureDrives(deps.store, deps.layout, deps.store.profiles.list());
   await recoverFiles(deps, runtime);
-  runtime.media.start();
+  await runtime.media.start();
   runtime.purge.start();
   await runtime.uploads.sweepExpired();
   const sweeper = new UploadSweeper(runtime.uploads, deps.now, deps.log);
@@ -144,7 +144,7 @@ export async function startDrive(deps: DriveDeps): Promise<RunningDrive> {
   return {
     routes: {
       ...driveRoutes(deps.store, runtime.services),
-      ...driveExtraRoutes(deps.store, runtime.extras),
+      ...driveExtraRoutes(runtime.extras),
     },
     rawRoutes: driveRawRoutes(deps, runtime, sweeper),
     runtime,

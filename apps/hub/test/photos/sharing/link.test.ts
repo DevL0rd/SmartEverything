@@ -202,7 +202,7 @@ describe('album share links', () => {
       password: null,
     });
     expect(created.share).toMatchObject({ albumId: ALBUM, itemId: null });
-    shares.revoke(owner, created.share.id);
+    await shares.revoke(owner, created.share.id);
     expect((await fetch(`${base}/s/${tokenOf(created.url)}`)).status).toBe(404);
   });
 

@@ -35,6 +35,7 @@ import {
   DriveMediaJobsRepository,
   type DriveMediaJob,
 } from '../../src/store/repositories/drive-media-jobs';
+import { repositoryDerived, repositoryJobs } from './pipeline-stores';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
 import { insertDriveRow, insertInode } from './photo-rows';
@@ -214,6 +215,12 @@ describe('render', () => {
   });
 });
 
+function turn(): Promise<void> {
+  return new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+}
+
 function job(kind: DriveMediaJob['kind'], itemNumber: number, visible = false): DriveMediaJob {
   return jobs.enqueue({ kind, itemId: seedItem(itemNumber), rev: 1, visible });
 }
@@ -234,7 +241,7 @@ function gated(resource: 'image' | 'io', failing: ReadonlySet<string> = new Set(
       await new Promise<void>((resolve) => waiting.push(resolve));
       if (failing.has(current.item_id)) throw new Error('cannot decode');
     },
-    fail: () => undefined,
+    fail: () => Promise.resolve(),
   };
   return {
     started,
@@ -250,7 +257,7 @@ function runnerOf(
   progress: PipelineProgress[] = [],
 ): MediaJobRunner {
   return new MediaJobRunner({
-    jobs,
+    jobs: repositoryJobs(jobs),
     limits: { ...limits, cloud: 1 },
     progress: (entry) => progress.push(entry),
     log: testLogger(),
@@ -265,8 +272,8 @@ describe('job runner', () => {
     const first = job('preview', 1);
     const background = job('preview', 2);
     const visible = job('preview', 3, true);
-    runner.start();
-    await Promise.resolve();
+    await runner.start();
+    await turn();
 
     expect(gate.started).toEqual([visible.item_id]);
     gate.release();
@@ -284,11 +291,11 @@ describe('job runner', () => {
     const gate = gated('image');
     const runner = runnerOf({ image: 1, video: 1, io: 1 });
     runner.register('preview', gate.handler);
-    runner.start();
-    const early = runner.request({ kind: 'preview', itemId: seedItem(1), rev: 1 });
-    const queued = runner.request({ kind: 'preview', itemId: seedItem(2), rev: 1 });
-    const urgent = runner.request({ kind: 'preview', itemId: seedItem(3), rev: 1 });
-    runner.prioritise(urgent.item_id);
+    await runner.start();
+    const early = await runner.request({ kind: 'preview', itemId: seedItem(1), rev: 1 });
+    const queued = await runner.request({ kind: 'preview', itemId: seedItem(2), rev: 1 });
+    const urgent = await runner.request({ kind: 'preview', itemId: seedItem(3), rev: 1 });
+    await runner.prioritise(urgent.item_id);
     gate.release();
     await new Promise((resolve) => setImmediate(resolve));
     gate.release();
@@ -308,8 +315,8 @@ describe('job runner', () => {
     runner.register('poster', io.handler);
     for (const n of [1, 2, 3]) job('preview', n);
     for (const n of [4, 5]) job('poster', n);
-    runner.start();
-    await Promise.resolve();
+    await runner.start();
+    await turn();
 
     expect(cpu.started).toHaveLength(2);
     expect(io.started).toHaveLength(1);
@@ -328,10 +335,10 @@ describe('job runner', () => {
     const gate = gated('image', new Set([failing]));
     const runner = runnerOf({ image: 1, video: 1, io: 1 });
     runner.register('preview', gate.handler);
-    runner.request({ kind: 'preview', itemId: failing, rev: 1 });
-    const fine = runner.request({ kind: 'preview', itemId: seedItem(2), rev: 1 });
-    runner.start();
-    await Promise.resolve();
+    await runner.request({ kind: 'preview', itemId: failing, rev: 1 });
+    const fine = await runner.request({ kind: 'preview', itemId: seedItem(2), rev: 1 });
+    await runner.start();
+    await turn();
     gate.release();
     await new Promise((resolve) => setImmediate(resolve));
     gate.release();
@@ -348,14 +355,14 @@ describe('job runner', () => {
     const progress: PipelineProgress[] = [];
     const runner = runnerOf({ image: 1, video: 1, io: 1 }, progress);
     runner.register('preview', gate.handler);
-    runner.start();
-    runner.request({ kind: 'preview', itemId: seedItem(1), rev: 1 });
-    runner.request({ kind: 'preview', itemId: seedItem(2), rev: 1 });
+    await runner.start();
+    await runner.request({ kind: 'preview', itemId: seedItem(1), rev: 1 });
+    await runner.request({ kind: 'preview', itemId: seedItem(2), rev: 1 });
     gate.release();
     await new Promise((resolve) => setImmediate(resolve));
     gate.release();
     await runner.idle();
-    runner.request({ kind: 'preview', itemId: seedItem(3), rev: 1 });
+    await runner.request({ kind: 'preview', itemId: seedItem(3), rev: 1 });
     gate.release();
     await runner.idle();
 
@@ -378,8 +385,8 @@ describe('job runner', () => {
     const interrupted = job('preview', 1);
     jobs.claim(['preview'], 1);
     expect(jobs.byId(interrupted.id).state).toBe('running');
-    runner.start();
-    await Promise.resolve();
+    await runner.start();
+    await turn();
 
     expect(gate.started).toEqual([interrupted.item_id]);
     gate.release();
@@ -387,7 +394,7 @@ describe('job runner', () => {
 
     database.prepare('update drive_items set rev = 2 where id = ?').run(interrupted.item_id);
     const changed = items.byId(interrupted.item_id, null);
-    runner.itemChanged(changed.id, changed.rev);
+    await runner.itemChanged(changed.id, changed.rev);
 
     expect(jobs.forItem(interrupted.item_id)).toEqual([]);
   });
@@ -404,8 +411,7 @@ describe('job runner', () => {
 
 function handlerWith(decoders: PreviewDecoders, writer = writeThumb): PreviewHandler {
   return new PreviewHandler({
-    store: { write: (work) => context.write(work), driveItems: items, driveMedia: media },
-    writeThumb: writer,
+    derived: repositoryDerived({ context, items, media, writeThumb: writer }),
     decoders,
     locate: (item) => Promise.resolve(join(directory, item.name)),
     layout,
@@ -489,7 +495,7 @@ describe('preview handler', () => {
   it('records a failure from the runner with the error text in both places', async () => {
     const queued = await pending(1);
 
-    handlerWith(sharpDecoders()).fail(queued, new Error('Input file is missing'));
+    await handlerWith(sharpDecoders()).fail(queued, new Error('Input file is missing'));
 
     expect(thumbOf(queued.item_id)).toEqual({ state: 'failed', reason: 'Input file is missing' });
     expect(media.byId(queued.item_id).preview_reason).toBe('Input file is missing');
@@ -501,8 +507,8 @@ describe('preview handler', () => {
     const handler = handlerWith(sharpDecoders());
     const runner = runnerOf({ image: 1, video: 1, io: 1 });
     runner.register('preview', handler);
-    runner.start();
-    runner.request({ kind: 'preview', itemId: queued.item_id, rev: 1 });
+    await runner.start();
+    await runner.request({ kind: 'preview', itemId: queued.item_id, rev: 1 });
     await runner.idle();
 
     expect(jobs.failures()).toHaveLength(1);

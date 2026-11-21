@@ -23,7 +23,7 @@ describe('the installed starter Custom Nodes on the hub', () => {
     const rig = await rigV3();
     expect(rig.functions.byId(STARTER_NODE_IDS.switchDevices).name).toBe('Switch devices');
     const row = switchLamp(rig, true);
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.start(row.id, {}, null);
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id).map((record) => record.error)).toStrictEqual([null]);
@@ -33,12 +33,13 @@ describe('the installed starter Custom Nodes on the hub', () => {
   it('rehearses a call to it without touching the device', async () => {
     const rig = await rigV3();
     const row = switchLamp(rig, false);
-    rig.engine.sync();
+    await rig.engine.sync();
     const rehearsal = await rehearsals({
       clock: rig.clock,
       base: rig.world(),
       watch: () => (): void => undefined,
       subjectOf: (automationId) => rig.engine.subjectOf(automationId),
+      heldSubject: (automationId) => rig.engine.heldSubject(automationId),
       zone: () => 'UTC',
     }).run({
       automationId: row.id,

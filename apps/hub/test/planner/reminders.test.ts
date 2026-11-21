@@ -13,6 +13,7 @@ import { instantsOf } from '../../src/planner/instants';
 import { ReminderScheduler, type ReminderPull } from '../../src/planner/reminders';
 import { SummaryDesk } from '../../src/planner/summary';
 import type { PlannerItemInput } from '../../src/store/repositories/planner-items';
+import { advanceSettled } from '../support/host-settle';
 import { testLogger } from '../support/logs';
 import { addPerson, type TestPerson } from '../support/phone-fixtures';
 import { testStore, type TestStore } from '../support/store';
@@ -170,12 +171,8 @@ beforeEach(async () => {
     if (notice.type === 'planner_ring') notices.push(PLANNER_RING_NOTICE.parse(notice));
     if (notice.type === 'planner_summary') summaries.push(PLANNER_SUMMARY_NOTICE.parse(notice));
   });
-  summary = new SummaryDesk({
-    store: test.store,
-    clock,
-    preferencesOf: (): PlannerPreferences => PREFERENCES,
-    log: testLogger(),
-  });
+  test.store.plannerPreferences.put(owner.profileId, PREFERENCES);
+  summary = new SummaryDesk({ store: test.store, clock, log: testLogger() });
   scheduler = build();
 });
 
@@ -185,12 +182,23 @@ afterEach(async () => {
   await test.close();
 });
 
+async function settle(): Promise<void> {
+  await scheduler.settled();
+  await summary.settled();
+  await scheduler.settled();
+}
+
+async function advance(at: string): Promise<void> {
+  await advanceSettled(clock, at, settle);
+}
+
 describe('reminders', () => {
-  it('rings at the reminder instant with a ring row, a notice and an event signal', () => {
+  it('rings at the reminder instant with a ring row, a notice and an event signal', async () => {
     const meeting = standup();
-    scheduler.start();
+    await settle();
+    await scheduler.start();
     expect(clock.pending()).toEqual(['2026-11-07T08:50:00.000Z']);
-    clock.advanceTo('2026-11-07T08:50:00.000Z');
+    await advance('2026-11-07T08:50:00.000Z');
     const [ring] = rings(meeting.id);
     expect(ring).toMatchObject({
       kind: 'reminder',
@@ -217,15 +225,16 @@ describe('reminders', () => {
     expect(clock.pending()).toEqual([]);
   });
 
-  it('rings a task reminder with a task_due signal', () => {
+  it('rings a task reminder with a task_due signal', async () => {
     const report = add({
       kind: 'task',
       title: 'Report',
       due_at: '2026-11-07T12:00:00.000Z',
       reminders: [{ minutes_before: 60 }, { minutes_before: 0 }],
     });
-    scheduler.start();
-    clock.advanceTo('2026-11-07T12:00:00.000Z');
+    await settle();
+    await scheduler.start();
+    await advance('2026-11-07T12:00:00.000Z');
     expect(rings(report.id).map((ring) => ring.due_at)).toEqual([
       '2026-11-07T11:00:00.000Z',
       '2026-11-07T12:00:00.000Z',
@@ -233,10 +242,11 @@ describe('reminders', () => {
     expect(signals.map((signal) => signal.kind)).toEqual(['task_due', 'task_due', 'task_missed']);
   });
 
-  it('keeps arming the next occurrence of a repeating item', () => {
+  it('keeps arming the next occurrence of a repeating item', async () => {
     const daily = standup({ rrule: 'FREQ=DAILY' });
-    scheduler.start();
-    clock.advanceTo('2026-11-08T08:50:00.000Z');
+    await settle();
+    await scheduler.start();
+    await advance('2026-11-08T08:50:00.000Z');
     expect(rings(daily.id).map((ring) => ring.due_at)).toEqual([
       '2026-11-07T08:50:00.000Z',
       '2026-11-08T08:50:00.000Z',
@@ -244,20 +254,24 @@ describe('reminders', () => {
     expect(clock.pending()).toEqual(['2026-11-09T08:50:00.000Z']);
   });
 
-  it('re-arms on every write', () => {
+  it('re-arms on every write', async () => {
     const meeting = standup();
-    scheduler.start();
+    await settle();
+    await scheduler.start();
     test.store.plannerItems.update(meeting.id, owner.profileId, {
       reminders: [{ minutes_before: 30 }],
     });
+    await settle();
     expect(clock.pending()).toEqual(['2026-11-07T08:30:00.000Z']);
     test.store.plannerItems.update(meeting.id, owner.profileId, { status: 'cancelled' });
+    await settle();
     expect(clock.pending()).toEqual([]);
   });
 
-  it('does not ring for an occurrence that is done', () => {
+  it('does not ring for an occurrence that is done', async () => {
     const meeting = standup();
-    scheduler.start();
+    await settle();
+    await scheduler.start();
     test.store.plannerOccurrences.save({
       item_id: meeting.id,
       occurrence_key: 'single',
@@ -268,18 +282,20 @@ describe('reminders', () => {
       moved_start: null,
       moved_end: null,
     });
-    clock.advanceTo('2026-11-07T09:30:00.000Z');
+    await settle();
+    await advance('2026-11-07T09:30:00.000Z');
     expect(rings(meeting.id)).toEqual([]);
     expect(signals).toEqual([]);
   });
 
-  it('records a reminder found overdue after a hub restart as missed, never late', () => {
+  it('records a reminder found overdue after a hub restart as missed, never late', async () => {
     const meeting = standup();
-    scheduler.start();
+    await settle();
+    await scheduler.start();
     scheduler.stop();
     clock.jumpTo('2026-11-07T08:55:00.000Z');
     scheduler = build();
-    scheduler.start();
+    await scheduler.start();
     expect(rings(meeting.id)).toEqual([
       expect.objectContaining({
         outcome: 'missed',
@@ -292,15 +308,16 @@ describe('reminders', () => {
     expect(clock.pending()).toEqual([]);
     scheduler.stop();
     scheduler = build();
-    scheduler.start();
+    await scheduler.start();
     expect(rings(meeting.id)).toHaveLength(1);
   });
 
-  it('records the reminder missed as computer asleep when the machine resumes', () => {
+  it('records the reminder missed as computer asleep when the machine resumes', async () => {
     const meeting = standup();
-    scheduler.start();
+    await settle();
+    await scheduler.start();
     clock.jumpTo('2026-11-07T09:05:00.000Z');
-    scheduler.resumed();
+    await scheduler.resumed();
     expect(rings(meeting.id)).toEqual([
       expect.objectContaining({ outcome: 'missed', missed_reason: 'computer_asleep' }),
     ]);
@@ -316,8 +333,9 @@ describe('reminders', () => {
     const meeting = standup({
       google: { id: 'g1', calendarOrListId: 'c1', etag: null, base: {}, state: 'synced' },
     });
-    scheduler.start();
-    clock.advanceTo('2026-11-07T08:50:00.000Z');
+    await settle();
+    await scheduler.start();
+    await advance('2026-11-07T08:50:00.000Z');
     await vi.waitFor(() => {
       expect(rings(meeting.id)).toHaveLength(1);
     });
@@ -330,8 +348,9 @@ describe('reminders', () => {
     const meeting = standup({
       google: { id: 'g1', calendarOrListId: 'c1', etag: null, base: {}, state: 'synced' },
     });
-    scheduler.start();
-    clock.advanceTo('2026-11-07T08:50:00.000Z');
+    await settle();
+    await scheduler.start();
+    await advance('2026-11-07T08:50:00.000Z');
     await vi.waitFor(() => {
       expect(rings(meeting.id)).toHaveLength(1);
     });
@@ -339,10 +358,11 @@ describe('reminders', () => {
 });
 
 describe('reminders for people the item involves', () => {
-  it('rings for a member guest on their own profile and not for a decliner', () => {
+  it('rings for a member guest on their own profile and not for a decliner', async () => {
     const ann = addPerson(test, 'Ann', 'member');
     const bob = addPerson(test, 'Bob', 'member');
     const meeting = standup();
+    await settle();
     for (const person of [ann, bob]) {
       test.store.plannerGuests.insert({
         item_id: meeting.id,
@@ -361,8 +381,9 @@ describe('reminders for people the item involves', () => {
       response: 'no',
       responded_at: '2026-11-07T08:00:00.000Z',
     });
-    scheduler.start();
-    clock.advanceTo('2026-11-07T08:50:00.000Z');
+    await settle();
+    await scheduler.start();
+    await advance('2026-11-07T08:50:00.000Z');
     expect(
       rings(meeting.id)
         .map((ring) => ring.profile_id)
@@ -370,7 +391,7 @@ describe('reminders for people the item involves', () => {
     ).toEqual([owner.profileId, ann.profileId].sort());
   });
 
-  it('rings for the assignee of a task as well as its owner', () => {
+  it('rings for the assignee of a task as well as its owner', async () => {
     const ann = addPerson(test, 'Ann', 'member');
     const chore = add({
       kind: 'task',
@@ -379,8 +400,9 @@ describe('reminders for people the item involves', () => {
       reminders: [{ minutes_before: 60 }],
       assignee_id: ann.profileId,
     });
-    scheduler.start();
-    clock.advanceTo('2026-11-07T11:00:00.000Z');
+    await settle();
+    await scheduler.start();
+    await advance('2026-11-07T11:00:00.000Z');
     expect(
       rings(chore.id)
         .map((ring) => ring.profile_id)
@@ -394,9 +416,9 @@ describe('summary notice', () => {
     return summaries.filter((notice) => notice.personId === owner.profileId);
   }
 
-  it('publishes on hub start and then only when the summary changed', () => {
-    scheduler.start();
-    summary.start();
+  it('publishes on hub start and then only when the summary changed', async () => {
+    await scheduler.start();
+    await summary.start();
     expect(mine()).toEqual([
       {
         type: 'planner_summary',
@@ -408,31 +430,35 @@ describe('summary notice', () => {
       },
     ]);
     add({ kind: 'task', title: 'Report', due_at: '2026-11-07T09:30:00.000Z' });
+    await settle();
     expect(mine().at(-1)).toMatchObject({ missed: 0, left: 1 });
     expect(mine()).toHaveLength(2);
   });
 
-  it('does not publish for a write that leaves the summary unchanged', () => {
+  it('does not publish for a write that leaves the summary unchanged', async () => {
     const report = add({ kind: 'task', title: 'Report', due_at: '2026-11-07T09:30:00.000Z' });
-    summary.start();
+    await settle();
+    await summary.start();
     const before = mine().length;
     test.store.plannerItems.update(report.id, owner.profileId, { notes: 'draft' });
+    await settle();
     expect(mine()).toHaveLength(before);
   });
 
-  it('publishes when an occurrence becomes missed at its due time, on the reminder timer', () => {
+  it('publishes when an occurrence becomes missed at its due time, on the reminder timer', async () => {
     add({ kind: 'task', title: 'Report', due_at: '2026-11-07T09:30:00.000Z' });
-    scheduler.start();
-    summary.start();
+    await settle();
+    await scheduler.start();
+    await summary.start();
     expect(mine().at(-1)).toMatchObject({ missed: 0, left: 1 });
     expect(clock.pending()).toEqual(['2026-11-07T09:30:00.000Z']);
-    clock.advanceTo('2026-11-07T09:30:00.000Z');
+    await advance('2026-11-07T09:30:00.000Z');
     expect(mine().at(-1)).toMatchObject({ missed: 1, left: 0 });
     expect(signals.map((signal) => signal.kind)).toEqual(['task_missed']);
   });
 
-  it('counts a running timer and the next alarm from any service write', () => {
-    summary.start();
+  it('counts a running timer and the next alarm from any service write', async () => {
+    await summary.start();
     test.store.plannerTimers.insert({
       profile_id: owner.profileId,
       label: null,
@@ -442,6 +468,7 @@ describe('summary notice', () => {
       remaining_ms: null,
       targets: [],
     });
+    await settle();
     expect(mine().at(-1)).toMatchObject({ runningTimers: 1 });
   });
 });

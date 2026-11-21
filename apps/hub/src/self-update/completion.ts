@@ -6,8 +6,10 @@ import {
   type HubUpdateOutcome,
   type HubUpdateRelease,
 } from '@smarteverything/domain';
-import { ConversationLog } from '../assistant/conversation-log';
 import { HUB_AUTHOR, HUB_ORIGIN } from '../assistant/interruption';
+import { noteMessage } from '../assistant/note-message';
+import { addConversationMessage } from '../assistant/store-units';
+import { durableStoreUnit } from '../store/host/unit';
 import { repairWorkClaims } from '../store/repositories/repair-work-claims';
 import type { Store } from '../store/store';
 
@@ -35,22 +37,23 @@ function ownerChat(store: Store, origin: HubUpdateOrigin): ReturnType<Store['aiC
 
 function postOnce(
   store: Store,
-  log: ConversationLog,
   target: { readonly origin: HubUpdateOrigin; readonly key: string; readonly text: string },
 ): void {
   if (store.hubUpdateNotes.has(target.key)) return;
   const chat = ownerChat(store, target.origin);
   if (chat === undefined) return;
-  store.durableWrite(() => {
-    if (store.hubUpdateNotes.claim(target.key)) log.note(chat, HUB_AUTHOR, target.text, HUB_ORIGIN);
-  });
+  if (store.hubUpdateNotes.claim(target.key))
+    addConversationMessage(store, {
+      row: noteMessage(chat, HUB_AUTHOR, target.text, HUB_ORIGIN),
+      files: [],
+    });
 }
 
-function postOutcome(store: Store, log: ConversationLog, release: HubUpdateRelease): void {
+function postOutcome(store: Store, release: HubUpdateRelease): void {
   const { origin, runId } = release;
   const outcome = hubUpdateOutcome(release);
   if (origin === undefined || outcome === null) return;
-  postOnce(store, log, { origin, key: runId, text: `${OUTCOME_TEXT[outcome]} Run ID: ${runId}` });
+  postOnce(store, { origin, key: runId, text: `${OUTCOME_TEXT[outcome]} Run ID: ${runId}` });
 }
 
 function decisionRecipients(store: Store, release: HubUpdateRelease): readonly HubUpdateOrigin[] {
@@ -72,21 +75,29 @@ function decisionNoteId(runId: string, revision: number, chatId: string): string
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-8${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-function postDecision(store: Store, log: ConversationLog, release: HubUpdateRelease): void {
+function postDecision(store: Store, release: HubUpdateRelease): void {
   if (release.phase !== 'awaiting_decision') return;
   const { runId, revision } = release;
   for (const origin of decisionRecipients(store, release))
-    postOnce(store, log, {
+    postOnce(store, {
       origin,
       key: decisionNoteId(runId, revision, origin.chatId),
       text: `${DECISION_TEXT} Run ID: ${runId}`,
     });
 }
 
-export function reconcileHubUpdateNotes(store: Store, { releases }: HubUpdateLedger): void {
-  const log = new ConversationLog(store);
-  for (const release of releases) {
-    postOutcome(store, log, release);
-    postDecision(store, log, release);
-  }
+export const HUB_UPDATE_NOTES_UNIT = durableStoreUnit(
+  (store, { releases }: HubUpdateLedger): void => {
+    for (const release of releases) {
+      postOutcome(store, release);
+      postDecision(store, release);
+    }
+  },
+);
+
+export function reconcileHubUpdateNotes(
+  store: Pick<Store, 'host'>,
+  ledger: HubUpdateLedger,
+): Promise<void> {
+  return store.host.write('hubUpdateNotes', ledger);
 }

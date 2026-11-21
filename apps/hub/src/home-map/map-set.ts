@@ -7,12 +7,11 @@ import {
   type HomeMapSummary,
 } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
-import type { HomeMapPatch, HomeMapsRepository } from '../store/repositories/home-maps';
+import type { HomeMapPatch } from '../store/repositories/home-maps';
 import type { HomeMapService } from './service';
 
 export interface MapSetPorts {
-  readonly sets: Pick<HomeMapsRepository, 'ids' | 'list' | 'create' | 'update' | 'remove'>;
-  readonly maps: Pick<HomeMapService, 'get' | 'apply' | 'forget'>;
+  readonly maps: Pick<HomeMapService, 'exclusive' | 'list' | 'forget'>;
   readonly removeScan: (mapId: HomeMapId) => void;
   readonly log: Logger;
 }
@@ -40,19 +39,19 @@ export class HomeMapSet {
   constructor(private readonly ports: MapSetPorts) {}
 
   list(): HomeMapSummary[] {
-    return this.ports.sets.list();
+    return this.ports.maps.list();
   }
 
-  create(name: string, actor: HomeMapActor): HomeMapSummary {
-    return this.ports.sets.create(name, actor);
+  create(name: string, actor: HomeMapActor): Promise<HomeMapSummary> {
+    return this.ports.maps.exclusive((maps) => maps.create(name, actor));
   }
 
-  update(mapId: HomeMapId, patch: HomeMapPatch, actor: HomeMapActor): HomeMapSummary {
-    return this.ports.sets.update(mapId, patch, actor);
+  update(mapId: HomeMapId, patch: HomeMapPatch, actor: HomeMapActor): Promise<HomeMapSummary> {
+    return this.ports.maps.exclusive((maps) => maps.update(mapId, patch, actor));
   }
 
-  remove(mapId: HomeMapId): void {
-    if (!this.ports.sets.remove(mapId)) {
+  async remove(mapId: HomeMapId): Promise<void> {
+    if (!(await this.ports.maps.exclusive((maps) => maps.remove(mapId)))) {
       throw new ApiError('not_found', `There is no map ${mapId}.`);
     }
     this.ports.maps.forget(mapId);
@@ -63,29 +62,31 @@ export class HomeMapSet {
     }
   }
 
-  placeDevice(placement: HomeMapPlacement, mapId: HomeMapId, actor: HomeMapActor): number {
-    const ids = this.ports.sets.ids();
-    if (!ids.includes(mapId)) throw new ApiError('not_found', `There is no map ${mapId}.`);
-    const target = this.ports.maps.get(mapId);
-    if (!target.floors.some((floor) => floor.id === placement.floorId)) {
-      throw new ApiError('not_found', `There is no floor ${placement.floorId} on map ${mapId}.`);
-    }
-    const added = this.ports.maps.apply(
-      [...placementsOf(target, placement.deviceId), addOp(placement)],
-      actor,
-      {},
-      mapId,
-    );
-    if (!added.applied.some((op) => op.op === 'add')) {
-      throw new ApiError(
-        'conflict',
-        `The device cannot be placed on floor ${placement.floorId} of map ${mapId}.`,
+  placeDevice(placement: HomeMapPlacement, mapId: HomeMapId, actor: HomeMapActor): Promise<number> {
+    return this.ports.maps.exclusive(async (maps) => {
+      const ids = maps.ids();
+      if (!ids.includes(mapId)) throw new ApiError('not_found', `There is no map ${mapId}.`);
+      const target = maps.get(mapId);
+      if (!target.floors.some((floor) => floor.id === placement.floorId)) {
+        throw new ApiError('not_found', `There is no floor ${placement.floorId} on map ${mapId}.`);
+      }
+      const added = await maps.apply(
+        [...placementsOf(target, placement.deviceId), addOp(placement)],
+        actor,
+        {},
+        mapId,
       );
-    }
-    for (const other of ids.filter((id) => id !== mapId)) {
-      const ops = placementsOf(this.ports.maps.get(other), placement.deviceId);
-      if (ops.length > 0) this.ports.maps.apply(ops, actor, {}, other);
-    }
-    return added.revision;
+      if (!added.applied.some((op) => op.op === 'add')) {
+        throw new ApiError(
+          'conflict',
+          `The device cannot be placed on floor ${placement.floorId} of map ${mapId}.`,
+        );
+      }
+      for (const other of ids.filter((id) => id !== mapId)) {
+        const ops = placementsOf(maps.get(other), placement.deviceId);
+        if (ops.length > 0) await maps.apply(ops, actor, {}, other);
+      }
+      return added.revision;
+    });
   }
 }

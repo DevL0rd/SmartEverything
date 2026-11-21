@@ -1,4 +1,5 @@
 import type { Provider } from '@smarteverything/domain';
+import { failureLine } from '@smarteverything/logging';
 
 export class CommandTargetError extends Error {
   override readonly name = 'CommandTargetError';
@@ -13,5 +14,13 @@ export class ProviderNotRunningError extends Error {
 
   constructor(provider: Provider) {
     super(`The ${provider} provider is not linked or not running on this hub.`);
+  }
+}
+
+export class ProviderStartFailedError extends Error {
+  override readonly name = 'ProviderStartFailedError';
+
+  constructor(provider: Provider, cause: unknown) {
+    super(`The ${provider} provider failed to start: ${failureLine(cause)}`, { cause });
   }
 }

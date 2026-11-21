@@ -93,6 +93,7 @@ async function running(paused = false): Promise<{
           viewers.delete(externalId);
         };
       },
+      publish: () => undefined,
     },
     signal: new AbortController().signal,
     log: testLogger('shelly'),

@@ -21,7 +21,8 @@ import { Logger } from '@smarteverything/logging';
 import type { Store } from '../store/store';
 import { profileIdOf, roleOfCaller, type Caller } from './auth';
 import { devicesPrivateToOthers } from './private-devices';
-import { refusal, type Subject } from './person-access';
+import { refusal, type Refusal, type Subject } from './person-access';
+import { storeUnit } from '../store/host/unit';
 import { RepeatGate } from './repeat-gate';
 
 const log = new Logger('hub.person-scope');
@@ -59,9 +60,12 @@ export function scopesOf(store: ScopeStore, profileId: string): ReachScopes {
   };
 }
 
-export function scopesOfCaller(store: Store, caller: Caller): ReachScopes | null {
-  if (caller.kind === 'anonymous' || roleOfCaller(caller) === 'owner') return null;
-  return scopesOf(store, profileIdOf(store, caller));
+export function scopedCaller(caller: Caller): boolean {
+  return caller.kind !== 'anonymous' && roleOfCaller(caller) !== 'owner';
+}
+
+export function scopesOfCaller(store: ScopeStore, caller: Caller): ReachScopes | null {
+  return scopedCaller(caller) ? scopesOf(store, profileIdOf(caller)) : null;
 }
 
 export function scopesOfClient(
@@ -110,7 +114,34 @@ export function reachableRows<R>(
   });
 }
 
-export function deviceScopeOf(store: Store, caller: Caller): DeviceScope | null {
+export interface ReachableAsk {
+  readonly caller: Caller;
+  readonly deviceIds: readonly string[];
+}
+
+export const REACHABLE_DEVICES_UNIT = storeUnit(
+  (store, { caller, deviceIds }: ReachableAsk): string[] => {
+    const scope = deviceScopeOf(store, caller);
+    return deviceIds.filter((id) => deviceIdReachable(store, scope, id));
+  },
+);
+
+export async function reachableFor<R>(
+  store: Pick<Store, 'host'>,
+  caller: Caller,
+  rows: readonly R[],
+  deviceOf: (row: R) => string | null,
+): Promise<R[]> {
+  if (!scopedCaller(caller)) return [...rows];
+  const deviceIds = [...new Set(rows.map(deviceOf).filter((id): id is string => id !== null))];
+  const reachable = new Set(await store.host.read('reachableDevices', { caller, deviceIds }));
+  return rows.filter((row) => {
+    const id = deviceOf(row);
+    return id === null || reachable.has(id);
+  });
+}
+
+export function deviceScopeOf(store: ScopeStore, caller: Caller): DeviceScope | null {
   return scopesOfCaller(store, caller)?.devices ?? null;
 }
 
@@ -121,47 +152,82 @@ export function assertDeviceReach(
   device: Pick<DeviceRow, 'id' | 'room_id'>,
 ): void {
   if (!deviceHidden(scope, device)) return;
-  throw refusal(store, who, {
-    kind: 'refused_scope',
-    detail: `a device outside the person's devices was asked for: ${device.id}`,
-    message: 'That device is not part of your access; ask the owner.',
-  });
+  throw refusal(store, who, deviceReachWhy(device.id));
+}
+
+export function devicesReachWhy(
+  store: ScopeStore,
+  caller: Caller,
+  devices: readonly string[],
+): Refusal | null {
+  const scope = scopesOfCaller(store, caller)?.devices ?? null;
+  if (scope === null) return null;
+  for (const id of devices) {
+    const device = store.devices.find(id);
+    if (device !== undefined && deviceHidden(scope, device)) return deviceReachWhy(device.id);
+  }
+  return null;
 }
 
 export function assertDevicesReach(store: Store, caller: Caller, devices: readonly string[]): void {
-  const scope = scopesOfCaller(store, caller)?.devices ?? null;
-  if (scope === null) return;
-  const who = subjectOf(caller);
-  for (const id of devices) {
-    const device = store.devices.find(id);
-    if (device !== undefined) assertDeviceReach(store, who, scope, device);
-  }
+  const why = devicesReachWhy(store, caller, devices);
+  if (why !== null) throw refusal(store, subjectOf(caller), why);
 }
 
 function areaRefusal(store: Store, caller: Caller, area: McpToolArea): ApiError {
-  return refusal(store, subjectOf(caller), {
+  return refusal(store, subjectOf(caller), areaWhy(area));
+}
+
+function areaWhy(area: McpToolArea): Refusal {
+  return {
     kind: 'refused_scope',
     detail: `the ${area} area is not part of the person's access`,
     message: `${MCP_TOOL_AREA_LABELS[area]} is not part of your access; ask the owner.`,
-  });
+  };
 }
 
-export function assertScopeRoute(
+export function deviceReachWhy(deviceId: string): Refusal {
+  return {
+    kind: 'refused_scope',
+    detail: `a device outside the person's devices was asked for: ${deviceId}`,
+    message: 'That device is not part of your access; ask the owner.',
+  };
+}
+
+export interface RouteScope {
+  readonly caller: Caller;
+  readonly area: McpToolArea | null;
+  readonly deviceId: string | null;
+}
+
+function routeScopeWhy(store: ScopeStore, { caller, area, deviceId }: RouteScope): Refusal | null {
+  const scopes = scopesOfCaller(store, caller);
+  if (scopes === null) return null;
+  if (area !== null && !areaInScope(scopes, area)) return areaWhy(area);
+  if (deviceId === null) return null;
+  const device = store.devices.find(deviceId);
+  return device !== undefined && deviceHidden(scopes.devices, device)
+    ? deviceReachWhy(device.id)
+    : null;
+}
+
+export const ROUTE_SCOPE_UNIT = storeUnit((store, input: RouteScope) =>
+  routeScopeWhy(store, input),
+);
+
+export async function assertScopeRoute(
   store: Store,
   caller: Caller,
   endpoint: EndpointShape,
   params: Readonly<Record<string, string>>,
-): void {
-  const scopes = scopesOfCaller(store, caller);
-  if (scopes === null) return;
-  const area = endpointAccessArea(endpoint);
-  if (area !== null && !areaInScope(scopes, area)) throw areaRefusal(store, caller, area);
-  const deviceId = params['deviceId'];
-  if (deviceId === undefined) return;
-  const device = store.devices.find(deviceId);
-  if (device !== undefined) {
-    assertDeviceReach(store, subjectOf(caller), scopes.devices, device);
-  }
+): Promise<void> {
+  if (!scopedCaller(caller)) return;
+  const why = await store.host.read('routeScope', {
+    caller,
+    area: endpointAccessArea(endpoint),
+    deviceId: params['deviceId'] ?? null,
+  });
+  if (why !== null) throw refusal(store, subjectOf(caller), why);
 }
 
 export function assertToolArea(store: Store, caller: Caller, area: McpToolArea): void {
@@ -192,8 +258,23 @@ export function channelHidden(scope: ChannelScope | null, channelId: string): bo
   return scope !== null && !channelInScope(scope, channelId);
 }
 
-export function assertChannelReach(store: Store, caller: Caller, channelId: string): void {
-  const scope = scopesOfCaller(store, caller)?.channels ?? null;
+export const CALLER_SCOPES_UNIT = storeUnit((store, { caller }: { readonly caller: Caller }) =>
+  scopesOfCaller(store, caller),
+);
+
+export async function callerScopes(
+  store: Pick<Store, 'host'>,
+  caller: Caller,
+): Promise<ReachScopes | null> {
+  return scopedCaller(caller) ? store.host.read('callerScopes', { caller }) : null;
+}
+
+export function assertChannelReach(
+  store: Pick<Store, 'host'>,
+  caller: Caller,
+  scope: ChannelScope | null,
+  channelId: string,
+): void {
   if (!channelHidden(scope, channelId)) return;
   throw refusal(store, subjectOf(caller), {
     kind: 'refused_scope',

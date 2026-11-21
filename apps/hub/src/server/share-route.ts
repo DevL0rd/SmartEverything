@@ -7,7 +7,7 @@ import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { isFileItem } from '../drive/file-item';
 import { DrivePathError, openResolved, resolveInRoot } from '../drive/paths';
-import { DRIVE_PAGE_SIZE } from '../drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../drive/page-size';
 import type { AlbumShareAccess, DriveShares, ShareAccess } from '../drive/shares';
 import type { DerivedLayout } from '../photos/pipeline/derived-paths';
 import { outsideCopy } from '../photos/pipeline/strip-location';
@@ -64,11 +64,11 @@ function downloads(access: ShareAccess, item: DriveItem): boolean {
   return access.share.permission === 'download' && !item.locked;
 }
 
-function recordUse(exchange: Exchange, item: DriveItem): void {
+async function recordUse(exchange: Exchange, item: DriveItem): Promise<void> {
   const { env, access, request } = exchange;
   if (!startsAtBeginning(request)) return;
-  if (downloads(access, item)) env.shares.record(access, 'download');
-  else if (item.id === access.entryId) env.shares.record(access, 'open');
+  if (downloads(access, item)) await env.shares.record(access, 'download');
+  else if (item.id === access.entryId) await env.shares.record(access, 'open');
 }
 
 function extensionOf(item: FileItem): string {
@@ -130,10 +130,10 @@ function isStrippable(
 
 async function serveFile(exchange: Exchange, item: FileItem): Promise<void> {
   const { env, access, request, response } = exchange;
-  const resolved = await resolveInRoot(env.shares.rootPathOf(item), item.relPath).catch(
+  const resolved = await resolveInRoot(await env.shares.rootPathOf(item), item.relPath).catch(
     pathFailure,
   );
-  recordUse(exchange, item);
+  await recordUse(exchange, item);
   if (isStrippable(item) && env.removeLocationOutside(access.share.createdBy)) {
     const source = await strippedSource(env, item, access, resolved.absolute);
     await serveBytes(source, request, response);
@@ -173,11 +173,11 @@ function entryOf(exchange: Exchange, item: DriveItem): Record<string, unknown> {
   };
 }
 
-function listFolder(exchange: Exchange, folder: DriveItem, url: URL): void {
+async function listFolder(exchange: Exchange, folder: DriveItem, url: URL): Promise<void> {
   const { env, access, response } = exchange;
   const { after } = PAGE_QUERY.parse(Object.fromEntries(url.searchParams));
-  const page = env.shares.children(folder, after ?? null, DRIVE_PAGE_SIZE);
-  if (folder.id === access.entryId && after === undefined) env.shares.record(access, 'open');
+  const page = await env.shares.children(folder, after ?? null, DRIVE_PAGE_SIZE);
+  if (folder.id === access.entryId && after === undefined) await env.shares.record(access, 'open');
   sendJson(response, 200, {
     id: folder.id,
     name: folder.name,
@@ -187,11 +187,15 @@ function listFolder(exchange: Exchange, folder: DriveItem, url: URL): void {
   });
 }
 
-function listAlbum(exchange: Exchange, album: AlbumShareAccess['album'], url: URL): void {
+async function listAlbum(
+  exchange: Exchange,
+  album: AlbumShareAccess['album'],
+  url: URL,
+): Promise<void> {
   const { env, access, response } = exchange;
   const { after } = PAGE_QUERY.parse(Object.fromEntries(url.searchParams));
-  const page = env.shares.albumItems(album, after ?? null, DRIVE_PAGE_SIZE);
-  if (after === undefined) env.shares.record(access, 'open');
+  const page = await env.shares.albumItems(album, after ?? null, DRIVE_PAGE_SIZE);
+  if (after === undefined) await env.shares.record(access, 'open');
   sendJson(response, 200, {
     id: album.id,
     name: album.title,
@@ -208,18 +212,18 @@ async function handleItem(
   params: Readonly<Record<string, string>>,
 ): Promise<void> {
   const token = params['token'] ?? '';
-  const access = env.shares.open(token);
+  const access = await env.shares.open(token);
   const itemId = params['itemId'] ?? access.entryId;
   const url = new URL(request.url ?? '/', 'http://share');
   const exchange: Exchange = { env, access, token, request, response };
   if (access.kind === 'album' && itemId === access.entryId) {
     if (access.passwordHash !== null) env.shares.verifyLink(access, itemId, url);
-    listAlbum(exchange, access.album, url);
+    await listAlbum(exchange, access.album, url);
     return;
   }
-  const item = env.shares.within(access, itemId);
+  const item = await env.shares.within(access, itemId);
   if (access.passwordHash !== null) env.shares.verifyLink(access, item.id, url);
-  if (item.kind === 'folder') listFolder(exchange, item, url);
+  if (item.kind === 'folder') await listFolder(exchange, item, url);
   else if ('mime' in item) await serveFile(exchange, item);
   else throw new ApiError('not_found', 'This link is no longer available.');
 }
@@ -231,7 +235,7 @@ async function handlePassword(
   params: Readonly<Record<string, string>>,
 ): Promise<void> {
   const token = params['token'] ?? '';
-  const access = env.shares.open(token);
+  const access = await env.shares.open(token);
   const body = PASSWORD_BODY.safeParse(
     parseJsonBody(request, await readBody(request, PUBLIC_BODY_LIMIT)),
   );
@@ -239,7 +243,7 @@ async function handlePassword(
     throw new ApiError('invalid_request', 'Send the password as JSON: { "password": "..." }.');
   }
   await env.shares.verifyPassword(access, body.data.password);
-  env.shares.record(access, 'open');
+  await env.shares.record(access, 'open');
   sendJson(response, 200, env.shares.link(access, token, access.entryId));
 }
 

@@ -26,18 +26,23 @@ import {
   type RecoveryEnv,
 } from '../../src/drive/intents';
 import type { CommittedBytes } from '../../src/drive/patch-commit';
-import { moveToTrash, removeTrashEntry, restoreFromTrash, type RestoreEnv } from '../../src/drive/trash';
+import {
+  moveToTrash,
+  removeTrashEntry,
+  restoreFromTrash,
+  type RestoreEnv,
+} from '../../src/drive/trash';
 import {
   captureVersion,
   commitBytes,
   fileEnv,
-  newVersion,
   nodeFiles,
   purgeVersions,
   stageBytes,
   stageVersion,
   sweepOrphanVersionsAtStart,
 } from '../../src/drive/versions';
+import { newVersion } from '../../src/drive/change-rows';
 import { isMissing } from '../../src/fs-util';
 import type { DriveVersionEntry } from '../../src/store/repositories/drive-versions';
 import { captureLogs, testLogger } from '../support/logs';
@@ -140,9 +145,10 @@ function restoreEnv(files: DriveFiles = nodeFiles): RestoreEnv {
 function recovery(): RecoveryEnv {
   return {
     ...env(),
-    finishCommit: (intent): void => {
+    finishCommit: (intent): Promise<void> => {
       finished.push(intent.toPath);
       opened.store.driveIntents.clear(intent.id);
+      return Promise.resolve();
     },
   };
 }
@@ -408,7 +414,8 @@ describe('restore', () => {
         await put(made.dir, 'a.txt', 'other');
         return { ...made, entry };
       },
-      (made, files) => restoreFromTrash(restoreEnv(files), made.root, { entry: made.entry, onDisk: true }),
+      (made, files) =>
+        restoreFromTrash(restoreEnv(files), made.root, { entry: made.entry, onDisk: true }),
       async (made) => {
         expect(await text(made.dir, made.entry.trashRelPath)).toBe(OLD);
         expect(await text(made.dir, 'a.txt')).toBe('other');

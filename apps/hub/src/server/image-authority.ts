@@ -43,7 +43,7 @@ export function imageActorOf(options: ImageAuthorityOptions, caller: Caller): Im
       'forbidden',
       'Image operations require an authenticated initiating profile.',
     );
-  const profileId = profileIdOf(options.store, caller);
+  const profileId = profileIdOf(caller);
   const scopes = [
     ...new Map(
       [caller.kind === 'service' ? caller.authority : undefined, currentExecutionAuthority()]

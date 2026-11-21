@@ -11,7 +11,11 @@ const REPLY = z.instanceof(Uint8Array);
 export class ColourRunner {
   constructor(private readonly script: string) {}
 
-  async run(pixels: Uint8Array<ArrayBuffer>, channels: number, plan: ColourPlan): Promise<Uint8Array> {
+  async run(
+    pixels: Uint8Array<ArrayBuffer>,
+    channels: number,
+    plan: ColourPlan,
+  ): Promise<Uint8Array> {
     if (isIdentityPlan(plan)) return pixels;
     const worker = new Worker(this.script);
     try {

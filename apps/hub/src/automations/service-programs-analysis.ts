@@ -5,11 +5,9 @@ import {
   type AutomationProgramReply,
   type JsonValue,
   type NodeKind,
-  type NodeKindLookup,
   type RefKind,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import type { EngineV3 } from './engine-v3';
 import { canonicalPlan } from '@smarteverything/flow/compile/hash';
 import { lower, type LowerResult } from '@smarteverything/flow/compile/lower';
 import type { LowerProblem } from '@smarteverything/flow/compile/lower-effects';
@@ -34,33 +32,32 @@ import { PATCH_OPS, type PatchOp } from '@smarteverything/flow/graph/ops/schema'
 import type { GraphProblem } from '@smarteverything/flow/graph/problem-types';
 import { structuredOf } from '@smarteverything/flow/graph/structured-of';
 import type { Program } from '@smarteverything/flow/program/walk';
-import type { FunctionRevisionRow, ProgramV4 } from '@smarteverything/domain';
+import type { FunctionRevisionRow, FunctionV4, ProgramV4 } from '@smarteverything/domain';
 import { StoreNotFoundError } from '../store/context';
-import type { KindCatalog } from './plugin-kinds/catalog';
-import type { AutomationFunctionsRepository } from '../store/repositories/automation-functions';
-import type { AutomationPlansRepository } from '../store/repositories/automation-plans';
-import type { AutomationProgramsRepository } from '../store/repositories/automation-programs';
-import type { AutomationRevisionsRepository } from '../store/repositories/automation-revisions';
 import type { Store } from '../store/store';
-import type { ToolHub } from '../ai-tools/tool-hub';
-import { invalid } from '../server/errors';
-import type { AutomationSecrets } from './secrets-v3';
+import { invalid } from '../server/invalid';
+import type { ProgramData } from './program-data';
+import { unitKinds, type UnitKinds } from './program-kinds';
+
+export interface PendingCallee {
+  readonly id: string;
+  readonly definition: FunctionV4;
+  readonly plan: Plan;
+}
 
 export interface AnalysisEnv {
   readonly store: Store;
-  readonly programs: Pick<AutomationProgramsRepository, 'find'>;
-  readonly functions: Pick<AutomationFunctionsRepository, 'find' | 'latest' | 'findRevision'>;
-  readonly plans: Pick<AutomationPlansRepository, 'find'>;
-  readonly secrets: Pick<AutomationSecrets, 'list'>;
-  readonly kinds: NodeKindLookup & Pick<KindCatalog, 'availability'>;
+  readonly secrets: ReadonlySet<string>;
+  readonly kinds: UnitKinds;
+  readonly pending: PendingCallee | null;
 }
 
-export interface ProgramEnv extends AnalysisEnv {
-  readonly programs: AutomationProgramsRepository;
-  readonly revisions: AutomationRevisionsRepository;
-  readonly plans: AutomationPlansRepository;
-  readonly tools: Pick<ToolHub, 'pluginTurnRefusal'>;
-  readonly engine: Pick<EngineV3, 'retire'>;
+export function analysisEnv(
+  store: Store,
+  data: ProgramData,
+  pending: PendingCallee | null,
+): AnalysisEnv {
+  return { store, secrets: new Set(data.secrets), kinds: unitKinds(store, data.kinds), pending };
 }
 
 export interface Basis {
@@ -110,20 +107,44 @@ const REFERENCES: Readonly<Record<RefKind, Lookup>> = {
   person: ({ store }, id) => present(() => store.profiles.byId(id)),
   chat: ({ store }, id) => store.aiChats.find(id) !== undefined,
   value: ({ store }, id) => present(() => store.automationValues.byId(id)),
-  automation: ({ programs }, id) => programs.find(id) !== undefined,
-  function: ({ functions }, id) => functions.find(id) !== undefined,
-  secret: ({ secrets }, id) => secrets.list().some((secret) => secret.id === id),
+  automation: ({ store }, id) => store.automations.find(id) !== undefined,
+  function: (env, id) =>
+    pendingOf(env, id) !== undefined || env.store.automationFunctions.find(id) !== undefined,
+  secret: ({ secrets }, id) => secrets.has(id),
   target: (env, id) =>
     REFERENCES.device(env, id) || REFERENCES.room(env, id) || REFERENCES.group(env, id),
 };
 
-export function revisionOf(
+function pendingOf(env: AnalysisEnv, id: string): PendingCallee | undefined {
+  return env.pending !== null && env.pending.id === id ? env.pending : undefined;
+}
+
+function storedCallee(
   env: AnalysisEnv,
   id: string,
   pin: number | undefined,
 ): FunctionRevisionRow | undefined {
-  if (pin !== undefined) return env.functions.findRevision(id, pin);
-  return env.functions.find(id) === undefined ? undefined : env.functions.latest(id);
+  const functions = env.store.automationFunctions;
+  if (pin !== undefined) return functions.findRevision(id, pin);
+  return functions.find(id) === undefined ? undefined : functions.latest(id);
+}
+
+export function calleeDefinition(
+  env: AnalysisEnv,
+  id: string,
+  pin: number | undefined,
+): FunctionV4 | undefined {
+  const pending = pendingOf(env, id);
+  if (pending !== undefined) return pending.definition;
+  return storedCallee(env, id, pin)?.definition;
+}
+
+function calleePlan(env: AnalysisEnv, id: string, pin: number | undefined): Plan | undefined {
+  const pending = pendingOf(env, id);
+  if (pending !== undefined) return pending.plan;
+  const row = storedCallee(env, id, pin);
+  const stored = row === undefined ? undefined : env.store.automationPlans.find(row.plan_hash);
+  return stored === undefined ? undefined : PLAN.parse(JSON.parse(stored.json));
 }
 
 function interfaceOfCallee(
@@ -131,8 +152,8 @@ function interfaceOfCallee(
   id: string,
   pin: number | undefined,
 ): FunctionInterface | undefined {
-  const row = revisionOf(env, id, pin);
-  return row === undefined ? undefined : interfaceOf(row.definition);
+  const definition = calleeDefinition(env, id, pin);
+  return definition === undefined ? undefined : interfaceOf(definition);
 }
 
 function lintKinds(env: Pick<AnalysisEnv, 'kinds'>): LintContext['kinds'] {
@@ -147,20 +168,16 @@ function lintKinds(env: Pick<AnalysisEnv, 'kinds'>): LintContext['kinds'] {
 export function lintContextOf(env: AnalysisEnv): LintContext {
   return {
     kinds: lintKinds(env),
-    automations: (id) => env.programs.find(id)?.definition,
+    automations: (id) => env.store.automations.find(id)?.definition,
     scopeOutputs: (kind) => FLOW_SCOPE_OUTPUTS[kind] ?? [],
     references: (kind, id) => REFERENCES[kind](env, id),
     functions: (id, pin) => interfaceOfCallee(env, id, pin),
-    secrets: new Set(env.secrets.list().map((secret) => secret.id)),
+    secrets: env.secrets,
   };
 }
 
 function resolvePlanOf(env: AnalysisEnv): ResolvePlan {
-  return (callee) => {
-    const row = revisionOf(env, callee.fn, callee.pin);
-    const stored = row === undefined ? undefined : env.plans.find(row.plan_hash);
-    return stored === undefined ? undefined : PLAN.parse(JSON.parse(stored.json));
-  };
+  return (callee) => calleePlan(env, callee.fn, callee.pin);
 }
 
 function problemOf(finding: Finding): AutomationProgramProblem {

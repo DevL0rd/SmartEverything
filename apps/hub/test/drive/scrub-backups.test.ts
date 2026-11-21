@@ -12,6 +12,12 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hashHandler, type HashEnvironment } from '../../src/drive/hasher';
+import {
+  collectBacklog,
+  hashStart,
+  recordHash,
+  recordHashHealth,
+} from '../../src/drive/units/hash';
 import { hashRequested, type HashResponse } from '../../src/drive/blocks';
 import { isFileItem } from '../../src/drive/file-item';
 import {
@@ -23,6 +29,13 @@ import {
 import { scanHandler, type ScanEnvironment } from '../../src/drive/jobs';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
 import {
+  scrubHealthIn,
+  scrubOverviewIn,
+  scrubRecordIn,
+  scrubWindowIn,
+  type ScrubStore,
+} from '../../src/drive/units/scrub';
+import {
   DriveScrubber,
   type FileHasher,
   type ScrubCorruption,
@@ -33,19 +46,18 @@ import { ChangeFeed } from '../../src/store/feed';
 import { migrate } from '../../src/store/migrate';
 import { MIGRATIONS } from '../../src/store/migrations';
 import { DriveBackupsRepository } from '../../src/store/repositories/drive-backups';
-import { DriveOpensRepository } from '../../src/store/repositories/drive-opens';
 import { DrivePlacementsRepository } from '../../src/store/repositories/drive-placements';
 import { DriveBlocksRepository } from '../../src/store/repositories/drive-blocks';
-import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
-import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import { DriveItemsRepository } from '../../src/store/repositories/drive-items';
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { DriveScrubRepository } from '../../src/store/repositories/drive-scrub';
 import { DriveTrashRepository } from '../../src/store/repositories/drive-trash';
 import { SettingsKvRepository } from '../../src/store/repositories/settings-kv';
 import { Sql } from '../../src/store/sql';
+import { backupReport } from '../../src/drive/units/health';
 import { testLogger } from '../support/logs';
 import { bundleWorker, driveRoot } from './drive-fixture';
+import { localScans } from './local-ports';
 
 const ROOT = '0d000000-0000-4000-8000-000000000002';
 const START = Date.parse('2026-11-07T00:00:00.000Z');
@@ -92,7 +104,10 @@ beforeEach(() => {
   const sql = new Sql(database);
   context = new StoreContext(sql, feed, clock);
   migrate(sql, MIGRATIONS, new Date(START).toISOString(), log);
-  roots = new DriveRootsRepository(context, () => tree);
+  roots = new DriveRootsRepository(context, {
+    home: tree,
+    people: { parent: join(tree, 'people'), leaf: '' },
+  });
   items = new DriveItemsRepository(context);
   scrubs = new DriveScrubRepository(context);
   backups = new DriveBackupsRepository(context);
@@ -117,34 +132,39 @@ const signal = (): AbortSignal => new AbortController().signal;
 
 async function indexAndHash(): Promise<void> {
   const scanEnv: ScanEnvironment = {
-    store: {
-      driveRoots: roots,
-      driveItems: items,
-      driveInodes: new DriveInodesRepository(context),
-      driveMissing: new DriveMissingRepository(context),
+    ...localScans({
+      roots,
+      items,
+      context,
       feed,
-      write: (w) => context.write(w),
       now: clock,
-    },
+    }),
     availability: () => Promise.resolve('online'),
-    mounted: (): boolean => false,
+    mounted: () => Promise.resolve(false),
     workerScript: scannerScript,
     lanes: new DriveRootLanes(),
     log: testLogger(),
   };
   await scanHandler(scanEnv)({ kind: 'scan', rootId: ROOT }, signal());
+  const hashStore = {
+    driveRoots: roots,
+    driveItems: items,
+    driveBlocks: new DriveBlocksRepository(context),
+    drivePlacements: new DrivePlacementsRepository(context),
+    settingsKv: new SettingsKvRepository(context),
+  };
   const hashEnv: HashEnvironment = {
-    store: {
-      driveRoots: roots,
-      driveItems: items,
-      driveBlocks: new DriveBlocksRepository(context),
-      drivePlacements: new DrivePlacementsRepository(context),
-      driveOpens: new DriveOpensRepository(context),
-      settingsKv: new SettingsKvRepository(context),
-      feed,
-      write: (w) => context.write(w),
-    },
+    store: { feed },
     availability: () => Promise.resolve('online'),
+    start: (rootId) => Promise.resolve(hashStart(hashStore, rootId)),
+    backlog: (rootId) => Promise.resolve(collectBacklog(hashStore, rootId)),
+    record: (input) => Promise.resolve(context.write(() => recordHash(hashStore, input))),
+    health: (input) => {
+      context.write(() => {
+        recordHashHealth(hashStore, input);
+      });
+      return Promise.resolve();
+    },
     workerScript: hasherScript,
     log: testLogger(),
   };
@@ -167,23 +187,29 @@ function scrubber(
   openHasher: () => FileHasher = inProcessHasher(),
   availability: ScrubEnvironment['availability'] = () => Promise.resolve('online'),
 ): DriveScrubber {
+  const unitStore: ScrubStore = {
+    driveRoots: roots,
+    driveItems: items,
+    driveScrub: scrubs,
+    context,
+  };
   const environment: ScrubEnvironment = {
-    store: {
-      driveRoots: roots,
-      driveItems: {
-        find: (id: string) => items.find(id, null),
-        identityOf: (id) => items.identityOf(id),
-        setIntegrity: (id, integrity) => {
-          database.prepare('update drive_items set integrity = $integrity where id = $id').run({
-            id,
-            integrity,
-          });
-        },
+    store: { feed, now: clock },
+    units: {
+      window: (input) => Promise.resolve(scrubWindowIn(unitStore, input)),
+      record: (input) => {
+        context.write(() => {
+          scrubRecordIn(unitStore, input);
+        });
+        return Promise.resolve();
       },
-      driveScrub: scrubs,
-      feed,
-      write: (w) => context.write(w),
-      now: clock,
+      overview: () => Promise.resolve(scrubOverviewIn(unitStore)),
+      health: (input) => {
+        context.write(() => {
+          scrubHealthIn(unitStore, input);
+        });
+        return Promise.resolve();
+      },
     },
     availability,
     openHasher,
@@ -220,9 +246,9 @@ describe('scrubbing hashed files', () => {
 
   it('verifies every hashed file, records it and stamps the root', async () => {
     const run = scrubber();
-    run.start();
+    await run.start();
     await run.settled();
-    const state = run.state();
+    const state = await run.state();
     expect(state).toMatchObject({ state: 'idle', corrupt: 0 });
     expect(state.state === 'idle' ? state.lastFinishedAt : null).not.toBeNull();
     expect(scrubs.verified(ROOT)).toBe(3);
@@ -234,12 +260,12 @@ describe('scrubbing hashed files', () => {
 
   it('marks a bit flip corrupt, tells the owner and leaves the file untouched', async () => {
     const first = scrubber();
-    first.start();
+    await first.start();
     await first.settled();
     flipByte('docs/b.txt');
     const flipped = readFileSync(join(tree, 'docs/b.txt'));
     const second = scrubber();
-    second.start();
+    await second.start();
     await second.settled();
     expect(integrityOf('docs/b.txt')).toBe('corrupt');
     expect(integrityOf('a.txt')).toBe('ok');
@@ -249,7 +275,7 @@ describe('scrubbing hashed files', () => {
     expect(corruptions[0]?.expected).not.toBe(corruptions[0]?.actual);
     expect(readFileSync(join(tree, 'docs/b.txt'))).toEqual(flipped);
     expect(roots.byId(ROOT).health.corrupt).toBe(1);
-    expect(second.state()).toMatchObject({ state: 'idle', corrupt: 1 });
+    expect(await second.state()).toMatchObject({ state: 'idle', corrupt: 1 });
   });
 
   it('marks a file the filesystem cannot read back as corrupt and tells the owner', async () => {
@@ -262,7 +288,7 @@ describe('scrubbing hashed files', () => {
       close: () => Promise.resolve(),
     });
     const run = scrubber(failing);
-    run.start();
+    await run.start();
     await run.settled();
     expect(integrityOf('docs/b.txt')).toBe('corrupt');
     expect(integrityOf('a.txt')).toBe('ok');
@@ -272,7 +298,7 @@ describe('scrubbing hashed files', () => {
       cause: 'filesystem',
       actual: 'unreadable:EIO',
     });
-    expect(run.state()).toMatchObject({ state: 'idle', corrupt: 1 });
+    expect(await run.state()).toMatchObject({ state: 'idle', corrupt: 1 });
   });
 
   it('only warns about a file that is unreadable for another reason', async () => {
@@ -285,7 +311,7 @@ describe('scrubbing hashed files', () => {
       close: () => Promise.resolve(),
     });
     const run = scrubber(denied);
-    run.start();
+    await run.start();
     await run.settled();
     expect(corruptions).toEqual([]);
     expect(integrityOf('docs/b.txt')).toBe('unknown');
@@ -294,7 +320,7 @@ describe('scrubbing hashed files', () => {
   it('does not call a file corrupt when its size or time changed since it was hashed', async () => {
     writeFileSync(join(tree, 'a.txt'), 'alpha, edited');
     const run = scrubber();
-    run.start();
+    await run.start();
     await run.settled();
     expect(corruptions).toEqual([]);
     expect(integrityOf('a.txt')).toBe('unknown');
@@ -303,16 +329,16 @@ describe('scrubbing hashed files', () => {
 
   it('clears a corrupt mark when the file verifies again', async () => {
     const first = scrubber();
-    first.start();
+    await first.start();
     await first.settled();
     flipByte('a.txt');
     const second = scrubber();
-    second.start();
+    await second.start();
     await second.settled();
     expect(integrityOf('a.txt')).toBe('corrupt');
     flipByte('a.txt');
     const third = scrubber();
-    third.start();
+    await third.start();
     await third.settled();
     expect(integrityOf('a.txt')).toBe('ok');
     expect(roots.byId(ROOT).health.corrupt).toBe(0);
@@ -326,16 +352,16 @@ describe('scrubbing hashed files', () => {
       }),
     );
     holder.run = run;
-    run.start();
+    await run.start();
     await run.settled();
-    expect(run.state()).toMatchObject({ state: 'stopped', checked: 2, total: 3 });
+    expect(await run.state()).toMatchObject({ state: 'stopped', checked: 2, total: 3 });
     expect(roots.byId(ROOT).health.lastScrubAt).toBeNull();
     const verifiedBefore = [...requests];
     requests.length = 0;
-    run.start();
-    expect(run.state().state).toBe('running');
+    await run.start();
+    expect((await run.state()).state).toBe('running');
     await run.settled();
-    expect(run.state()).toMatchObject({ state: 'idle' });
+    expect(await run.state()).toMatchObject({ state: 'idle' });
     expect(requests).toHaveLength(1);
     expect(verifiedBefore).not.toContain(requests[0]);
     expect(scrubs.verified(ROOT)).toBe(3);
@@ -348,8 +374,8 @@ describe('scrubbing hashed files', () => {
       opened += 1;
       return inProcessHasher()();
     });
-    run.start();
-    run.start();
+    await run.start();
+    await run.start();
     await run.settled();
     expect(opened).toBe(1);
     expect(requests).toHaveLength(3);
@@ -357,17 +383,17 @@ describe('scrubbing hashed files', () => {
 
   it('starts a fresh pass after a complete one', async () => {
     const run = scrubber();
-    run.start();
+    await run.start();
     await run.settled();
     requests.length = 0;
-    run.start();
+    await run.start();
     await run.settled();
     expect(requests).toHaveLength(3);
   });
 
   it('leaves a drive whose folder is missing alone', async () => {
     const run = scrubber(inProcessHasher(), () => Promise.resolve('missing'));
-    run.start();
+    await run.start();
     await run.settled();
     expect(requests).toEqual([]);
     expect(roots.byId(ROOT).health.lastScrubAt).toBeNull();
@@ -378,7 +404,16 @@ describe('backups', () => {
   function service(): DriveBackups {
     return new DriveBackups({
       database,
-      store: { driveRoots: roots, driveItems: items, driveTrash: trash, driveBackups: backups },
+      store: {
+        roots: () => Promise.resolve(roots.list()),
+        children: (request) => Promise.resolve(items.children(request)),
+        trashInRoot: (rootId, after, limit) => Promise.resolve(trash.inRoot(rootId, after, limit)),
+        report: (input) =>
+          Promise.resolve(
+            context.write(() => backupReport({ driveBackups: backups, driveRoots: roots }, input)),
+          ),
+        status: () => Promise.resolve(backups.status()),
+      },
       log: testLogger(),
     });
   }
@@ -424,15 +459,15 @@ describe('backups', () => {
     expect(statSync(join(folder, BACKUP_DATABASE_FILE)).size).toBeGreaterThan(0);
   });
 
-  it('records a reported backup, stamps the roots and warns until then', () => {
+  it('records a reported backup, stamps the roots and warns until then', async () => {
     const backup = service();
-    expect(backup.unprotectedRoots().map((root) => root.id)).toEqual([ROOT]);
-    expect(backup.status()).toEqual({ last: null, lastOkAt: null });
-    backup.report({ reporter: 'nightly-job', bytes: 10, ok: false });
-    expect(backup.unprotectedRoots()).toHaveLength(1);
-    const ok = backup.report({ reporter: 'nightly-job', bytes: 2048, ok: true });
-    expect(backup.unprotectedRoots()).toEqual([]);
+    expect((await backup.unprotectedRoots()).map((root) => root.id)).toEqual([ROOT]);
+    expect(await backup.status()).toEqual({ last: null, lastOkAt: null });
+    await backup.report({ reporter: 'nightly-job', bytes: 10, ok: false });
+    expect(await backup.unprotectedRoots()).toHaveLength(1);
+    const ok = await backup.report({ reporter: 'nightly-job', bytes: 2048, ok: true });
+    expect(await backup.unprotectedRoots()).toEqual([]);
     expect(roots.byId(ROOT).health.lastBackupAt).toBe(ok.at);
-    expect(backup.status()).toEqual({ last: ok, lastOkAt: ok.at });
+    expect(await backup.status()).toEqual({ last: ok, lastOkAt: ok.at });
   });
 });

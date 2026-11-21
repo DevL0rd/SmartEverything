@@ -1,5 +1,7 @@
 import {
   CommandRefusedError,
+  EMPTY_IR_REMOTE_STATE,
+  type DeviceRow,
   type DiscoveredDevice,
   type IrAppliance,
   type IrApplianceRow,
@@ -15,7 +17,7 @@ export const IR_APPLIANCE_DRIVER = 'ir_appliance';
 const MODEL = 'IR appliance';
 const MANUFACTURER = 'Infrared';
 
-export type ApplianceDeviceStore = Pick<Store, 'irAppliances' | 'devices' | 'settings' | 'rooms'>;
+export type ApplianceDeviceStore = Pick<Store, 'host' | 'live'>;
 
 class ApplianceDriverNotStartedError extends Error {
   override readonly name = 'ApplianceDriverNotStartedError';
@@ -33,6 +35,10 @@ export function applianceIdOf(externalId: string): string {
   return externalId.slice(IR_APPLIANCE_DRIVER.length + 1);
 }
 
+export function irRemoteOf(store: Pick<Store, 'live'>, remoteId: string): IrRemoteState {
+  return store.live.home.settings.read().ir_remotes[remoteId] ?? EMPTY_IR_REMOTE_STATE;
+}
+
 export class ApplianceDevices {
   private context: DeviceDriverContext | null = null;
 
@@ -43,7 +49,7 @@ export class ApplianceDevices {
 
   async attach(context: DeviceDriverContext): Promise<void> {
     this.context = context;
-    const rows = this.store.irAppliances.list();
+    const rows = await this.store.host.call('irAppliances', 'list');
     await this.publish(rows);
   }
 
@@ -51,17 +57,18 @@ export class ApplianceDevices {
     this.context = null;
   }
 
-  listing(row: IrApplianceRow): IrAppliance {
+  async listing(row: IrApplianceRow): Promise<IrAppliance> {
+    const keys = await this.store.host.call('irAppliances', 'keys', row.id);
     return {
       ...row,
       device_id: this.deviceOf(row.id)?.id ?? null,
       online: this.onlineOf(row),
-      keys: this.store.irAppliances.keys(row.id).map((key) => key.button),
+      keys: keys.map((key) => key.button),
     };
   }
 
   requireBlaster(blasterId: string): void {
-    const blaster = this.store.devices.byId(blasterId);
+    const blaster = this.store.live.home.devices.byId(blasterId);
     if (!blaster.capabilities.some((capability) => capability.key === 'ir_send')) {
       throw new CommandRefusedError('ir_send', `${blaster.name} cannot send infrared`);
     }
@@ -69,10 +76,11 @@ export class ApplianceDevices {
 
   async publish(rows: readonly IrApplianceRow[]): Promise<void> {
     const context = this.started();
-    await context.publishDevices(rows.map((row) => this.discovered(row)));
+    const discovered = await Promise.all(rows.map((row) => this.discovered(row)));
+    await context.publishDevices(discovered);
     const at = this.now().toISOString();
     rows.forEach((row) => {
-      this.pushState(row.id, this.store.settings.irRemote(row.id), at);
+      this.pushState(row.id, irRemoteOf(this.store, row.id), at);
     });
   }
 
@@ -80,12 +88,13 @@ export class ApplianceDevices {
     await this.started().forget(applianceIds);
   }
 
-  placeWithBlaster(row: IrApplianceRow, chosenRoomId?: string): void {
+  async placeWithBlaster(row: IrApplianceRow, chosenRoomId?: string): Promise<void> {
+    const { devices } = this.store.live.home;
     const device = this.deviceOf(row.id);
-    const blaster = row.blaster_id === null ? undefined : this.store.devices.find(row.blaster_id);
+    const blaster = row.blaster_id === null ? undefined : devices.find(row.blaster_id);
     const roomId = chosenRoomId ?? blaster?.room_id ?? null;
     if (device?.room_id === null && roomId !== null) {
-      this.store.devices.update(device.id, { room_id: roomId });
+      await this.store.host.call('devices', 'update', device.id, { room_id: roomId });
     }
   }
 
@@ -108,12 +117,13 @@ export class ApplianceDevices {
 
   private refreshOnline(): void {
     const context = this.started();
-    this.store.irAppliances.list().forEach((row) => {
-      const online = this.onlineOf(row);
-      if (this.deviceOf(row.id)?.online !== online) {
-        context.sink.online(applianceExternalId(row.id), online);
-      }
-    });
+    const { devices } = this.store.live.home;
+    for (const device of devices.list()) {
+      if (driverIdOf(device.external_id) !== IR_APPLIANCE_DRIVER) continue;
+      const blasterId = device.details['blasterId'];
+      const online = typeof blasterId === 'string' && devices.find(blasterId)?.online === true;
+      if (device.online !== online) context.sink.online(device.external_id, online);
+    }
   }
 
   private started(): DeviceDriverContext {
@@ -121,17 +131,21 @@ export class ApplianceDevices {
     return this.context;
   }
 
-  private deviceOf(applianceId: string): ReturnType<Store['devices']['find']> {
-    return this.store.devices.byExternal('local', applianceExternalId(applianceId));
+  private deviceOf(applianceId: string): DeviceRow | undefined {
+    return this.store.live.home.devices.byExternal('local', applianceExternalId(applianceId));
   }
 
   private onlineOf(row: IrApplianceRow): boolean {
-    return row.blaster_id !== null && this.store.devices.find(row.blaster_id)?.online === true;
+    return (
+      row.blaster_id !== null && this.store.live.home.devices.find(row.blaster_id)?.online === true
+    );
   }
 
-  private discovered(row: IrApplianceRow): DiscoveredDevice {
+  private async discovered(row: IrApplianceRow): Promise<DiscoveredDevice> {
     const kind = applianceKindOf(row.category);
-    const keys = this.store.irAppliances.keys(row.id).map((key) => key.button);
+    const keys = (await this.store.host.call('irAppliances', 'keys', row.id)).map(
+      (key) => key.button,
+    );
     return {
       provider: 'local',
       externalId: applianceExternalId(row.id),

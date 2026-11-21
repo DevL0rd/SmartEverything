@@ -12,6 +12,7 @@ import {
 } from '@smarteverything/domain';
 import type { z } from 'zod';
 import type { HubConnections } from '../network/connections';
+import { storeUnit } from '../store/host/unit';
 import type { Store } from '../store/store';
 
 type GrantResponse = z.infer<typeof COMPUTER_MCP_GRANT_RESPONSE>;
@@ -47,32 +48,28 @@ export function computerMcpGrant(
     areas: policy.areas ?? MCP_TOOL_AREAS,
   };
 }
-function computerMcpGrantAddress(
-  store: Store,
-  connections: HubConnections | undefined,
-  node: ComputerNodeRow,
-): GrantAddress {
+export interface GrantManage {
+  readonly node: ComputerNodeRow;
+  readonly request: z.infer<typeof COMPUTER_MCP_GRANT_REQUEST>;
+  readonly runtime: ComputerAiRuntime;
+  readonly pin: string | null;
+}
+
+function computerMcpGrantAddress(store: Store, input: GrantManage): GrantAddress {
   const settings = store.settings.read();
   if (settings.public_url !== null && settings.public_url_verified_at !== null)
     return { url: new URL('/mcp', settings.public_url).href, pin: null };
-  if (connections === undefined)
+  if (input.pin === null)
     throw new ApiError(
       'upstream_failed',
       'This hub has no public address and no connection identity to pin its own address.',
     );
-  return {
-    url: new URL('/mcp', node.hub_url).href,
-    pin: connections.publicIdentity().identity.id,
-  };
+  return { url: new URL('/mcp', input.node.hub_url).href, pin: input.pin };
 }
-export function manageComputerMcpGrant(
-  context: { readonly store: Store; readonly connections?: HubConnections | undefined },
-  node: ComputerNodeRow,
-  request: z.infer<typeof COMPUTER_MCP_GRANT_REQUEST>,
-  runtime: ComputerAiRuntime = 'claude',
-): GrantResponse {
-  const { store } = context;
-  const address = computerMcpGrantAddress(store, context.connections, node);
+
+function managedGrant(store: Store, input: GrantManage): GrantResponse {
+  const { node, request, runtime } = input;
+  const address = computerMcpGrantAddress(store, input);
   if (request.action === 'revoke') {
     store.computerNodes.setRuntimeMcpToken(node.device_id, runtime, null);
     return { token: null, ...address, valid: false };
@@ -94,4 +91,24 @@ export function manageComputerMcpGrant(
   const token = `scg_${randomBytes(32).toString('base64url')}`;
   store.computerNodes.setRuntimeMcpToken(node.device_id, runtime, hashComputerMcpToken(token));
   return { token, ...address, valid: true };
+}
+
+export const COMPUTER_MCP_GRANT_MANAGE_UNIT = storeUnit(managedGrant);
+
+export function manageComputerMcpGrant(
+  context: {
+    readonly store: Pick<Store, 'host'>;
+    readonly connections?: HubConnections | undefined;
+  },
+  node: ComputerNodeRow,
+  request: z.infer<typeof COMPUTER_MCP_GRANT_REQUEST>,
+  runtime: ComputerAiRuntime = 'claude',
+): Promise<GrantResponse> {
+  const { connections } = context;
+  return context.store.host.write('computerMcpGrantManage', {
+    node,
+    request,
+    runtime,
+    pin: connections === undefined ? null : connections.publicIdentity().identity.id,
+  });
 }

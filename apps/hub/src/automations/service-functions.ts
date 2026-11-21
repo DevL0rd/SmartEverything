@@ -1,208 +1,139 @@
+import { background } from '@smarteverything/logging';
 import {
-  EMPTY_LAYOUT,
+  AUTOMATION_V4,
+  type AutomationFunctionCallersReply,
   type AutomationFunctionDetail,
+  type AutomationFunctionExtractReply,
+  type AutomationFunctionExtractRequest,
+  type AutomationFunctionMapping,
   type AutomationFunctionReply,
   type AutomationFunctionSummary,
-  type AutomationProgramProblem,
-  type FunctionRow,
-  type FunctionV4,
-  type Layout,
 } from '@smarteverything/domain';
-import { profileIdOf, type Caller } from '../server/auth';
-import { analyse, planValue } from './service-programs-analysis';
-import { authorOf } from './service-reach';
-import {
-  authorise,
-  changesOf,
-  classify,
-  expectRevision,
-  hashOf,
-  replyOf,
-  requireFreeName,
-  requireEditable,
-  summaryOf,
-  usersOf,
-  type FunctionsEnv,
-} from './service-functions-support';
-import { updateCallers } from './service-functions-callers';
-import { extract } from './service-functions-extract';
-import type {
-  AutomationFunctionCallersReply,
-  AutomationFunctionExtractReply,
-  AutomationFunctionExtractRequest,
-  AutomationFunctionMapping,
-} from '@smarteverything/domain';
+import { currentExecutionAuthority } from '../assistant/turn-authority';
+import type { Caller } from '../server/auth';
+import type { CreateFunctionInput, FunctionSaveInput, NewFunctionInput } from './function-units';
+import { pluginKindsOf, programData } from './program-data';
+import { admitReach } from './reach-admission';
+import type { Reached } from './service-reach';
+import type { ProgramEnv } from './service-programs';
+import { speechPlan } from './service-programs-speech';
 
-export type { FunctionsEnv } from './service-functions-support';
+export type FunctionsEnv = ProgramEnv;
 
-interface NewFunctionInput {
-  readonly name: string;
-  readonly definition: FunctionV4;
-  readonly layout?: Layout | undefined;
-}
-
-interface FunctionSaveInput {
-  readonly definition: FunctionV4;
-  readonly layout?: Layout | undefined;
-  readonly name?: string | undefined;
-  readonly expectedRevision: number;
-  readonly confirmBreaking: boolean;
-}
+type FunctionTurn = Omit<CreateFunctionInput, 'input'>;
 
 export interface AutomationFunctions {
-  readonly list: (caller: Caller) => AutomationFunctionSummary[];
-  readonly get: (caller: Caller, id: string) => AutomationFunctionDetail;
-  readonly create: (caller: Caller, input: NewFunctionInput) => AutomationFunctionReply;
-  readonly save: (caller: Caller, id: string, input: FunctionSaveInput) => AutomationFunctionReply;
+  readonly list: (caller: Caller) => Promise<AutomationFunctionSummary[]>;
+  readonly get: (caller: Caller, id: string) => Promise<AutomationFunctionDetail>;
+  readonly create: (caller: Caller, input: NewFunctionInput) => Promise<AutomationFunctionReply>;
+  readonly save: (
+    caller: Caller,
+    id: string,
+    input: FunctionSaveInput,
+  ) => Promise<AutomationFunctionReply>;
   readonly updateCallers: (
     caller: Caller,
     id: string,
     mapping: AutomationFunctionMapping,
-  ) => AutomationFunctionCallersReply;
+  ) => Promise<AutomationFunctionCallersReply>;
   readonly extract: (
     caller: Caller,
     request: AutomationFunctionExtractRequest,
-  ) => AutomationFunctionExtractReply;
-  readonly remove: (caller: Caller, id: string) => void;
+  ) => Promise<AutomationFunctionExtractReply>;
+  readonly remove: (caller: Caller, id: string) => Promise<void>;
 }
 
-function list(env: FunctionsEnv, caller: Caller): AutomationFunctionSummary[] {
-  return env.functions
-    .list()
-    .map((row) => summaryOf(env, caller, row, env.functions.latest(row.id)))
-    .sort((left, right) => left.name.localeCompare(right.name));
-}
-
-function get(env: FunctionsEnv, caller: Caller, id: string): AutomationFunctionDetail {
-  const row = env.functions.byId(id);
-  const latest = env.functions.latest(id);
-  return {
-    ...summaryOf(env, caller, row, latest),
-    program: latest.definition,
-    layout: latest.layout,
-    usedBy: usersOf(env, id),
-  };
-}
-
-function refused(problems: readonly AutomationProgramProblem[]): AutomationFunctionReply {
-  const errors = problems.filter((found) => found.severity === 'error').length;
-  const summary = `Refused with ${String(errors)} error(s). Nothing was saved.`;
-  return replyOf({ ok: false, summary }, { problems });
-}
-
-function create(
-  env: FunctionsEnv,
-  caller: Caller,
-  input: NewFunctionInput,
-): AutomationFunctionReply {
-  requireFreeName(env, input.name);
-  const analysis = analyse(env, input.definition);
-  const { built } = analysis;
-  if (built === undefined) return refused(analysis.problems);
-  authorise(env, caller, input.definition, built);
-  const row = env.store.write(() =>
-    env.functions.create(
-      {
-        name: input.name,
-        program: input.definition,
-        layout: input.layout ?? EMPTY_LAYOUT,
-        interfaceHash: hashOf(input.definition),
-        compat: 'compatible',
-        planHash: env.plans.put('function', planValue(built.plan)),
-        author: authorOf(env.store, caller),
-        createdBy: profileIdOf(env.store, caller),
-      },
-      env.kinds,
-    ),
-  );
-  return replyOf(
-    { ok: true, summary: `Saved revision 1 of ${row.name}.` },
-    {
-      id: row.id,
-      revision: row.latest_revision,
-      compat: 'compatible',
-      problems: analysis.problems,
-    },
-  );
-}
-
-function breakingRefusal(
-  row: FunctionRow,
-  changes: AutomationFunctionReply['changes'],
-  affected: AutomationFunctionReply['affected'],
-): AutomationFunctionReply {
-  const summary = `This breaks ${String(affected.length)} caller(s). Nothing was saved; confirm to save.`;
-  return replyOf(
-    { ok: false, summary },
-    { id: row.id, revision: row.latest_revision, compat: 'breaking', changes, affected },
-  );
-}
-
-function save(
+async function updateCallers(
   env: FunctionsEnv,
   caller: Caller,
   id: string,
-  input: FunctionSaveInput,
-): AutomationFunctionReply {
-  const row = env.functions.byId(id);
-  requireEditable(env, caller, row);
-  expectRevision(row, input.expectedRevision);
-  if (input.name !== undefined) requireFreeName(env, input.name, id);
-  const analysis = analyse(env, input.definition);
-  const { built } = analysis;
-  if (built === undefined) return refused(analysis.problems);
-  const classification = classify(env.functions.latest(id).definition, input.definition);
-  const changes = changesOf(classification);
-  const affected = classification.result === 'breaking' ? usersOf(env, id) : [];
-  if (classification.result === 'breaking' && !input.confirmBreaking) {
-    return breakingRefusal(row, changes, affected);
-  }
-  authorise(env, caller, input.definition, built);
-  const saved = env.store.write(() => {
-    const revised = env.functions.revise(
-      id,
-      {
-        program: input.definition,
-        layout: input.layout ?? env.functions.latest(id).layout,
-        interfaceHash: hashOf(input.definition),
-        compat: classification.result,
-        planHash: env.plans.put('function', planValue(built.plan)),
-        author: authorOf(env.store, caller),
-        expectedRevision: input.expectedRevision,
-      },
-      env.kinds,
-    );
-    return input.name === undefined ? revised : env.functions.rename(id, input.name);
+  mapping: AutomationFunctionMapping,
+): Promise<AutomationFunctionCallersReply> {
+  const authority = currentExecutionAuthority();
+  const read = await env.store.host.read('prepareFunctionCallers', {
+    data: programData(env.kinds, env.secrets),
+    caller,
+    authority,
+    id,
+    mapping,
   });
-  const summary = `Saved revision ${String(saved.latest_revision)} (${classification.result}).`;
-  return replyOf(
-    { ok: true, summary },
-    {
-      id,
-      revision: saved.latest_revision,
-      compat: classification.result,
-      changes,
-      affected,
-      problems: analysis.problems,
-    },
-  );
+  const prepared = admitReach(env.store, caller, read);
+  if (prepared.kind === 'done') return prepared.reply;
+  const targets = prepared.targets.map((target) => ({
+    ...target,
+    speech:
+      target.automation === null
+        ? null
+        : speechPlan(env.store, caller, AUTOMATION_V4.parse(target.program), target.prior),
+  }));
+  const updated = await env.store.host.write('commitFunctionCallers', {
+    kinds: pluginKindsOf(env.kinds),
+    caller,
+    authority,
+    targets,
+  });
+  return {
+    ok: true,
+    summary: `Updated ${String(updated.length)} caller(s).`,
+    updated,
+    problems: [],
+  };
 }
 
-function remove(env: FunctionsEnv, caller: Caller, id: string): void {
-  requireEditable(env, caller, env.functions.byId(id));
-  env.functions.remove(id);
+async function extract(
+  env: FunctionsEnv,
+  caller: Caller,
+  request: AutomationFunctionExtractRequest,
+): Promise<AutomationFunctionExtractReply> {
+  const authority = currentExecutionAuthority();
+  const read = await env.store.host.read('prepareFunctionExtract', {
+    data: programData(env.kinds, env.secrets),
+    caller,
+    authority,
+    request,
+  });
+  const ready = admitReach(env.store, caller, read);
+  if (ready.kind === 'done') return ready.reply;
+  const speech = speechPlan(env.store, caller, ready.found.caller, ready.prior);
+  return env.store.host.write('commitFunctionExtract', {
+    kinds: pluginKindsOf(env.kinds),
+    caller,
+    authority,
+    ready,
+    speech,
+  });
+}
+
+async function changed<T>(env: FunctionsEnv, work: Promise<T>): Promise<T> {
+  const result = await work;
+  background(env.engine.functionsChanged(), 'automation.reload_failed');
+  return result;
 }
 
 export function automationFunctions(env: FunctionsEnv): AutomationFunctions {
+  const { host } = env.store;
+  const turn = (caller: Caller): FunctionTurn => ({
+    data: programData(env.kinds, env.secrets),
+    caller,
+    authority: currentExecutionAuthority(),
+  });
+  const admitted = async <T>(caller: Caller, work: Promise<Reached<T>>): Promise<T> =>
+    admitReach(env.store, caller, await work);
   return {
-    list: (caller) => list(env, caller),
-    get: (caller, id) => get(env, caller, id),
-    create: (caller, input) => create(env, caller, input),
-    save: (caller, id, input) => save(env, caller, id, input),
+    list: (caller) => host.read('automationFunctions', caller),
+    get: (caller, id) => host.read('automationFunction', { caller, id }),
+    create: (caller, input) =>
+      changed(
+        env,
+        admitted(caller, host.write('createAutomationFunction', { ...turn(caller), input })),
+      ),
+    save: (caller, id, input) =>
+      changed(
+        env,
+        admitted(caller, host.write('saveAutomationFunction', { ...turn(caller), id, input })),
+      ),
     updateCallers: (caller, id, mapping) => updateCallers(env, caller, id, mapping),
     extract: (caller, request) => extract(env, caller, request),
-    remove: (caller, id): void => {
-      remove(env, caller, id);
-    },
+    remove: (caller, id) => changed(env, host.write('removeAutomationFunction', { caller, id })),
   };
 }

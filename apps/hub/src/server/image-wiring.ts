@@ -87,7 +87,7 @@ export function createImageRuntime(options: ImageRuntimeOptions): ImageRuntime {
   const client = new OpenRouterClient({ fetch: options.fetch, key: options.key });
   const catalog = new OpenRouterImageCatalog({
     client,
-    store: options.store.aiModels,
+    store: options.store.live.aiModels,
     now: options.now,
   });
   const service = serviceOf(options, client, catalog);

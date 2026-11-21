@@ -62,7 +62,7 @@ export function roomsGroupsHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
     'room.info': (inputs): ReadResult => {
       const { room } = parseInputs('room.info', ROOM_INFO, inputs);
-      const devices = devicesOf(deps.store, { kind: 'room', roomId: room });
+      const devices = devicesOf(deps.world, { kind: 'room', roomId: room });
       return outputsOf({
         devices: deviceRefs(devices.map((device) => device.id)),
         occupied: occupancy(deps, devices),
@@ -73,7 +73,7 @@ export function roomsGroupsHandlers(deps: WorldReadDeps): ReadHandlers {
     },
     'group.members': (inputs): ReadResult => {
       const { group } = parseInputs('group.members', GROUP_MEMBERS, inputs);
-      const devices = devicesOf(deps.store, { kind: 'group', groupId: group });
+      const devices = devicesOf(deps.world, { kind: 'group', groupId: group });
       return outputsOf({ devices: deviceRefs(devices.map((device) => device.id)) });
     },
   };

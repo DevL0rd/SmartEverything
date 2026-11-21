@@ -16,7 +16,7 @@ export interface PhotoEditInputs {
   readonly layout: HubLayout;
   readonly decoders: PreviewDecoders;
   readonly openRouter: Pick<OpenRouterPlatform, 'client'>;
-  readonly eraserModel: () => string;
+  readonly eraserModel: () => Promise<string>;
 }
 
 export function photoEditDeps(inputs: PhotoEditInputs): EditDeps {
@@ -25,18 +25,13 @@ export function photoEditDeps(inputs: PhotoEditInputs): EditDeps {
     env: inputs.env,
     store,
     read: inputs.read,
-    guard: {
-      status: (profileId) => store.driveQuotas.status(profileId),
-      space: systemDataSpace.space,
-    },
+    space: systemDataSpace.space,
     layout: inputs.layout,
     decoders: inputs.decoders,
     colour: new ColourRunner(BUNDLED_COLOUR_WORKER),
     eraser: new OpenRouterEraser(
       inputs.openRouter.client,
-      (entry): void => {
-        store.ledger.record(entry);
-      },
+      (entry) => store.host.write('photoUsageRecord', entry),
       inputs.eraserModel,
     ),
   };

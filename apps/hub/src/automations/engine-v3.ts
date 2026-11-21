@@ -1,12 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { ApiError, RUN_CAUSE } from '@smarteverything/domain';
+import { ApiError } from '@smarteverything/domain';
 import type { StoredAutomationRow, JsonValue, SignalInput } from '@smarteverything/domain';
 import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
 import { RUN_AUTOMATION_KIND } from '@smarteverything/flow/interpret/run-automation';
 import { resolveBudgets } from '@smarteverything/flow/state/budgets';
 import type { CancelReason, RunState } from '@smarteverything/flow/state/run-state';
 import { failureLine, Logger } from '@smarteverything/logging';
-import { z } from 'zod';
 import type { Cancel } from '../clock';
 import { SignalWatchers } from '../signals/signal-watchers';
 import { RunDriver } from './driver/admission';
@@ -22,6 +21,7 @@ import { admissionParts } from './engine-v3-admission';
 import { structuredAutomation } from '../store/repositories/automation-trees';
 import { armTriggers, listensOnWebhook } from './engine-v3-triggers';
 import { PlanBook } from './engine-v3-plans';
+import { prefetchWaiting, refreshCallees, SerialLoads, syncReport } from './engine-v3-loading';
 import { engineSink } from './engine-v3-sink';
 import { retireRuns } from './engine-v3-retire';
 import { STOP_AUTOMATION_KIND, stopAutomation } from './engine-v3-stop';
@@ -29,9 +29,9 @@ import {
   contextOf,
   freshState,
   ignoresOwn,
-  jsonRecord,
   nodeKeys,
   restartedSubject,
+  runRecordOf,
   signatureOf,
   triggerKeyOf,
   triggerNode,
@@ -58,11 +58,17 @@ export class EngineV3 {
   private readonly finishes = new Finishes();
   private readonly watchers: SignalWatchers;
   private readonly log: Logger;
+  private readonly loads = new SerialLoads(() => this.ports.ready());
+  private stopped = false;
 
   constructor(private readonly ports: EngineV3Ports) {
     this.log = ports.log ?? new Logger('hub.automations');
-    this.book = new PlanBook(ports.repositories, this.log, ports.kinds);
-    this.parks = new RunParkStore(ports.repositories.records, ports.clock);
+    this.book = new PlanBook(
+      { store: ports.repositories.store, memory: ports.memory },
+      this.log,
+      ports.kinds,
+    );
+    this.parks = new RunParkStore(ports.repositories.runs, ports.clock);
     this.watchers = new SignalWatchers({
       clock: ports.clock,
       timeZone: ports.zone,
@@ -83,42 +89,55 @@ export class EngineV3 {
     return [...this.loaded.keys()];
   }
 
-  sync(): SyncReport {
-    const rows = this.ports.repositories.programs.list();
-    const present = new Set(rows.map((row) => row.id));
-    const gone = [...this.loaded.keys()].filter((id) => !present.has(id));
-    for (const id of gone) this.unload(id, 'removed');
-    const results = rows.map((row) => this.apply(row));
-    this.watchers.prune();
-    const count = (kind: 'loaded' | 'unchanged' | 'refused'): number =>
-      results.filter((result) => result === kind).length;
-    return {
-      loaded: count('loaded'),
-      unchanged: count('unchanged'),
-      removed: gone.length,
-      refused: count('refused'),
-    };
-  }
-
-  reload(automationId: string): void {
-    const row = this.ports.repositories.programs.find(automationId);
-    if (row === undefined) this.unload(automationId, 'removed');
-    else this.apply(row);
-    this.watchers.prune();
-  }
-
-  boot(): BootReport {
-    const { records, plans, programs } = this.ports.repositories;
-    return bootRuns({
-      records,
-      plans,
-      clock: this.ports.clock,
-      driver: this.driver,
-      parks: this.parks,
-      enabled: (id) => programs.find(id)?.enabled === true,
-      rebuild: (state) => this.restart(state),
+  sync(): Promise<SyncReport> {
+    return this.loads.run(async () => {
+      const rows = await this.ports.repositories.store.programs();
+      const present = new Set(rows.map((row) => row.id));
+      const gone = [...this.loaded.keys()].filter((id) => !present.has(id));
+      for (const id of gone) this.unload(id, 'removed');
+      const results = await Promise.all(rows.map((row) => this.apply(row)));
+      this.watchers.prune();
+      return syncReport(results, gone.length);
     });
   }
+
+  reload(automationId: string): Promise<void> {
+    return this.loads.run(async () => {
+      const row = await this.ports.repositories.store.program(automationId);
+      if (row === undefined) this.unload(automationId, 'removed');
+      else await this.apply(row);
+      this.watchers.prune();
+    });
+  }
+
+  functionsChanged(): Promise<void> {
+    return this.loads.run(() => refreshCallees(this.loaded, this.book));
+  }
+
+  boot(): Promise<BootReport> {
+    return this.loads.run(async () => {
+      let rows: ReadonlyMap<string, StoredAutomationRow> = new Map();
+      return bootRuns({
+        runs: this.ports.repositories.runs,
+        records: () => this.ports.repositories.store.boot(),
+        prefetch: async (states) => {
+          rows = await prefetchWaiting(
+            { store: this.ports.repositories.store, memory: this.ports.memory, book: this.book },
+            states,
+          );
+        },
+        plans: { has: (hash) => this.book.has(hash) },
+        clock: this.ports.clock,
+        driver: this.driver,
+        parks: this.parks,
+        enabled: (id) => rows.get(id)?.enabled === true,
+        rebuild: (state) => this.restart(state, rows.get(state.automationId)),
+        log: this.log,
+      });
+    });
+  }
+
+  readonly settled = (): Promise<void> => this.loads.settled();
 
   observe(signal: SignalInput): void {
     this.watchers.observe(signal);
@@ -157,10 +176,13 @@ export class EngineV3 {
     return this.driver.cancel(runId, reason);
   }
 
-  subjectOf(automationId: string): Subject | undefined {
-    const row = this.ports.repositories.programs.find(automationId);
+  async subjectOf(automationId: string): Promise<Subject | undefined> {
+    const row = await this.ports.repositories.store.program(automationId);
     return row === undefined ? undefined : this.book.compile(row);
   }
+
+  readonly heldSubject = (automationId: string): Subject | undefined =>
+    this.loaded.get(automationId)?.subject;
 
   listensTo(webhookPath: string): boolean {
     return listensOnWebhook(this.loaded.values(), webhookPath);
@@ -170,13 +192,18 @@ export class EngineV3 {
     return this.driver.cancelAutomation(automationId, reason, key);
   }
 
-  retire(automationId: string): Promise<void> {
+  async retire(automationId: string): Promise<void> {
     this.unload(automationId, 'removed');
-    return retireRuns(this.ports.repositories.records, this.driver, this.finishes, automationId);
+    await retireRuns(this.ports.repositories.runs, this.driver, this.finishes, automationId);
+    this.ports.memory.forget(automationId);
   }
 
+  readonly recorded = (): Promise<void> => this.ports.repositories.runs.flushed();
+
   async finished(runId: string): Promise<RunOutputs> {
-    return (await this.finishes.wait(runId)).outputs;
+    const { outputs } = await this.finishes.wait(runId);
+    await this.ports.repositories.runs.flushed();
+    return outputs;
   }
 
   outcome(runId: string): Promise<FinishedRun> {
@@ -184,29 +211,31 @@ export class EngineV3 {
   }
 
   shutdown(): void {
+    this.stopped = true;
     this.watchers.stop();
     for (const held of this.loaded.values()) held.disarm();
     this.loaded.clear();
     this.driver.shutdown(this.parks.kept);
   }
 
-  private apply(row: StoredAutomationRow): 'loaded' | 'unchanged' | 'refused' {
+  private async apply(row: StoredAutomationRow): Promise<'loaded' | 'unchanged' | 'refused'> {
     if (!row.enabled) {
       this.unload(row.id, 'disabled');
       return 'unchanged';
     }
-    const held = this.loaded.get(row.id);
-    if (held?.signature === signatureOf(row, this.ports.place())) return 'unchanged';
-    const subject = this.book.compile(row);
+    const signature = signatureOf(row, this.ports.place());
+    if (this.loaded.get(row.id)?.signature === signature) return 'unchanged';
+    const subject = await this.book.compile(row);
+    if (this.stopped) return 'unchanged';
     if (subject === undefined) {
       this.unload(row.id, 'disabled');
       return 'refused';
     }
-    held?.disarm();
+    this.loaded.get(row.id)?.disarm();
     const compiled = compileTriggers(row.id, subject.program.triggers, this.ports.kinds.matcher);
     this.loaded.set(row.id, {
       subject,
-      signature: signatureOf(row, this.ports.place()),
+      signature,
       compiled,
       disarm: this.arm(subject, compiled),
     });
@@ -284,40 +313,16 @@ export class EngineV3 {
 
   private begin(subject: Subject, request: StartRequest, runId: string): RunStart {
     const now = this.ports.clock.now().getTime();
-    const state = freshState(
-      { ...subject, callees: this.book.calleesOf(subject.plan) },
-      request,
-      runId,
-      now,
-    );
+    const state = freshState(subject, request, runId, now);
     const trigger = triggerSignal(request.fire, request.signal);
-    this.ports.repositories.records.create({
-      id: runId,
-      automationId: subject.id,
-      revision: subject.revision,
-      ownerProfileId: null,
-      controlKey: subject.program.policy.key ?? null,
-      parentRunId: request.parentRunId,
-      status: 'queued',
-      mode: 'live',
-      planHash: subject.hash,
-      trigger: jsonRecord(trigger),
-      causeChain: z.array(RUN_CAUSE).parse(
-        request.causeChain.map((link) => ({
-          automation_id: link.automationId,
-          run_id: link.runId,
-        })),
-      ),
-      startedBy: request.startedBy,
-    });
+    this.ports.repositories.runs.create(runRecordOf(subject, request, runId, trigger));
     this.chains.begin(runId, request.causeChain, now);
     this.triggers.set(runId, trigger);
     this.nodeKeys.set(runId, nodeKeys(subject.program));
     return this.runStart(subject, state, request.startedBy);
   }
 
-  private restart(state: RunState): RunStart {
-    const row = this.ports.repositories.programs.find(state.automationId);
+  private restart(state: RunState, row: StoredAutomationRow | undefined): RunStart {
     const ref = state.planRefs[0];
     if (row === undefined || ref === undefined) {
       throw new ApiError('not_found', 'The automation of the waiting run no longer exists.');
@@ -375,8 +380,7 @@ export class EngineV3 {
     const { clock, repositories, trace } = this.ports;
     return engineSink({
       clock,
-      records: repositories.records,
-      nodes: repositories.nodes,
+      runs: repositories.runs,
       parks: this.parks,
       chains: this.chains,
       closed: (runId) => {

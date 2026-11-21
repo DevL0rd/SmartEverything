@@ -28,7 +28,7 @@ function daysBack(days: number): NonNullable<Adapter['prepare']> {
       typeof raw['from'] === 'string'
         ? raw['from']
         : dayText(context, new Date(Date.parse(to) - days * DAY_MS));
-    return { ...raw, from, to };
+    return Promise.resolve({ ...raw, from, to });
   };
 }
 
@@ -40,14 +40,14 @@ function momentsBack(days: number): NonNullable<Adapter['prepare']> {
       typeof raw['from'] === 'string'
         ? raw['from']
         : new Date(Date.parse(to) - days * DAY_MS).toISOString();
-    return { ...raw, from, to };
+    return Promise.resolve({ ...raw, from, to });
   };
 }
 
 const DAILY: Adapter = {
   input: (base) => base.partial({ ...MOMENT_FIELDS, metrics: true }),
-  prepare: (context, raw) => ({
-    ...daysBack(6)(context, raw),
+  prepare: async (context, raw) => ({
+    ...(await daysBack(6)(context, raw)),
     metrics: raw['metrics'] ?? [...HEALTH_METRICS],
   }),
 };
@@ -151,7 +151,7 @@ const CREATE_FOOD: Adapter = {
     }),
   args: (_context, input) => {
     const kind = FOOD_FACTS.parse(input).kind ?? 'food';
-    return {
+    return Promise.resolve({
       brand: null,
       barcode: null,
       kind,
@@ -163,7 +163,7 @@ const CREATE_FOOD: Adapter = {
       origin: 'custom',
       favourite: false,
       ...input,
-    };
+    });
   },
 };
 
@@ -190,17 +190,18 @@ const CREATE_CHANNEL: Adapter = {
     base.omit({ members: true }).extend({
       members: z.array(MEMBER).max(100).optional().describe('The members: app clients or cameras'),
     }),
-  args: (_context, input): Args => ({
-    ...input,
-    members: MEMBERS.parse(input['members'] ?? []).map((member) => {
-      const entry = MEMBER.parse(member);
-      return {
-        member_kind: entry.memberKind,
-        member_id: entry.memberId,
-        ...(entry.listening === undefined ? {} : { listening: entry.listening }),
-      };
+  args: (_context, input): Promise<Args> =>
+    Promise.resolve({
+      ...input,
+      members: MEMBERS.parse(input['members'] ?? []).map((member) => {
+        const entry = MEMBER.parse(member);
+        return {
+          member_kind: entry.memberKind,
+          member_id: entry.memberId,
+          ...(entry.listening === undefined ? {} : { listening: entry.listening }),
+        };
+      }),
     }),
-  }),
 };
 
 export const LIFE_ADAPTERS: Readonly<Partial<Record<McpPartName, Adapter>>> = {

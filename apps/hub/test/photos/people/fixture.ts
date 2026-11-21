@@ -3,7 +3,11 @@ import type { PhotoGroupKind } from '@smarteverything/domain';
 import { PhotoAnalysisRepository } from '../../../src/store/repositories/photo-analysis';
 import { PhotoFacesRepository } from '../../../src/store/repositories/photo-faces';
 import { PhotoGroupsRepository } from '../../../src/store/repositories/photo-groups';
+import { mergeSuggestionsFor } from '../../../src/photos/people/merge-suggestions';
+import type { PeopleStore } from '../../../src/photos/people/people-store';
+import { PeopleRecords } from '../../../src/photos/people/records';
 import { PeopleService } from '../../../src/photos/people/service';
+import { PhotoSuggest } from '../../../src/photos/people/suggest';
 import { float32Bytes } from '../../../src/photos/ai/vectors';
 import { testLogger } from '../../support/logs';
 import {
@@ -36,21 +40,58 @@ export function resetConsent(): void {
   consent.smart.clear();
 }
 
-export function people(): PeopleService {
-  return new PeopleService({
+function later<T>(work: () => T): Promise<T> {
+  return new Promise((resolve) => {
+    resolve(work());
+  });
+}
+
+function contextPeople(): PeopleStore {
+  const records = new PeopleRecords({
     context,
     groups: groups(),
     faces: faces(),
     consent: {
-      faceGrouping: (profileId) => consent.face.get(profileId) ?? true,
-      smartSearch: (profileId) => consent.smart.get(profileId) ?? true,
+      faceGrouping: (profileId): boolean => consent.face.get(profileId) ?? true,
+      smartSearch: (profileId): boolean => consent.smart.get(profileId) ?? true,
     },
+  });
+  const suggest = new PhotoSuggest(context, groups());
+  return {
+    profiles: () => Promise.resolve([alice.profileId, bob.profileId]),
+    regroupSource: (profileId, kind) => later(() => records.regroupSource(profileId, kind)),
+    place: (profileId, kind, placements) =>
+      later(() => {
+        records.place(profileId, kind, placements);
+      }),
+    tidy: (profileId, kind) =>
+      later(() => {
+        records.tidy(profileId, kind);
+      }),
+    people: (actor, kind, suggestions) => later(() => records.people(actor, kind, suggestions)),
+    group: (actor, groupId) => later(() => records.group(actor, groupId)),
+    groupsMatching: (actor, groupIds) => later(() => records.groupsMatching(actor, groupIds)),
+    itemFaces: (actor, itemId) => later(() => records.itemFaces(actor, itemId)),
+    suggest: (actor, query) => later(() => suggest.read(actor, query)),
+    dismissMerge: (actor, dismiss) =>
+      later(() => {
+        records.dismissMerge(actor, dismiss);
+      }),
+    update: (actor, groupId, patch) => later(() => records.update(actor, groupId, patch)),
+    merge: (actor, merge) => later(() => records.merge(actor, merge)),
+    rejectFaces: (actor, groupId, body) => later(() => records.rejectFaces(actor, groupId, body)),
+  };
+}
+
+export function people(): PeopleService {
+  return new PeopleService({
+    store: contextPeople(),
     newId: randomUUID,
     log: testLogger('photos'),
-    profiles: () => [alice.profileId, bob.profileId],
     regrouped: (profileId): void => {
       regrouped.push(profileId);
     },
+    suggestions: (profileId) => Promise.resolve(mergeSuggestionsFor(context, profileId)),
   });
 }
 

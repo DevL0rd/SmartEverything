@@ -57,7 +57,7 @@ export interface PrintPorts {
       caller: ToolCaller,
       pictureId: string,
     ) => Promise<{ data: Buffer; name: string } | null>;
-    readonly attachmentsOf: (chatId: string) => readonly string[];
+    readonly attachmentsOf: (chatId: string) => Promise<readonly string[]>;
     readonly fromMachine: (
       caller: ToolCaller,
       input: { machine: string; path: string },
@@ -126,9 +126,9 @@ async function attachmentFile(
 ): Promise<{ data: Uint8Array; name: string }> {
   if (caller.chatId === null)
     throw new PrinterError('not_authorized', 'There is no chat to take an attachment from.');
-  const matches = ports.files
-    .attachmentsOf(caller.chatId)
-    .filter((candidate) => basename(candidate) === name);
+  const matches = (await ports.files.attachmentsOf(caller.chatId)).filter(
+    (candidate) => basename(candidate) === name,
+  );
   const [path] = matches;
   if (path === undefined)
     throw new PrinterError('not_authorized', `This chat has no attachment named ${name}.`);

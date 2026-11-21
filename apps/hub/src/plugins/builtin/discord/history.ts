@@ -30,8 +30,8 @@ export interface HistoryDeps {
   readonly report: (cause: unknown) => void;
 }
 
-function speakerLine(policy: Policy, actorId: string, name: Person): string {
-  return `${describePerson(name)}${policy.isOwner(actorId) ? ' · owner' : ''}`;
+function speakerLine(owners: ReadonlySet<string>, actorId: string, name: Person): string {
+  return `${describePerson(name)}${owners.has(actorId) ? ' · owner' : ''}`;
 }
 
 export class History {
@@ -62,7 +62,8 @@ export class History {
     if (latest !== undefined) {
       this.marks.set(key, latest);
     }
-    return this.format(fresh, since, wholeServer);
+    const owners = await this.deps.policy.owners(fresh.map((record) => record.actorId));
+    return this.format(fresh, since, wholeServer, owners);
   }
 
   forget(origin: EventOrigin): void {
@@ -70,9 +71,9 @@ export class History {
     this.marks.delete(origin.channelId);
   }
 
-  private line(record: ContextRecord): string {
+  private line(record: ContextRecord, owners: ReadonlySet<string>): string {
     const time = record.timestamp.slice(11, 16);
-    const who = speakerLine(this.deps.policy, record.actorId, record.author);
+    const who = speakerLine(owners, record.actorId, record.author);
     return `[${time}] ${record.authorBot ? 'bot' : 'user'} ${who}: ${spoken(record.text, record.mentions)}`;
   }
 
@@ -80,18 +81,21 @@ export class History {
     records: readonly ContextRecord[],
     since: string | undefined,
     grouped: boolean,
+    owners: ReadonlySet<string>,
   ): string {
     if (records.length === 0) {
       return '';
     }
     const heading = since === undefined ? NEW_HEADING : SEEN_HEADING;
     if (!grouped) {
-      return [heading, ...records.map((record) => this.line(record)), '---', ''].join('\n');
+      return [heading, ...records.map((record) => this.line(record, owners)), '---', ''].join('\n');
     }
     const channels = [...new Set(records.map((record) => record.channelId))];
     const groups = channels.flatMap((id) => [
       `#${this.names.get(id) ?? id}`,
-      ...records.filter((record) => record.channelId === id).map((record) => this.line(record)),
+      ...records
+        .filter((record) => record.channelId === id)
+        .map((record) => this.line(record, owners)),
     ]);
     return [heading, ...groups, '---', ''].join('\n');
   }

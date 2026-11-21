@@ -9,7 +9,6 @@ import {
   listArchive,
   type DriveContentDeps,
 } from '../../../src/drive/content/content-reads';
-import { DriveReadService } from '../../../src/drive/service-read';
 import type { DriveItemDraft } from '../../../src/store/repositories/drive-items';
 import { personalDriveRoot } from '../../store/drive-roots-fixture';
 import { testStore, type TestStore } from '../../support/store';
@@ -118,8 +117,6 @@ beforeEach(async () => {
   });
   deps = {
     store,
-    context: store.context,
-    read: new DriveReadService(store),
     links: {
       driveZipEntry: (itemId, index, rev): MediaLink => link('view', itemId, index, rev),
       driveZipEntryDownload: (itemId, index, rev): MediaLink =>
@@ -183,9 +180,9 @@ describe('entry links', () => {
 });
 
 describe('reading the indexed text of an item', () => {
-  it('says pending before the text is read, and gives the text after', () => {
+  it('says pending before the text is read, and gives the text after', async () => {
     const item = opened.store.driveItems.byId(textId, null);
-    expect(itemText(deps, robin, textId)).toMatchObject({
+    expect(await itemText(deps, robin, textId)).toMatchObject({
       state: 'pending',
       text: null,
       source: null,
@@ -197,7 +194,7 @@ describe('reading the indexed text of an item', () => {
       state: 'ok',
       body: 'plain notes',
     });
-    expect(itemText(deps, robin, textId)).toMatchObject({
+    expect(await itemText(deps, robin, textId)).toMatchObject({
       state: 'ok',
       text: 'plain notes',
       chars: 11,
@@ -205,7 +202,7 @@ describe('reading the indexed text of an item', () => {
     });
   });
 
-  it('says pending for text read from an older revision', () => {
+  it('says pending for text read from an older revision', async () => {
     opened.store.driveItemText.put({
       itemId: textId,
       rev: 99,
@@ -213,10 +210,10 @@ describe('reading the indexed text of an item', () => {
       state: 'ok',
       body: 'old',
     });
-    expect(itemText(deps, robin, textId)).toMatchObject({ state: 'pending', text: null });
+    expect(await itemText(deps, robin, textId)).toMatchObject({ state: 'pending', text: null });
   });
 
-  it('reports a failure with its reason and no text', () => {
+  it('reports a failure with its reason and no text', async () => {
     const item = opened.store.driveItems.byId(textId, null);
     opened.store.driveItemText.put({
       itemId: textId,
@@ -225,14 +222,14 @@ describe('reading the indexed text of an item', () => {
       state: 'failed',
       reason: 'damaged file',
     });
-    expect(itemText(deps, robin, textId)).toMatchObject({
+    expect(await itemText(deps, robin, textId)).toMatchObject({
       state: 'failed',
       reason: 'damaged file',
       text: null,
     });
   });
 
-  it('keeps the text of another person file and of a locked view share to the one who may export', () => {
+  it('keeps the text of another person file and of a locked view share to the one who may export', async () => {
     const item = opened.store.driveItems.byId(textId, null);
     opened.store.driveItemText.put({
       itemId: textId,
@@ -241,18 +238,18 @@ describe('reading the indexed text of an item', () => {
       state: 'ok',
       body: 'plain notes',
     });
-    expect(() => itemText(deps, sam, textId)).toThrow(ApiError);
+    await expect(itemText(deps, sam, textId)).rejects.toThrow(ApiError);
     opened.store.driveGrants.set(
       { itemId: textId, profileId: sam.profileId, role: 'view', expiresAt: null },
       robin.profileId,
     );
-    expect(itemText(deps, sam, textId).text).toBe('plain notes');
+    expect((await itemText(deps, sam, textId)).text).toBe('plain notes');
     opened.store.driveLocks.set(textId, robin.profileId, true);
-    expect(() => itemText(deps, sam, textId)).toThrow('view only');
-    expect(itemText(deps, robin, textId).text).toBe('plain notes');
+    await expect(itemText(deps, sam, textId)).rejects.toThrow('view only');
+    expect((await itemText(deps, robin, textId)).text).toBe('plain notes');
   });
 
-  it('refuses a folder', () => {
-    expect(() => itemText(deps, robin, folderId)).toThrow(ApiError);
+  it('refuses a folder', async () => {
+    await expect(itemText(deps, robin, folderId)).rejects.toThrow(ApiError);
   });
 });

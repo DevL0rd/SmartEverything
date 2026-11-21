@@ -3,15 +3,15 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sweepAutomationRetention } from '../../src/store/retention-automations';
 import { Sql } from '../../src/store/sql';
 import { captureLogs } from '../support/logs';
-import { automationOf, logLine, programRig, type ProgramRig } from './support/program-rig';
+import { automationOf, logLine, programRig, RIG_NOW, type ProgramRig } from './support/program-rig';
 
 let rig: ProgramRig;
 let automationId: string;
 
-beforeEach(() => {
+beforeEach(async () => {
   captureLogs();
   rig = programRig();
-  const made = rig.service.create(rig.owner.caller, {
+  const made = await rig.service.create(rig.owner.caller, {
     name: 'Door',
     enabled: true,
     definition: automationOf([logLine('say', 'hi')]),
@@ -128,7 +128,7 @@ describe('the automation questions table', () => {
     rig.database
       .prepare('update automation_questions set created_at = ? where id in (?, ?)')
       .run(longAgo, old, waiting);
-    const swept = sweepAutomationRetention(new Sql(rig.database), new Date());
+    const swept = sweepAutomationRetention(new Sql(rig.database), RIG_NOW);
     expect(swept['automation_questions']).toBe(1);
     expect(rig.store.automationQuestions.find(old)).toBeUndefined();
     expect(rig.store.automationQuestions.find(waiting)).toBeDefined();

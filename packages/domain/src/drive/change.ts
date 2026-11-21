@@ -36,10 +36,27 @@ export type DriveChangeAction = (typeof DRIVE_CHANGE_ACTIONS)[number];
 
 export const DRIVE_CHANGE = z
   .discriminatedUnion('action', [
-    z.strictObject({ action: z.literal('new_folder'), parent: DRIVE_FOLDER_PLACE, name: NAME }),
+    z.strictObject({
+      action: z.literal('new_folder'),
+      parent: DRIVE_FOLDER_PLACE,
+      name: NAME,
+      id: ID.optional().describe('Id the client generated for the new folder'),
+    }),
     z.strictObject({ action: z.literal('rename'), itemId: ID, name: NAME }),
     z.strictObject({ action: z.literal('move'), itemIds: IDS, toFolderId: ID }),
-    z.strictObject({ action: z.literal('copy'), itemIds: IDS, toFolderId: ID }),
+    z
+      .strictObject({
+        action: z.literal('copy'),
+        itemIds: IDS,
+        toFolderId: ID,
+        copyIds: IDS.optional().describe(
+          'Ids the client generated for the copies, one per item in the same order',
+        ),
+      })
+      .refine((copy) => copy.copyIds === undefined || copy.copyIds.length === copy.itemIds.length, {
+        path: ['copyIds'],
+        message: 'one copy id for each item',
+      }),
     z.strictObject({ action: z.literal('star'), itemIds: IDS }),
     z.strictObject({ action: z.literal('unstar'), itemIds: IDS }),
     z.strictObject({ action: z.literal('trash'), itemIds: IDS }),

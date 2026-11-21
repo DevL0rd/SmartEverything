@@ -1,12 +1,5 @@
-import {
-  createWriteStream,
-  openSync,
-  renameSync,
-  watch,
-  type FSWatcher,
-  type WriteStream,
-} from 'node:fs';
-import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { createWriteStream, watch, type FSWatcher, type WriteStream } from 'node:fs';
+import { mkdir, open, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
 import type { ComputerServiceReady } from '@smarteverything/domain';
 import { renderJson, type LogSink } from '@smarteverything/logging';
@@ -41,32 +34,76 @@ export async function openAppendStream(path: string): Promise<WriteStream> {
   return appendStream(path);
 }
 
-function appendStream(path: string): WriteStream {
-  return createWriteStream(path, { fd: openSync(path, 'a', 0o600) });
+async function appendStream(path: string): Promise<WriteStream> {
+  return createWriteStream(path, { fd: await open(path, 'a', 0o600) });
 }
 
-export async function openLogFile(path: string): Promise<LogFile> {
-  let stream = await openAppendStream(path);
-  let written = await sizeOf(path);
+export type LogRotationFailed = (cause: unknown) => void;
+
+class RotatingLog {
+  private readonly queue: string[] = [];
+  private rotation: Promise<void> | null = null;
+
+  constructor(
+    private readonly path: string,
+    private stream: WriteStream,
+    private written: number,
+    private readonly failed: LogRotationFailed,
+  ) {}
+
+  write(line: string): void {
+    this.queue.push(line);
+    if (this.rotation === null) this.drain();
+  }
+
+  async close(): Promise<void> {
+    while (this.rotation !== null) await this.rotation;
+    await new Promise<void>((resolve) => {
+      this.stream.end(resolve);
+    });
+  }
+
+  private drain(): void {
+    for (let line = this.queue.shift(); line !== undefined; line = this.queue.shift()) {
+      this.stream.write(line);
+      this.written += Buffer.byteLength(line);
+      if (this.written > LOG_ROTATE_BYTES) {
+        this.rotation = this.rotate();
+        this.rotation.catch(this.failed);
+        return;
+      }
+    }
+  }
+
+  private async rotate(): Promise<void> {
+    const previous = this.stream;
+    await new Promise<void>((resolve) => {
+      previous.end(resolve);
+    });
+    this.written = 0;
+    try {
+      await rename(this.path, `${this.path}.1`);
+    } catch (cause) {
+      this.failed(cause);
+    }
+    this.stream = await appendStream(this.path);
+    this.rotation = null;
+    this.drain();
+  }
+}
+
+export async function openLogFile(path: string, failed: LogRotationFailed): Promise<LogFile> {
+  const stream = await openAppendStream(path);
+  const log = new RotatingLog(path, stream, await sizeOf(path), failed);
   const lines = new LogLines();
   return {
     sink: (record): void => {
       const line = `${renderJson(record)}\n`;
-      if (written > LOG_ROTATE_BYTES) {
-        stream.end();
-        renameSync(path, `${path}.1`);
-        stream = appendStream(path);
-        written = 0;
-      }
-      stream.write(line);
-      written += Buffer.byteLength(line);
+      log.write(line);
       lines.write(line.slice(0, -1));
     },
     lines,
-    close: () =>
-      new Promise((resolve) => {
-        stream.end(resolve);
-      }),
+    close: () => log.close(),
   };
 }
 

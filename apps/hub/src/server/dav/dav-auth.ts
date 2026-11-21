@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError, NODE_AI_TOKEN } from '@smarteverything/domain';
 import { Logger, messageOf } from '@smarteverything/logging';
 import type { ChangeActor, ChangeEnv } from '../../drive/changes';
-import { DriveWriteError, type DriveWriteFailure } from '../../drive/intents';
+import { DriveWriteError, type DriveWriteFailure } from '../../drive/write-error';
 import { DrivePathError, type DrivePathFailure } from '../../drive/paths';
 import {
   DriveFreeSpaceError,
@@ -56,17 +56,17 @@ function callerOf(actor: DriveActor, deviceId: string): DavCaller {
   };
 }
 
-export function authenticateDav(deps: DavDeps, request: IncomingMessage): DavCaller {
+export async function authenticateDav(deps: DavDeps, request: IncomingMessage): Promise<DavCaller> {
   const token = bearerOf(request);
   if (token === null) {
     throw new DavError(401, 'Send the device token or the computer token as a bearer token.');
   }
   if (NODE_AI_TOKEN.safeParse(token).success) {
-    const node = deps.nodes.authenticate(token);
+    const node = await deps.nodes.authenticate(token);
     return callerOf(deps.nodes.actorOf(node), node.device_id);
   }
-  const client = clientOf(authenticate(deps.store, request, 'member', false));
-  return callerOf(actorOf(deps.store, { kind: 'client', client }), client.id);
+  const client = clientOf(await authenticate(deps.store, request, 'member', false));
+  return callerOf(actorOf({ kind: 'client', client }), client.id);
 }
 
 const PATH_STATUS: Readonly<Record<DrivePathFailure, number>> = {

@@ -1,24 +1,18 @@
-import {
-  ApiError,
-  type DriveActivityEntry,
-  type DriveAlbum,
-  type DriveAlbumSurface,
-  type DriveFeedRow,
-  type DriveItem,
-  type DriveRecentFilter,
-  type DriveRecentPage,
-  type DriveRoot,
-  type DriveShortcut,
-  type DriveSort,
+import type {
+  DriveActivityEntry,
+  DriveAlbum,
+  DriveAlbumSurface,
+  DriveItem,
+  DriveRecentFilter,
+  DriveRecentPage,
+  DriveRoot,
+  DriveShortcut,
+  DriveSort,
+  DriveVersion,
 } from '@smarteverything/domain';
-import { z } from 'zod';
 import type { Store } from '../store/store';
 import type { StoredDrive } from '../store/repositories/drive-roots';
-import type { DriveChildrenMark } from '../store/repositories/drive-item-sort';
-import { canRead, driveAccess, itemAccess, type DriveActor } from './access';
-import { shortcutsInFolder } from './social/shortcuts';
-
-export const DRIVE_PAGE_SIZE = 200;
+import type { DriveActor } from './access';
 
 export interface BrowseRequest {
   readonly rootId: string;
@@ -40,222 +34,77 @@ export interface RecentRequest {
   readonly cursor?: string | undefined;
 }
 
-type ReadStore = Pick<
-  Store,
-  | 'driveRoots'
-  | 'driveItems'
-  | 'driveAlbums'
-  | 'driveFeed'
-  | 'driveGrants'
-  | 'driveShortcuts'
-  | 'driveRecent'
-  | 'driveFileRequests'
-  | 'driveOpens'
->;
-
-function cursorOf(cursor: string | undefined): number | null {
-  if (cursor === undefined) {
-    return null;
-  }
-  const seq = Number(cursor);
-  if (!Number.isSafeInteger(seq) || seq <= 0) {
-    throw new ApiError('invalid_request', 'The cursor is not one this list gave out.');
-  }
-  return seq;
+export interface ItemPageRequest {
+  readonly itemId: string;
+  readonly cursor: string | undefined;
 }
 
-const NAME_FIRST: DriveSort = { field: 'name', direction: 'asc' };
-
-const MARK = z.tuple([z.union([z.string(), z.number()]), z.string(), z.string()]);
-
-function sortOf(request: BrowseRequest): DriveSort {
-  if (request.sortField === undefined || request.sortDirection === undefined) {
-    return NAME_FIRST;
-  }
-  return { field: request.sortField, direction: request.sortDirection };
+export interface VersionPage {
+  readonly items: readonly DriveVersion[];
+  readonly next: string | null;
 }
 
-function badCursor(reason: string): ApiError {
-  return new ApiError(
-    'invalid_request',
-    'The cursor is not one this folder listing gave out.',
-    reason,
-  );
+export interface ActivityPage {
+  readonly items: readonly DriveActivityEntry[];
+  readonly next: string | null;
 }
 
-function markOf(cursor: string | undefined, sort: DriveSort): DriveChildrenMark | null {
-  if (cursor === undefined) {
-    return null;
-  }
-  let raw: unknown;
-  try {
-    raw = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
-  } catch (error) {
-    throw badCursor(
-      `Expected an encoded sort mark, received ${cursor}: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  const parsed = MARK.safeParse(raw);
-  const expected = sort.field === 'bytes' ? 'number' : 'string';
-  if (!parsed.success || typeof parsed.data[0] !== expected) {
-    throw badCursor(`Expected a ${expected} mark for ${sort.field}, received ${cursor}.`);
-  }
-  const [key, name, id] = parsed.data;
-  return { key, name, id };
-}
-
-function cursorOfMark(mark: DriveChildrenMark | null): string | null {
-  return mark === null
-    ? null
-    : Buffer.from(JSON.stringify([mark.key, mark.name, mark.id]), 'utf8').toString('base64url');
-}
-
-function driveHidden(): ApiError {
-  return new ApiError('not_found', 'There is no such drive for this person.');
-}
-
-function itemHidden(): ApiError {
-  return new ApiError('not_found', 'There is no such file or folder.');
-}
-
-function clientDrive(drive: StoredDrive): DriveRoot {
-  const { path: _path, ...root } = drive;
-  return root;
+export interface ItemAndRoot {
+  readonly item: DriveItem;
+  readonly root: StoredDrive;
 }
 
 export class DriveReadService {
-  constructor(private readonly store: ReadStore) {}
+  constructor(private readonly store: Pick<Store, 'host'>) {}
 
-  listRoots(actor: DriveActor): DriveRoot[] {
-    return this.store.driveRoots
-      .list()
-      .filter((drive) => driveAccess(actor, drive) !== 'none')
-      .map(clientDrive);
+  listRoots(actor: DriveActor): Promise<DriveRoot[]> {
+    return this.store.host.read('driveListRoots', { actor });
   }
 
-  rootFor(actor: DriveActor, rootId: string): StoredDrive {
-    const drive = this.store.driveRoots.find(rootId);
-    if (drive === undefined || driveAccess(actor, drive) === 'none') {
-      throw driveHidden();
-    }
-    return drive;
+  rootFor(actor: DriveActor, rootId: string): Promise<StoredDrive> {
+    return this.store.host.read('driveRootFor', { actor, rootId });
   }
 
-  rootOfItem(actor: DriveActor, item: DriveItem): StoredDrive {
-    const drive = this.store.driveRoots.find(item.rootId);
-    if (drive === undefined || !canRead(itemAccess(this.store, actor, drive, item))) {
-      throw itemHidden();
-    }
-    return drive;
+  rootOfItem(actor: DriveActor, item: DriveItem): Promise<StoredDrive> {
+    return this.store.host.read('driveRootOfItem', { actor, item });
   }
 
-  readItem(actor: DriveActor, itemId: string): DriveItem {
-    const item = this.store.driveItems.find(itemId, actor.profileId);
-    if (item === undefined) {
-      throw itemHidden();
-    }
-    this.rootOfItem(actor, item);
-    return item;
+  readItem(actor: DriveActor, itemId: string): Promise<DriveItem> {
+    return this.store.host.read('driveReadItem', { actor, itemId });
   }
 
-  recordOpen(actor: DriveActor, itemId: string, at: string): void {
-    const item = this.readItem(actor, itemId);
-    if (item.kind === 'folder') {
-      throw new ApiError('invalid_request', 'A folder is browsed, not opened.');
-    }
-    this.store.driveOpens.record(actor.profileId, item.id, at);
+  readItemAndRoot(actor: DriveActor, itemId: string): Promise<ItemAndRoot> {
+    return this.store.host.read('driveReadItemRoot', { actor, itemId });
   }
 
-  browseFolder(actor: DriveActor, request: BrowseRequest): BrowsePage {
-    const sort = sortOf(request);
-    const after = markOf(request.cursor, sort);
-    const folder = request.folderId === undefined ? null : this.folderOf(actor, request);
-    if (folder === null) {
-      this.rootFor(actor, request.rootId);
-    }
-    const window = this.store.driveItems.sortedChildren({
-      rootId: request.rootId,
-      parentId: folder?.id ?? null,
-      sort,
-      after,
-      limit: DRIVE_PAGE_SIZE,
-      viewer: actor.profileId,
-    });
-    return {
-      folder,
-      items: window.entries.map((entry) => entry.item),
-      shortcuts: this.shortcutsOf(actor, request, folder),
-      next: cursorOfMark(window.next),
-    };
+  recordOpen(actor: DriveActor, itemId: string, at: string): Promise<void> {
+    return this.store.host.write('driveRecordOpen', { actor, itemId, at });
   }
 
-  listAlbums(actor: DriveActor, surface: DriveAlbumSurface): DriveAlbum[] {
-    return this.store.driveAlbums.listVisibleTo(actor.profileId, surface);
+  browseFolder(actor: DriveActor, request: BrowseRequest): Promise<BrowsePage> {
+    return this.store.host.read('driveBrowseFolder', { actor, request });
   }
 
-  readRecent(actor: DriveActor, request: RecentRequest): DriveRecentPage {
-    return this.store.driveRecent.read(
-      actor,
-      { filter: request.filter, cursor: request.cursor ?? null },
-      DRIVE_PAGE_SIZE,
-    );
+  listAlbums(actor: DriveActor, surface: DriveAlbumSurface): Promise<DriveAlbum[]> {
+    return this.store.host.read('driveListAlbums', { actor, surface });
+  }
+
+  readRecent(actor: DriveActor, request: RecentRequest): Promise<DriveRecentPage> {
+    return this.store.host.read('driveReadRecent', { actor, request });
   }
 
   readActivity(
     actor: DriveActor,
     request: { readonly from: string; readonly cursor?: string | undefined },
-  ): { readonly items: readonly DriveActivityEntry[]; readonly next: string | null } {
-    const window = this.store.driveFeed.recentActivity({
-      rootIds: this.listRoots(actor).map((root) => root.id),
-      from: request.from,
-      before: cursorOf(request.cursor),
-      limit: DRIVE_PAGE_SIZE,
-    });
-    return {
-      items: window.rows.map((row) => this.activityEntryOf(actor, row)),
-      next: window.next === null ? null : String(window.next),
-    };
+  ): Promise<ActivityPage> {
+    return this.store.host.read('driveReadActivity', { actor, request });
   }
 
-  activityEntryOf(actor: DriveActor, row: DriveFeedRow): DriveActivityEntry {
-    const item = this.store.driveItems.find(row.itemId, actor.profileId);
-    return {
-      row,
-      outsiderName:
-        row.via === 'share' && row.actorProfileId === null
-          ? this.store.driveFileRequests.uploaderOf(row.itemId)
-          : null,
-      item:
-        item === undefined
-          ? null
-          : {
-              kind: item.kind,
-              name: item.name,
-              parentId: item.parentId,
-              relPath: item.relPath,
-            },
-    };
+  itemVersions(actor: DriveActor, request: ItemPageRequest): Promise<VersionPage> {
+    return this.store.host.read('driveItemVersions', { actor, request });
   }
 
-  private shortcutsOf(
-    actor: DriveActor,
-    request: BrowseRequest,
-    folder: DriveItem | null,
-  ): DriveShortcut[] {
-    return request.cursor === undefined
-      ? shortcutsInFolder(this.store, actor, request.rootId, folder?.id ?? null)
-      : [];
-  }
-
-  private folderOf(actor: DriveActor, request: BrowseRequest): DriveItem {
-    const folder =
-      request.folderId === undefined
-        ? undefined
-        : this.store.driveItems.find(request.folderId, actor.profileId);
-    if (folder?.kind !== 'folder' || folder.rootId !== request.rootId) {
-      throw new ApiError('not_found', 'There is no such folder in this drive.');
-    }
-    this.rootOfItem(actor, folder);
-    return folder;
+  itemActivity(actor: DriveActor, request: ItemPageRequest): Promise<ActivityPage> {
+    return this.store.host.read('driveItemActivity', { actor, request });
   }
 }

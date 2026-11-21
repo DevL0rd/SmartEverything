@@ -155,7 +155,7 @@ async function stagedUploadId(
   if (source === 'github') {
     const upload = await stageGithubRelease(
       {
-        ...githubRepositoryOf(layout),
+        ...(await githubRepositoryOf(layout)),
         staging,
         token: await githubReleaseToken(layout.system.keys),
         fetch,
@@ -328,7 +328,7 @@ async function command(
   const tools = environment(data, readyUrl(data));
   const open = openRelease(latest);
   if (open !== null) return open;
-  if (input.action === 'remote') return admitRemoteSnapshot(tools, input);
+  if (input.action === 'remote') return await admitRemoteSnapshot(tools, input);
   const job = startJob(tools.jobs, 'hub', input, null);
   return await selfUpdateHub({ ...tools, job }, input.notes, origin);
 }

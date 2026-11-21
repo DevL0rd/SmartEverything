@@ -1,63 +1,45 @@
 import {
   API_ENDPOINTS as E,
   ApiError,
-  type PLANNER_ALARM_CHANGES,
   type PlannerPreferences,
   type PlannerRingRow,
 } from '@smarteverything/domain';
-import { ZodError, type z } from 'zod';
-import type { AlarmSounds } from '../../planner/alarm-sound';
+import type { AlarmSoundCheck } from '../../planner/alarm-sound-check';
 import type { AlarmScheduler } from '../../planner/alarms';
 import type { PhoneRings } from '../../planner/phone-rings';
 import type { RadioDirectory } from '../../planner/radio';
 import type { StopwatchService } from '../../planner/stopwatch';
 import type { TimerService } from '../../planner/timers';
-import type { PlannerAlarmPatch } from '../../store/repositories/planner-alarms';
-import { invalid } from '../errors';
+import type { Caller } from '../auth';
+import { refusal } from '../person-access';
+import { subjectOf } from '../person-scope';
 import { DONE_REPLY, bound, type RouteOf } from '../router';
-import {
-  requireChallenge,
-  requireAutomation,
-  requireSound,
-  requireSunrise,
-  requireTargets,
-} from './planner-alarm-checks';
-import { plannerProfileOf, type PlannerContext } from './planner-items';
+import { requireSound } from './planner-alarm-checks';
+import { plannerProfileFor, type PlannerContext } from './planner-profile';
+import type { Checked } from './planner-shared-units';
 
 export interface PlannerClockDependencies {
-  readonly preferencesOf: (profileId: string) => PlannerPreferences;
+  readonly preferencesOf: (profileId: string) => Promise<PlannerPreferences>;
   readonly alarms: Pick<AlarmScheduler, 'skipNext' | 'snooze' | 'dismiss'>;
   readonly timers: Pick<TimerService, 'begin' | 'pause' | 'resume' | 'addTime' | 'cancelTimer'>;
   readonly stopwatch: Pick<StopwatchService, 'begin' | 'pause' | 'lap' | 'reset'>;
   readonly phoneRings: Pick<PhoneRings, 'read' | 'acknowledge'>;
-  readonly sounds: Pick<AlarmSounds, 'assertUsable'>;
+  readonly sounds: Pick<AlarmSoundCheck, 'assertUsable'>;
   readonly radio: Pick<RadioDirectory, 'search'>;
 }
 
-function validated<T>(what: string, work: () => T): T {
-  try {
-    return work();
-  } catch (cause) {
-    if (cause instanceof ZodError) throw invalid(what, cause);
-    throw cause;
-  }
+function checked<T>(context: PlannerContext, caller: Caller, outcome: Checked<T>): T {
+  if (outcome.kind === 'refused') throw refusal(context.store, subjectOf(caller), outcome.why);
+  return outcome.value;
 }
 
-function alarmPatch(changes: z.infer<typeof PLANNER_ALARM_CHANGES>): PlannerAlarmPatch {
-  const patch: PlannerAlarmPatch = {};
-  for (const [field, value] of Object.entries(changes)) {
-    if (value !== undefined) Object.assign(patch, { [field]: value });
-  }
-  return patch;
-}
-
-function ringOf(
+async function ringOf(
   context: PlannerContext,
   profileId: string,
   alarmId: string,
   ringId: string,
-): PlannerRingRow {
-  const ring = context.store.plannerRings.find(ringId);
+): Promise<PlannerRingRow> {
+  const ring = await context.store.host.call('plannerRings', 'find', ringId);
   if (ring?.profile_id !== profileId || ring.kind !== 'alarm' || ring.ref_id !== alarmId) {
     throw new ApiError('not_found', 'That ring does not belong to this alarm.');
   }
@@ -69,39 +51,18 @@ function createAlarmRoute(
   deps: PlannerClockDependencies,
 ): RouteOf<'createPlannerAlarm'> {
   const { store } = context;
-  return bound(E.createPlannerAlarm, ({ query, body, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
-    const { clock } = deps.preferencesOf(profileId);
-    const targets = body.targets ?? clock.targets;
-    requireTargets(store, targets);
-    requireAutomation(context, caller, body.wake_automation_id);
-    requireSound(deps.sounds, profileId, body.sound);
-    requireSunrise(context, caller, body.sunrise);
-    requireChallenge(store, body.challenge, targets);
-    return validated('alarm', () =>
-      store.plannerAlarms.insert({
-        profile_id: profileId,
-        label: body.label,
-        time: body.time,
-        days: body.days,
-        once_on: body.once_on,
-        skip_on: null,
-        enabled: body.enabled,
-        sound: body.sound ?? clock.sound,
-        ramp_seconds: body.ramp_seconds ?? clock.ramp_seconds,
-        vibrate: body.vibrate ?? true,
-        snooze_minutes: body.snooze_minutes ?? clock.snooze_minutes,
-        snooze_limit: body.snooze_limit === undefined ? clock.snooze_limit : body.snooze_limit,
-        challenge: body.challenge,
-        sunrise: body.sunrise,
-        smart_minutes: body.smart_minutes,
-        wake_automation_id: body.wake_automation_id,
-        wake_lead_minutes: body.wake_lead_minutes,
-        targets,
-        watch: [],
-        source: 'planner',
-      }),
-    );
+  return bound(E.createPlannerAlarm, async ({ query, body, caller, params }) => {
+    const profileId = await plannerProfileFor(context, caller, query.personId);
+    await requireSound(deps.sounds, profileId, body.sound);
+    const { clock } = await deps.preferencesOf(profileId);
+    const outcome = await store.host.write('plannerAlarmCreate', {
+      caller,
+      query,
+      body,
+      params,
+      clock,
+    });
+    return checked(context, caller, outcome);
   });
 }
 
@@ -115,26 +76,22 @@ function alarmRoutes(
 } {
   const { store } = context;
   return {
-    updatePlannerAlarm: bound(E.updatePlannerAlarm, ({ params, query, body, caller }) => {
-      const profileId = plannerProfileOf(context, caller, query.personId);
-      requireTargets(store, body.targets);
-      requireAutomation(context, caller, body.wake_automation_id);
-      requireSound(deps.sounds, profileId, body.sound);
-      requireSunrise(context, caller, body.sunrise);
-      if (body.challenge !== undefined || body.targets !== undefined) {
-        const alarm = store.plannerAlarms.byId(params.alarmId, profileId);
-        requireChallenge(store, body.challenge ?? alarm.challenge, body.targets ?? alarm.targets);
-      }
-      return validated('alarm', () =>
-        store.plannerAlarms.update(params.alarmId, profileId, alarmPatch(body)),
-      );
+    updatePlannerAlarm: bound(E.updatePlannerAlarm, async ({ params, query, body, caller }) => {
+      const profileId = await plannerProfileFor(context, caller, query.personId);
+      await requireSound(deps.sounds, profileId, body.sound);
+      const outcome = await store.host.write('plannerAlarmUpdate', { caller, query, body, params });
+      return checked(context, caller, outcome);
     }),
-    deletePlannerAlarm: bound(E.deletePlannerAlarm, ({ params, query, caller }) => {
-      store.plannerAlarms.remove(params.alarmId, plannerProfileOf(context, caller, query.personId));
+    deletePlannerAlarm: bound(E.deletePlannerAlarm, async ({ params, query, caller }) => {
+      const profileId = await plannerProfileFor(context, caller, query.personId);
+      await store.host.call('plannerAlarms', 'remove', params.alarmId, profileId);
       return DONE_REPLY;
     }),
-    skipNextPlannerAlarm: bound(E.skipNextPlannerAlarm, ({ params, query, caller }) =>
-      deps.alarms.skipNext(plannerProfileOf(context, caller, query.personId), params.alarmId),
+    skipNextPlannerAlarm: bound(E.skipNextPlannerAlarm, async ({ params, query, caller }) =>
+      deps.alarms.skipNext(
+        await plannerProfileFor(context, caller, query.personId),
+        params.alarmId,
+      ),
     ),
   };
 }
@@ -147,14 +104,14 @@ function ringActionRoutes(
   readonly dismissPlannerAlarm: RouteOf<'dismissPlannerAlarm'>;
 } {
   return {
-    snoozePlannerAlarm: bound(E.snoozePlannerAlarm, ({ params, query, body, caller }) => {
-      const profileId = plannerProfileOf(context, caller, query.personId);
-      ringOf(context, profileId, params.alarmId, body.ringId);
+    snoozePlannerAlarm: bound(E.snoozePlannerAlarm, async ({ params, query, body, caller }) => {
+      const profileId = await plannerProfileFor(context, caller, query.personId);
+      await ringOf(context, profileId, params.alarmId, body.ringId);
       return deps.alarms.snooze(profileId, body.ringId, body.minutes);
     }),
-    dismissPlannerAlarm: bound(E.dismissPlannerAlarm, ({ params, query, body, caller }) => {
-      const profileId = plannerProfileOf(context, caller, query.personId);
-      ringOf(context, profileId, params.alarmId, body.ringId);
+    dismissPlannerAlarm: bound(E.dismissPlannerAlarm, async ({ params, query, body, caller }) => {
+      const profileId = await plannerProfileFor(context, caller, query.personId);
+      await ringOf(context, profileId, params.alarmId, body.ringId);
       return deps.alarms.dismiss(profileId, body.ringId);
     }),
   };
@@ -171,10 +128,10 @@ function startTimerRoute(
   context: PlannerContext,
   deps: PlannerClockDependencies,
 ): RouteOf<'startPlannerTimer'> {
-  return bound(E.startPlannerTimer, ({ query, body, caller }) => {
-    const profileId = plannerProfileOf(context, caller, query.personId);
-    const targets = body.targets ?? deps.preferencesOf(profileId).clock.targets;
-    requireTargets(context.store, targets);
+  return bound(E.startPlannerTimer, async ({ query, body, caller }) => {
+    const profileId = await plannerProfileFor(context, caller, query.personId);
+    const targets = body.targets ?? (await deps.preferencesOf(profileId)).clock.targets;
+    await context.store.host.read('plannerTargetsCheck', { targets });
     return deps.timers.begin(profileId, {
       durationMs: body.duration_ms,
       label: body.label,
@@ -186,71 +143,74 @@ function startTimerRoute(
 export const plannerTimerRoutes = (context: PlannerContext, deps: PlannerClockDependencies) =>
   ({
     startPlannerTimer: startTimerRoute(context, deps),
-    pausePlannerTimer: bound(E.pausePlannerTimer, ({ params, query, caller }) =>
-      deps.timers.pause(params.timerId, plannerProfileOf(context, caller, query.personId)),
+    pausePlannerTimer: bound(E.pausePlannerTimer, async ({ params, query, caller }) =>
+      deps.timers.pause(params.timerId, await plannerProfileFor(context, caller, query.personId)),
     ),
-    resumePlannerTimer: bound(E.resumePlannerTimer, ({ params, query, caller }) =>
-      deps.timers.resume(params.timerId, plannerProfileOf(context, caller, query.personId)),
+    resumePlannerTimer: bound(E.resumePlannerTimer, async ({ params, query, caller }) =>
+      deps.timers.resume(params.timerId, await plannerProfileFor(context, caller, query.personId)),
     ),
-    addPlannerTimerTime: bound(E.addPlannerTimerTime, ({ params, query, body, caller }) =>
+    addPlannerTimerTime: bound(E.addPlannerTimerTime, async ({ params, query, body, caller }) =>
       deps.timers.addTime(
         params.timerId,
-        plannerProfileOf(context, caller, query.personId),
+        await plannerProfileFor(context, caller, query.personId),
         body.ms,
       ),
     ),
-    cancelPlannerTimer: bound(E.cancelPlannerTimer, ({ params, query, caller }) =>
-      deps.timers.cancelTimer(params.timerId, plannerProfileOf(context, caller, query.personId)),
+    cancelPlannerTimer: bound(E.cancelPlannerTimer, async ({ params, query, caller }) =>
+      deps.timers.cancelTimer(
+        params.timerId,
+        await plannerProfileFor(context, caller, query.personId),
+      ),
     ),
   }) as const;
 
 export const plannerStopwatchRoutes = (context: PlannerContext, deps: PlannerClockDependencies) =>
   ({
-    startPlannerStopwatch: bound(E.startPlannerStopwatch, ({ query, caller }) =>
-      context.store.write(() =>
-        deps.stopwatch.begin(plannerProfileOf(context, caller, query.personId)),
-      ),
+    startPlannerStopwatch: bound(E.startPlannerStopwatch, async ({ query, caller }) =>
+      deps.stopwatch.begin(await plannerProfileFor(context, caller, query.personId)),
     ),
-    pausePlannerStopwatch: bound(E.pausePlannerStopwatch, ({ query, caller }) =>
-      context.store.write(() =>
-        deps.stopwatch.pause(plannerProfileOf(context, caller, query.personId)),
-      ),
+    pausePlannerStopwatch: bound(E.pausePlannerStopwatch, async ({ query, caller }) =>
+      deps.stopwatch.pause(await plannerProfileFor(context, caller, query.personId)),
     ),
-    lapPlannerStopwatch: bound(E.lapPlannerStopwatch, ({ query, caller }) =>
-      context.store.write(() =>
-        deps.stopwatch.lap(plannerProfileOf(context, caller, query.personId)),
-      ),
+    lapPlannerStopwatch: bound(E.lapPlannerStopwatch, async ({ query, caller }) =>
+      deps.stopwatch.lap(await plannerProfileFor(context, caller, query.personId)),
     ),
-    resetPlannerStopwatch: bound(E.resetPlannerStopwatch, ({ query, caller }) =>
-      context.store.write(() =>
-        deps.stopwatch.reset(plannerProfileOf(context, caller, query.personId)),
-      ),
+    resetPlannerStopwatch: bound(E.resetPlannerStopwatch, async ({ query, caller }) =>
+      deps.stopwatch.reset(await plannerProfileFor(context, caller, query.personId)),
     ),
   }) as const;
 
-function ownClient(context: PlannerContext, profileId: string, clientId: string): void {
-  if (context.store.profiles.activeOf(clientId).id !== profileId) {
+async function ownClient(
+  context: PlannerContext,
+  profileId: string,
+  clientId: string,
+): Promise<void> {
+  if ((await context.store.host.call('profiles', 'activeOf', clientId)).id !== profileId) {
     throw new ApiError('forbidden', 'That phone belongs to someone else.');
   }
 }
 
 export const plannerRingRoutes = (context: PlannerContext, deps: PlannerClockDependencies) =>
   ({
-    listPlannerRings: bound(E.listPlannerRings, ({ query, caller }) =>
-      context.store.plannerRings.between(plannerProfileOf(context, caller, query.personId), {
-        from: query.from,
-        to: query.to,
-      }),
+    listPlannerRings: bound(E.listPlannerRings, async ({ query, caller }) =>
+      context.store.host.call(
+        'plannerRings',
+        'between',
+        await plannerProfileFor(context, caller, query.personId),
+        { from: query.from, to: query.to },
+      ),
     ),
-    readPlannerPhoneRings: bound(E.readPlannerPhoneRings, ({ query, caller }) => {
-      const profileId = plannerProfileOf(context, caller, query.personId);
-      ownClient(context, profileId, query.clientId);
+    readPlannerPhoneRings: bound(E.readPlannerPhoneRings, async ({ query, caller }) => {
+      const profileId = await plannerProfileFor(context, caller, query.personId);
+      await ownClient(context, profileId, query.clientId);
       return deps.phoneRings.read(query.clientId, profileId);
     }),
-    searchPlannerRadio: bound(E.searchPlannerRadio, ({ query }) => deps.radio.search(query.text)),
-    ackPlannerPhoneRings: bound(E.ackPlannerPhoneRings, ({ query, body, caller }) => {
-      const profileId = plannerProfileOf(context, caller, query.personId);
-      ownClient(context, profileId, body.clientId);
+    searchPlannerRadio: bound(E.searchPlannerRadio, async ({ query }) =>
+      deps.radio.search(query.text),
+    ),
+    ackPlannerPhoneRings: bound(E.ackPlannerPhoneRings, async ({ query, body, caller }) => {
+      const profileId = await plannerProfileFor(context, caller, query.personId);
+      await ownClient(context, profileId, body.clientId);
       if (!deps.phoneRings.acknowledge(body.clientId, body.hash)) {
         throw new ApiError('conflict', 'The ring set changed since it was read; read it again.');
       }

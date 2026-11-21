@@ -3,14 +3,19 @@ import {
   type ReplyMeta,
   type RequestMeta,
 } from '@smarteverything/domain/drive-mount';
-import { messageOf } from '@smarteverything/logging';
-import type { ByteRange, DriveMountCommitHead } from '../../store/repositories/drive-mount-commits';
+import { background, messageOf } from '@smarteverything/logging';
+import type {
+  ByteRange,
+  DriveMountCommit,
+  DriveMountCommitHead,
+} from '../../store/repositories/drive-mount-commits';
 import type { PosixChangeEnv, PosixScope } from '../posix/env';
 import { posix } from '../posix/errors';
 import type { DrivePosix } from '../posix/service';
 import type { HandleTable } from './handles';
 import type { MountSession } from './session';
 import type { Staging } from './staging';
+import { writeDriveOps } from '../units/ops';
 
 export interface CommitEnv {
   readonly posix: DrivePosix;
@@ -47,6 +52,7 @@ interface Received {
 }
 
 export class MountCommits {
+  private readonly known = new Map<number, DriveMountCommit>();
   private readonly received = new Map<number, Received>();
   private readonly writing = new Map<number, Set<Promise<void>>>();
   private readonly failures = new Map<number, Error>();
@@ -54,15 +60,40 @@ export class MountCommits {
 
   constructor(private readonly env: CommitEnv) {}
 
+  private cached(id: number): DriveMountCommit | undefined {
+    return this.known.get(id);
+  }
+
+  private stored(id: number): DriveMountCommit {
+    const row = this.known.get(id);
+    if (row === undefined) throw posix('ESTALE', `The commit ${String(id)} is unknown.`);
+    return row;
+  }
+
   rangesOf(row: DriveMountCommitHead): readonly ByteRange[] {
-    return this.received.get(row.id)?.ranges ?? this.repo.ranges(row.id);
+    const received = this.received.get(row.id);
+    return received === undefined ? this.stored(row.id).ranges : received.ranges;
+  }
+
+  remember(row: DriveMountCommit): void {
+    if (row.state !== 'open') this.received.delete(row.id);
+    this.known.set(row.id, row);
+  }
+
+  async attach(placementId: string): Promise<readonly DriveMountCommit[]> {
+    const kept = await this.host.call('driveMountCommits', 'placed', placementId);
+    for (const [id, row] of this.known) {
+      if (row.placementId === placementId) this.known.delete(id);
+    }
+    for (const row of kept) this.known.set(row.id, row);
+    return kept;
   }
 
   receive(row: DriveMountCommitHead, range: ByteRange): void {
     let entry = this.received.get(row.id);
     if (entry === undefined) {
       entry = {
-        ranges: this.repo.ranges(row.id).map(([start, end]) => [start, end]),
+        ranges: this.stored(row.id).ranges.map(([start, end]) => [start, end]),
         dirty: false,
       };
       this.received.set(row.id, entry);
@@ -73,42 +104,48 @@ export class MountCommits {
     this.flushQueued = true;
     setImmediate(() => {
       this.flushQueued = false;
-      this.flush();
+      background(this.flush(), 'drive_mount.ranges_flush_failed');
     });
   }
 
-  cutReceived(row: DriveMountCommitHead, size: number): void {
+  async cutReceived(row: DriveMountCommitHead, size: number): Promise<void> {
     const kept = this.rangesOf(row).flatMap(([start, end]): [number, number][] =>
       start < size ? [[start, Math.min(end, size)]] : [],
     );
     this.received.set(row.id, { ranges: kept, dirty: false });
-    this.env.change.store.write(() => {
-      this.repo.setRanges(row.id, kept);
-    });
+    await this.host.call('driveMountCommits', 'setRanges', row.id, kept);
   }
 
-  settled(id: number): void {
+  settled(id: number, size: number, rev: number): void {
+    const row = this.stored(id);
+    this.known.set(id, {
+      ...row,
+      ranges: this.rangesOf(row),
+      size,
+      state: 'done',
+      resultRev: rev,
+    });
     this.received.delete(id);
     this.failures.delete(id);
   }
 
-  private flush(): void {
+  private async flush(): Promise<void> {
     const dirty = [...this.received].filter(([, entry]) => entry.dirty);
     if (dirty.length === 0) return;
-    this.env.change.store.write(() => {
-      for (const [id, entry] of dirty) {
-        this.repo.setRanges(id, entry.ranges);
-        entry.dirty = false;
-      }
-    });
+    const ranges = dirty.map(([id, entry]) => ({
+      id,
+      ranges: entry.ranges.map(([start, end]): [number, number] => [start, end]),
+    }));
+    for (const [, entry] of dirty) entry.dirty = false;
+    await writeDriveOps(this.env.change.store, [{ kind: 'mountRanges', ranges }]);
   }
 
-  private get repo(): PosixChangeEnv['store']['driveMountCommits'] {
-    return this.env.change.store.driveMountCommits;
+  private get host(): PosixChangeEnv['store']['host'] {
+    return this.env.change.store.host;
   }
 
   commitOf(session: MountSession, id: number): DriveMountCommitHead {
-    const row = this.repo.head(id);
+    const row = this.cached(id);
     if (row?.nodeId !== session.nodeId)
       throw posix('ESTALE', `The commit ${String(id)} is unknown.`);
     return row;
@@ -121,15 +158,16 @@ export class MountCommits {
   }
 
   async begin(session: MountSession, request: RequestMeta<'BEGIN'>): Promise<ReplyMeta<'BEGIN'>> {
-    const scope = session.scopeOf(this.env.change.store, request.ino);
+    const scope = await session.scopeOf(this.env.change.store, request.ino);
     await this.env.posix.openTarget(scope, request.ino, true);
-    const commit = this.repo.begin({
+    const commit = await this.host.call('driveMountCommits', 'begin', {
       placementId: scope.placementId,
       nodeId: session.nodeId,
       inodeId: request.ino,
       opKey: request.opKey,
       baseRev: request.baseRev,
     });
+    this.known.set(commit.id, commit);
     if (commit.state === 'aborted') throw posix('ESTALE', 'That commit was aborted.');
     if (commit.state === 'open') await this.env.staging.ensure(scope.drive.id, commit.id);
     return { commit: commit.id, ranges: wireRanges(this.rangesOf(commit)) };
@@ -198,31 +236,34 @@ export class MountCommits {
   }
 
   state(session: MountSession, request: RequestMeta<'STATE'>): ReplyMeta<'STATE'> {
-    const row = this.repo.find(request.commit);
+    const row = this.cached(request.commit);
     if (row?.nodeId !== session.nodeId || row.state === 'aborted') return { ranges: null };
     return { ranges: wireRanges(this.rangesOf(row)) };
   }
 
   async abort(session: MountSession, request: RequestMeta<'ABORT'>): Promise<void> {
-    const row = this.repo.find(request.commit);
+    const row = this.cached(request.commit);
     if (row?.nodeId !== session.nodeId) return;
-    if (row.state === 'open') this.abortRow(row.id);
+    if (row.state === 'open') await this.abortRow(row.id);
     const scope = session.attachments.get(row.placementId)?.scope;
     if (scope !== undefined && row.state !== 'done') {
       await this.env.staging.remove(scope.drive.id, row.id);
     }
   }
 
-  abortRow(id: number): void {
+  async abortRow(id: number): Promise<void> {
     this.received.delete(id);
     this.failures.delete(id);
-    this.repo.abort(id);
+    this.known.set(id, await this.host.call('driveMountCommits', 'abort', id));
   }
 
-  forget(session: MountSession, request: RequestMeta<'FORGET'>): void {
+  async forget(session: MountSession, request: RequestMeta<'FORGET'>): Promise<void> {
     for (const id of request.commits) {
-      const row = this.repo.find(id);
-      if (row?.nodeId === session.nodeId) this.repo.forget(row.placementId, [id]);
+      const row = this.cached(id);
+      if (row?.nodeId === session.nodeId) {
+        await this.host.call('driveMountCommits', 'forget', row.placementId, [id]);
+        if (row.state !== 'open') this.known.delete(id);
+      }
     }
   }
 

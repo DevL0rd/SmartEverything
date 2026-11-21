@@ -54,12 +54,12 @@ export function controlValue(
   device: DeviceRow,
   control: string,
 ): JsonValue | undefined {
-  const { store, executor, observed } = deps;
-  const effect = store.deviceEffects.find(device.id, control);
+  const { world, executor, observed } = deps;
+  const effect = world.deviceEffects.find(device.id, control);
   if (effect !== undefined) return effect.base;
   const current = observed(device.id, control);
   if (executor.intendedValue(device.id, control) === undefined) return current;
-  const row = store.state.ofDevice(device.id).find((entry) => entry.capability === control);
+  const row = world.state.ofDevice(device.id).find((entry) => entry.capability === control);
   return executor.intendedValue(device.id, control, row?.observed_at) ?? current;
 }
 
@@ -88,7 +88,7 @@ export function deviceReadHandlers(deps: WorldReadDeps): ReadHandlers {
   return {
     'device.get': (inputs): ReadResult => {
       const { device: id, control } = parseInputs('device.get', DEVICE_GET, inputs);
-      const device = deviceById(deps.store, id);
+      const device = deviceById(deps.world, id);
       readableControl(device, control);
       const value = controlValue(deps, device, controlKey(control));
       const change = lastChange(deps, device.id, control, value);

@@ -30,8 +30,8 @@ export function ownDrive(
       key,
       {
         issues: chosen.issues,
-        run: (context, fields, as): unknown => {
-          if (as.personId !== undefined && as.personId !== profileFor(context, {})) {
+        run: async (context, fields, as): Promise<unknown> => {
+          if (as.personId !== undefined && as.personId !== (await profileFor(context, {}))) {
             throw new ToolError(
               'A drive is read and changed only for the person asking; nobody, the owner included, reaches another person’s drive. The owner sees per-person space totals in view usage.',
               'forbidden',

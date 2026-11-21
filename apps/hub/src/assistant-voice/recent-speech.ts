@@ -17,16 +17,7 @@ const WAKE_TAIL_MS = 15_000;
 const BLOCK_CHARACTERS = 4000;
 
 export interface RecentSpeechOptions {
-  readonly store: Pick<
-    Store,
-    | 'assistantChat'
-    | 'cameras'
-    | 'computerNodes'
-    | 'devices'
-    | 'settingsKv'
-    | 'state'
-    | 'transcripts'
-  >;
+  readonly store: Pick<Store, 'live' | 'host'>;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -93,35 +84,36 @@ function transcribedAs(
   device: DeviceRow,
 ): TranscriptSource | null {
   if (device.kind === 'camera') {
-    return store.cameras.find(device.id)?.transcribe === true ? 'camera' : null;
+    return store.live.home.cameras.find(device.id)?.transcribe === true ? 'camera' : null;
   }
   const written = new DeviceListeningSwitches(store).read(device.id).transcribe;
   return written && (device.kind === 'phone' || device.kind === 'computer') ? device.kind : null;
 }
 
 function heardOf(store: RecentSpeechOptions['store'], request: RecentSpeechRequest): Heard | null {
-  const device = store.devices.find(request.deviceId);
+  const { home } = store.live;
+  const device = home.devices.find(request.deviceId);
   const source = device === undefined ? null : transcribedAs(store, device);
   if (device === undefined || source === null) {
     return null;
   }
-  const own = source !== 'camera' && personOfDevice(store, device) === request.profileId;
+  const own = source !== 'camera' && personOfDevice(home, device) === request.profileId;
   if (request.role !== 'owner' && !own) {
     return null;
   }
   const privacy = privacySwitchOf(device);
-  if (privacy !== null && isPrivate(privacy, store.state.value(device.id, privacy.key))) {
+  if (privacy !== null && isPrivate(privacy, home.state.value(device.id, privacy.key))) {
     return null;
   }
   return { source, deviceName: device.display_name ?? device.name };
 }
 
-export function recentSpeechOf(
+export async function recentSpeechOf(
   options: RecentSpeechOptions,
   request: RecentSpeechRequest,
-): string | null {
+): Promise<string | null> {
   const { store, now, log } = options;
-  const settings = store.assistantChat.settings();
+  const settings = store.live.home.assistant.read();
   const minutes = settings.voice.speech_context_minutes;
   const heard = minutes === 0 ? null : heardOf(store, request);
   if (heard === null) {
@@ -130,7 +122,7 @@ export function recentSpeechOf(
   const at = now();
   const since = new Date(at.getTime() - minutes * MS_PER_MINUTE).toISOString();
   const block = recentSpeechBlock({
-    lines: store.transcripts.heardOn(heard.source, request.deviceId, since),
+    lines: await store.host.call('transcripts', 'heardOn', heard.source, request.deviceId, since),
     deviceName: heard.deviceName,
     minutes,
     now: at,

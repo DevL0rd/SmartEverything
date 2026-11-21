@@ -12,12 +12,12 @@ import {
   UpdateCommandError,
   UpdateUnavailableError,
 } from '../../src/self-update/command';
-import { updateBuildSources } from '../../src/self-update/build-source';
 import { findCheckoutSource, findUpdateSource } from '../../src/self-update/update-source';
 import { ServiceConfigError } from '../../src/service/configuration';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
 import { testLayout } from '../support/test-layout';
+import { testStoreHost } from '../support/store-host';
 
 const TSX = fileURLToPath(new URL('../../../../node_modules/tsx', import.meta.url));
 const SCRIPT = `
@@ -53,13 +53,19 @@ beforeEach(async () => {
   layout = await testLayout(join(scratch, 'data'));
   mkdirSync(dirname(layout.system.database.file), { recursive: true });
   const store = openStore({
+    host: testStoreHost(),
     path: layout.system.database.file,
     log: testLogger('store'),
     now: () => new Date('2026-11-14T10:00:00.000Z'),
     systemTimeZone: 'UTC',
-    drivePathOf: () => scratch,
+    driveFolders: null,
   });
-  updateBuildSources(store, { hub: 'hub', apk: 'hub', ui: 'hub', desktop: 'hub' });
+  await store.host.write('buildSourcesUpdate', {
+    hub: 'hub',
+    apk: 'hub',
+    ui: 'hub',
+    desktop: 'hub',
+  });
   store.close();
   checkout = join(scratch, 'checkout');
   mkdirSync(join(checkout, 'tooling'), { recursive: true });
@@ -73,40 +79,43 @@ afterEach(() => {
 });
 
 describe('the configured update source', () => {
-  it('reads the source from the service configuration', () => {
+  it('reads the source from the service configuration', async () => {
     configure();
-    expect(findUpdateSource(layout)).toStrictEqual({
+    await expect(findUpdateSource(layout)).resolves.toStrictEqual({
       repository: 'owner/repo',
       checkout,
       remote: 'origin',
       branch: 'main',
     });
-    expect(requireUpdateSource(layout)).toStrictEqual({
+    await expect(requireUpdateSource(layout)).resolves.toStrictEqual({
       root: checkout,
       remote: 'origin',
       branch: 'main',
     });
   });
 
-  it('reads a repository-only source, which has no checkout', () => {
+  it('reads a repository-only source, which has no checkout', async () => {
     writeConfig({ updateSource: { repository: 'owner/repo', branch: 'main' } });
-    expect(findUpdateSource(layout)).toStrictEqual({ repository: 'owner/repo', branch: 'main' });
-    expect(findCheckoutSource(layout)).toBeUndefined();
-    expect(() => requireUpdateSource(layout)).toThrow(UpdateUnavailableError);
+    await expect(findUpdateSource(layout)).resolves.toStrictEqual({
+      repository: 'owner/repo',
+      branch: 'main',
+    });
+    await expect(findCheckoutSource(layout)).resolves.toBeUndefined();
+    await expect(requireUpdateSource(layout)).rejects.toThrow(UpdateUnavailableError);
   });
 
-  it('treats a missing service configuration as no source', () => {
-    expect(findUpdateSource(layout)).toBeUndefined();
+  it('treats a missing service configuration as no source', async () => {
+    await expect(findUpdateSource(layout)).resolves.toBeUndefined();
   });
 
-  it('names the configure tool when no checkout is configured', () => {
+  it('names the configure tool when no checkout is configured', async () => {
     writeConfig({});
-    expect(findUpdateSource(layout)).toBeUndefined();
-    expect(() => requireUpdateSource(layout)).toThrow(UpdateUnavailableError);
-    expect(() => requireUpdateSource(layout)).toThrow(/configure-update-source\.ts/u);
+    await expect(findUpdateSource(layout)).resolves.toBeUndefined();
+    await expect(requireUpdateSource(layout)).rejects.toThrow(UpdateUnavailableError);
+    await expect(requireUpdateSource(layout)).rejects.toThrow(/configure-update-source\.ts/u);
   });
 
-  it('refuses a relative checkout, a bad remote and unknown keys', () => {
+  it('refuses a relative checkout, a bad remote and unknown keys', async () => {
     const repository = 'owner/repo';
     for (const source of [
       { repository, checkout: 'relative', remote: 'origin', branch: 'main' },
@@ -118,7 +127,7 @@ describe('the configured update source', () => {
       { checkout, remote: 'origin', branch: 'main' },
     ]) {
       writeConfig({ updateSource: source });
-      expect(() => findUpdateSource(layout)).toThrow(ServiceConfigError);
+      await expect(findUpdateSource(layout)).rejects.toThrow(ServiceConfigError);
     }
   });
 

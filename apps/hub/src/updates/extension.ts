@@ -1,3 +1,4 @@
+import { background } from '@smarteverything/logging';
 import {
   API_ENDPOINTS as E,
   ApiError,
@@ -84,9 +85,13 @@ export function machineUpdatesExtension(): ServerExtension {
     const updates = new MachineUpdates(folder, context.links);
     const publisher = new MachineUpdatePublisher(context.layout, folder);
     const watch = watchMachineUpdates(context.layout, folder, (notice) => {
-      for (const client of context.store.clients.list()) {
-        if (client.platform === 'desktop') context.live.toClient(client.id, notice);
-      }
+      background(
+        context.store.host.call('clients', 'list').then((clients) => {
+          for (const client of clients)
+            if (client.platform === 'desktop') context.live.toClient(client.id, notice);
+        }),
+        'machine_update.notice_failed',
+      );
     });
     const primer = (client: ClientRow): readonly AppUpdateNotice[] => {
       const notice = client.platform === 'desktop' ? watch.current() : null;

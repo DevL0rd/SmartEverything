@@ -15,7 +15,7 @@ import { STARTED_HINT, cameraOpening, channelOpening } from './reach-text';
 import { background, messageOf } from '@smarteverything/logging';
 
 export interface HostingOptions {
-  readonly store: Pick<Store, 'aiOutreach'>;
+  readonly store: Pick<Store, 'host'>;
   readonly host: HostVoice;
   readonly camera: CameraParts;
   readonly computer: ComputerParts;
@@ -41,7 +41,7 @@ export class Hosting {
 
   constructor(private readonly options: HostingOptions) {}
 
-  camera(
+  async camera(
     asker: Asker,
     camera: { readonly device: DeviceRow; readonly label: string },
     reason: string,
@@ -49,7 +49,7 @@ export class Hosting {
   ): Promise<AiOutreachRow> {
     const { device, label } = camera;
     const live = this.options.liveVideo();
-    const row = this.live(asker, { how: 'camera', target: device.id, label, reason });
+    const row = await this.live(asker, { how: 'camera', target: device.id, label, reason });
     this.guarded('frame', () => {
       this.options.framing.begin(row.id, device);
     });
@@ -80,14 +80,14 @@ export class Hosting {
     );
   }
 
-  computer(
+  async computer(
     asker: Asker,
     computer: { readonly device: DeviceRow; readonly label: string },
     reason: string,
     heard?: () => Int16Array,
   ): Promise<AiOutreachRow> {
     const { device, label } = computer;
-    const row = this.live(asker, { how: 'desktop', target: device.id, label, reason });
+    const row = await this.live(asker, { how: 'desktop', target: device.id, label, reason });
     const tap = this.options.computer.activity.begin({
       callId: row.id,
       device: { kind: 'computer', id: device.id },
@@ -118,8 +118,8 @@ export class Hosting {
     );
   }
 
-  channel(asker: Asker, channel: TalkChannelRow, reason: string): Promise<AiOutreachRow> {
-    const row = this.live(asker, {
+  async channel(asker: Asker, channel: TalkChannelRow, reason: string): Promise<AiOutreachRow> {
+    const row = await this.live(asker, {
       how: 'channel',
       target: channel.id,
       label: channel.name,
@@ -165,8 +165,8 @@ export class Hosting {
     });
   }
 
-  private live(asker: Asker, spec: LiveSpec): AiOutreachRow {
-    return this.options.store.aiOutreach.add({
+  private live(asker: Asker, spec: LiveSpec): Promise<AiOutreachRow> {
+    return this.options.store.host.call('aiOutreach', 'add', {
       profile_id: asker.profileId,
       chat_id: this.options.chatFor(asker),
       from_chat_id: asker.chatId,
@@ -195,10 +195,13 @@ export class Hosting {
   ): Promise<AiOutreachRow> {
     try {
       this.hosted.set(row.id, await start());
-      return this.options.store.aiOutreach.byId(row.id);
+      return await this.options.store.host.call('aiOutreach', 'byId', row.id);
     } catch (cause) {
       const reason = messageOf(cause);
-      this.options.store.aiOutreach.step(row.id, { state: 'failed', detail: reason });
+      await this.options.store.host.call('aiOutreach', 'step', row.id, {
+        state: 'failed',
+        detail: reason,
+      });
       this.ended(row.id);
       this.options.log.warn('reach.host_failed', { outreachId: row.id, reason });
       throw cause instanceof ReachRefusedError ? cause : new ReachRefusedError(reason);

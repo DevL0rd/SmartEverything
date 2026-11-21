@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
+import { BUNDLED_STORE_HOST } from '../store/host/script';
 import { openStore } from '../store/store';
 
 const COPY_FILE = 'migration-check.sqlite';
@@ -52,9 +53,8 @@ export function checkMigrationsOf(database: string, scratchRoot: string): Migrat
         log: new Logger(`hub.migration-check-pass-${String(pass + 1)}`),
         now: () => new Date(),
         systemTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        drivePathOf: () => {
-          throw new Error('The migration check opens a copy of the database without Drive paths.');
-        },
+        driveFolders: null,
+        host: { script: BUNDLED_STORE_HOST, readers: 1 },
       });
       store.close();
       return schemaVersion(copy);

@@ -1,4 +1,4 @@
-import { setImmediate as nextTurn } from 'node:timers/promises';
+import { settleWithHost } from '../../support/host-settle';
 import type { DeviceCommand, DiscoveredDevice, JsonValue, RoomRow } from '@smarteverything/domain';
 import type { EffectRequest, NodeResult } from '@smarteverything/flow/interpret/frames';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -14,6 +14,7 @@ import { FakeClock } from '../../support/fake-clock';
 import { LAMP } from '../../support/fake-provider';
 import { captureLogs, testLogger } from '../../support/logs';
 import { testRun } from './support';
+import { adapterDirectory } from '../../support/adapter-directory';
 
 const LIGHTS = 10;
 const open: TestDatabase[] = [];
@@ -126,15 +127,24 @@ async function home(extra: readonly DiscoveredDevice[] = []): Promise<Rig> {
     store: db.database,
     inventory,
     drivers,
-    adapters: { adapterFor: (): undefined => undefined },
+    adapters: adapterDirectory((): undefined => undefined),
     hubCommand: (): Promise<JsonValue> => Promise.resolve(null),
     log: testLogger(),
     now: clock.now,
   });
-  const issuer = new CommandIssuer({ store: db.store, database: db.database, executor, clock });
+  const counts = { inserts: 0 };
+  const counted = {
+    ...db.database,
+    insertCommands: (
+      ...args: Parameters<typeof db.database.insertCommands>
+    ): ReturnType<typeof db.database.insertCommands> => {
+      counts.inserts += 1;
+      return db.database.insertCommands(...args);
+    },
+  };
+  const issuer = new CommandIssuer({ store: db.store, database: counted, executor, clock });
   const setter = new DeviceSetter({ store: db.store, executor, issuer });
   const handler = lightEffects({ store: db.store, clock, setter })['light.set'];
-  const counts = { inserts: 0 };
   return {
     db,
     room,
@@ -155,20 +165,13 @@ async function home(extra: readonly DiscoveredDevice[] = []): Promise<Rig> {
     },
     run: (params, mode): Promise<NodeResult> => {
       if (handler === undefined) throw new Error('light.set is not registered');
-      const run = testRun();
-      return handler(params, request(mode), {
-        ...run,
-        commands: (rows): void => {
-          counts.inserts += 1;
-          run.commands(rows);
-        },
-      });
+      return handler(params, request(mode), testRun());
     },
   };
 }
 
 async function settle(): Promise<void> {
-  for (let turn = 0; turn < 30; turn += 1) await nextTurn();
+  await settleWithHost();
 }
 
 function report(rig: Rig, deviceId: string, capability: string, value: JsonValue): void {

@@ -48,7 +48,7 @@ function noticeFor(item: DriveItem): void {
 }
 
 async function settle(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await offline.idle();
 }
 
 async function refusal(work: () => unknown): Promise<ApiError> {
@@ -98,6 +98,7 @@ beforeEach(async () => {
     log: testLogger('offline'),
   });
   stop = offline.start();
+  await offline.ready();
 });
 
 afterEach(async () => {
@@ -107,7 +108,7 @@ afterEach(async () => {
 
 describe('keeping a file offline on a phone', () => {
   it('pins a folder for the person’s own phone and tells that phone to fetch it', async () => {
-    offline.set(owner(), { clientId: ownerPhone, itemId: folder.id, on: true });
+    await offline.set(owner(), { clientId: ownerPhone, itemId: folder.id, on: true });
     await settle();
     expect(rig.opened.store.driveOffline.find(ownerPhone, folder.id)?.state).toBe('waiting');
     expect(commands()).toEqual([
@@ -118,8 +119,8 @@ describe('keeping a file offline on a phone', () => {
   it('refuses a phone that is not the person’s own or is not a phone', async () => {
     const desktop = phone(rig.ownerId, 'desktop');
     for (const clientId of [samPhone, desktop, randomUUID()]) {
-      const refused = await refusal(() => {
-        offline.set(owner(), { clientId, itemId: folder.id, on: true });
+      const refused = await refusal(async () => {
+        await offline.set(owner(), { clientId, itemId: folder.id, on: true });
       });
       expect(refused.code).toBe('not_found');
     }
@@ -127,8 +128,8 @@ describe('keeping a file offline on a phone', () => {
   });
 
   it('refuses an item the person cannot open', async () => {
-    const refused = await refusal(() => {
-      offline.set(sam(), { clientId: samPhone, itemId: folder.id, on: true });
+    const refused = await refusal(async () => {
+      await offline.set(sam(), { clientId: samPhone, itemId: folder.id, on: true });
     });
     expect(refused.code).toBe('not_found');
   });
@@ -140,42 +141,42 @@ describe('keeping a file offline on a phone', () => {
       rig.ownerId,
     );
     store.driveLocks.set(folder.id, rig.ownerId, true);
-    const refused = await refusal(() => {
-      offline.set(sam(), { clientId: samPhone, itemId: folder.id, on: true });
+    const refused = await refusal(async () => {
+      await offline.set(sam(), { clientId: samPhone, itemId: folder.id, on: true });
     });
     expect(refused.reason).toBe(VIEW_ONLY_REASON);
     store.driveGrants.set(
       { itemId: folder.id, profileId: rig.memberId, role: 'edit', expiresAt: null },
       rig.ownerId,
     );
-    offline.set(sam(), { clientId: samPhone, itemId: folder.id, on: true });
+    await offline.set(sam(), { clientId: samPhone, itemId: folder.id, on: true });
     expect(store.driveOffline.find(samPhone, folder.id)?.profileId).toBe(rig.memberId);
   });
 
-  it('stops keeping an item when switched off', () => {
-    offline.set(owner(), { clientId: ownerPhone, itemId: outside.id, on: true });
-    offline.set(owner(), { clientId: ownerPhone, itemId: outside.id, on: false });
+  it('stops keeping an item when switched off', async () => {
+    await offline.set(owner(), { clientId: ownerPhone, itemId: outside.id, on: true });
+    await offline.set(owner(), { clientId: ownerPhone, itemId: outside.id, on: false });
     expect(rig.opened.store.driveOffline.find(ownerPhone, outside.id)).toBeUndefined();
   });
 
   it('still keeps the pin when the push could not be sent', async () => {
     outcome = { outcome: 'no_target', reason: 'no push token' };
-    offline.set(owner(), { clientId: ownerPhone, itemId: outside.id, on: true });
+    await offline.set(owner(), { clientId: ownerPhone, itemId: outside.id, on: true });
     await settle();
     expect(rig.opened.store.driveOffline.find(ownerPhone, outside.id)).toBeDefined();
   });
 
-  it('lists only the caller’s pins, one phone at a time when asked', () => {
-    offline.set(owner(), { clientId: ownerPhone, itemId: folder.id, on: true });
-    offline.set(owner(), { clientId: ownerPhone, itemId: outside.id, on: true });
-    expect(offline.list(owner(), undefined, undefined).items).toHaveLength(2);
-    expect(offline.list(owner(), samPhone, undefined).items).toEqual([]);
-    expect(offline.list(sam(), undefined, undefined).items).toEqual([]);
+  it('lists only the caller’s pins, one phone at a time when asked', async () => {
+    await offline.set(owner(), { clientId: ownerPhone, itemId: folder.id, on: true });
+    await offline.set(owner(), { clientId: ownerPhone, itemId: outside.id, on: true });
+    expect((await offline.list(owner(), undefined, undefined)).items).toHaveLength(2);
+    expect((await offline.list(owner(), samPhone, undefined)).items).toEqual([]);
+    expect((await offline.list(sam(), undefined, undefined)).items).toEqual([]);
   });
 
-  it('records what the phone reports and ignores items it does not keep', () => {
-    offline.set(owner(), { clientId: ownerPhone, itemId: outside.id, on: true });
-    offline.report(owner(), {
+  it('records what the phone reports and ignores items it does not keep', async () => {
+    await offline.set(owner(), { clientId: ownerPhone, itemId: outside.id, on: true });
+    await offline.report(owner(), {
       clientId: ownerPhone,
       items: [
         { itemId: outside.id, state: 'ready', bytes: 5, rev: outside.rev },
@@ -189,8 +190,8 @@ describe('keeping a file offline on a phone', () => {
   });
 
   it('refuses a report for another person’s phone', async () => {
-    const refused = await refusal(() => {
-      offline.report(owner(), {
+    const refused = await refusal(async () => {
+      await offline.report(owner(), {
         clientId: samPhone,
         items: [{ itemId: outside.id, state: 'failed', error: 'x' }],
       });
@@ -201,7 +202,7 @@ describe('keeping a file offline on a phone', () => {
 
 describe('telling a phone that something it keeps changed', () => {
   beforeEach(async () => {
-    offline.set(owner(), { clientId: ownerPhone, itemId: folder.id, on: true });
+    await offline.set(owner(), { clientId: ownerPhone, itemId: folder.id, on: true });
     await settle();
     sent = [];
   });
@@ -240,7 +241,7 @@ describe('telling a phone that something it keeps changed', () => {
       { itemId: shared.id, profileId: rig.memberId, role: 'view', expiresAt: null },
       rig.ownerId,
     );
-    offline.set(sam(), { clientId: samPhone, itemId: shared.id, on: true });
+    await offline.set(sam(), { clientId: samPhone, itemId: shared.id, on: true });
     await settle();
     sent = [];
     store.driveGrants.remove(grant.id);
@@ -257,7 +258,7 @@ describe('telling a phone that something it keeps changed', () => {
       { itemId: shared.id, profileId: rig.memberId, role: 'view', expiresAt: null },
       rig.ownerId,
     );
-    offline.set(sam(), { clientId: samPhone, itemId: shared.id, on: true });
+    await offline.set(sam(), { clientId: samPhone, itemId: shared.id, on: true });
     await settle();
     sent = [];
     store.driveLocks.set(shared.id, rig.ownerId, true);

@@ -43,7 +43,7 @@ function run(
     throw new Error('the command was not stored');
   }
   return runBottleCommand(
-    { store: rig.test.store, actions: rig.actions, log: testLogger('bottle') },
+    { store: rig.test.store, roster: rig.roster, actions: rig.actions, log: testLogger('bottle') },
     {
       commandId: row.id,
       externalId: device.external_id,

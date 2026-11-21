@@ -174,10 +174,13 @@ export const PLANNER_ITEM_ENDPOINTS = {
     method: 'POST',
     path: '/api/planner/items',
     access: 'member',
-    summary: 'Add a task or event to a calendar or list',
+    summary:
+      'Add a task or event to a calendar or list; repeating a create with the same client id returns the item already made',
     params: NOTHING,
     query: PLANNER_PERSON_QUERY,
-    body: PLANNER_ITEM_CREATE,
+    body: PLANNER_ITEM_CREATE.extend({
+      id: ID.optional().describe('Id the client generated for the new item'),
+    }),
     response: PLANNER_ITEM_ROW,
   }),
   updatePlannerItem: endpoint({

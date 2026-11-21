@@ -9,7 +9,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { Sql } from '../../src/store/sql';
 import { openStore } from '../../src/store/store';
 import { testLogger } from '../support/logs';
-import { unusedDrivePath } from '../support/store';
+import { testStoreHost } from '../support/store-host';
 
 const NOW = '2026-10-19T10:07:01.388Z';
 const PROFILE = '0e000000-0000-4000-8000-0000000000f2';
@@ -107,11 +107,12 @@ function storedStages(id: string): Stage[] {
 
 function openAt(): void {
   openStore({
+    host: testStoreHost(),
     path,
     log: testLogger(),
     now: () => new Date(NOW),
     systemTimeZone: 'UTC',
-    drivePathOf: unusedDrivePath,
+    driveFolders: null,
   }).close();
 }
 

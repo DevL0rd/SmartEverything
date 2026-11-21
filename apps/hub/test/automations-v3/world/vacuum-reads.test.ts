@@ -1,6 +1,6 @@
 import type { DeviceCapability, DeviceRow, JsonValue } from '@smarteverything/domain';
-import { VACUUM_FAULT_KEY, vacuumFaultText } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { VACUUM_FAULT_KEY, VACUUM_ROOM_LINKS_KEY, vacuumFaultText } from '@smarteverything/domain';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { coreNodeReadHandlers } from '../../../src/automations/world-v3/core-node-reads';
 import { ReadFailure } from '../../../src/automations/world-v3/read-port';
 import {
@@ -47,12 +47,13 @@ function roomOf(name: string): string {
   return found.id;
 }
 
-function linkMapRoom(mapRoomId: number, name: string, homeRoom: string): void {
+async function linkMapRoom(mapRoomId: number, name: string, homeRoom: string): Promise<void> {
   home.test.store.vacuumRoomLinks.link(robot.id, {
     mapRoomId,
     mapRoomName: name,
     roomId: roomOf(homeRoom),
   });
+  await home.world.vacuumLinksChanged(robot.id);
 }
 
 function job(rooms: readonly number[]): string {
@@ -117,9 +118,9 @@ describe('vacuum.read', () => {
     expect(read()).toMatchObject({ state: 'returning', docked: false });
   });
 
-  it('maps the map rooms of the job to home rooms and drops rooms that are not linked', () => {
-    linkMapRoom(16, 'Kitchen', 'Kitchen');
-    linkMapRoom(17, 'Study room', 'Study');
+  it('maps the map rooms of the job to home rooms and drops rooms that are not linked', async () => {
+    await linkMapRoom(16, 'Kitchen', 'Kitchen');
+    await linkMapRoom(17, 'Study room', 'Study');
     write('cleaning', 'cleaning');
     write(JOB, job([16, 17, 18]));
     expect(read()['cleaningRooms']).toEqual([
@@ -128,29 +129,45 @@ describe('vacuum.read', () => {
     ]);
   });
 
-  it('lists a home room once when two map rooms are linked to it', () => {
-    linkMapRoom(16, 'Kitchen', 'Kitchen');
-    linkMapRoom(19, 'Kitchen corner', 'Kitchen');
+  it('lists a home room once when two map rooms are linked to it', async () => {
+    await linkMapRoom(16, 'Kitchen', 'Kitchen');
+    await linkMapRoom(19, 'Kitchen corner', 'Kitchen');
     write('cleaning', 'cleaning');
     write(JOB, job([16, 19]));
     expect(read()['cleaningRooms']).toEqual([{ room: roomOf('Kitchen') }]);
   });
 
-  it('ignores a link to a room that left the map', () => {
-    linkMapRoom(16, 'Kitchen', 'Kitchen');
-    linkMapRoom(17, 'Study room', 'Study');
+  it('follows the links again when the robot publishes its room links', async () => {
+    home.test.store.vacuumRoomLinks.link(robot.id, {
+      mapRoomId: 16,
+      mapRoomName: 'Kitchen',
+      roomId: roomOf('Kitchen'),
+    });
+    write('cleaning', 'cleaning');
+    write(JOB, job([16]));
+    expect(read()['cleaningRooms']).toEqual([]);
+    write(VACUUM_ROOM_LINKS_KEY, JSON.stringify({ revision: 1 }));
+    await vi.waitFor(() => {
+      expect(read()['cleaningRooms']).toEqual([{ room: roomOf('Kitchen') }]);
+    });
+  });
+
+  it('ignores a link to a room that left the map', async () => {
+    await linkMapRoom(16, 'Kitchen', 'Kitchen');
+    await linkMapRoom(17, 'Study room', 'Study');
     home.test.store.vacuumRoomLinks.reconcile(
       robot.id,
       [{ id: 16, name: 'Kitchen' }],
       '2026-10-25T00:00:00.000Z',
     );
+    await home.world.vacuumLinksChanged(robot.id);
     write('cleaning', 'cleaning');
     write(JOB, job([16, 17]));
     expect(read()['cleaningRooms']).toEqual([{ room: roomOf('Kitchen') }]);
   });
 
-  it('has no cleaning rooms while the robot is not on a job, whatever the last job was', () => {
-    linkMapRoom(16, 'Kitchen', 'Kitchen');
+  it('has no cleaning rooms while the robot is not on a job, whatever the last job was', async () => {
+    await linkMapRoom(16, 'Kitchen', 'Kitchen');
     write(JOB, job([16]));
     write('cleaning', 'docked');
     expect(read()['cleaningRooms']).toEqual([]);

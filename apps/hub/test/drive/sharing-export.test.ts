@@ -1,10 +1,12 @@
 import { createServer, type Server } from 'node:http';
 import { ApiError, type ComputerNodeRow, type DriveItem } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mayExport, type DriveActor, type ItemAccess } from '../../src/drive/access';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ContentHasher } from '../../src/drive/hasher';
+import { bundleHashWorker, type BundledWorker } from './drive-fixture';
+import { itemAccess, mayExport, type DriveActor, type ItemAccess } from '../../src/drive/access';
 import { PosixError } from '../../src/drive/posix/errors';
 import { DriveShares } from '../../src/drive/shares';
-import { ExportGuard, VIEW_ONLY_REASON } from '../../src/drive/sharing/export-guard';
+import { mayExportItem, VIEW_ONLY_REASON } from '../../src/drive/sharing/export-guard';
 import type { DriveCaller } from '../../src/drive/service-write-support';
 import { SyncBlockRoutes } from '../../src/drive/sync/server-blocks';
 import { SyncTxns, type SyncEnv } from '../../src/drive/sync/server-ops';
@@ -168,11 +170,13 @@ function syncEnv(): SyncEnv {
     ...rig.changeEnv(),
     store: rig.opened.store,
     space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: 10 ** 12 }),
-    authenticate: () => ({
-      deviceId: rig.memberNode,
-      profileId: rig.memberId,
-      actor: memberActor(),
-    }),
+    hasher,
+    authenticate: () =>
+      Promise.resolve({
+        deviceId: rig.memberNode,
+        profileId: rig.memberId,
+        actor: memberActor(),
+      }),
     posix: syncPosixOf(rig.opened.store, () => NOW),
   };
 }
@@ -196,6 +200,18 @@ function davDeps(): DavDeps {
   };
 }
 
+let hashWorker: BundledWorker;
+let hasher: ContentHasher;
+
+beforeAll(async () => {
+  hashWorker = await bundleHashWorker();
+  hasher = new ContentHasher(hashWorker.script);
+}, 60_000);
+
+afterAll(() => {
+  hashWorker.dispose();
+});
+
 beforeEach(async () => {
   rig = await openFsRig();
   folder = await rig.seedFolder(rig.mine, 'proj');
@@ -206,9 +222,9 @@ beforeEach(async () => {
     store: rig.opened.store,
     links,
     nodes: {
-      authenticate: (token): ComputerNodeRow => {
+      authenticate: (token): Promise<ComputerNodeRow> => {
         if (token !== NODE_TOKEN) throw new ApiError('unauthorized', 'unknown node token');
-        return node();
+        return Promise.resolve(node());
       },
       actorOf: (): DriveActor => memberActor(),
     },
@@ -264,8 +280,12 @@ describe('the one export rule', () => {
     expect(rig.opened.store.driveItems.byId(file.id, rig.ownerId).locked).toBe(true);
     expect(inside.lockedHere).toBe(false);
     expect(rig.opened.store.driveItems.byId(folder.id, rig.ownerId).lockedHere).toBe(true);
-    expect(new ExportGuard(rig.opened.store).may(memberActor(), inside)).toBe(false);
-    expect(new ExportGuard(rig.opened.store).may({ profileId: rig.ownerId }, inside)).toBe(true);
+    const store = rig.opened.store;
+    const drive = store.driveRoots.byId(inside.rootId);
+    const may = (actor: DriveActor): boolean =>
+      mayExportItem(itemAccess(store, actor, drive, inside), inside);
+    expect(may(memberActor())).toBe(false);
+    expect(may({ profileId: rig.ownerId })).toBe(true);
   });
 });
 

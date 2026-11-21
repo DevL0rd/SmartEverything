@@ -22,8 +22,8 @@ export const REVIEWED_OFFER = z.strictObject({
 
 type ReviewedOffer = z.infer<typeof REVIEWED_OFFER>;
 
-export function configuredHubSource(data: string): HubUpdateSource {
-  const source = findCheckoutSource(dataLayoutOf(data));
+export async function configuredHubSource(data: string): Promise<HubUpdateSource> {
+  const source = await findCheckoutSource(dataLayoutOf(data));
   if (source === undefined)
     throw new HubSourceError(
       'git',
@@ -68,15 +68,15 @@ function offerFile(data: string, ownerClient: string): string {
   return join(data, SELF_UPDATE_ROOT, `source-offer-${z.uuid().parse(ownerClient)}.json`);
 }
 
-export function reviewedHubSourceOffer(
+export async function reviewedHubSourceOffer(
   data: string,
   ownerClient: string,
   id: string,
-): ReviewedOffer {
+): Promise<ReviewedOffer> {
   const recorded = readOffer(offerFile(data, ownerClient));
   if (recorded?.offerId !== id || recorded.ownerClient !== ownerClient)
     throw new HubSourceError('changed', 'This update offer changed. Check for updates again.');
-  const trusted = configuredHubSource(data);
+  const trusted = await configuredHubSource(data);
   const { source } = recorded.offer;
   if (
     trusted.folder !== source.folder ||

@@ -1,21 +1,25 @@
 import { executionRole, currentExecutionAuthority } from '../assistant/turn-authority';
 import { roleOfCaller, clientOf, profileIdOf } from './auth';
-import { assertDeviceReach, scopesOf, scopesOfClient } from './person-scope';
+import { deviceHidden, deviceReachWhy, scopesOf } from './person-scope';
+import { refusal } from './person-access';
+import { storeUnit } from '../store/host/unit';
 import type { COMMAND_INPUT } from '@smarteverything/domain';
 import {
   ApiError,
   CAPABILITY_KEY,
   HUB_COMMAND,
   isHubCapability,
+  CommandRefusedError,
+  InvalidValueError,
   validateCommand,
-  type ClientRow,
+  type ValueDescriptor,
   type DeviceScope,
 } from '@smarteverything/domain';
 import type { z } from 'zod';
 import type { NewCommand } from '../store/repositories/commands';
 import type { Store } from '../store/store';
 import type { Caller } from './auth';
-import { invalid } from './errors';
+import { invalid } from './invalid';
 import { assertPhoneCommandAllowed } from '../phones/phone-access';
 
 const OWNER_HUB_COMMANDS: ReadonlySet<string> = new Set(['hub:unlink_provider']);
@@ -37,25 +41,21 @@ export function commandRole(caller: Caller): CommandPrincipal['role'] {
   return member ? 'member' : roleOfCaller(caller);
 }
 
-export function commandPrincipal(store: Store, caller: Caller): CommandPrincipal {
+export const DEVICE_SCOPE_UNIT = storeUnit(
+  (store, profileId: string): DeviceScope => scopesOf(store, profileId).devices,
+);
+
+export async function commandPrincipal(
+  store: Pick<Store, 'host'>,
+  caller: Caller,
+): Promise<CommandPrincipal> {
   const role = commandRole(caller);
-  const profileId = profileIdOf(store, caller);
+  const profileId = profileIdOf(caller);
   return {
     clientId: caller.kind === 'service' ? null : clientOf(caller).id,
     role,
     profileId,
-    devices: role === 'owner' ? null : scopesOf(store, profileId).devices,
-  };
-}
-
-function principalOf(store: Store, client: ClientRow | CommandPrincipal): CommandPrincipal {
-  if ('clientId' in client) return client;
-  const scopes = scopesOfClient(store, client);
-  return {
-    clientId: client.id,
-    role: client.role,
-    profileId: store.profiles.activeOf(client.id).id,
-    devices: scopes?.devices ?? null,
+    devices: role === 'owner' ? null : await store.host.read('deviceScope', profileId),
   };
 }
 
@@ -87,12 +87,7 @@ function deviceCommand(store: Store, input: CheckedInput, client: CommandPrincip
     );
   }
   const device = store.devices.byId(input.device_id);
-  assertDeviceReach(
-    store,
-    { id: client.clientId, profile_id: client.profileId },
-    client.devices,
-    device,
-  );
+  if (deviceHidden(client.devices, device)) throw new CommandReachError(device.id);
   const capability = CAPABILITY_KEY.safeParse(input.capability);
   if (!capability.success) {
     throw invalid('capability', capability.error);
@@ -109,15 +104,72 @@ function deviceCommand(store: Store, input: CheckedInput, client: CommandPrincip
   };
 }
 
-export function checkedCommands(
-  store: Store,
+class CommandReachError extends Error {
+  override readonly name = 'CommandReachError';
+
+  constructor(readonly deviceId: string) {
+    super(`The command names a device outside the person's devices: ${deviceId}.`);
+  }
+}
+
+export interface CommandsCheck {
+  readonly inputs: readonly CheckedInput[];
+  readonly principal: CommandPrincipal;
+}
+
+type CheckedCommands =
+  | { readonly kind: 'checked'; readonly commands: NewCommand[] }
+  | { readonly kind: 'unreachable'; readonly deviceId: string }
+  | { readonly kind: 'refused'; readonly capability: string; readonly reason: string }
+  | {
+      readonly kind: 'invalid';
+      readonly descriptor: ValueDescriptor;
+      readonly received: unknown;
+      readonly reason: string;
+    };
+
+export const CHECK_COMMANDS_UNIT = storeUnit(
+  (store, { inputs, principal }: CommandsCheck): CheckedCommands => {
+    try {
+      return {
+        kind: 'checked',
+        commands: inputs.map((input) =>
+          isHubCapability(input.capability)
+            ? hubCommand(input, principal)
+            : deviceCommand(store, input, principal),
+        ),
+      };
+    } catch (cause) {
+      if (cause instanceof CommandReachError)
+        return { kind: 'unreachable', deviceId: cause.deviceId };
+      if (cause instanceof CommandRefusedError)
+        return { kind: 'refused', capability: cause.capability, reason: cause.reason };
+      if (cause instanceof InvalidValueError)
+        return {
+          kind: 'invalid',
+          descriptor: cause.descriptor,
+          received: cause.received,
+          reason: cause.reason,
+        };
+      throw cause;
+    }
+  },
+);
+
+export async function checkedCommands(
+  store: Pick<Store, 'host'>,
   inputs: readonly CheckedInput[],
-  client: ClientRow | CommandPrincipal,
-): NewCommand[] {
-  return inputs.map((input) =>
-    isHubCapability(input.capability)
-      ? hubCommand(input, principalOf(store, client))
-      : deviceCommand(store, input, principalOf(store, client)),
+  principal: CommandPrincipal,
+): Promise<NewCommand[]> {
+  const checked = await store.host.read('checkCommands', { inputs, principal });
+  if (checked.kind === 'checked') return checked.commands;
+  if (checked.kind === 'refused') throw new CommandRefusedError(checked.capability, checked.reason);
+  if (checked.kind === 'invalid')
+    throw new InvalidValueError(checked.descriptor, checked.received, checked.reason);
+  throw refusal(
+    store,
+    { id: principal.clientId, profile_id: principal.profileId },
+    deviceReachWhy(checked.deviceId),
   );
 }
 

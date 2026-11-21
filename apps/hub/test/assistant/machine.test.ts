@@ -13,13 +13,14 @@ let opened: TestStore;
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
 });
 
 afterEach(async () => {
   await opened.close();
 });
 
-function noteText(caller: ReturnType<typeof callerOf>): string {
+async function noteText(caller: Awaited<ReturnType<typeof callerOf>>): Promise<string> {
   const chat = opened.store.aiChats.create({
     profileId: caller.profileId,
     kind: 'chat',
@@ -30,7 +31,7 @@ function noteText(caller: ReturnType<typeof callerOf>): string {
     engine: TEST_ENGINE,
   });
   return conversationNote(
-    noteOf({
+    await noteOf({
       store: opened.store,
       tools: new ToolHub([]),
       memory: testVoiceMemory(opened.store),
@@ -45,11 +46,11 @@ function noteText(caller: ReturnType<typeof callerOf>): string {
   );
 }
 
-function clientOf(
+async function clientOf(
   name: string,
   platform: 'android' | 'desktop' | 'web',
   kind?: 'tablet',
-): ReturnType<typeof callerOf> {
+): Promise<Awaited<ReturnType<typeof callerOf>>> {
   const client = opened.store.clients.create({
     name,
     platform,
@@ -57,44 +58,44 @@ function clientOf(
     role: 'owner',
     tokenHash: `${name}-hash`,
   });
-  return callerOf(opened.store, client, `${name} label`);
+  return await callerOf(opened.store, client, `${name} label`);
 }
 
 describe('which machine a call comes from', () => {
-  it('tells a phone call that my screen is the phone screen', () => {
-    const text = noteText(clientOf('Pixel 9', 'android'));
+  it('tells a phone call that my screen is the phone screen', async () => {
+    const text = await noteText(await clientOf('Pixel 9', 'android'));
     expect(text).toContain('From: Pixel 9 (phone).');
     expect(text).toContain('they mean the screen of Pixel 9: look at phone_screen');
     expect(text).toContain('only when they name that device');
   });
 
-  it('tells a tablet call that it is a tablet and that my screen is its screen', () => {
-    const text = noteText(clientOf('Tab S9', 'android', 'tablet'));
+  it('tells a tablet call that it is a tablet and that my screen is its screen', async () => {
+    const text = await noteText(await clientOf('Tab S9', 'android', 'tablet'));
     expect(text).toContain('From: Tab S9 (tablet).');
     expect(text).toContain('they mean the screen of Tab S9: look at phone_screen');
   });
 
-  it('tells a computer call that my screen is the computer screen', () => {
-    const text = noteText(clientOf('Studio PC', 'desktop'));
+  it('tells a computer call that my screen is the computer screen', async () => {
+    const text = await noteText(await clientOf('Studio PC', 'desktop'));
     expect(text).toContain('From: Studio PC (computer).');
     expect(text).toContain('look at desktop_screen');
   });
 
-  it('tells a web browser call that my screen is the browser machine screen', () => {
-    const text = noteText(clientOf('Browser', 'web'));
+  it('tells a web browser call that my screen is the browser machine screen', async () => {
+    const text = await noteText(await clientOf('Browser', 'web'));
     expect(text).toContain('From: Browser (web browser).');
     expect(text).toContain('look at desktop_screen');
   });
 
-  it('tells a hosted wake call on a computer that the caller is that computer', () => {
+  it('tells a hosted wake call on a computer that the caller is that computer', async () => {
     const profile = opened.store.profiles.first();
-    const caller = hostedCallerOf(opened.store, {
+    const caller = await hostedCallerOf(opened.store, {
       profileId: profile.id,
       role: 'owner',
       label: 'Office PC',
       machine: { name: 'Office PC', kind: 'computer', room: null },
     });
-    const text = noteText(caller);
+    const text = await noteText(caller);
     expect(text).toContain('From: Office PC (computer).');
     expect(text).toContain('look at desktop_screen');
   });
@@ -106,10 +107,14 @@ describe('which machine a call comes from', () => {
     expect(ownScreenRule(machine)).toBeNull();
   });
 
-  it('leaves a call with no machine as it was', () => {
+  it('leaves a call with no machine as it was', async () => {
     const profile = opened.store.profiles.first();
-    const text = noteText(
-      hostedCallerOf(opened.store, { profileId: profile.id, role: 'owner', label: 'Discord' }),
+    const text = await noteText(
+      await hostedCallerOf(opened.store, {
+        profileId: profile.id,
+        role: 'owner',
+        label: 'Discord',
+      }),
     );
     expect(text).toContain('From: Discord.');
     expect(text).not.toContain('my screen');

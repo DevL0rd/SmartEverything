@@ -6,11 +6,11 @@ import {
   type PlannerRingTarget,
   type PlannerSunrise,
 } from '@smarteverything/domain';
-import type { AlarmSounds } from '../../planner/alarm-sound';
+import type { AlarmSoundCheck } from '../../planner/alarm-sound-check';
 import type { Store } from '../../store/store';
 import { profileIdOf, roleOfCaller, type Caller } from '../auth';
-import { assertDevicesReach } from '../person-scope';
-import type { PlannerContext } from './planner-items';
+import type { Refusal } from '../person-access';
+import { devicesReachWhy } from '../person-scope';
 
 export function requireTargets(
   store: Store,
@@ -31,7 +31,7 @@ export function requireTargets(
 }
 
 export function requireAutomation(
-  context: PlannerContext,
+  context: { readonly store: Pick<Store, 'automations'> },
   caller: Caller,
   automationId: string | null | undefined,
 ): void {
@@ -39,8 +39,7 @@ export function requireAutomation(
   const automation = context.store.automations.find(automationId);
   const visible =
     automation !== undefined &&
-    (roleOfCaller(caller) === 'owner' ||
-      automation.author?.profile_id === profileIdOf(context.store, caller));
+    (roleOfCaller(caller) === 'owner' || automation.author?.profile_id === profileIdOf(caller));
   if (!visible) throw new ApiError('not_found', 'There is no such automation.');
 }
 
@@ -65,22 +64,22 @@ export function requireChallenge(
   }
 }
 
-export function requireSound(
-  sounds: Pick<AlarmSounds, 'assertUsable'>,
+export async function requireSound(
+  sounds: Pick<AlarmSoundCheck, 'assertUsable'>,
   profileId: string,
   sound: PlannerAlarmSound | undefined,
-): void {
-  if (sound !== undefined) sounds.assertUsable(profileId, sound);
+): Promise<void> {
+  if (sound !== undefined) await sounds.assertUsable(profileId, sound);
 }
 
-export function requireSunrise(
-  context: PlannerContext,
+export function sunriseRefusal(
+  store: Store,
   caller: Caller,
   sunrise: PlannerSunrise | null | undefined,
-): void {
-  if (sunrise === null || sunrise === undefined) return;
+): Refusal | null {
+  if (sunrise === null || sunrise === undefined) return null;
   for (const lightId of sunrise.lights) {
-    const light = context.store.devices.find(lightId);
+    const light = store.devices.find(lightId);
     const dimmable =
       light !== undefined &&
       (targetCapability(light, 'brightness')?.writable === true ||
@@ -89,5 +88,5 @@ export function requireSunrise(
       throw new ApiError('invalid_request', 'A sunrise light must be a light you can switch on.');
     }
   }
-  assertDevicesReach(context.store, caller, sunrise.lights);
+  return devicesReachWhy(store, caller, sunrise.lights);
 }

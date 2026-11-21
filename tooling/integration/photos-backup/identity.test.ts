@@ -86,26 +86,30 @@ function seedLegacy(itemId: string | null): void {
 }
 
 function runner(): BackupRunner {
-  const { service, profileId, phoneId } = fixture;
+  const { service, profileId, phoneId, opened } = fixture;
   return new BackupRunner({
     ...local.ports,
     identity: { ...local.ports.identity, deviceId: phoneId },
     hub: {
       register: (): Promise<unknown> => Promise.resolve({}),
-      lookupHashes: (input) => Promise.resolve(service.lookupHashes(profileId, input)),
-      checkBackup: (input) => Promise.resolve(service.checkHashes(profileId, input)),
+      lookupHashes: (input) =>
+        opened.store.host.read('photoBackupLookup', { profileId, request: input }),
+      checkBackup: (input) =>
+        opened.store.host.write('photoBackupCheck', { profileId, request: input }),
       resolveTarget: (deviceId, takenAt) => service.backupTarget(profileId, deviceId, takenAt),
     },
   });
 }
 
-function snapshot(): unknown {
+async function snapshot(): Promise<unknown> {
   const device = repository.findDeviceByHubDevice(fixture.phoneId);
   if (device === undefined) throw new Error('Missing isolated backup device');
   return {
     device,
     assets: repository.assetsOf(device.id),
-    state: fixture.service.state(fixture.profileId),
+    state: await fixture.opened.store.host.read('photoBackupState', {
+      profileId: fixture.profileId,
+    }),
   };
 }
 
@@ -115,14 +119,14 @@ describe('legacy backup identity lookup against the actual backup service', () =
     async (held) => {
       const itemId = held ? addHeldItem() : null;
       seedLegacy(itemId);
-      const before = snapshot();
+      const before = await snapshot();
       const notices: CommittedNotice[] = [];
       const off = fixture.opened.store.feed.subscribeNotices((notice) => {
         notices.push(notice);
       });
       await runner().request();
       off();
-      expect(snapshot()).toEqual(before);
+      expect(await snapshot()).toEqual(before);
       expect(notices).toEqual([]);
       expect(local.native.hashed).toEqual([]);
       expect(local.upload.started).toEqual([]);
@@ -133,13 +137,16 @@ describe('legacy backup identity lookup against the actual backup service', () =
     },
   );
 
-  it('does not resolve identities belonging to another profile', () => {
+  it('does not resolve identities belonging to another profile', async () => {
     const input = {
       deviceId: fixture.phoneId,
       assets: [{ localId: 'a', sha256: digestOf('a@1000') }],
     };
-    expect(() => fixture.service.lookupHashes(randomUUID(), input)).toThrow(
-      'not registered for backup',
-    );
+    await expect(
+      fixture.opened.store.host.read('photoBackupLookup', {
+        profileId: randomUUID(),
+        request: input,
+      }),
+    ).rejects.toThrow('not registered for backup');
   });
 });

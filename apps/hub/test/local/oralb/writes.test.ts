@@ -27,8 +27,8 @@ async function open(
   return rig;
 }
 
-function wake(brushed: OralbRig, seconds = 0): void {
-  brushed.batch(seconds, {
+async function wake(brushed: OralbRig, seconds = 0): Promise<void> {
+  await brushed.batch(seconds, {
     phase: 'linked',
     frames: [
       brushed.frame('ff04', bytes(2, 0), seconds),
@@ -78,7 +78,7 @@ function stepsFor(current: OralbRig, value: DeviceCommand, isOwner = true): Brus
 describe('changing the brush before a handle test passed', () => {
   it('refuses with the reason that names the handle test', async () => {
     const brushed = await open();
-    wake(brushed);
+    await wake(brushed);
     expect(() => stepsFor(brushed, command('brush_pacer', false))).toThrow(CommandRefusedError);
     expect(() => stepsFor(brushed, command('brush_pacer', false))).toThrow('Handle tests');
     const state = brushed.fleet.of(brushed.row());
@@ -97,14 +97,14 @@ describe('changing the brush before a handle test passed', () => {
   it('refuses while the brush is asleep and while it is in use', async () => {
     const brushed = await open({ probes: { pacer_write: PASSED } });
     expect(() => stepsFor(brushed, command('brush_pacer', false))).toThrow('asleep');
-    wake(brushed);
-    brushed.batch(1, { phase: 'linked', frames: [brushed.frame('ff04', bytes(3, 0), 1)] });
+    await wake(brushed);
+    await brushed.batch(1, { phase: 'linked', frames: [brushed.frame('ff04', bytes(3, 0), 1)] });
     expect(() => stepsFor(brushed, command('brush_pacer', false))).toThrow('in use');
   });
 
   it('refuses a member and a value the brush cannot take', async () => {
     const brushed = await open({ probes: { pacer_write: PASSED, ring_write: PASSED } });
-    wake(brushed);
+    await wake(brushed);
     expect(() => stepsFor(brushed, command('brush_pacer', false), false)).toThrow('only the owner');
     expect(() => stepsFor(brushed, command('brush_quadrant_seconds', 3))).toThrow('cannot change');
     expect(() => stepsFor(brushed, command('brush_ring_colour', 'custom'))).toThrow(
@@ -117,7 +117,7 @@ describe('changing the brush before a handle test passed', () => {
 describe('changing the brush after the handle test passed', () => {
   it('writes the prefix and the pacer, then reads it back', async () => {
     const brushed = await open({ probes: { pacer_write: PASSED } });
-    wake(brushed);
+    await wake(brushed);
     const steps = stepsFor(brushed, command('brush_quadrant_seconds', 45));
     expect(steps.map((step) => (step.kind === 'write' ? step.hex : 'read'))).toEqual([
       '372a',
@@ -136,7 +136,7 @@ describe('changing the brush after the handle test passed', () => {
     const brushed = await open({
       probes: { ring_write: { ...PASSED, rule: 'plain' } },
     });
-    wake(brushed);
+    await wake(brushed);
     const steps = stepsFor(brushed, command('brush_ring_colour', 'pink'));
     expect(steps.map((step) => (step.kind === 'write' ? step.hex : 'read'))).toEqual([
       '2f',
@@ -147,8 +147,11 @@ describe('changing the brush after the handle test passed', () => {
 
   it('turns the pacer back on with the schedule it had', async () => {
     const brushed = await open({ probes: { pacer_write: PASSED } });
-    wake(brushed);
-    brushed.batch(2, { phase: 'linked', frames: [brushed.frame('ff26', '0000000000000000', 2)] });
+    await wake(brushed);
+    await brushed.batch(2, {
+      phase: 'linked',
+      frames: [brushed.frame('ff26', '0000000000000000', 2)],
+    });
     const steps = stepsFor(brushed, command('brush_pacer', true));
     expect(steps.map((step) => (step.kind === 'write' ? step.hex : 'read'))[1]).toBe(
       '1e1e1e1e00000000',
@@ -157,14 +160,14 @@ describe('changing the brush after the handle test passed', () => {
 
   it('stops counting a pass after a firmware update', async () => {
     const brushed = await open({ probes: { pacer_write: PASSED } });
-    wake(brushed);
+    await wake(brushed);
     const before = oralbCapabilities(
       brushed.test.store.localDevices.byExternalId(brushed.device.external_id),
     );
     expect(before.find((capability) => capability.key === 'brush_pacer')?.access).toBe(
       'read_write',
     );
-    brushed.batch(3, { adverts: [brushed.advert(3, { state: 2, firmware: 90 })] });
+    await brushed.batch(3, { adverts: [brushed.advert(3, { state: 2, firmware: 90 })] });
     const entry = brushed.test.store.localDevices.byExternalId(brushed.device.external_id);
     expect(
       oralbCapabilities(entry).find((capability) => capability.key === 'brush_pacer')?.access,
@@ -176,7 +179,7 @@ describe('changing the brush after the handle test passed', () => {
 describe('the handle tests', () => {
   it('records the first prefix rule the brush keeps and unlocks only that control', async () => {
     const brushed = await open();
-    wake(brushed);
+    await wake(brushed);
     brushed.answers.push(
       { ok: false, detail: 'The brush refused the write.' },
       { ok: true, detail: 'ok' },
@@ -199,7 +202,7 @@ describe('the handle tests', () => {
 
   it('records a failure with the reason when neither rule is kept', async () => {
     const brushed = await open();
-    wake(brushed);
+    await wake(brushed);
     brushed.answers.push(
       { ok: false, detail: 'first no' },
       { ok: false, detail: 'The brush did not keep the change.' },
@@ -220,7 +223,7 @@ describe('the handle tests', () => {
 
   it('writes the ring colour back, then a different one, then the first again', async () => {
     const brushed = await open();
-    wake(brushed);
+    await wake(brushed);
     const result = await actBrush(brushed.acts(), brushed.row(), owner(brushed), {
       action: 'probe',
       probe: 'ring_write',
@@ -245,7 +248,7 @@ describe('the handle tests', () => {
     ).rejects.toThrow('asleep');
     await asleep.close();
     rig = await oralbRig({ settings: { consent: true } });
-    rig.batch(0, { phase: 'linked', frames: [rig.frame('ff04', bytes(2, 0), 0)] });
+    await rig.batch(0, { phase: 'linked', frames: [rig.frame('ff04', bytes(2, 0), 0)] });
     await expect(
       actBrush(rig.acts(), rig.row(), owner(rig), { action: 'probe', probe: 'pacer_write' }),
     ).rejects.toThrow('has not reported its pacer');
@@ -253,7 +256,7 @@ describe('the handle tests', () => {
 
   it('is for the owner only', async () => {
     const brushed = await open();
-    wake(brushed);
+    await wake(brushed);
     await expect(
       actBrush(brushed.acts(), brushed.row(), member(brushed), {
         action: 'probe',
@@ -277,7 +280,9 @@ describe('the handle tests', () => {
         .live,
     ).toBe('connected');
     for (let second = 1; second <= 4; second += 1) {
-      brushed.batch(second, { adverts: [brushed.advert(second, { state: 3, timerS: second })] });
+      await brushed.batch(second, {
+        adverts: [brushed.advert(second, { state: 3, timerS: second })],
+      });
     }
     const passed = await actBrush(brushed.acts(), brushed.row(), owner(brushed), {
       action: 'probe',
@@ -289,7 +294,7 @@ describe('the handle tests', () => {
 
   it('asks the brush for the older session and for the metadata record', async () => {
     const brushed = await open();
-    wake(brushed);
+    await wake(brushed);
     await actBrush(brushed.acts(), brushed.row(), owner(brushed), {
       action: 'probe',
       probe: 'history_select',
@@ -310,7 +315,7 @@ describe('the handle tests', () => {
 describe('the handle actions', () => {
   it('reorders the modes and reads the order back', async () => {
     const brushed = await open({ probes: { mode_order_write: PASSED } });
-    wake(brushed);
+    await wake(brushed);
     const result = await actBrush(brushed.acts(), brushed.row(), owner(brushed), {
       action: 'set_mode_order',
       modes: ['smart_adapt', 'daily_clean', 'whiten'],
@@ -331,7 +336,7 @@ describe('the handle actions', () => {
 
   it('resets and snoozes the head reminder, then reads it without comparing', async () => {
     const brushed = await open({ probes: { head_reset_write: { ...PASSED, rule: 'plain' } } });
-    wake(brushed);
+    await wake(brushed);
     await actBrush(brushed.acts(), brushed.row(), owner(brushed), {
       action: 'reset_head_reminder',
     });
@@ -345,7 +350,7 @@ describe('the handle actions', () => {
 
   it('refuses every handle action before its test passed', async () => {
     const brushed = await open();
-    wake(brushed);
+    await wake(brushed);
     await expect(
       actBrush(brushed.acts(), brushed.row(), owner(brushed), { action: 'reset_head_reminder' }),
     ).rejects.toThrow('Handle tests');
@@ -354,7 +359,7 @@ describe('the handle actions', () => {
 
   it('reports a phone that cannot be reached instead of writing', async () => {
     const brushed = await open({ probes: { head_reset_write: PASSED } });
-    wake(brushed);
+    await wake(brushed);
     brushed.answers.push({
       ok: false,
       detail: 'The phone holding Toothbrush could not be reached.',

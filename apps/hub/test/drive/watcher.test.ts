@@ -17,8 +17,6 @@ import { DriveActivity } from '../../src/drive/activity';
 import { scanHandler, type DriveJob, type ScanEnvironment } from '../../src/drive/jobs';
 import { reflectHandler } from '../../src/drive/reflect';
 import { DriveRootLanes } from '../../src/drive/root-lanes';
-import { DriveInodesRepository } from '../../src/store/repositories/drive-inodes';
-import { DriveMissingRepository } from '../../src/store/repositories/drive-missing';
 import {
   DriveWatchers,
   systemWatch,
@@ -28,6 +26,7 @@ import {
 import { WorkQueue } from '../../src/drive/work-queue';
 import { testLogger } from '../support/logs';
 import { bundleWorker, driveRoot, NOW, openDriveFixture, type DriveFixture } from './drive-fixture';
+import { localIndex, localScanPort, localScans } from './local-ports';
 
 const ROOT = '0d000000-0000-4000-8000-000000000003';
 const SETTLE_MS = 40;
@@ -93,10 +92,10 @@ function watchersOver(
   const reflect = extra.reflect ?? enqueue;
   fixture.addDrive(driveRoot(ROOT, { skipPatterns }), folder);
   const environment: WatchEnvironment = {
-    roots,
-    index: { items, inodes: new DriveInodesRepository(context) },
+    roots: localScanPort({ roots, items, context, feed: fixture.feed, now: () => new Date(NOW) }),
+    index: localIndex({ items, context }),
     activity: new DriveActivity(),
-    mounted: (): boolean => false,
+    mounted: () => Promise.resolve(false),
     onPlacementChange: (): (() => void) => (): undefined => undefined,
     enqueueScan: enqueue,
     enqueueReflect: reflect,
@@ -280,6 +279,7 @@ describe('the root watcher', () => {
     expect(closed).toBe(1);
     expect(scans).toEqual([ROOT, ROOT]);
     expect(pool.status(ROOT)).toMatchObject({ watching: false });
+    await pool.idle();
     expect(roots.byId(ROOT).stateReason).toMatch(/\(EIO\)/);
   });
 
@@ -323,17 +323,15 @@ describe('a hub write seen again by the watcher', () => {
 
   it('asks for no scan when the stored post-rename stat matches, and reflects only an outside edit', async () => {
     const environment: ScanEnvironment = {
-      store: {
-        driveRoots: roots,
-        driveItems: items,
-        driveInodes: new DriveInodesRepository(context),
-        driveMissing: new DriveMissingRepository(context),
+      ...localScans({
+        roots,
+        items,
+        context,
         feed: fixture.feed,
-        write: (work) => context.write(work),
         now: () => new Date(NOW),
-      },
+      }),
       availability: () => Promise.resolve('online'),
-      mounted: (): boolean => false,
+      mounted: () => Promise.resolve(false),
       workerScript,
       lanes: new DriveRootLanes(),
       log: testLogger(),

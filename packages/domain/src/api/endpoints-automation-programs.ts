@@ -171,6 +171,9 @@ export const AUTOMATION_PROGRAM_ENDPOINTS = {
     params: NOTHING,
     query: NOTHING,
     body: z.strictObject({
+      id: ID.optional().describe(
+        'Id the client generated for the new automation; repeating the create with the same id returns the automation already made',
+      ),
       name: AUTOMATION_NAME,
       enabled: FLAG.default(true),
       definition: AUTOMATION_V4,

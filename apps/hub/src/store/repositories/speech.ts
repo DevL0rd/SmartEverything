@@ -31,8 +31,24 @@ class DuplicateSpeechOccurrenceError extends Error {
   }
 }
 
-export class SpeechRepository {
+export class SpeechReaders {
   private readonly readers = new Map<string, PluginSpeechReader>();
+
+  register(pluginId: string, reader: PluginSpeechReader): () => void {
+    this.readers.set(pluginId, reader);
+    return (): void => {
+      if (this.readers.get(pluginId) === reader) this.readers.delete(pluginId);
+    };
+  }
+  plugin(pluginId: string): PluginSpeechReader | undefined {
+    return this.readers.get(pluginId);
+  }
+  plugins(): readonly (readonly [string, PluginSpeechReader])[] {
+    return [...this.readers];
+  }
+}
+
+export class SpeechRepository {
   constructor(private readonly context: StoreContext) {}
 
   watermark(): number {
@@ -91,17 +107,5 @@ export class SpeechRepository {
       { ...occurrence },
     );
     if (changed === 0) throw new DuplicateSpeechOccurrenceError();
-  }
-  register(pluginId: string, reader: PluginSpeechReader): () => void {
-    this.readers.set(pluginId, reader);
-    return (): void => {
-      if (this.readers.get(pluginId) === reader) this.readers.delete(pluginId);
-    };
-  }
-  plugin(pluginId: string): PluginSpeechReader | undefined {
-    return this.readers.get(pluginId);
-  }
-  plugins(): readonly (readonly [string, PluginSpeechReader])[] {
-    return [...this.readers];
   }
 }

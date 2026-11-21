@@ -50,6 +50,18 @@ function profileRelabelled(store: Store, change: ChangeOf<'profiles'>): Labelled
     .map((client) => ['client', client.id]);
 }
 
+export function mayRelabel(change: LiveChange): boolean {
+  if (change.operation !== 'UPDATE') return false;
+  if (change.table === 'clients') return clientRelabelled(change).length > 0;
+  if (change.table === 'devices') return cameraRelabelled(change).length > 0;
+  return (
+    change.table === 'profiles' &&
+    change.record !== null &&
+    change.oldRecord !== null &&
+    change.record.name !== change.oldRecord.name
+  );
+}
+
 export function relabelledMembers(store: Store, change: LiveChange): LabelledMember[] {
   if (change.operation !== 'UPDATE') {
     return [];

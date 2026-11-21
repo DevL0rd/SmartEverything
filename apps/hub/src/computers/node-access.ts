@@ -10,7 +10,6 @@ import {
 } from '@smarteverything/domain';
 import { canonicalEndpoint } from '../client-network/route-trust';
 import type { Store } from '../store/store';
-import { describeComputer, computerExternalId } from './computer-device';
 import { messageOf } from '@smarteverything/logging';
 
 const PAIRING_LIFETIME_MS = 10 * 60_000;
@@ -29,10 +28,10 @@ export class ComputerNodeAccess {
     private readonly now: () => Date,
   ) {}
 
-  pair(
+  async pair(
     url: string,
     ownerId: string,
-  ): { readonly code: string; readonly expires_at: string; readonly url: string } {
+  ): Promise<{ readonly code: string; readonly expires_at: string; readonly url: string }> {
     try {
       canonicalEndpoint(url);
     } catch (cause) {
@@ -40,86 +39,61 @@ export class ComputerNodeAccess {
     }
     const code = createPairingCode();
     const expiresAt = new Date(this.now().getTime() + PAIRING_LIFETIME_MS).toISOString();
-    this.store.computerNodes.pairing(hashPairingCode(code), url, ownerId, expiresAt);
+    await this.store.host.call(
+      'computerNodes',
+      'pairing',
+      hashPairingCode(code),
+      url,
+      ownerId,
+      expiresAt,
+    );
     return { code, expires_at: expiresAt, url };
   }
 
-  claim(
+  async claim(
     code: string,
     hello: NodeHello,
     remote: string,
     windowToken?: string,
-  ): {
+  ): Promise<{
     readonly paired: {
       readonly token: string;
       readonly device_id: string;
       readonly hub_url: string;
     };
-  } {
+  }> {
     this.limit(remote);
-    const claimed = this.store.computerNodes.claim(hashPairingCode(code), (hubUrl, createdBy) => {
-      const windowClient = this.windowClient(windowToken, createdBy);
-      const deviceId = this.device(hello);
-      const token = `sen_${randomBytes(32).toString('base64url')}`;
-      this.store.computerNodes.bind({
-        deviceId,
-        machineId: hello.machineId,
-        tokenHash: hashNodeToken(token),
-        hubUrl,
-        windowClientId: windowClient,
-        profileId: this.store.clients.find(createdBy)?.profile_id ?? null,
-      });
-      this.store.computerAi.saveSettings(deviceId, this.store.computerAi.settings(deviceId));
-      return { paired: { token, device_id: deviceId, hub_url: hubUrl } };
+    const token = `sen_${randomBytes(32).toString('base64url')}`;
+    const claimed = await this.store.host.write('computerNodeClaim', {
+      codeHash: hashPairingCode(code),
+      hello,
+      windowTokenHash: windowToken === undefined ? null : hashClientToken(windowToken),
+      tokenHash: hashNodeToken(token),
     });
     if (claimed === null)
       throw new ApiError(
         'pairing_code_invalid',
         'The computer pairing code is unknown, expired or already used.',
       );
-    return claimed;
+    this.store.live.computers.claimed(claimed.deviceId);
+    await this.store.live.computerAccess.claimed(claimed.deviceId);
+    return { paired: { token, device_id: claimed.deviceId, hub_url: claimed.hubUrl } };
   }
 
-  revoke(deviceId: string): void {
-    this.store.computerNodes.revoke(deviceId);
+  async revoke(deviceId: string): Promise<void> {
+    await this.store.live.computerAccess.revoke(deviceId);
   }
 
-  private windowClient(token: string | undefined, createdBy: string): string | null {
-    if (token === undefined) return null;
-    const client = this.store.clients.byTokenHash(hashClientToken(token));
-    if (client?.id !== createdBy || client.role !== 'owner' || client.platform !== 'desktop') {
-      throw new ApiError('forbidden', 'Pair this computer from the owner’s enrolled desktop.');
-    }
-    return client.id;
-  }
-
-  authenticate(token: string | null): ComputerNodeRow {
+  async authenticate(token: string | null): Promise<ComputerNodeRow> {
     if (token === null || !NODE_AI_TOKEN.safeParse(token).success)
       throw new ApiError(
         'unauthorized',
         'Send this computer service’s own node token as a bearer token.',
       );
-    const row = this.store.computerNodes.byToken(hashNodeToken(token));
+    const row = await this.store.host.call('computerNodes', 'byToken', hashNodeToken(token));
     if (row === undefined)
       throw new ApiError('unauthorized', 'This computer node token is unknown or revoked.');
     return row;
-  }
-
-  private device(hello: NodeHello): string {
-    const known = this.store.devices
-      .list()
-      .find(
-        (device) =>
-          device.provider === 'local' && device.external_id === computerExternalId(hello.machineId),
-      );
-    if (known !== undefined) return known.id;
-    const discovered = describeComputer(hello, [], { power: [], machine: [] });
-    const row = this.store.devices.upsert([
-      { ...discovered, parentId: null, providerRoom: null, roomId: null, online: false },
-    ])[0];
-    if (row === undefined)
-      throw new ApiError('internal', 'The paired computer device was not persisted.');
-    return row.id;
   }
 
   private limit(remote: string): void {

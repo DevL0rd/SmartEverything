@@ -6,12 +6,12 @@ import type { DriveItem, DriveThumb } from '@smarteverything/domain';
 import { messageOf, type Logger } from '@smarteverything/logging';
 import { fsCode } from '../../fs-code';
 import { ffmpegPath, vaapiDevice } from '../../media/ffmpeg-path';
-import type { DriveMediaRepository } from '../../store/repositories/drive-media';
+import type { DriveMediaPatch } from '../../store/repositories/drive-media';
 import type { DriveMediaJob } from '../../store/repositories/drive-media-jobs';
 import { DERIVED_LONG_EDGE, derivedDirectory, pruneDerived, writeDerived } from './derived-paths';
 import type { JobHandler } from './jobs';
 import { probeVideo, type VideoProbe } from './probe';
-import { renderDerived, type DerivedOutcome, type PreviewEnvironment } from './preview';
+import { renderDerived, targetOf, type DerivedOutcome, type PreviewEnvironment } from './preview';
 
 const run = promisify(execFile);
 
@@ -117,7 +117,7 @@ export async function extractPoster(
   }
 }
 
-function mediaPatchOf(outcome: DerivedOutcome): Parameters<DriveMediaRepository['update']>[1] {
+function mediaPatchOf(outcome: DerivedOutcome): DriveMediaPatch {
   return outcome.state === 'ready'
     ? {
         preview_state: 'ready',
@@ -145,12 +145,12 @@ export class PosterHandler implements JobHandler {
   constructor(private readonly env: PosterEnvironment) {}
 
   async run(job: DriveMediaJob, signal: AbortSignal): Promise<void> {
-    const item = this.current(job);
+    const item = await this.current(job);
     if (item === undefined) return;
     const path = await this.env.locate(item);
     const probe = await probeVideo(path);
     if (probe.videoCodec === null) {
-      this.record(job, { state: 'unsupported', reason: 'the file has no video track' });
+      await this.record(job, { state: 'unsupported', reason: 'the file has no video track' });
       return;
     }
     const frame = join(
@@ -164,7 +164,7 @@ export class PosterHandler implements JobHandler {
       const key = { itemId: job.item_id, rev: job.rev };
       await writeDerived(this.env.layout, { ...key, size: 'preview' }, rendered.preview);
       await writeDerived(this.env.layout, { ...key, size: 'thumb' }, rendered.thumb);
-      if (this.record(job, { state: 'ready' })) {
+      if (await this.record(job, { state: 'ready' })) {
         await pruneDerived(this.env.layout, job.item_id, job.rev);
       }
     } finally {
@@ -172,29 +172,29 @@ export class PosterHandler implements JobHandler {
     }
   }
 
-  fail(job: DriveMediaJob, cause: unknown): void {
-    this.record(job, { state: 'failed', reason: messageOf(cause) });
+  async fail(job: DriveMediaJob, cause: unknown): Promise<void> {
+    await this.record(job, { state: 'failed', reason: messageOf(cause) });
   }
 
-  private current(job: DriveMediaJob): Extract<DriveItem, { readonly kind: 'video' }> | undefined {
-    const item = this.env.store.driveItems.find(job.item_id, null);
-    if (
-      item?.kind !== 'video' ||
-      item.rev !== job.rev ||
-      this.env.store.driveMedia.find(item.id) === undefined
-    ) {
+  private async current(
+    job: DriveMediaJob,
+  ): Promise<Extract<DriveItem, { readonly kind: 'video' }> | undefined> {
+    const item = await this.env.derived.current(targetOf(job, 'video'));
+    if (item?.kind !== 'video') {
       this.env.log.debug('photos.poster_skipped', { itemId: job.item_id, rev: job.rev });
       return undefined;
     }
     return item;
   }
 
-  private record(job: DriveMediaJob, outcome: DerivedOutcome): boolean {
-    return this.env.store.write(() => {
-      if (this.current(job) === undefined) return false;
-      this.env.writeThumb(job.item_id, thumbOf(outcome));
-      this.env.store.driveMedia.update(job.item_id, mediaPatchOf(outcome));
-      return true;
+  private async record(job: DriveMediaJob, outcome: DerivedOutcome): Promise<boolean> {
+    const recorded = await this.env.derived.record({
+      target: targetOf(job, 'video'),
+      thumb: thumbOf(outcome),
+      patch: mediaPatchOf(outcome),
     });
+    if (!recorded)
+      this.env.log.debug('photos.poster_skipped', { itemId: job.item_id, rev: job.rev });
+    return recorded;
   }
 }

@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 describe('a timed grant', () => {
-  it('is armed by the decision and taken back by the lifecycle timer', () => {
+  it('is armed by the decision and taken back by the lifecycle timer', async () => {
     const kid = opened.store.profiles.create({ name: 'Kid' });
     opened.store.personAccess.change(kid.id, {
       role: 'member',
@@ -42,12 +42,19 @@ describe('a timed grant', () => {
       tokenHash: 'hash-boss',
       profileId: owner.id,
     });
-    const row = access.requests.create(kid.id, { kind: 'area', target: 'settings', note: '' });
-    access.requests.decide(row.id, phone.id, { approve: true, until: UNTIL, target: null });
+    const row = await access.requests.create(kid.id, {
+      kind: 'area',
+      target: 'settings',
+      note: '',
+    });
+    await access.requests.decide(row.id, phone.id, { approve: true, until: UNTIL, target: null });
+    await access.lifecycle.idle();
     expect(opened.store.personAccess.byProfile(kid.id).scopes.areas).toContain('settings');
     vi.advanceTimersByTime(60 * 60_000);
+    await access.lifecycle.idle();
     expect(opened.store.personAccess.byProfile(kid.id).scopes.areas).toContain('settings');
     vi.advanceTimersByTime(60 * 60_000);
+    await access.lifecycle.idle();
     expect(opened.store.personAccess.byProfile(kid.id).scopes.areas).not.toContain('settings');
     expect(opened.store.accessRequests.byId(row.id).lapsed_at).not.toBeNull();
   });

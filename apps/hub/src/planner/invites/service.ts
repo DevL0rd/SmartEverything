@@ -14,13 +14,8 @@ import { itipText } from './itip';
 import { inviteText, type InviteKind, type InviteLinks } from './content';
 import { inviteToken, inviteTokenHash } from './token';
 
-export type InviteStore = Pick<
-  Store,
-  'plannerItems' | 'plannerGuests' | 'plannerCollections' | 'profiles' | 'write'
->;
-
 export interface InviteDeps {
-  readonly store: InviteStore;
+  readonly store: Pick<Store, 'host'>;
   readonly mail: Pick<MailService, 'configured' | 'fromAddress' | 'fromName' | 'send'>;
   readonly key: Uint8Array;
   readonly origin: () => string;
@@ -87,16 +82,22 @@ export class InviteService {
     return buildPath(PLANNER_RSVP_PATHS.page, { token: inviteToken(this.deps.key, guestId) });
   }
 
-  prepare(guestId: string): void {
-    this.deps.store.plannerGuests.replaceToken(guestId, inviteTokenHash(this.deps.key, guestId));
+  async prepare(guestId: string): Promise<void> {
+    await this.deps.store.host.call(
+      'plannerGuests',
+      'replaceToken',
+      guestId,
+      inviteTokenHash(this.deps.key, guestId),
+    );
   }
 
   async deliver(guestId: string, kind: InviteKind): Promise<PlannerGuestRow> {
-    const guest = this.deps.store.plannerGuests.byId(guestId);
-    const item = this.deps.store.plannerItems.findAny(guest.item_id);
+    const { host } = this.deps.store;
+    const guest = await host.call('plannerGuests', 'byId', guestId);
+    const item = await host.call('plannerItems', 'findAny', guest.item_id);
     if (item === undefined) throw new ApiError('not_found', 'That event no longer exists.');
     await this.send(guest, item, kind);
-    return this.deps.store.plannerGuests.byId(guestId);
+    return host.call('plannerGuests', 'byId', guestId);
   }
 
   private followGuest(change: Extract<LiveChange, { table: 'planner_guests' }>): void {
@@ -128,30 +129,24 @@ export class InviteService {
   }
 
   private async inviteNew(guest: PlannerGuestRow): Promise<void> {
-    const item = this.deps.store.plannerItems.findAny(guest.item_id);
+    const item = await this.deps.store.host.call('plannerItems', 'findAny', guest.item_id);
     if (item === undefined || isCancelled(item) || item.created_by === 'booking') return;
     await this.send(guest, item, 'invite');
   }
 
   private async cancelRemoved(guest: PlannerGuestRow): Promise<void> {
-    const item = this.deps.store.plannerItems.findAny(guest.item_id);
+    const item = await this.deps.store.host.call('plannerItems', 'findAny', guest.item_id);
     if (item === undefined || isCancelled(item)) return;
     await this.sendTo(guest, item, 'cancel');
   }
 
   private async updated(masterId: string): Promise<void> {
-    const { plannerItems } = this.deps.store;
-    const master = plannerItems.findAny(masterId);
-    if (master === undefined || isCancelled(master)) return;
-    if (!this.deps.store.plannerGuests.forItem(masterId).some(emailGuest)) return;
-    const bumped = plannerItems.update(master.id, master.profile_id, {
-      ical_sequence: master.ical_sequence + 1,
-    });
-    await this.reach(bumped, 'update');
+    const bumped = await this.deps.store.host.write('plannerInviteBump', { masterId });
+    if (bumped !== null) await this.reach(bumped, 'update');
   }
 
   private async reach(item: PlannerItemRow, kind: InviteKind): Promise<void> {
-    for (const guest of this.deps.store.plannerGuests.forItem(item.id)) {
+    for (const guest of await this.deps.store.host.call('plannerGuests', 'forItem', item.id)) {
       if (emailGuest(guest)) await this.send(guest, item, kind);
     }
   }
@@ -161,14 +156,18 @@ export class InviteService {
     item: PlannerItemRow,
     kind: InviteKind,
   ): Promise<void> {
-    const collection = this.deps.store.plannerCollections.findAny(item.collection_id);
+    const collection = await this.deps.store.host.call(
+      'plannerCollections',
+      'findAny',
+      item.collection_id,
+    );
     if (collection?.source === 'google') {
-      this.settle(guest, 'google', null);
+      await this.settle(guest, 'google', null);
       return;
     }
-    this.prepare(guest.id);
+    await this.prepare(guest.id);
     if (!this.deps.mail.configured) {
-      if (kind !== 'cancel') this.settle(guest, 'link_only', null);
+      if (kind !== 'cancel') await this.settle(guest, 'link_only', null);
       return;
     }
     await this.sendTo(guest, item, kind);
@@ -184,10 +183,10 @@ export class InviteService {
     if (guest.email === null || address === null) return;
     const result = await this.attempt(guest, item, kind, address);
     if (kind === 'cancel') return;
-    const current = store.plannerGuests.find(guest.id);
+    const current = await store.host.call('plannerGuests', 'find', guest.id);
     if (current === undefined) return;
-    if (result.outcome === 'sent') this.settle(current, 'sent', null);
-    else this.settle(current, 'failed', result.detail);
+    if (result.outcome === 'sent') await this.settle(current, 'sent', null);
+    else await this.settle(current, 'failed', result.detail);
   }
 
   private async attempt(
@@ -204,14 +203,14 @@ export class InviteService {
     }
   }
 
-  private mailTo(
+  private async mailTo(
     guest: PlannerGuestRow,
     item: PlannerItemRow,
     kind: InviteKind,
     address: string,
   ): Promise<MailResult> {
     const { mail, store, now } = this.deps;
-    const organiser = store.profiles.byId(item.profile_id).name;
+    const { organiser, guests, overrides } = await store.host.read('plannerInviteMail', { item });
     const copy = inviteText({
       kind,
       item,
@@ -220,7 +219,6 @@ export class InviteService {
       links: this.linksOf(guest.id),
     });
     const method = kind === 'cancel' ? 'CANCEL' : 'REQUEST';
-    const guests = store.plannerGuests.forItem(item.id);
     return mail.send({
       kind,
       to: guest.email ?? '',
@@ -228,7 +226,7 @@ export class InviteService {
       calendar: {
         method,
         filename: kind === 'cancel' ? 'cancel.ics' : 'invite.ics',
-        content: itipText(store, item, guests, {
+        content: itipText(item, overrides, guests, {
           method,
           organiser: { address, name: mail.fromName() },
           now: now(),
@@ -237,12 +235,15 @@ export class InviteService {
     });
   }
 
-  private settle(
+  private async settle(
     guest: PlannerGuestRow,
     delivery: PlannerGuestRow['delivery'],
     detail: string | null,
-  ): void {
+  ): Promise<void> {
     if (guest.delivery === delivery && guest.delivery_detail === detail) return;
-    this.deps.store.plannerGuests.update(guest.id, { delivery, delivery_detail: detail });
+    await this.deps.store.host.call('plannerGuests', 'update', guest.id, {
+      delivery,
+      delivery_detail: detail,
+    });
   }
 }

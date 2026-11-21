@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { DRIVE_ITEM_KINDS } from '@smarteverything/domain';
 import { found, type StoreContext } from '../context';
 
-const BACKLOG_ROW = z
+const UNREAD_ROW = z
   .strictObject({
     id: z.string(),
     rel_path: z.string(),
@@ -46,6 +46,26 @@ export interface DriveItemSpot {
   readonly parentId: string | null;
 }
 
+const BACKLOG_ROW = z
+  .strictObject({
+    id: z.string(),
+    rel_path: z.string(),
+    bytes: z.number(),
+    dev: z.string(),
+    ino: z.string(),
+    opened_at: z.string().nullable(),
+  })
+  .transform((row) => ({
+    id: row.id,
+    relPath: row.rel_path,
+    bytes: row.bytes,
+    dev: row.dev,
+    ino: row.ino,
+    openedAt: row.opened_at,
+  }));
+
+export type DriveUnreadRow = z.infer<typeof UNREAD_ROW>;
+
 export type DriveBacklogRow = z.infer<typeof BACKLOG_ROW>;
 
 export interface DriveHashBacklog {
@@ -72,16 +92,19 @@ export class DriveItemLookups {
           where root_id = $rootId and sha256 is null and kind not in ('folder', 'link', 'special')`;
     const rows = this.context.sql.all(
       BACKLOG_ROW,
-      `select id, rel_path, bytes, dev, ino from (${missing})
-        where dev is not null and ino is not null`,
+      `select m.id, m.rel_path, m.bytes, m.dev, m.ino,
+          (select max(o.opened_at) from drive_opens o where o.item_id = m.id) as opened_at
+        from (${missing}) m
+        where m.dev is not null and m.ino is not null
+        order by opened_at is null, opened_at desc, m.bytes, m.rel_path`,
       { rootId },
     );
     return { files: found(counted, 'drive file count', rootId).files, rows };
   }
 
-  unreadMedia(rootId: string): readonly DriveBacklogRow[] {
+  unreadMedia(rootId: string): readonly DriveUnreadRow[] {
     return this.context.sql.all(
-      BACKLOG_ROW,
+      UNREAD_ROW,
       `select id, rel_path, bytes, dev, ino from drive_items indexed by drive_items_unread_media
         where root_id = $rootId and taken_at is null and kind in ('image', 'video', 'audio')
           and dev is not null and ino is not null`,

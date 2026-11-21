@@ -1,4 +1,4 @@
-import type { DeviceRow, JsonValue, StateRow } from '@smarteverything/domain';
+import type { DeviceRow, JsonValue } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { RoomMedia, SpeakingScope, type SpeakingCall } from '../../src/reach/room-media';
 import type { NewCommand } from '../../src/store/repositories/commands';
@@ -71,21 +71,19 @@ function rig(): Rig {
   ];
   const media = new RoomMedia({
     store: {
-      devices: {
-        list: (): DeviceRow[] => devices,
-        find: (id): DeviceRow | undefined => devices.find((entry) => entry.id === id),
-        byExternal: (_provider, externalId): DeviceRow | undefined =>
-          devices.find((entry) => entry.external_id === externalId),
-      },
-      state: {
-        ofDevice: (id): StateRow[] => [
-          {
-            device_id: id,
-            capability: 'playback',
-            value: states.get(id) ?? null,
-            observed_at: START,
+      live: {
+        home: {
+          devices: {
+            list: (): DeviceRow[] => devices,
+            find: (id): DeviceRow | undefined => devices.find((entry) => entry.id === id),
+            byExternal: (_provider, externalId): DeviceRow | undefined =>
+              devices.find((entry) => entry.external_id === externalId),
           },
-        ],
+          state: {
+            value: (id, capability): JsonValue | undefined =>
+              capability === 'playback' ? (states.get(id) ?? null) : undefined,
+          },
+        },
       },
     },
     enabled: (): boolean => enabled.value,

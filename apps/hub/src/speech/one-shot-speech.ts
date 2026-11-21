@@ -112,7 +112,7 @@ export class OneShotSpeech {
   }
 
   async recordClip(request: SpeechRecording, signal: AbortSignal): Promise<SpeechClip> {
-    const { model, chunks } = this.synthesis(request, signal);
+    const { model, chunks } = await this.synthesis(request, signal);
     const buffers: Buffer[] = [];
     let samples = 0;
     const played = await this.play(chunks, (pcm) => {
@@ -122,18 +122,18 @@ export class OneShotSpeech {
         throw new ApiError('invalid_request', 'A voice reply can be at most three minutes long.');
       buffers.push(Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength));
     });
-    this.record(request, model, played, request.chatId);
+    await this.record(request, model, played, request.chatId);
     signal.throwIfAborted();
     if (samples === 0) throw new ApiError('conflict', 'The speech provider returned no audio.');
     return { wav: pcmWav(Buffer.concat(buffers), SPEECH_SAMPLE_RATE), model };
   }
 
-  private synthesis(
+  private async synthesis(
     request: SpeechLine,
     signal: AbortSignal,
     override?: string,
-  ): { readonly model: SpeechModel; readonly chunks: AsyncIterable<SpeechChunk> } {
-    const { voice } = this.options.store.assistantChat.settings();
+  ): Promise<{ readonly model: SpeechModel; readonly chunks: AsyncIterable<SpeechChunk> }> {
+    const { voice } = await this.options.store.host.call('assistantChat', 'settings');
     const model = voice.speech_model;
     const provider = this.options.providers[SPEECH_MODEL_PROVIDERS[model]];
     return {
@@ -148,7 +148,7 @@ export class OneShotSpeech {
   }
 
   private async run(request: SpeechRequest, signal: AbortSignal): Promise<void> {
-    const { model, chunks } = this.synthesis(request, signal, request.voice);
+    const { model, chunks } = await this.synthesis(request, signal, request.voice);
     const codec = opusCodec();
     const framer = new OpusFramer(codec);
     const startedAt = performance.now();
@@ -171,7 +171,7 @@ export class OneShotSpeech {
       if (signal.aborted) {
         return;
       }
-      this.record(request, model, played);
+      await this.record(request, model, played);
       this.options.log.info('speech.said', {
         id: request.id,
         model,
@@ -203,25 +203,29 @@ export class OneShotSpeech {
     return { samples, usage };
   }
 
-  private record(request: SpeechLine, model: string, played: Played, chatId?: string): void {
-    try {
-      const { usage } = played;
-      if (usage === null) {
-        throw new SpeechUsageMissingError();
-      }
-      recordSpeech(this.options.store.ledger, this.options.prices, {
-        profileId: request.profileId,
-        clientId: request.clientId,
-        callId: request.id,
-        ...(chatId === undefined ? {} : { chatId }),
-        model,
-        characters: request.text.length,
-        inputTokens: usage.inputTokens,
-        audioTokens: usage.audioTokens,
-        audioMs: Math.round((played.samples * 1000) / SPEECH_SAMPLE_RATE),
-      });
-    } catch (cause) {
+  private async record(
+    request: SpeechLine,
+    model: string,
+    played: Played,
+    chatId?: string,
+  ): Promise<void> {
+    const { usage } = played;
+    const recorded =
+      usage === null
+        ? Promise.reject(new SpeechUsageMissingError())
+        : recordSpeech(this.options.store.host, this.options.prices, {
+            profileId: request.profileId,
+            clientId: request.clientId,
+            callId: request.id,
+            ...(chatId === undefined ? {} : { chatId }),
+            model,
+            characters: request.text.length,
+            inputTokens: usage.inputTokens,
+            audioTokens: usage.audioTokens,
+            audioMs: Math.round((played.samples * 1000) / SPEECH_SAMPLE_RATE),
+          });
+    await recorded.catch((cause: unknown) => {
       this.options.log.error('speech.usage_unrecorded', cause, { callId: request.id });
-    }
+    });
   }
 }

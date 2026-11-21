@@ -42,16 +42,12 @@ function depsOf(store: TestStore['store']): DriveDeps {
       context: new StoreContext(new Sql(second), new ChangeFeed(log), () => NOW),
       database: second,
       conflicts: {
-        insert: (): void => undefined,
         find: (): undefined => undefined,
-        resolve: (): never => {
-          throw new Error('no conflicts in this rig');
-        },
       },
       listings: {
-        shares: () => ({ items: [], next: null }),
-        duplicates: () => ({ items: [], next: null }),
-        conflicts: () => ({ items: [], next: null }),
+        shares: () => Promise.resolve({ items: [], next: null }),
+        duplicates: () => Promise.resolve({ items: [], next: null }),
+        conflicts: () => Promise.resolve({ items: [], next: null }),
       },
       removeLocationOutside: () => true,
       notifyCorruption: (): void => undefined,
@@ -86,7 +82,7 @@ afterEach(async () => {
 describe('the Drive wave 2 routes', () => {
   it('has a handler for every content and social endpoint and no other', () => {
     const runtime = createDrive(deps);
-    const routed = Object.keys(driveExtraRoutes(opened.store, runtime.extras)).sort();
+    const routed = Object.keys(driveExtraRoutes(runtime.extras)).sort();
     const registered = [
       ...Object.keys(DRIVE_CONTENT_ENDPOINTS),
       ...Object.keys(DRIVE_SOCIAL_ENDPOINTS),

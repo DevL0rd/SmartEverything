@@ -1,4 +1,4 @@
-import { homedir, userInfo } from 'node:os';
+import { homedir } from 'node:os';
 import { runProgram } from '../../run-program';
 import { sessionAgentDirectory } from '../../session-agent/location';
 import { SocketSessionAgent } from '../../session-agent/session-agent';
@@ -7,7 +7,7 @@ import { HomeFiles } from '../home-files';
 import { MachineRing } from '../machine-ring';
 import { modelSized } from '../model-picture';
 import { PortableMachine } from '../portable/portable-machine';
-import { PortableProcesses } from '../portable/portable-processes';
+import { processesFor } from '../processes-for';
 import {
   inheritedEnvironment,
   unsupportedAudio,
@@ -21,9 +21,7 @@ import {
 import { DarwinApps } from './darwin-apps';
 import { darwinPlaces } from './darwin-places';
 import { DarwinPower } from './darwin-power';
-import { DarwinProcessSource } from './darwin-processes';
 import { darwinVolume } from './darwin-volume';
-import { describeFailure } from '@smarteverything/logging';
 
 export function darwinControls(options: ControlOptions): ComputerControls {
   const agent = new SocketSessionAgent(
@@ -35,20 +33,7 @@ export function darwinControls(options: ControlOptions): ComputerControls {
   );
   return {
     power: new DarwinPower(runProgram),
-    processes: new PortableProcesses({
-      machine: 'macOS',
-      source: new DarwinProcessSource(runProgram),
-      signals: { end: 'SIGTERM', force: 'SIGKILL', stop: 'SIGSTOP', continue: 'SIGCONT' },
-      ownUser: userInfo().username,
-      ownPid: process.pid,
-      now: Date.now,
-      failed: (cause): void => {
-        options.log.warn('node.session_part_failed', {
-          part: 'processes',
-          failure: describeFailure(cause),
-        });
-      },
-    }),
+    processes: processesFor('darwin', options.log),
     links: () => [],
     environment: inheritedEnvironment(),
     session: unsupportedSession('macOS'),

@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { directHomeMapStore } from '../../src/home-map/map-store';
 import { HomeMapService } from '../../src/home-map/service';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';
@@ -10,16 +11,28 @@ import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
 import { NOW } from './import-fixtures';
 
-export const storedService = (): HomeMapService => {
+export const directService = async (
+  repo: HomeMapsRepository,
+  context: StoreContext,
+  knownModel: (modelId: string) => boolean = () => true,
+): Promise<HomeMapService> => {
+  const service = new HomeMapService({
+    store: directHomeMapStore(repo, (work) => context.write(work)),
+    knownModel,
+    applied: (): undefined => undefined,
+    now: (): string => context.now(),
+    log: testLogger('home-map'),
+  });
+  await service.load();
+  return service;
+};
+
+export const storedService = (): Promise<HomeMapService> => {
   const database = new DatabaseSync(':memory:', { enableForeignKeyConstraints: true });
   const sql = new Sql(database);
   migrate(sql, MIGRATIONS, NOW, testLogger());
   const context = new StoreContext(sql, new ChangeFeed(testLogger('store')), () => new Date(NOW));
-  return new HomeMapService({
-    maps: new HomeMapsRepository(context, () => undefined),
-    knownModel: () => true,
-    log: testLogger('home-map'),
-  });
+  return directService(new HomeMapsRepository(context, () => undefined), context);
 };
 
 export const HOME_HALL = '7a1c0d3e-2b4f-4c6a-8d9e-0f1a2b3c4d5e';

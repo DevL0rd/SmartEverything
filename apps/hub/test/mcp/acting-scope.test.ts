@@ -82,70 +82,78 @@ function plugin(client: ClientRow, profile: ProfileRow): ActingContext {
   };
 }
 
-const FAMILIES: readonly (readonly [string, (context: ActingContext, as: ActingAs) => unknown])[] =
-  [
-    ['person lookup (profileFor)', profileFor],
-    ['operations, health and nutrition (callerFor)', callerFor],
-  ];
+const FAMILIES: readonly (readonly [
+  string,
+  (context: ActingContext, as: ActingAs) => Promise<unknown>,
+])[] = [
+  ['person lookup (profileFor)', profileFor],
+  ['operations, health and nutrition (callerFor)', callerFor],
+];
 
 describe.each(FAMILIES)('a profile asked for through %s', (_name, resolve) => {
-  it('is refused for a member chat asking about another person', () => {
-    expect(() => resolve(chat(member, memberProfile), { personId: ownerProfile.id })).toThrow(
+  it('is refused for a member chat asking about another person', async () => {
+    await expect(
+      resolve(chat(member, memberProfile), { personId: ownerProfile.id }),
+    ).rejects.toThrow(/Only an owner/);
+  });
+
+  it('is refused for a member chat asking to act as another app', async () => {
+    await expect(resolve(chat(member, memberProfile), { clientId: owner.id })).rejects.toThrow(
       /Only an owner/,
     );
   });
 
-  it('is refused for a member chat asking to act as another app', () => {
-    expect(() => resolve(chat(member, memberProfile), { clientId: owner.id })).toThrow(
+  it('is refused for a service caller asking about another person', async () => {
+    await expect(resolve(service(memberProfile), { personId: ownerProfile.id })).rejects.toThrow(
       /Only an owner/,
     );
   });
 
-  it('is refused for a service caller asking about another person', () => {
-    expect(() => resolve(service(memberProfile), { personId: ownerProfile.id })).toThrow(
-      /Only an owner/,
-    );
+  it('is refused for an unlisted plugin requester on an owner phone', async () => {
+    await expect(
+      resolve(plugin(owner, ownerProfile), { personId: memberProfile.id }),
+    ).rejects.toThrow(/Only an owner/);
   });
 
-  it('is refused for an unlisted plugin requester on an owner phone', () => {
-    expect(() => resolve(plugin(owner, ownerProfile), { personId: memberProfile.id })).toThrow(
-      /Only an owner/,
-    );
-  });
-
-  it('lets a member ask for their own profile or leave it out', () => {
-    expect(() =>
+  it('lets a member ask for their own profile or leave it out', async () => {
+    await expect(
       resolve(chat(member, memberProfile), { personId: memberProfile.id }),
-    ).not.toThrow();
-    expect(() => resolve(chat(member, memberProfile), {})).not.toThrow();
+    ).resolves.toBeDefined();
+    await expect(resolve(chat(member, memberProfile), {})).resolves.toBeDefined();
   });
 
-  it('lets a service caller ask for its own profile', () => {
-    expect(() => resolve(service(memberProfile), { personId: memberProfile.id })).not.toThrow();
+  it('lets a service caller ask for its own profile', async () => {
+    await expect(
+      resolve(service(memberProfile), { personId: memberProfile.id }),
+    ).resolves.toBeDefined();
   });
 
-  it('lets an owner chat ask for any person', () => {
-    expect(() => resolve(chat(owner, ownerProfile), { personId: memberProfile.id })).not.toThrow();
+  it('lets an owner chat ask for any person', async () => {
+    await expect(
+      resolve(chat(owner, ownerProfile), { personId: memberProfile.id }),
+    ).resolves.toBeDefined();
   });
 });
 
 describe('the resolved profile', () => {
-  it('is the asked-for one for an owner and the own one for a member', () => {
-    expect(profileFor(chat(owner, ownerProfile), { personId: memberProfile.id })).toBe(
+  it('is the asked-for one for an owner and the own one for a member', async () => {
+    expect(await profileFor(chat(owner, ownerProfile), { personId: memberProfile.id })).toBe(
       memberProfile.id,
     );
-    expect(profileFor(chat(member, memberProfile), {})).toBe(memberProfile.id);
+    expect(await profileFor(chat(member, memberProfile), {})).toBe(memberProfile.id);
   });
 
-  it('is carried on the caller built for an owner acting for another person', () => {
-    expect(callerFor(chat(owner, ownerProfile), { personId: memberProfile.id })).toMatchObject({
+  it('is carried on the caller built for an owner acting for another person', async () => {
+    expect(
+      await callerFor(chat(owner, ownerProfile), { personId: memberProfile.id }),
+    ).toMatchObject({
       kind: 'client',
       profileId: memberProfile.id,
     });
   });
 
-  it('stays the service profile for a service caller', () => {
-    expect(callerFor(service(memberProfile))).toMatchObject({
+  it('stays the service profile for a service caller', async () => {
+    expect(await callerFor(service(memberProfile))).toMatchObject({
       kind: 'service',
       profileId: memberProfile.id,
     });
@@ -153,22 +161,22 @@ describe('the resolved profile', () => {
 });
 
 describe('whether the caller may attach files by path', () => {
-  function localOf(context: ActingContext): boolean | undefined {
-    const built = callerFor(context, {});
+  async function localOf(context: ActingContext): Promise<boolean | undefined> {
+    const built = await callerFor(context, {});
     return built.kind === 'client' ? built.local : undefined;
   }
 
-  it('is allowed for a chat running on the hub, which calls its tools in process', () => {
-    expect(localOf(chat(owner, ownerProfile))).toBe(true);
+  it('is allowed for a chat running on the hub, which calls its tools in process', async () => {
+    expect(await localOf(chat(owner, ownerProfile))).toBe(true);
   });
 
-  it('is allowed for a loopback-only token and refused for a remote or delegated one', () => {
+  it('is allowed for a loopback-only token and refused for a remote or delegated one', async () => {
     const base = chat(owner, ownerProfile);
     const accepted = { kind: 'accepted', via: 'personal', id: 'a', readOnly: false } as const;
-    expect(localOf({ ...base, caller: { ...accepted, localOnly: true } })).toBe(true);
-    expect(localOf({ ...base, caller: { ...accepted, localOnly: false } })).toBe(false);
-    expect(localOf({ ...base, caller: { ...accepted, via: 'oauth', localOnly: false } })).toBe(
-      false,
-    );
+    expect(await localOf({ ...base, caller: { ...accepted, localOnly: true } })).toBe(true);
+    expect(await localOf({ ...base, caller: { ...accepted, localOnly: false } })).toBe(false);
+    expect(
+      await localOf({ ...base, caller: { ...accepted, via: 'oauth', localOnly: false } }),
+    ).toBe(false);
   });
 });

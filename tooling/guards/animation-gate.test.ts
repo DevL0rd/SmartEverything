@@ -17,6 +17,8 @@ const GATED_BY_CALLER: Readonly<Record<string, string>> = {
   'src/features/clock/stopwatch-face.tsx':
     'timer-card.tsx and the stopwatch pass live from the animation gate of the card',
   'src/plugins/oralb/charts/': 'live-stage.tsx gates the stage and passes moving to every chart',
+  'src/features/models/visual/clip-atlas.tsx':
+    'model-visual.tsx gates the model and passes playing only while it moves',
   'src/components/widget-board/edit/drag-state.ts':
     'the auto-scroll frame callback runs only while dragging',
 };

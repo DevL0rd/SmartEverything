@@ -51,7 +51,7 @@ export function resolveChat(
     !reachesChat(store, confinedChatOf(context.caller), chat)
   )
     throw new ApiError('forbidden', 'The referenced chat belongs to a different profile.');
-  store.aiChats.assertWorkAllowed(chat.id);
+  store.live.chatWork.assertWorkAllowed(chat.id);
   if (
     reference.message_id !== undefined &&
     !store.aiChats.ownsReferenceMessage({

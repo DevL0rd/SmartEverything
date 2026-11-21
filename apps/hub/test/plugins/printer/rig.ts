@@ -73,7 +73,7 @@ export function newRig(zone = 'UTC'): Rig {
       return known;
     },
     secrets: secretsOf(secretValues),
-    viewers: { watchDevice: () => () => undefined },
+    viewers: { watchDevice: () => () => undefined, publish: () => undefined },
     metrics: {
       push: (_id, key, value) => {
         samples.push({ key, value });

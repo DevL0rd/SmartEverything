@@ -3,7 +3,6 @@ import { bound, type Bound } from '../server/router';
 import type { Store } from '../store/store';
 import { photoActor } from './actor';
 import type { DuplicatesService } from './duplicates';
-import type { StacksService } from './stacks';
 
 const E = PHOTOS_ENDPOINTS;
 
@@ -20,31 +19,34 @@ export interface PhotoDuplicateRoutes {
 export function photoDuplicateRoutes(
   store: Store,
   duplicates: DuplicatesService,
-  stacks: StacksService,
 ): PhotoDuplicateRoutes {
   return {
-    listPhotoDuplicates: bound(E.listPhotoDuplicates, ({ query, caller }) => {
-      const page = duplicates.groups(photoActor(store, caller), { media: true }, query.cursor);
+    listPhotoDuplicates: bound(E.listPhotoDuplicates, async ({ query, caller }) => {
+      const page = await duplicates.groups(photoActor(caller), { media: true }, query.cursor);
       return { items: page.groups, next: page.next };
     }),
     readPhotoDuplicateStats: bound(E.readPhotoDuplicateStats, ({ caller }) =>
-      duplicates.stats(photoActor(store, caller), { media: true }),
+      duplicates.stats(photoActor(caller), { media: true }),
     ),
     keepBestDuplicates: bound(E.keepBestDuplicates, ({ body, caller }) =>
-      duplicates.keepBest(photoActor(store, caller), body),
+      duplicates.keepBest(photoActor(caller), body),
     ),
-    markNotDuplicates: bound(E.markNotDuplicates, ({ body, caller }) => {
-      duplicates.markNotDuplicates(photoActor(store, caller), body.sha256s);
+    markNotDuplicates: bound(E.markNotDuplicates, async ({ body, caller }) => {
+      await duplicates.markNotDuplicates(photoActor(caller), body.sha256s);
       return { ok: true } as const;
     }),
     listStacks: bound(E.listStacks, ({ query, caller }) =>
-      stacks.list(photoActor(store, caller), query.cursor),
+      store.host.read('photoStacks', { actor: photoActor(caller), cursor: query.cursor }),
     ),
     readStack: bound(E.readStack, ({ params, caller }) =>
-      stacks.read(photoActor(store, caller), params.stackId),
+      store.host.read('photoStack', { actor: photoActor(caller), stackId: params.stackId }),
     ),
     makeStackCover: bound(E.makeStackCover, ({ params, body, caller }) =>
-      stacks.makeCover(photoActor(store, caller), params.stackId, body.itemId),
+      store.host.write('photoStackCover', {
+        actor: photoActor(caller),
+        stackId: params.stackId,
+        itemId: body.itemId,
+      }),
     ),
   };
 }

@@ -46,7 +46,7 @@ export class ProjectFilesService {
   root(chat: string): string {
     return chatFolder(this.layout, this.chats.chat(chat));
   }
-  ensure(chat: string): string {
+  ensure(chat: string): Promise<string> {
     return ensureChatFolder(this.root(chat));
   }
   stat(chat: string, path: string): Promise<AiProjectFile | null> {
@@ -62,7 +62,7 @@ export class ProjectFilesService {
     const write = isMutation(request);
     return this.queue.run(authority.chatId, async () => {
       authority.validate(write);
-      const folder = { root: this.ensure(authority.chatId), fs: this.fs };
+      const folder = { root: await this.ensure(authority.chatId), fs: this.fs };
       const result = write
         ? await projectMutation(folder, request)
         : await this.read(folder, request);

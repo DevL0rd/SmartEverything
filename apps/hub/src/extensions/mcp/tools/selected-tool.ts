@@ -81,8 +81,8 @@ export function selectedTool(definition: SelectedToolDefinition): Tool {
   return {
     name,
     input: definition.input,
-    listing: servedListing(name, jsonSchemaOf(definition.input, 'input'), annotations),
-    check: (_context, raw) => problemWith(definition, raw),
+    listing: servedListing(name, () => jsonSchemaOf(definition.input, 'input'), annotations),
+    check: (_context, raw) => Promise.resolve(problemWith(definition, raw)),
     call: async (context, raw): Promise<ToolOutput> => {
       const chosen = chosenOf(definition, raw);
       return await scopedToolCall(context, name, async (scoped) => {

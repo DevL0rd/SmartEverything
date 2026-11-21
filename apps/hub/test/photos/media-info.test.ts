@@ -1,7 +1,6 @@
 import { MEDIA_INFO, MEDIA_PROCESSING } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../src/drive/access';
-import { DriveReadService } from '../../src/drive/service-read';
 import { PhotoMedia } from '../../src/photos/media-routes';
 import { DriveMediaJobsRepository } from '../../src/store/repositories/drive-media-jobs';
 import { DriveMediaRepository } from '../../src/store/repositories/drive-media';
@@ -66,7 +65,7 @@ beforeEach(async () => {
   store.driveRoots.insert(personalDriveRoot(SAMS, sam.profileId));
   image(PHOTO, HOME);
   image(PRIVATE, SAMS);
-  media = new PhotoMedia(store.context, new DriveReadService(store), store);
+  media = new PhotoMedia(store.host);
   jobs = new DriveMediaJobsRepository(store.context);
 });
 
@@ -75,7 +74,7 @@ afterEach(async () => {
 });
 
 describe('media info', () => {
-  it('answers how a photo was read and what is still being made', () => {
+  it('answers how a photo was read and what is still being made', async () => {
     new DrivePlacesRepository(opened.store.context).replaceAll([
       { id: '2267057', name: 'Lisbon', admin: 'Lisboa', country: 'PT', lat: 38.7, lon: -9.1 },
     ]);
@@ -97,7 +96,7 @@ describe('media info', () => {
       place_id: '2267057',
     });
     jobs.enqueue({ kind: 'preview', itemId: PHOTO, rev: 1 });
-    const info = MEDIA_INFO.parse(media.info(owner, PHOTO));
+    const info = MEDIA_INFO.parse(await media.info(owner, PHOTO));
     expect(info).toMatchObject({
       timeSource: 'exif',
       tzOffsetMin: 60,
@@ -108,26 +107,26 @@ describe('media info', () => {
     });
   });
 
-  it('answers an item the pipeline has not read yet and refuses one the person cannot see', () => {
-    expect(MEDIA_INFO.parse(media.info(sam, PRIVATE))).toMatchObject({
+  it('answers an item the pipeline has not read yet and refuses one the person cannot see', async () => {
+    expect(MEDIA_INFO.parse(await media.info(sam, PRIVATE))).toMatchObject({
       timeSource: null,
       preview: { state: 'none' },
     });
-    expect(() => media.info(ann, PRIVATE)).toThrow();
+    await expect(media.info(ann, PRIVATE)).rejects.toThrow();
   });
 });
 
 describe('media processing', () => {
-  it('counts the waiting work and lists the failures of what the person may see', () => {
+  it('counts the waiting work and lists the failures of what the person may see', async () => {
     jobs.enqueue({ kind: 'preview', itemId: PHOTO, rev: 1 });
     const failing = jobs.enqueue({ kind: 'playable_source', itemId: PRIVATE, rev: 1 });
     jobs.fail(failing.id, 'The file could not be decoded.');
-    const mine = MEDIA_PROCESSING.parse(media.processing(sam));
+    const mine = MEDIA_PROCESSING.parse(await media.processing(sam));
     expect(mine).toMatchObject({ queued: 1, running: 0 });
     expect(mine.failed).toEqual([
       expect.objectContaining({ itemId: PRIVATE, kind: 'playable', state: 'failed' }),
     ]);
-    const theirs = MEDIA_PROCESSING.parse(media.processing(ann));
+    const theirs = MEDIA_PROCESSING.parse(await media.processing(ann));
     expect(theirs).toMatchObject({ queued: 1, failed: [] });
   });
 });

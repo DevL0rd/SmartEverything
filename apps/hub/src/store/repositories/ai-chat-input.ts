@@ -1,6 +1,7 @@
 import type { AiChatKind, Engine } from '@smarteverything/domain';
 
 export interface NewChat {
+  readonly id?: string;
   readonly profileId: string;
   readonly kind: AiChatKind;
   readonly title: string;

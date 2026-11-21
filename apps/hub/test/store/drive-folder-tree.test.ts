@@ -15,7 +15,7 @@ import {
 import { DriveRootsRepository } from '../../src/store/repositories/drive-roots';
 import { Sql } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-17T00:00:00.000Z';
 const ROOT = '0d000000-0000-4000-8000-000000000001';
@@ -89,7 +89,7 @@ beforeEach(() => {
   const feed = new ChangeFeed(log);
   context = new StoreContext(new Sql(database), feed, () => new Date(NOW));
   migrate(context.sql, MIGRATIONS, NOW, log);
-  roots = new DriveRootsRepository(context, drivePathOf);
+  roots = new DriveRootsRepository(context, driveFolders);
   roots.insert(sharedDriveRoot(ROOT));
   items = new DriveItemsRepository(context);
   rootChanges = [];

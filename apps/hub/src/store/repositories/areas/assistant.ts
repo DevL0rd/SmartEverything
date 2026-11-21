@@ -12,7 +12,6 @@ import { AssistantReactionRepository } from '../assistant-reactions';
 import { AssistantChatRepository } from '../assistant-chat';
 import { AssistantEventsRepository } from '../assistant-events';
 import { AssistantMessageSearchRepository } from '../assistant-message-search';
-import { ClaudeCliOperationsRepository } from '../claude-cli-operations';
 import { DshSessionsRepository } from '../dsh-sessions';
 import { HarnessConfigurationRepository } from '../harness-configuration';
 import { HarnessSessionsRepository } from '../harness-sessions';
@@ -29,7 +28,6 @@ const repositoriesWithChat = (context: StoreContext, assistantChat: AssistantCha
     assistantChat,
     assistantReactions: new AssistantReactionRepository(context, assistantChat),
     imageOperations: new ImageOperationsRepository(context),
-    claudeCliOperations: new ClaudeCliOperationsRepository(context),
     nativeCommandOperations: new NativeCommandOperationsRepository(context),
     hubUpdateNotes: new HubUpdateNotesRepository(context),
     assistantSearch: new AssistantMessageSearchRepository(context),

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PushCommandChannel, type PushCommandOutcome } from '../../src/extensions/push/commands';
 import { WatchActionBroker, phonesOf, type WatchActionTarget } from '../../src/local/watch-actions';
 import { ANSWER_TIMEOUT_MS } from '../../src/local/pending-answers';
+import { settleWithHost } from '../support/host-settle';
 import { captureLogs, testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
@@ -54,26 +55,26 @@ afterEach(async () => {
 });
 
 describe('phonesOf', () => {
-  it('lists the Android phones of the person and ignores other platforms and other people', () => {
+  it('lists the Android phones of the person and ignores other platforms and other people', async () => {
     const mine = phone('mine');
     phone('browser', 'web');
     const other = test.store.profiles.create({ name: 'Sam' });
     const theirs = phone('theirs');
     test.store.clients.useProfile(theirs, other.id);
-    expect(phonesOf(test.store, profileId)).toEqual([mine]);
-    expect(phonesOf(test.store, other.id)).toEqual([theirs]);
+    expect(await phonesOf(test.store, profileId)).toEqual([mine]);
+    expect(await phonesOf(test.store, other.id)).toEqual([theirs]);
   });
 
-  it('uses only the bridging phone when it is one of the person phones', () => {
+  it('uses only the bridging phone when it is one of the person phones', async () => {
     const bridge = phone('bridge');
     phone('spare');
-    expect(phonesOf(test.store, profileId, bridge)).toEqual([bridge]);
+    expect(await phonesOf(test.store, profileId, bridge)).toEqual([bridge]);
   });
 
-  it('falls back to every phone when the bridging phone is not theirs', () => {
+  it('falls back to every phone when the bridging phone is not theirs', async () => {
     const first = phone('first');
     const second = phone('second');
-    expect(phonesOf(test.store, profileId, 'gone')).toEqual([first, second]);
+    expect(await phonesOf(test.store, profileId, 'gone')).toEqual([first, second]);
   });
 });
 
@@ -81,7 +82,7 @@ describe('WatchActionBroker', () => {
   it('asks the phone with the action and resolves with the phone answer', async () => {
     const id = phone('mine');
     const running = broker.run(target, { type: 'sync' }, 'Alex');
-    await vi.advanceTimersByTimeAsync(0);
+    await settleWithHost();
     expect(delivered).toHaveLength(1);
     const payload = delivered[0]?.payload ?? {};
     expect(payload).toMatchObject({
@@ -97,6 +98,7 @@ describe('WatchActionBroker', () => {
   it('answers that the phone did not answer once the window passes', async () => {
     phone('mine');
     const running = broker.run(target, { type: 'refresh' }, 'Alex');
+    await settleWithHost();
     await vi.advanceTimersByTimeAsync(ANSWER_TIMEOUT_MS);
     await expect(running).resolves.toEqual({
       ok: false,
@@ -109,7 +111,7 @@ describe('WatchActionBroker', () => {
     const failed = phone('failed');
     outcomes.set(failed, { outcome: 'failed', reason: 'token expired' });
     const running = broker.run(target, { type: 'sync' }, 'Alex');
-    await vi.advanceTimersByTimeAsync(0);
+    await settleWithHost();
     const requestId = String(delivered[0]?.payload['requestId']);
     expect(() => {
       broker.answer(failed, requestId, { ok: true, detail: 'x' });
@@ -140,7 +142,7 @@ describe('WatchActionBroker', () => {
   it('resolves waiting actions as failed when the hub stops', async () => {
     phone('mine');
     const running = broker.run(target, { type: 'sync' }, 'Alex');
-    await vi.advanceTimersByTimeAsync(0);
+    await settleWithHost();
     broker.stop();
     await expect(running).resolves.toEqual({ ok: false, detail: 'The hub is stopping.' });
   });

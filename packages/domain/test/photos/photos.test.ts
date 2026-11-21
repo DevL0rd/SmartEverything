@@ -92,6 +92,7 @@ describe('the media info', () => {
     burstId: null,
     stackId: null,
     placeId: 12,
+    description: null,
     preview: { state: 'ready' },
     poster: { state: 'none' },
     playable: { state: 'unsupported', reason: 'HEVC 10-bit HDR cannot be remuxed' },

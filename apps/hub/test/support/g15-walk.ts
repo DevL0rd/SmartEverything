@@ -65,15 +65,15 @@ export function g15Rig(): Promise<TreadmillRig> {
   return treadmillRig('ftms_supplement', G15_GATT);
 }
 
-export function feed(
+export async function feed(
   rig: TreadmillRig,
   second: number,
   frames: readonly { readonly characteristic: string; readonly hex: string }[],
   phase: 'linked' | 'lost' = 'linked',
-): void {
+): Promise<void> {
   const at = new Date(START_MS + second * 1000).toISOString();
   rig.clock.advanceTo(at);
-  rig.ingest.process(rig.test.store.devices.byId(rig.row().id), rig.owner.client, {
+  await rig.ingest.process(rig.test.store.devices.byId(rig.row().id), rig.owner.client, {
     frames: frames.map((frame) => ({ at, ...frame })),
     link: { phase, rssi: -55, reconnects: 0, detail: null },
   });
@@ -90,19 +90,19 @@ export function sleepFrame(sleeping: boolean): { characteristic: string; hex: st
   return { characteristic: SUPPLEMENT_NOTIFY, hex: bytesToHex(Uint8Array.from([...body, sum])) };
 }
 
-export function walk(
+export async function walk(
   rig: TreadmillRig,
   seconds: number,
   per: Omit<BeltSecond, 'second'>,
   from = 1,
-): void {
+): Promise<void> {
   for (let second = from; second < from + seconds; second += 1) {
-    feed(rig, second, [walkFrame({ ...per, second })]);
+    await feed(rig, second, [walkFrame({ ...per, second })]);
   }
 }
 
-export function stopBelt(rig: TreadmillRig, second: number, elapsed: number): void {
-  feed(rig, second, [walkFrame({ second: elapsed, kmh: 0, incline: 0 })]);
+export function stopBelt(rig: TreadmillRig, second: number, elapsed: number): Promise<void> {
+  return feed(rig, second, [walkFrame({ second: elapsed, kmh: 0, incline: 0 })]);
 }
 
 export function setScale(rig: TreadmillRig, scale: InclineScale): DeviceRow {

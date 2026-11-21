@@ -20,7 +20,7 @@ let suggestions: DriveSuggestions;
 
 beforeEach(async () => {
   social = await openSocial();
-  suggestions = new DriveSuggestions(social.opened.store.context, social.opened.store);
+  suggestions = new DriveSuggestions(social.opened.store);
 });
 
 afterEach(async () => {
@@ -39,71 +39,71 @@ function feed(rootId: string, itemId: string, actor: string | null, at: string):
   store.database.exec('pragma foreign_keys = on');
 }
 
-function listed(): { id: string; reason: string }[] {
-  return suggestions.list(social.robin, undefined).items.map((entry) => ({
+async function listed(): Promise<{ id: string; reason: string }[]> {
+  return (await suggestions.list(social.robin, undefined)).items.map((entry) => ({
     id: entry.item.id,
     reason: entry.reason,
   }));
 }
 
 describe('suggested files', () => {
-  it('ranks by the newest signal with the reason of that signal', () => {
+  it('ranks by the newest signal with the reason of that signal', async () => {
     const { store } = social.opened;
     share(social, TRIP, social.robin, 'view');
     store.driveOpens.record(social.robin.profileId, ROBIN_FILE, '2026-11-09T00:00:00.000Z');
     feed(SAM_DRIVE, TRIP_FILE, social.sam.profileId, '2026-11-10T00:00:00.000Z');
-    expect(listed()).toEqual([
+    expect(await listed()).toEqual([
       { id: TRIP_FILE, reason: 'edited_by' },
       { id: ROBIN_FILE, reason: 'opened' },
       { id: TRIP, reason: 'shared' },
     ]);
   });
 
-  it('names an edit by the viewer as edited and one by another person as edited_by', () => {
+  it('names an edit by the viewer as edited and one by another person as edited_by', async () => {
     feed(ROBIN_DRIVE, ROBIN_FILE, social.robin.profileId, '2026-11-09T00:00:00.000Z');
-    expect(listed()).toEqual([{ id: ROBIN_FILE, reason: 'edited' }]);
+    expect(await listed()).toEqual([{ id: ROBIN_FILE, reason: 'edited' }]);
     feed(ROBIN_DRIVE, ROBIN_FILE, social.sam.profileId, '2026-11-10T00:00:00.000Z');
-    expect(listed()).toEqual([{ id: ROBIN_FILE, reason: 'edited_by' }]);
+    expect(await listed()).toEqual([{ id: ROBIN_FILE, reason: 'edited_by' }]);
   });
 
-  it('lists one entry per item and carries the person behind the reason', () => {
+  it('lists one entry per item and carries the person behind the reason', async () => {
     const { store } = social.opened;
     share(social, TRIP, social.robin, 'edit');
     store.driveOpens.record(social.robin.profileId, TRIP, '2026-11-12T00:00:00.000Z');
-    const page = suggestions.list(social.robin, undefined);
+    const page = await suggestions.list(social.robin, undefined);
     expect(page.items.filter((entry) => entry.item.id === TRIP)).toHaveLength(1);
     share(social, TRIP, social.kim, 'edit');
-    const comments = new DriveComments({ store, read: social.read });
-    comments.add(social.kim, TRIP_FILE, {
+    const comments = new DriveComments({ store });
+    await comments.add(social.kim, TRIP_FILE, {
       body: 'hi',
       parentId: null,
       mentions: [social.robin.profileId],
     });
-    const mention = suggestions
-      .list(social.robin, undefined)
-      .items.find((entry) => entry.item.id === TRIP_FILE);
+    const mention = (await suggestions.list(social.robin, undefined)).items.find(
+      (entry) => entry.item.id === TRIP_FILE,
+    );
     expect(mention).toMatchObject({ reason: 'mentioned', actorProfileId: social.kim.profileId });
   });
 
-  it('does not suggest edits of the Shared Drive by others but does the viewer’s own', () => {
+  it('does not suggest edits of the Shared Drive by others but does the viewer’s own', async () => {
     feed(HOME, SHARED_FILE, social.sam.profileId, '2026-11-10T00:00:00.000Z');
-    expect(listed()).toEqual([]);
+    expect(await listed()).toEqual([]);
     feed(HOME, SHARED_FILE, social.robin.profileId, '2026-11-11T00:00:00.000Z');
-    expect(listed()).toEqual([{ id: SHARED_FILE, reason: 'edited' }]);
+    expect(await listed()).toEqual([{ id: SHARED_FILE, reason: 'edited' }]);
   });
 
-  it('never suggests what the viewer cannot open', () => {
+  it('never suggests what the viewer cannot open', async () => {
     const { store } = social.opened;
     store.driveOpens.record(social.sam.profileId, SECRET, '2026-11-10T00:00:00.000Z');
     feed(SAM_DRIVE, SECRET, social.sam.profileId, '2026-11-10T00:00:00.000Z');
-    expect(listed()).toEqual([]);
+    expect(await listed()).toEqual([]);
   });
 
-  it('pages through every suggestion without repeats', () => {
+  it('pages through every suggestion without repeats', async () => {
     const { store } = social.opened;
     store.driveOpens.record(social.robin.profileId, ROBIN_FILE, '2026-11-09T00:00:00.000Z');
     store.driveOpens.record(social.robin.profileId, SHARED_FILE, '2026-11-08T00:00:00.000Z');
-    const page = suggestions.list(social.robin, undefined);
+    const page = await suggestions.list(social.robin, undefined);
     expect(page.next).toBeNull();
     expect(page.items.map((entry) => entry.item.id)).toEqual([ROBIN_FILE, SHARED_FILE]);
   });

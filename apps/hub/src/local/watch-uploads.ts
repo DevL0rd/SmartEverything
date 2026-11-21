@@ -5,6 +5,7 @@ import {
   type WatchRoute,
   type WatchSampleBatch,
 } from '@smarteverything/domain';
+import { storeUnit } from '../store/host/unit';
 import type { Store } from '../store/store';
 
 export interface WatchUpload {
@@ -124,3 +125,8 @@ export function saveWatchUpload(
     };
   });
 }
+
+export const WATCH_UPLOAD_UNIT = storeUnit(
+  (store, { owner, upload }: { readonly owner: UploadOwner; readonly upload: WatchUpload }) =>
+    saveWatchUpload(store, owner, upload),
+);

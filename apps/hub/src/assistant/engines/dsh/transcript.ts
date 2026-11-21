@@ -1,3 +1,4 @@
+import { background } from '@smarteverything/logging';
 import { nativeInputId } from '@smarteverything/harness/process';
 import { z } from 'zod';
 import { settledSteps } from '@smarteverything/domain';
@@ -147,7 +148,9 @@ export class NativeTranscripts {
       },
       messageId: id,
     });
-    this.conversation.stateOf(row.id, 'delivered');
+    background(this.conversation.stateOf(row.id, 'delivered'), 'dsh.transcript_state_failed', {
+      messageId: row.id,
+    });
   }
 
   private senderTitle(sessionId: string): string {
@@ -173,7 +176,11 @@ export class NativeTranscripts {
         messageId: id,
         steps: settledSteps(state.tools),
       });
-      this.conversation.timeline(row.id, timelineOf(parts));
+      background(
+        this.conversation.timeline(row.id, timelineOf(parts)),
+        'dsh.transcript_timeline_failed',
+        { messageId: row.id },
+      );
     }
     return { ...state, tools: [], parts: [] };
   }

@@ -74,7 +74,7 @@ describe('trigger.becomes_true on the engine', () => {
     const rig = await rigV3();
     reading(rig, 20);
     const row = watchingTemperature(rig);
-    rig.engine.sync();
+    await rig.engine.sync();
     reading(rig, 24);
     await rig.settle();
     expect(rig.runs(row.id)).toHaveLength(0);
@@ -94,7 +94,7 @@ describe('trigger.becomes_true on the engine', () => {
     const rig = await rigV3();
     reading(rig, 30);
     const row = watchingTemperature(rig);
-    rig.engine.sync();
+    await rig.engine.sync();
     reading(rig, 31);
     await rig.settle();
     expect(rig.runs(row.id)).toHaveLength(0);
@@ -104,7 +104,7 @@ describe('trigger.becomes_true on the engine', () => {
     const rig = await rigV3();
     reading(rig, 20);
     const row = watchingTemperature(rig, { hold: lit(300_000) });
-    rig.engine.sync();
+    await rig.engine.sync();
     reading(rig, 27);
     await rig.advance(200_000);
     reading(rig, 20);
@@ -122,15 +122,15 @@ describe('trigger.becomes_true on the engine', () => {
     const rig = await rigV3();
     reading(rig, 20);
     const row = watchingTemperature(rig);
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.setEnabled(row.id, false);
-    rig.engine.sync();
+    await rig.engine.sync();
     reading(rig, 27);
     await rig.settle();
     expect(rig.runs(row.id)).toHaveLength(0);
     rig.setEnabled(row.id, true);
     reading(rig, 20);
-    rig.engine.sync();
+    await rig.engine.sync();
     reading(rig, 27);
     await rig.until(() => rig.finished.length === 1);
     expect(rig.runs(row.id)).toHaveLength(1);
@@ -139,7 +139,7 @@ describe('trigger.becomes_true on the engine', () => {
   it('never starts while the value it reads is missing, and starts when it arrives', async () => {
     const rig = await rigV3();
     const row = watchingTemperature(rig);
-    rig.engine.sync();
+    await rig.engine.sync();
     reading(rig, null);
     await rig.settle();
     expect(rig.runs(row.id)).toHaveLength(0);
@@ -158,7 +158,7 @@ interface Driven {
 async function drive(rig: RigV3, driven: Driven): Promise<void> {
   const nodes = triggerChecks(driven.check, { yes: 41, no: 99 }, (value) => dimTo(rig, value));
   rig.add(program(nodes, { triggers: [driven.trigger] }));
-  rig.engine.sync();
+  await rig.engine.sync();
   rig.engine.observe(driven.signal);
   await rig.until(() => rig.finished.length === 1);
 }
@@ -206,7 +206,7 @@ describe('signal-backed triggers reach the run as their typed outputs', () => {
         triggers: [trigger('trigger.computer', { kind: lit('app_open'), app: lit('Steam') })],
       }),
     );
-    rig.engine.sync();
+    await rig.engine.sync();
     rig.engine.observe(signalOf({ data: { app: 'Spotify' } }));
     await rig.settle();
     expect(rig.finished).toHaveLength(0);

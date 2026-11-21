@@ -28,6 +28,7 @@ export function nextDailySlot(now: Date): Date {
 
 export class ExchangeRateService {
   private readonly fetches: ScheduledFetch<ExchangeRatesRow>;
+  private resuming: Promise<void> = Promise.resolve();
 
   constructor(private readonly options: ExchangeRateServiceOptions) {
     this.fetches = new ScheduledFetch({
@@ -39,7 +40,12 @@ export class ExchangeRateService {
   }
 
   start(): void {
-    const row = this.current();
+    this.resuming = this.resume();
+    background(this.resuming, 'exchange_rates.resume_failed');
+  }
+
+  private async resume(): Promise<void> {
+    const row = await this.current();
     const now = this.options.clock.now().getTime();
     const fresh = row.fetched_at !== null && now - Date.parse(row.fetched_at) < RATES_FRESH_MS;
     if (!fresh) {
@@ -54,32 +60,36 @@ export class ExchangeRateService {
     this.fetches.cancel();
   }
 
-  current(): ExchangeRatesRow {
-    return this.options.store.exchangeRates.read();
+  current(): Promise<ExchangeRatesRow> {
+    return this.options.store.host.call('exchangeRates', 'read');
   }
 
-  settled(): Promise<ExchangeRatesRow> | null {
+  async settled(): Promise<ExchangeRatesRow | null> {
+    await this.resuming;
     return this.fetches.settled();
   }
 
-  refresh(): Promise<ExchangeRatesRow> {
-    const row = this.current();
+  async refresh(): Promise<ExchangeRatesRow> {
+    const row = await this.current();
     return this.fetches.refresh(row, { fetchedAt: row.fetched_at, healthy: row.error === null });
   }
 
   private async fetchOnce(): Promise<ExchangeRatesRow> {
     try {
       const fetched = await fetchRates(this.options.request);
-      return this.fetched(fetched.rates, fetched.rateDate);
+      return await this.fetched(fetched.rates, fetched.rateDate);
     } catch (cause) {
-      return this.failed(messageOf(cause));
+      return await this.failed(messageOf(cause));
     }
   }
 
-  private fetched(rates: Readonly<Record<string, number>>, rateDate: string): ExchangeRatesRow {
+  private async fetched(
+    rates: Readonly<Record<string, number>>,
+    rateDate: string,
+  ): Promise<ExchangeRatesRow> {
     this.fetches.reset();
     const next = nextDailySlot(this.options.clock.now());
-    const row = this.options.store.exchangeRates.fetched({
+    const row = await this.options.store.host.call('exchangeRates', 'fetched', {
       rates,
       rateDate,
       nextFetchAt: next.toISOString(),
@@ -93,10 +103,10 @@ export class ExchangeRateService {
     return row;
   }
 
-  private failed(reason: string): ExchangeRatesRow {
+  private async failed(reason: string): Promise<ExchangeRatesRow> {
     const next = this.fetches.retryAt();
     this.options.log.warn('exchange_rates.fetch_failed', { reason, retryAt: next.toISOString() });
-    const row = this.options.store.exchangeRates.failed({
+    const row = await this.options.store.host.call('exchangeRates', 'failed', {
       error: reason,
       nextFetchAt: next.toISOString(),
     });

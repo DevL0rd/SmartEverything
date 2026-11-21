@@ -136,6 +136,7 @@ export interface PluginVoiceServices {
     | 'now'
     | 'settings'
     | 'accessAudit'
+    | 'host'
   >;
   readonly host: HostVoice;
   readonly turn: (request: TurnRequest) => Promise<TurnSession>;
@@ -182,7 +183,7 @@ async function hostCall(
   request: PluginCallRequest,
 ): Promise<PluginCall> {
   const caller = callerOf(
-    admittedIdentityOf(services.store, scope.pluginId, request.speaker),
+    await admittedIdentityOf(services.store, scope.pluginId, request.speaker),
     scope,
     request,
   );
@@ -279,7 +280,7 @@ async function openTurn(
   scope: Scope,
   request: PluginTurnRequest,
 ): Promise<PluginTurn> {
-  const identity = admittedIdentityOf(services.store, scope.pluginId, request.speaker);
+  const identity = await admittedIdentityOf(services.store, scope.pluginId, request.speaker);
   const caller = callerOf(identity, scope, request);
   const source =
     request.conversation === undefined

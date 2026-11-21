@@ -18,7 +18,7 @@ import { LinuxMachine } from './linux-machine';
 import { LinuxRing } from './linux-ring';
 import { displayEnvironment, LinuxDisplays } from './linux-displays';
 import { linuxLinks } from './linux-links';
-import { LinuxProcesses } from './linux-processes';
+import { processesFor } from '../processes-for';
 import { LinuxSession } from './linux-session';
 import { linuxSystemControls } from './linux-system';
 import { LinuxWindows } from './linux-windows';
@@ -158,7 +158,7 @@ export function linuxControls(options: ControlOptions): ComputerControls {
   return {
     environment: linuxEnvironment(options),
     power: new LogindPower(runProgram),
-    processes: new LinuxProcesses(),
+    processes: processesFor('linux', options.log),
     links: linuxLinks,
     session,
     audio: linuxAudio(options, audio),

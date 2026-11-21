@@ -1,5 +1,5 @@
 import type { Logger } from '@smarteverything/logging';
-import type { Ledger } from '../ledger/ledger';
+import type { LedgerHost } from '../ledger/units';
 import { recordAudioTranscription } from '../ledger/transcription';
 import type { TranscriptionAnswer, TranscriptionProvider } from '../openrouter/transcription';
 import { speechOf } from './heard-text';
@@ -21,7 +21,7 @@ export interface TranscribeRequest {
 
 export interface TranscriberOptions {
   readonly provider: TranscriptionProvider;
-  readonly ledger: Ledger;
+  readonly ledger: LedgerHost;
   readonly log: Logger;
 }
 
@@ -45,23 +45,21 @@ export class Transcriber {
         ? {}
         : { language: request.language }),
     });
-    this.record(request, answer);
+    await this.record(request, answer);
     return speechOf(answer.text);
   }
 
-  private record(request: TranscribeRequest, answer: TranscriptionAnswer): void {
-    try {
-      recordAudioTranscription(this.options.ledger, {
-        profileId: request.profileId,
-        messageId: null,
-        pluginId: request.pluginId,
-        model: this.model,
-        answer,
-        audioMs: Math.round(request.pcm16k.length / 16),
-        meta: request.meta,
-      });
-    } catch (cause) {
+  private async record(request: TranscribeRequest, answer: TranscriptionAnswer): Promise<void> {
+    await recordAudioTranscription(this.options.ledger, {
+      profileId: request.profileId,
+      messageId: null,
+      pluginId: request.pluginId,
+      model: this.model,
+      answer,
+      audioMs: Math.round(request.pcm16k.length / 16),
+      meta: request.meta,
+    }).catch((cause: unknown) => {
       this.options.log.error('transcripts.usage_unrecorded', cause, { pluginId: request.pluginId });
-    }
+    });
   }
 }

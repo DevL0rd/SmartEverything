@@ -64,6 +64,7 @@ beforeEach(async () => {
   clientId = client.id;
   owner = { profileId: store.profiles.activeOf(clientId).id, role: 'owner' };
   directory = new ComputerAiDirectory(store, testLogger('computer'));
+  await directory.load();
   service = new AssistantService({
     store,
     layout: hubLayout(opened.directory, {}),
@@ -74,7 +75,7 @@ beforeEach(async () => {
   });
   service.attachComputerAi(directory);
   target = { device_id: computer(), runtime: 'codex' };
-  store.computerRuntimes.saveSettings(target, {
+  await store.live.computers.saveRuntimeSettings(target, {
     runtime: 'codex',
     settings: {
       ...DEFAULT_CODEX_AI_SETTINGS,
@@ -85,7 +86,7 @@ beforeEach(async () => {
       },
     },
   });
-  store.computerRuntimes.cache(target, READY, [model()]);
+  await store.live.computers.cacheRuntime(target, READY, [model()]);
 });
 
 afterEach(async () => {
@@ -228,10 +229,10 @@ function attach(
   return execute;
 }
 
-function attachImageHelper(runtime: ComputerAiRuntime): {
+async function attachImageHelper(runtime: ComputerAiRuntime): Promise<{
   readonly engine: AiChatRow['engine'];
   readonly starts: () => number;
-} {
+}> {
   if (runtime === 'codex') {
     const execute = attach();
     return { engine: nativeEngine(), starts: () => execute.mock.calls.length };
@@ -239,11 +240,11 @@ function attachImageHelper(runtime: ComputerAiRuntime): {
   const { store } = opened;
   const deviceId = target.device_id;
   const engine = { ...CLAUDE_TEST_ENGINE, device_id: deviceId };
-  store.computerAi.saveSettings(deviceId, {
+  await store.live.computers.saveAiSettings(deviceId, {
     ...DEFAULT_COMPUTER_AI_SETTINGS,
     provider: { enabled: true, options: { cwd: '/home/test/claude', builtin_tools: [] } },
   });
-  store.computerRuntimes.cache(
+  await store.live.computers.cacheRuntime(
     { device_id: deviceId, runtime },
     { ...unavailableRuntime(runtime), operations: ['provider_start'] },
     [{ ...model(), runtime, id: engine.model }],
@@ -282,7 +283,7 @@ async function boundaryImageUploads(): Promise<readonly string[]> {
 }
 
 describe('standalone native chats', () => {
-  it('requires explicit admission, an owner, and valid configured options', () => {
+  it('requires explicit admission, an owner, and valid configured options', async () => {
     const engine = nativeEngine();
     expect(() => service.createChat(owner, { engine })).toThrow(/when creating a new chat/);
     const ready = attach();
@@ -292,7 +293,7 @@ describe('standalone native chats', () => {
     expect(() => service.createChat(owner, { engine: nativeEngine('relative') }, true)).toThrow(
       /absolute project folder/,
     );
-    opened.store.computerRuntimes.saveSettings(target, {
+    await opened.store.live.computers.saveRuntimeSettings(target, {
       runtime: 'codex',
       settings: {
         ...DEFAULT_CODEX_AI_SETTINGS,
@@ -311,15 +312,15 @@ describe('standalone native chats', () => {
 
   it.each(['claude', 'codex'] as const)(
     'creates a %s chat when a known computer has no reported models, authentication or project',
-    (kind) => {
+    async (kind) => {
       const device = { device_id: target.device_id, runtime: kind };
-      opened.store.computerRuntimes.saveSettings(
+      await opened.store.live.computers.saveRuntimeSettings(
         device,
         kind === 'claude'
           ? { runtime: kind, settings: DEFAULT_COMPUTER_AI_SETTINGS }
           : { runtime: kind, settings: DEFAULT_CODEX_AI_SETTINGS },
       );
-      opened.store.computerRuntimes.cache(device, unavailableRuntime(kind), []);
+      await opened.store.live.computers.cacheRuntime(device, unavailableRuntime(kind), []);
       const engine = ENGINE.parse({
         kind,
         device_id: target.device_id,
@@ -341,7 +342,11 @@ describe('standalone native chats', () => {
     execute.mockRejectedValueOnce(new Error(reason));
     const chat = service.createChat(owner, { engine: nativeEngine() }, true);
     const sender = { clientId, profileId: owner.profileId };
-    const message = service.send(sender, { text: 'Try the provider', attachments: [] }, chat.id);
+    const message = await service.send(
+      sender,
+      { text: 'Try the provider', attachments: [] },
+      chat.id,
+    );
     await vi.waitFor(() => {
       expect(opened.store.assistantChat.message(message.id)).toMatchObject({
         state: 'failed',
@@ -354,13 +359,15 @@ describe('standalone native chats', () => {
   it('sends a turn to the selected computer and follows ordinary list, search and branch operations', async () => {
     const reason = 'Cached usage is exhausted.';
     const cached = { ...READY, provider_reason: reason };
-    opened.store.computerRuntimes.cache(target, cached, [{ ...model(), available: false, reason }]);
+    await opened.store.live.computers.cacheRuntime(target, cached, [
+      { ...model(), available: false, reason },
+    ]);
     const execute = attach(cached);
     const coordinator = service.createChat(owner, { engine: TEST_ENGINE, title: 'Coordinator' });
     const engine = nativeEngine();
     const native = service.createChat(owner, { engine, title: 'Native work' }, true);
     const sender = { clientId, profileId: owner.profileId };
-    const message = service.send(
+    const message = await service.send(
       sender,
       { text: 'Do some native work', attachments: [] },
       native.id,
@@ -411,14 +418,14 @@ describe('standalone native chats', () => {
     attach(READY, oldGeneration);
     const chat = service.createChat(owner, { engine: nativeEngine() }, true);
     const sender = { clientId, profileId: owner.profileId };
-    const first = service.send(sender, { text: 'Start work', attachments: [] }, chat.id);
+    const first = await service.send(sender, { text: 'Start work', attachments: [] }, chat.id);
     await vi.waitFor(() => {
       expect(store.assistantChat.message(first.id).state).toBe('answered');
     });
     expect(store.aiRuntimeProvider.read(chat.id)?.context?.process_generation).toBe(oldGeneration);
 
     const replacement = attach(READY, newGeneration, oldGeneration);
-    const second = service.send(sender, { text: 'Continue work', attachments: [] }, chat.id);
+    const second = await service.send(sender, { text: 'Continue work', attachments: [] }, chat.id);
     await vi.waitFor(() => {
       expect(store.assistantChat.message(second.id).state).toBe('answered');
     });
@@ -447,7 +454,7 @@ describe('standalone native chats', () => {
   it.each(['claude', 'codex'] as const)(
     'refuses %s attachments whose encoded content fits but whose provider turn exceeds transport',
     async (runtime) => {
-      const { engine, starts } = attachImageHelper(runtime);
+      const { engine, starts } = await attachImageHelper(runtime);
       const { store } = opened;
       const parent = service.createChat(owner, { title: 'Coordinator', engine: TEST_ENGINE });
       const child = service.createChat(owner, { title: 'Helper', engine, parent_id: parent.id });
@@ -489,10 +496,10 @@ describe('standalone native chats', () => {
     async ({ revocation, reason }) => {
       const execute = attach();
       const { store } = opened;
-      const defaults = store.computerRuntimes.settings(target);
+      const defaults = store.live.computers.runtimeSettings(target);
       if (defaults.runtime !== 'codex') throw new Error('Expected Codex machine defaults.');
       const provider = defaults.settings.provider;
-      store.computerRuntimes.saveSettings(target, {
+      await store.live.computers.saveRuntimeSettings(target, {
         runtime: 'codex',
         settings: {
           ...defaults.settings,
@@ -532,7 +539,7 @@ describe('standalone native chats', () => {
         files: [file],
         origin: { source: 'app', plugin_id: null, device_id: null, name: null },
       });
-      conversation.stateOf(prior.id, 'answered');
+      await conversation.stateOf(prior.id, 'answered');
       const key = randomUUID();
       const pathOf = service.files.pathOf.bind(service.files);
       const stagedRead = vi.spyOn(service.files, 'pathOf').mockImplementationOnce((file) => {
@@ -544,7 +551,7 @@ describe('standalone native chats', () => {
             store.assistantChat.removeMessages([row.id]);
             return;
           }
-          store.computerRuntimes.saveSettings(target, {
+          void store.live.computers.saveRuntimeSettings(target, {
             runtime: 'codex',
             settings: {
               ...defaults.settings,
@@ -632,11 +639,11 @@ describe('standalone native chats', () => {
       settings: { builtin_tools: ['Bash'] },
     };
     const { store } = opened;
-    store.computerAi.saveSettings(deviceId, {
+    await store.live.computers.saveAiSettings(deviceId, {
       ...DEFAULT_COMPUTER_AI_SETTINGS,
       provider: { enabled: true, options: { builtin_tools: ['Bash'], cwd: '/home/test/claude' } },
     });
-    store.computerRuntimes.cache(
+    await store.live.computers.cacheRuntime(
       { device_id: deviceId, runtime: 'claude' },
       {
         ...unavailableRuntime('claude'),
@@ -651,7 +658,7 @@ describe('standalone native chats', () => {
     const native = service.createChat(owner, { engine, title: 'Claude work' }, true);
     expect(native).toMatchObject({ kind: 'chat', native_admission: 'standalone', engine });
     const sender = { clientId, profileId: owner.profileId };
-    const first = service.send(
+    const first = await service.send(
       sender,
       { text: 'Check the project folder', attachments: [] },
       native.id,
@@ -684,9 +691,11 @@ describe('standalone native chats', () => {
     ).rejects.toThrow(/no longer pending/);
     expect(host.execute).toHaveBeenCalledTimes(2);
     host.finish(start.turn, 'The project folder is ready.');
-    expect(store.assistantChat.message(first.id).state).toBe('answered');
+    await vi.waitFor(() => {
+      expect(store.assistantChat.message(first.id).state).toBe('answered');
+    });
 
-    const followup = service.send(sender, { text: 'Keep going', attachments: [] }, native.id);
+    const followup = await service.send(sender, { text: 'Keep going', attachments: [] }, native.id);
     await vi.waitFor(() => {
       expect(host.execute).toHaveBeenCalledTimes(3);
     });
@@ -697,10 +706,12 @@ describe('standalone native chats', () => {
     expect(resume.turn.messages.map((message) => message.role)).toEqual(['user']);
     expect(resume.turn.messages[0]?.content[0]).toEqual({ type: 'text', text: 'Keep going' });
     host.finish(resume.turn, 'Continued in the same session.');
-    expect(store.assistantChat.message(followup.id).state).toBe('answered');
-    expect(store.assistantChat.repliesTo(followup.id)).toMatchObject([
-      { text: 'Continued in the same session.', state: 'answered' },
-    ]);
+    await vi.waitFor(() => {
+      expect(store.assistantChat.message(followup.id).state).toBe('answered');
+      expect(store.assistantChat.repliesTo(followup.id)).toMatchObject([
+        { text: 'Continued in the same session.', state: 'answered' },
+      ]);
+    });
   });
 
   it('keeps exact reads of the legacy root and descendants while refusing their mutation', async () => {
@@ -738,13 +749,13 @@ describe('standalone native chats', () => {
         /read-only/,
       );
       await expect(service.removeChat(owner, chat.id)).rejects.toThrow(/read-only/);
-      expect(() =>
+      await expect(
         service.send(
           { clientId, profileId: owner.profileId },
           { text: 'Resume', attachments: [] },
           chat.id,
         ),
-      ).toThrow(/read-only/);
+      ).rejects.toThrow(/read-only/);
     }
     expect(aiChats.chats({ profileId: owner.profileId, archived: false })).toEqual([]);
     expect(service.searchChats(owner, { q: 'Native history', archived: false, limit: 10 })).toEqual(

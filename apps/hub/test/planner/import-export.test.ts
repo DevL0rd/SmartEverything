@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { exportCollectionText, exportItemText } from '../../src/planner/ical/export';
 import { importIcs } from '../../src/planner/ical/import';
 import { readCalendar } from '../../src/planner/ical/read';
-import { calendarOf, eventOf } from '../support/ical';
+import { calendarOf, eventOf, inProcessCalendars } from '../support/ical';
 import { testStore, type TestStore } from '../support/store';
 
 const NOW = new Date('2026-11-14T12:00:00.000Z');
@@ -36,7 +36,7 @@ function newCalendar(name: string): PlannerCollectionRow {
 }
 
 function importInto(target: PlannerCollectionRow, text: string): ReturnType<typeof importIcs> {
-  return importIcs(test.store, () => NOW, {
+  return importIcs(test.store, inProcessCalendars, () => NOW, {
     profileId,
     collectionId: target.id,
     text,
@@ -55,8 +55,8 @@ afterEach(async () => {
 });
 
 describe('import', () => {
-  it('imports a Google export with its series, exception, guests and reminder', () => {
-    const result = importInto(calendar, fixture('google.ics'));
+  it('imports a Google export with its series, exception, guests and reminder', async () => {
+    const result = await importInto(calendar, fixture('google.ics'));
     expect(result).toMatchObject({ added: 3, updated: 0, unchanged: 0 });
     const rows = test.store.plannerItems.inCollection(calendar.id);
     const master = rows.find(
@@ -95,8 +95,8 @@ describe('import', () => {
     ]);
   });
 
-  it('moves a UTC event into the calendar zone and keeps all-day items as dates', () => {
-    importInto(calendar, fixture('google.ics'));
+  it('moves a UTC event into the calendar zone and keeps all-day items as dates', async () => {
+    await importInto(calendar, fixture('google.ics'));
     const rows = test.store.plannerItems.inCollection(calendar.id);
     expect(rows.find((row) => row.title === 'Dentist')).toMatchObject({
       start_local: '2026-11-10T19:00:00',
@@ -111,8 +111,8 @@ describe('import', () => {
     });
   });
 
-  it('reports every part it could not use', () => {
-    const result = importInto(calendar, fixture('google.ics'));
+  it('reports every part it could not use', async () => {
+    const result = await importInto(calendar, fixture('google.ics'));
     expect(result.unsupported).toEqual(
       expect.arrayContaining([
         { part: 'attachment', detail: 'ATTACH', count: 1 },
@@ -122,8 +122,8 @@ describe('import', () => {
     );
   });
 
-  it('reads Outlook zone names and zones that only have a definition', () => {
-    const result = importInto(calendar, fixture('outlook.ics'));
+  it('reads Outlook zone names and zones that only have a definition', async () => {
+    const result = await importInto(calendar, fixture('outlook.ics'));
     expect(result.added).toBe(3);
     const rows = test.store.plannerItems.inCollection(calendar.id);
     expect(rows.find((row) => row.title === 'Review')).toMatchObject({
@@ -145,8 +145,8 @@ describe('import', () => {
     );
   });
 
-  it('reads floating times in the home zone, to-dos, steps and refuses nothing silently', () => {
-    const result = importInto(calendar, fixture('apple.ics'));
+  it('reads floating times in the home zone, to-dos, steps and refuses nothing silently', async () => {
+    const result = await importInto(calendar, fixture('apple.ics'));
     expect(result.added).toBe(5);
     const rows = test.store.plannerItems.inCollection(calendar.id);
     expect(rows.find((row) => row.title === 'Dinner')).toMatchObject({
@@ -174,7 +174,7 @@ describe('import', () => {
     );
   });
 
-  it('keeps an extra date and a cancelled occurrence of a series', () => {
+  it('keeps an extra date and a cancelled occurrence of a series', async () => {
     const text = calendarOf(
       eventOf(
         'DTSTART;TZID=Europe/Berlin:20261109T090000',
@@ -192,7 +192,7 @@ describe('import', () => {
         'END:VEVENT',
       ].join('\r\n'),
     );
-    importInto(calendar, text);
+    await importInto(calendar, text);
     const rows = test.store.plannerItems.inCollection(calendar.id);
     const master = rows.find((row) => row.series_id === null);
     expect(master?.exdates).toEqual(['2026-11-10T09:00:00']);
@@ -204,18 +204,18 @@ describe('import', () => {
       rrule: null,
     });
     expect(rows).toHaveLength(2);
-    expect(importInto(calendar, text)).toMatchObject({ unchanged: 1, updated: 0 });
+    expect(await importInto(calendar, text)).toMatchObject({ unchanged: 1, updated: 0 });
   });
 
-  it('refuses text that is not iCalendar', () => {
-    expect(() => importInto(calendar, 'garbage')).toThrow(/not a readable iCalendar/u);
+  it('refuses text that is not iCalendar', async () => {
+    await expect(importInto(calendar, 'garbage')).rejects.toThrow(/not a readable iCalendar/u);
   });
 });
 
 describe('re-import', () => {
-  it('leaves unchanged items alone and updates by UID', () => {
-    importInto(calendar, fixture('google.ics'));
-    expect(importInto(calendar, fixture('google.ics'))).toMatchObject({
+  it('leaves unchanged items alone and updates by UID', async () => {
+    await importInto(calendar, fixture('google.ics'));
+    expect(await importInto(calendar, fixture('google.ics'))).toMatchObject({
       added: 0,
       updated: 0,
       unchanged: 3,
@@ -223,7 +223,11 @@ describe('re-import', () => {
     const edited = fixture('google.ics')
       .replace('SUMMARY:Standup\r', 'SUMMARY:Standup renamed\r')
       .replace('SEQUENCE:2', 'SEQUENCE:5');
-    expect(importInto(calendar, edited)).toMatchObject({ added: 0, updated: 1, unchanged: 2 });
+    expect(await importInto(calendar, edited)).toMatchObject({
+      added: 0,
+      updated: 1,
+      unchanged: 2,
+    });
     const rows = test.store.plannerItems.inCollection(calendar.id);
     expect(rows.filter((row) => row.title.startsWith('Standup'))).toHaveLength(2);
     expect(
@@ -234,21 +238,21 @@ describe('re-import', () => {
     });
   });
 
-  it('skips a file that is older than what is stored', () => {
-    importInto(calendar, fixture('google.ics'));
+  it('skips a file that is older than what is stored', async () => {
+    await importInto(calendar, fixture('google.ics'));
     const older = fixture('google.ics')
       .replace('SUMMARY:Standup\r', 'SUMMARY:Standup old\r')
       .replace('SEQUENCE:2', 'SEQUENCE:1');
-    expect(importInto(calendar, older)).toMatchObject({ updated: 0, unchanged: 3 });
+    expect(await importInto(calendar, older)).toMatchObject({ updated: 0, unchanged: 3 });
   });
 
-  it('brings back an item that was trashed', () => {
-    importInto(calendar, fixture('apple.ics'));
+  it('brings back an item that was trashed', async () => {
+    await importInto(calendar, fixture('apple.ics'));
     const dinner = test.store.plannerItems
       .inCollection(calendar.id)
       .find((row) => row.title === 'Dinner');
     test.store.plannerItems.trash(dinner?.id ?? '', profileId);
-    const again = importInto(calendar, fixture('apple.ics'));
+    const again = await importInto(calendar, fixture('apple.ics'));
     expect(again.added).toBe(1);
     expect(
       test.store.plannerItems.inCollection(calendar.id).filter((row) => row.title === 'Dinner'),
@@ -257,10 +261,10 @@ describe('re-import', () => {
 });
 
 describe('export', () => {
-  it('writes a calendar that reads back to the same items', () => {
-    importInto(calendar, fixture('google.ics'));
-    importInto(calendar, fixture('apple.ics'));
-    const text = exportCollectionText(test.store, calendar, NOW);
+  it('writes a calendar that reads back to the same items', async () => {
+    await importInto(calendar, fixture('google.ics'));
+    await importInto(calendar, fixture('apple.ics'));
+    const text = await exportCollectionText(test.store, calendar, NOW);
     expect(text).toContain('BEGIN:VTIMEZONE');
     expect(text).toContain('TZID:Europe/Berlin');
     expect(text).toContain('RECURRENCE-ID;TZID=Europe/Berlin:20261123T090000');
@@ -271,7 +275,7 @@ describe('export', () => {
     expect(text).toContain('STATUS:COMPLETED');
     expect(text).toContain('RELATED-TO:todo-1');
     const target = newCalendar('Copy');
-    expect(importInto(target, text)).toMatchObject({ added: 8, updated: 0, unsupported: [] });
+    expect(await importInto(target, text)).toMatchObject({ added: 8, updated: 0, unsupported: [] });
     const strip = (id: string): object[] =>
       test.store.plannerItems
         .inCollection(id)
@@ -293,24 +297,24 @@ describe('export', () => {
           ),
         );
     expect(strip(target.id)).toEqual(strip(calendar.id));
-    expect(importInto(calendar, text)).toMatchObject({ added: 0, updated: 0, unchanged: 8 });
+    expect(await importInto(calendar, text)).toMatchObject({ added: 0, updated: 0, unchanged: 8 });
   });
 
-  it('writes one item with its steps and gives local items a stable UID', () => {
+  it('writes one item with its steps and gives local items a stable UID', async () => {
     const task = test.store.plannerItems.insert({
       ...baseTask(),
       title: 'Plan trip',
     });
     test.store.plannerItems.insert({ ...baseTask(), title: 'Book hotel', parent_id: task.id });
-    const text = exportItemText(test.store, task, NOW);
+    const text = await exportItemText(test.store, task, NOW);
     expect(text).toContain(`UID:${task.id}@smarteverything`);
     expect(text.match(/BEGIN:VTODO/gu)).toHaveLength(2);
     expect(text).toContain(`RELATED-TO:${task.id}@smarteverything`);
     const back = readCalendar(text, { defaultZone: ZONE });
     expect(back.entries.map((entry) => entry.title)).toEqual(['Plan trip', 'Book hotel']);
-    expect(importInto(calendar, text)).toMatchObject({ added: 0, unchanged: 2 });
+    expect(await importInto(calendar, text)).toMatchObject({ added: 0, unchanged: 2 });
     const other = newCalendar('Other');
-    expect(importInto(other, text)).toMatchObject({ added: 2 });
+    expect(await importInto(other, text)).toMatchObject({ added: 2 });
     expect(test.store.plannerItems.inCollection(other.id).map((row) => row.ical_uid)).toContain(
       `${task.id}@smarteverything`,
     );

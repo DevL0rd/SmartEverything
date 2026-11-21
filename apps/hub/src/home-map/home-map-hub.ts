@@ -6,12 +6,11 @@ import {
   VACUUM_SAVED_MAPS_KEY,
   createModelCatalog,
   placementFacts,
-  type DeviceRow,
   type HomeMapActor,
-  type HomeMapOp,
   type HomeMapSourceGeometry,
   type LiveChange,
   type ModelCatalog,
+  type ModelCatalogRow,
   type VacuumScene,
 } from '@smarteverything/domain';
 import { background, type Logger } from '@smarteverything/logging';
@@ -21,15 +20,20 @@ import type { MapCache } from '../vacuum/map-cache';
 import type { ServerContext } from '../server/context';
 import type { VacuumRouteServices } from '../server/handlers/vacuums';
 import type { Store } from '../store/store';
-import { resolveDeviceModel } from '../server/handlers/models';
-import { modelRouteServices } from '../server/handlers/model-assets';
 import type { HomeMapApplied } from '../store/repositories/home-maps';
-import type { StoredRoomLink } from '../store/repositories/vacuum-room-links';
 import { vacuumPropertyKey } from '../vacuum/capabilities';
 import { HomeMapAutoCreate } from './auto-create';
 import { HomeMapDeviceSync } from './device-sync';
 import { RobotMapFeeds } from './feeds';
 import { HomeMapSet } from './map-set';
+import {
+  hostDeviceModels,
+  hostHomeMapStore,
+  hostHomeMapVersions,
+  hostModelCatalog,
+  hostRoomLinks,
+  type HomeMapRoomLinkStore,
+} from './map-store';
 import { HomeMapReset } from './reset';
 import { HomeMapRoomLinks } from './room-links';
 import { nodeScanPorts, ScanStore } from './scan-store';
@@ -53,29 +57,48 @@ export interface HomeMapRuntime {
   readonly feeds: RobotMapFeeds;
   readonly scans: ScanStore;
   readonly scene: (deviceId: string) => VacuumScene | undefined;
+  readonly load: () => Promise<void>;
 }
 
 type Applied = (result: HomeMapApplied, actor: HomeMapActor) => void;
 
 const STATUS_KEY = vacuumPropertyKey('status');
 
-export class Catalogue {
-  private held: ModelCatalog;
+export class CatalogueNotLoadedError extends Error {
+  override readonly name = 'CatalogueNotLoadedError';
 
-  constructor(private readonly load: () => ModelCatalog) {
-    this.held = load();
+  constructor() {
+    super('The model catalogue was read before it was loaded from the store.');
   }
+}
 
-  refresh(): void {
-    this.held = this.load();
+export class Catalogue {
+  private held: ModelCatalog | null = null;
+  private asked = 0;
+  private taken = 0;
+
+  constructor(private readonly load: () => Promise<readonly ModelCatalogRow[]>) {}
+
+  async refresh(): Promise<void> {
+    this.asked += 1;
+    const ask = this.asked;
+    const rows = await this.load();
+    if (ask <= this.taken) return;
+    this.taken = ask;
+    this.held = createModelCatalog(rows);
   }
 
   known(modelId: string): boolean {
-    return this.held.find(modelId) !== undefined || placementFacts(modelId) !== undefined;
+    return this.catalog().find(modelId) !== undefined || placementFacts(modelId) !== undefined;
   }
 
   nameOf(modelId: string): string {
-    return this.held.find(modelId)?.title ?? modelId;
+    return this.catalog().find(modelId)?.title ?? modelId;
+  }
+
+  private catalog(): ModelCatalog {
+    if (this.held === null) throw new CatalogueNotLoadedError();
+    return this.held;
   }
 }
 
@@ -91,23 +114,18 @@ function materialOf(code: number): FloorMaterial {
 }
 
 function serviceOf(
-  store: Store,
+  seams: HomeMapSeams,
   catalogue: Catalogue,
   hooks: readonly Applied[],
-  log: Logger,
 ): HomeMapService {
   return new HomeMapService({
-    maps: {
-      read: (mapId) => store.homeMaps.read(mapId),
-      revisions: (filter) => store.homeMaps.revisions(filter),
-      apply: (ops: readonly HomeMapOp[], actor, mark, mapId): HomeMapApplied => {
-        const result = store.homeMaps.apply(ops, actor, mark, mapId);
-        if (result.applied.length > 0) for (const hook of hooks) hook(result, actor);
-        return result;
-      },
-    },
+    store: hostHomeMapStore(seams.store.host),
     knownModel: (modelId) => catalogue.known(modelId),
-    log,
+    applied: (result, actor): void => {
+      for (const hook of hooks) hook(result, actor);
+    },
+    now: () => seams.now().toISOString(),
+    log: seams.log,
   });
 }
 
@@ -123,14 +141,10 @@ export interface HomeMapSeams {
 }
 
 function deviceSyncOf(seams: HomeMapSeams, service: HomeMapService): HomeMapDeviceSync {
-  const models = modelRouteServices(seams.store);
   return new HomeMapDeviceSync({
     maps: service,
-    devices: seams.store.devices,
-    modelOf: (device: DeviceRow): string | null => {
-      const { main } = resolveDeviceModel(models, device).resolution;
-      return main?.kind === 'catalogue' ? main.modelId : null;
-    },
+    devices: seams.store.live.home.devices,
+    modelsOf: hostDeviceModels(seams.store.host),
     log: seams.log,
   });
 }
@@ -140,6 +154,7 @@ interface Wiring {
   readonly service: HomeMapService;
   readonly vacuum: XiaomiVacuumSource;
   readonly roomLinks: HomeMapRoomLinks;
+  readonly links: HomeMapRoomLinkStore;
   readonly scans: ScanStore;
   readonly newId: () => string;
   readonly now: () => string;
@@ -147,10 +162,13 @@ interface Wiring {
 
 function mapSetOf({ seams, service, scans }: Wiring): HomeMapSet {
   return new HomeMapSet({
-    sets: seams.store.homeMaps,
     maps: service,
     removeScan: (mapId): void => {
-      scans.removeAll(mapId);
+      background(
+        scans.exclusive(() => scans.removeAll(mapId)),
+        'home_map.scan_remove_failed',
+        { mapId },
+      );
     },
     log: seams.log,
   });
@@ -158,9 +176,8 @@ function mapSetOf({ seams, service, scans }: Wiring): HomeMapSet {
 
 function versionsOf({ seams, service }: Wiring): HomeMapVersions {
   return new HomeMapVersions({
-    versions: seams.store.homeMapVersions,
+    versions: hostHomeMapVersions(seams.store.host),
     maps: service,
-    mapIds: () => seams.store.homeMaps.ids(),
     log: seams.log,
   });
 }
@@ -177,20 +194,13 @@ function resetOf({ seams, service, vacuum, newId }: Wiring): HomeMapReset {
   });
 }
 
-function feedsOf({ seams, service, vacuum, roomLinks, newId, now }: Wiring): RobotMapFeeds {
-  const { store } = seams;
+function feedsOf({ seams, service, vacuum, roomLinks, links, newId, now }: Wiring): RobotMapFeeds {
   return new RobotMapFeeds({
     source: vacuum,
     maps: service,
-    sets: {
-      ids: () => store.homeMaps.ids(),
-      defaultId: () => store.homeMaps.defaultId(),
-      locations: (deviceId) => store.homeMaps.sourceLocations(deviceId),
-    },
-    inventory: () => store.devices.list(),
-    atomically: (work) => store.write(work),
-    links: { list: (deviceId) => store.vacuumRoomLinks.list(deviceId) },
-    syncLinks: (deviceId) => roomLinks.sync(deviceId),
+    inventory: () => seams.store.live.home.devices.list(),
+    links,
+    syncLinks: (held, deviceId) => roomLinks.syncHeld(held, deviceId),
     newId,
     now,
     log: seams.log,
@@ -207,11 +217,10 @@ function roomLinksOf(seams: HomeMapSeams, service: HomeMapService, hooks: Applie
     log,
   });
   const now = (): string => seams.now().toISOString();
+  const links = hostRoomLinks(store.host);
   const roomLinks = new HomeMapRoomLinks({
     maps: service,
-    links: {
-      list: (deviceId): readonly StoredRoomLink[] => store.vacuumRoomLinks.list(deviceId),
-    },
+    links,
     setRoomFloor: (deviceId, mapRoomId, floor): Promise<void> =>
       vacuums.control.run(deviceId, roomFloor(mapRoomId, materialOf(floor))),
     newId: randomUUID,
@@ -222,20 +231,17 @@ function roomLinksOf(seams: HomeMapSeams, service: HomeMapService, hooks: Applie
     background(roomLinks.writeThrough(result, actor), 'home_map.write_through_failed');
   });
   const scans = new ScanStore(nodeScanPorts(seams.scansDirectory, log));
-  return { seams, service, vacuum, roomLinks, scans, newId: randomUUID, now };
+  return { seams, service, vacuum, roomLinks, links, scans, newId: randomUUID, now };
 }
 
 export function assembleHomeMap(seams: HomeMapSeams): HomeMapRuntime {
   const { store, log } = seams;
-  const catalogue = new Catalogue(() => createModelCatalog(store.modelCatalog.all()));
+  const catalogue = new Catalogue(hostModelCatalog(store.host));
   const hooks: Applied[] = [];
-  const service = serviceOf(store, catalogue, hooks, log);
+  const service = serviceOf(seams, catalogue, hooks);
   const wiring = roomLinksOf(seams, service, hooks);
-  const { vacuum, roomLinks, scans, newId, now } = wiring;
+  const { vacuum, roomLinks, links, scans, newId, now } = wiring;
   const registry = new MapSourceRegistry([vacuum]);
-  const links = {
-    list: (deviceId: string): readonly StoredRoomLink[] => store.vacuumRoomLinks.list(deviceId),
-  };
   const ports = { maps: service, links, newId, now, log };
   return {
     service,
@@ -250,17 +256,19 @@ export function assembleHomeMap(seams: HomeMapSeams): HomeMapRuntime {
     autoCreate: new HomeMapAutoCreate({
       ...ports,
       registry,
-      sets: { ids: () => store.homeMaps.ids() },
       currentMap: (deviceId) => vacuum.currentMap(deviceId),
     }),
     imports: new HomeMapSourceImports({
       ...ports,
       registry,
-      inventory: () => store.devices.list(),
-      syncLinks: (deviceId) => roomLinks.sync(deviceId),
+      inventory: () => store.live.home.devices.list(),
+      syncLinks: (held, deviceId) => roomLinks.syncHeld(held, deviceId),
     }),
     devices: deviceSyncOf(seams, service),
     scene: (deviceId) => seams.vacuums.scenes.latest(deviceId, 'current'),
+    load: async (): Promise<void> => {
+      await Promise.all([store.live.home.load(), service.load(), catalogue.refresh()]);
+    },
   };
 }
 
@@ -282,7 +290,7 @@ function followVacuum(runtime: HomeMapRuntime, change: LiveChange): void {
   } else if (capability === STATUS_KEY) {
     runtime.vacuum.statusChanged(deviceId);
   } else if (capability === VACUUM_ROOM_LINKS_KEY) {
-    runtime.roomLinks.sync(deviceId);
+    background(runtime.roomLinks.sync(deviceId), 'home_map.room_link_sync_failed', { deviceId });
   } else if (capability === VACUUM_SAVED_MAPS_KEY) {
     runtime.vacuum.savedMapsChanged(deviceId);
   }
@@ -293,21 +301,28 @@ function followInventory(
   context: Pick<ServerContext, 'store'>,
   change: LiveChange,
 ): void {
-  if (change.table === 'model_catalog') runtime.catalogue.refresh();
+  if (change.table === 'model_catalog') {
+    background(runtime.catalogue.refresh(), 'home_map.catalogue_refresh_failed');
+  }
   if (change.table !== 'devices' || change.operation === 'UPDATE') return;
   if (change.operation === 'DELETE' && change.oldRecord !== null) {
     runtime.vacuum.detach(change.oldRecord.id);
   }
-  const inventory = context.store.devices.list();
-  runtime.autoCreate.watch(inventory);
-  runtime.feeds.watch(inventory);
+  const inventory = context.store.live.home.devices.list();
+  background(runtime.autoCreate.watch(inventory), 'home_map.auto_create_failed');
+  background(runtime.feeds.watch(inventory), 'home_map.feed_import_failed');
 }
 
-export function startHomeMap(context: Pick<ServerContext, 'homeMap' | 'store'>): () => void {
+export async function startHomeMap(
+  context: Pick<ServerContext, 'homeMap' | 'store'>,
+): Promise<() => void> {
   const { homeMap: runtime, store } = context;
-  const inventory = store.devices.list();
-  runtime.autoCreate.watch(inventory);
-  runtime.feeds.watch(inventory);
+  const stopCopy = store.feed.subscribe((change) => {
+    runtime.service.follow(change);
+  });
+  await runtime.load();
+  const inventory = store.live.home.devices.list();
+  await Promise.all([runtime.autoCreate.watch(inventory), runtime.feeds.watch(inventory)]);
   const stopDevices = runtime.devices.start(store.feed);
   const stopFeed = store.feed.subscribe((change) => {
     followVacuum(runtime, change);
@@ -316,6 +331,7 @@ export function startHomeMap(context: Pick<ServerContext, 'homeMap' | 'store'>):
   return (): void => {
     stopFeed();
     stopDevices();
+    stopCopy();
     runtime.autoCreate.stop();
     runtime.feeds.stop();
   };

@@ -1,6 +1,5 @@
 import { PHOTOS_ENDPOINTS } from '@smarteverything/domain';
 import { bound, type Bound } from '../../server/router';
-import type { Store } from '../../store/store';
 import { photoActor } from '../actor';
 import type { PhotoModelCatalogue } from './catalogue';
 import type { PhotoAi } from './service';
@@ -17,29 +16,23 @@ export interface PhotoAiRoutes {
   readonly readPhotoAnalysis: Bound<typeof E.readPhotoAnalysis>;
 }
 
-export function photoAiRoutes(
-  store: Store,
-  ai: PhotoAi,
-  catalogue: PhotoModelCatalogue,
-): PhotoAiRoutes {
+export function photoAiRoutes(ai: PhotoAi, catalogue: PhotoModelCatalogue): PhotoAiRoutes {
   return {
-    readPhotoAiStatus: bound(E.readPhotoAiStatus, ({ caller }) =>
-      ai.statusOf(photoActor(store, caller)),
-    ),
+    readPhotoAiStatus: bound(E.readPhotoAiStatus, ({ caller }) => ai.statusOf(photoActor(caller))),
     setPhotoAiSettings: bound(E.setPhotoAiSettings, ({ body, caller }) =>
-      ai.setSwitches(photoActor(store, caller), body),
+      ai.setSwitches(photoActor(caller), body),
     ),
     listPhotoAiModels: bound(E.listPhotoAiModels, () => catalogue.read()),
     setPhotoAiModels: bound(E.setPhotoAiModels, async ({ body }) => {
       await catalogue.require(body);
-      return ai.models.update(body);
+      return ai.updateModels(body);
     }),
     reanalysePhotos: bound(E.reanalysePhotos, ({ body }) => ai.reanalyse(body)),
     retryFailedPhotoAi: bound(E.retryFailedPhotoAi, ({ caller }) =>
-      ai.retryFailed(photoActor(store, caller)),
+      ai.retryFailed(photoActor(caller)),
     ),
     readPhotoAnalysis: bound(E.readPhotoAnalysis, ({ params, caller }) =>
-      ai.analysisOf(photoActor(store, caller), params.itemId),
+      ai.analysisOf(photoActor(caller), params.itemId),
     ),
   };
 }

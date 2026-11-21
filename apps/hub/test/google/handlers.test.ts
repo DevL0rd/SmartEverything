@@ -80,7 +80,7 @@ async function build(): Promise<Rig> {
     test,
     hub,
     routes: googleRoutes({ store: test.store, secrets }, hub),
-    planner: plannerItemRoutes({ store: test.store }, () => google.clock.now()),
+    planner: plannerItemRoutes({ store: test.store }),
     owner: addPerson(test, 'Owner', 'owner'),
     ann: addPerson(test, 'Ann', 'member'),
     bob: addPerson(test, 'Bob', 'member'),

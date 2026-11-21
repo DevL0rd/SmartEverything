@@ -39,6 +39,7 @@ export type DriveAlbum = z.infer<typeof DRIVE_ALBUM>;
 export const DRIVE_ALBUM_CREATE = z
   .discriminatedUnion('kind', [
     z.strictObject({
+      id: ID.optional().describe('Id the client generated for the new album'),
       kind: z.literal('manual'),
       title: TITLE,
       surface: z.enum(DRIVE_ALBUM_SURFACES),
@@ -46,6 +47,7 @@ export const DRIVE_ALBUM_CREATE = z
       itemIds: z.array(ID).readonly(),
     }),
     z.strictObject({
+      id: ID.optional().describe('Id the client generated for the new album'),
       kind: z.literal('smart'),
       title: TITLE,
       surface: z.enum(DRIVE_ALBUM_SURFACES),

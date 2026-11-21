@@ -31,6 +31,8 @@ type EventListener = (name: string, payload: unknown) => void;
 
 export class ChildHost {
   private current: ChildHandle | null = null;
+  private starting: Promise<ChildHandle> | null = null;
+  private generation = 0;
   private readonly retired = new WeakSet<ChildHandle>();
   private readonly pending = new Map<number, Pending>();
   private readonly events: EventListener[] = [];
@@ -73,8 +75,8 @@ export class ChildHost {
     };
   }
 
-  call(name: string, payload: unknown, timeoutMs: number): Promise<unknown> {
-    const child = this.ensure();
+  async call(name: string, payload: unknown, timeoutMs: number): Promise<unknown> {
+    const child = await this.ensure();
     this.lastNumber += 1;
     const id = this.lastNumber;
     return new Promise((resolve, reject) => {
@@ -94,6 +96,7 @@ export class ChildHost {
   }
 
   retire(): void {
+    this.generation += 1;
     this.clearRestart();
     this.clearIdle();
     const child = this.current;
@@ -105,7 +108,7 @@ export class ChildHost {
     }
   }
 
-  private ensure(): ChildHandle {
+  private async ensure(): Promise<ChildHandle> {
     if (this.current !== null) {
       return this.current;
     }
@@ -116,11 +119,23 @@ export class ChildHost {
         `it is restarting after a crash (about ${String(seconds)} s)`,
       );
     }
-    return this.start();
+    return this.begin();
   }
 
-  private start(): ChildHandle {
-    const child = this.options.spawn();
+  private begin(): Promise<ChildHandle> {
+    this.starting ??= this.start().finally(() => {
+      this.starting = null;
+    });
+    return this.starting;
+  }
+
+  private async start(): Promise<ChildHandle> {
+    const generation = this.generation;
+    const child = await this.options.spawn();
+    if (generation !== this.generation) {
+      child.kill();
+      throw new ChildUnavailableError(this.options.kind, 'it was stopped');
+    }
     this.current = child;
     this.backoff.started(this.now());
     child.onFrame((frame) => {
@@ -204,15 +219,17 @@ export class ChildHost {
     this.restartTimer = null;
     this.restartAt = null;
     this.restarts += 1;
-    try {
-      const child = this.start();
-      this.log.info(`plugin.${this.options.kind}_process_restarted`, {
-        pid: child.pid,
-        restarts: this.restarts,
-      });
-    } catch (cause) {
-      this.log.error(`plugin.${this.options.kind}_process_restart_failed`, cause);
-    }
+    this.begin().then(
+      (child) => {
+        this.log.info(`plugin.${this.options.kind}_process_restarted`, {
+          pid: child.pid,
+          restarts: this.restarts,
+        });
+      },
+      (cause: unknown) => {
+        this.log.error(`plugin.${this.options.kind}_process_restart_failed`, cause);
+      },
+    );
   }
 
   private armIdle(): void {

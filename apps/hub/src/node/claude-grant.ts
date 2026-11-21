@@ -41,10 +41,10 @@ export class NodeClaudeGrant {
     if (token === null) throw new NodeGrantError('The scoped Claude MCP grant is missing.');
     await this.write(token);
     this.assertActive();
-    return this.present(valid, token);
+    return await this.present(valid, token);
   }
 
-  private present(address: McpGrantAddress, token: string): string {
+  private async present(address: McpGrantAddress, token: string): Promise<string> {
     if (this.options.mcp !== undefined) return this.options.mcp.endpoint('claude', address, token);
     if (address.pin !== null)
       throw new NodeGrantError(
@@ -76,7 +76,7 @@ export class NodeClaudeGrant {
   }
 
   async revoke(): Promise<void> {
-    this.options.mcp?.revoke('claude');
+    await this.options.mcp?.revoke('claude');
     await this.request({ action: 'revoke' });
     await rm(this.file, { force: true });
   }

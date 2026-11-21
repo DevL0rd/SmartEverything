@@ -10,16 +10,18 @@ import {
 import { Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
 import { ModelCatalogService } from '../../models/catalog-service';
-import { GLB_BYTE_LIMIT, checkGlb } from '../../models/glb-check';
-import { decimateGlb } from '../../models/glb-lod';
+import { GLB_BYTE_LIMIT } from '../../models/glb-check';
+import type { GlbWorker } from '../../models/glb-worker';
 import type { Store } from '../../store/store';
 import { authenticate, profileIdOf } from '../auth';
-import { invalid } from '../errors';
-import { parseJsonBody, readBody, sendJson } from '../http';
+import { invalid } from '../invalid';
+import { assertJsonBody, readBody, sendJson } from '../http';
 import type { RawRoute } from '../http-server';
 import { assertOwnerRoute } from '../owner-route';
 import { assertScopeRoute } from '../person-scope';
 import { serveBytes } from '../file-serve';
+import { requestBodyOf } from '../request-body';
+import type { ResponseEncoder } from '../responses/encoder';
 import type { ModelRouteServices } from './models';
 
 type Upload = z.output<typeof E.uploadModelAsset.body>;
@@ -35,10 +37,10 @@ const UPLOAD_BODY_LIMIT = Math.ceil(GLB_BYTE_LIMIT / 3) * 4 + UPLOAD_ENVELOPE_BY
 const CONTENT_TYPES = { spec: 'application/json', glb: 'model/gltf-binary' } as const;
 
 export function modelAuthorizer(store: Store): ModelRouteServices['authorize'] {
-  return (request, endpoint) => {
-    const caller = authenticate(store, request, endpoint.access, false);
+  return async (request, endpoint) => {
+    const caller = await authenticate(store, request, endpoint.access, false);
     assertOwnerRoute(store, caller, endpoint);
-    assertScopeRoute(store, caller, endpoint, {});
+    await assertScopeRoute(store, caller, endpoint, {});
     return caller;
   };
 }
@@ -49,7 +51,7 @@ async function serveAsset(
   response: ServerResponse,
   params: Readonly<Record<string, string>>,
 ): Promise<void> {
-  services.authorize(request, E.readModelAsset);
+  await services.authorize(request, E.readModelAsset);
   const parsed = E.readModelAsset.params.safeParse(params);
   if (!parsed.success) throw invalid('path', parsed.error);
   const { sha256 } = parsed.data;
@@ -79,6 +81,7 @@ async function serveAsset(
 
 async function storeUpload(
   services: ModelRouteServices,
+  glb: GlbWorker,
   profile: string,
   upload: Upload,
 ): Promise<ModelAssetStored> {
@@ -95,14 +98,12 @@ async function storeUpload(
       model_id: result.modelId,
     };
   }
-  const checked = checkGlb(bytes);
-  if (!checked.ok) {
-    log.warn('model_asset.glb_rejected', { profile, problem: checked.problem });
-    throw new ApiError('invalid_request', `The model file is refused: ${checked.problem}.`);
-  }
-  const lods = await decimateGlb(bytes);
+  const lods = await glb.prepare(bytes);
   if (!lods.ok) {
-    log.warn('model_asset.glb_lod_failed', { profile, problem: lods.problem });
+    log.warn(lods.stage === 'check' ? 'model_asset.glb_rejected' : 'model_asset.glb_lod_failed', {
+      profile,
+      problem: lods.problem,
+    });
     throw new ApiError('invalid_request', `The model file is refused: ${lods.problem}.`);
   }
   const row = services.assets.saveGlb(
@@ -113,7 +114,7 @@ async function storeUpload(
     profile,
     sha256: row.sha256,
     size: row.size,
-    triangles: checked.value.triangles,
+    triangles: lods.triangles,
     lods: lods.levels.map((level) => ({
       level: level.level,
       sha256: level.sha256,
@@ -123,20 +124,29 @@ async function storeUpload(
   return { sha256: row.sha256, kind: 'glb', size: row.size, model_id: null };
 }
 
+interface UploadWorkers {
+  readonly encoder: ResponseEncoder;
+  readonly glb: GlbWorker;
+}
+
 async function acceptUpload(
   services: ModelRouteServices,
+  workers: UploadWorkers,
   request: IncomingMessage,
   response: ServerResponse,
 ): Promise<void> {
-  const caller = services.authorize(request, E.uploadModelAsset);
+  const caller = await services.authorize(request, E.uploadModelAsset);
   const raw = await readBody(request, UPLOAD_BODY_LIMIT);
-  const parsed = E.uploadModelAsset.body.safeParse(parseJsonBody(request, raw));
-  if (!parsed.success) throw invalid('body', parsed.error);
-  const stored = await storeUpload(services, services.profileOf(caller), parsed.data);
+  assertJsonBody(request);
+  const upload = await requestBodyOf(workers.encoder, E.uploadModelAsset, raw);
+  const stored = await storeUpload(services, workers.glb, services.profileOf(caller), upload);
   sendJson(response, 200, E.uploadModelAsset.response.parse(stored));
 }
 
-export function modelAssetRoutes(services: ModelRouteServices): readonly RawRoute[] {
+export function modelAssetRoutes(
+  services: ModelRouteServices,
+  workers: UploadWorkers,
+): readonly RawRoute[] {
   return [
     {
       method: 'GET',
@@ -146,7 +156,7 @@ export function modelAssetRoutes(services: ModelRouteServices): readonly RawRout
     {
       method: 'POST',
       path: E.uploadModelAsset.path,
-      handle: (request, response) => acceptUpload(services, request, response),
+      handle: (request, response) => acceptUpload(services, workers, request, response),
     },
   ];
 }
@@ -159,7 +169,7 @@ export function modelRouteServices(store: Store): ModelRouteServices {
     assets: store.modelAssets,
     metadata: createModelMetadataIndex([]),
     defaults: () => MODEL_DEFAULTS,
-    profileOf: (caller) => profileIdOf(store, caller),
+    profileOf: (caller) => profileIdOf(caller),
     authorize: modelAuthorizer(store),
   };
 }

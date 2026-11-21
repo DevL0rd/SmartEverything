@@ -1,6 +1,5 @@
 import { ApiError, type PlannerCollectionRow } from '@smarteverything/domain';
 import type { Store } from '../../store/store';
-import { allDayEvent } from '../feeds/all-day-event';
 import { settled } from '../feeds/settled';
 import type {
   FeedCreateRequest,
@@ -8,15 +7,9 @@ import type {
   FeedWindow,
   PlannerFeedChanges,
 } from '../feeds/registry';
-import {
-  HolidayRegionError,
-  assertHolidayRegion,
-  holidaysOfYear,
-  regionName,
-  type HolidayDay,
-} from './rules';
+import { HolidayRegionError, assertHolidayRegion, regionName } from './rules';
 
-export type HolidayFeedStore = Pick<Store, 'write' | 'plannerCollections' | 'plannerItems'>;
+export type HolidayFeedStore = Pick<Store, 'host'>;
 
 interface Written {
   signature: string;
@@ -28,10 +21,6 @@ const DAY_MS = 86_400_000;
 function refused(cause: unknown): never {
   if (cause instanceof HolidayRegionError) throw new ApiError('invalid_request', cause.message);
   throw cause;
-}
-
-function uidOf(day: HolidayDay): string {
-  return `holiday:${day.date}:${day.name}`;
 }
 
 export function yearsOf(window: FeedWindow): number[] {
@@ -46,11 +35,7 @@ export class HolidaysFeedKind implements FeedKindHandler {
 
   constructor(private readonly store: HolidayFeedStore) {}
 
-  create(request: FeedCreateRequest): Promise<PlannerCollectionRow> {
-    return settled(() => this.created(request));
-  }
-
-  private created(request: FeedCreateRequest): PlannerCollectionRow {
+  async create(request: FeedCreateRequest): Promise<PlannerCollectionRow> {
     const { input, profileId } = request;
     if (input.kind !== 'holidays') throw new ApiError('invalid_request', 'This is not holidays.');
     try {
@@ -58,36 +43,27 @@ export class HolidaysFeedKind implements FeedKindHandler {
     } catch (cause) {
       refused(cause);
     }
-    const position = this.store.plannerCollections
-      .list(profileId)
-      .reduce((highest, row) => Math.max(highest, row.position + 1), 0);
-    return this.store.plannerCollections.insert({
-      profile_id: profileId,
-      kind: 'calendar',
-      name: input.name ?? `Holidays, ${regionName(input.country, input.state)}`,
-      colour: input.colour ?? 'family',
-      icon: 'calendar',
-      position,
-      visible: true,
-      default_reminders: [],
-      audience: 'personal',
-      source: 'feed',
-      google: null,
-      feed: { kind: 'holidays', country: input.country, state: input.state },
+    return this.store.host.write('plannerFeedCollectionInsert', {
+      input: {
+        profile_id: profileId,
+        kind: 'calendar',
+        name: input.name ?? `Holidays, ${regionName(input.country, input.state)}`,
+        colour: input.colour ?? 'family',
+        icon: 'calendar',
+        visible: true,
+        default_reminders: [],
+        audience: 'personal',
+        source: 'feed',
+        google: null,
+        feed: { kind: 'holidays', country: input.country, state: input.state },
+      },
     });
   }
 
-  update(
+  async update(
     collection: PlannerCollectionRow,
     changes: PlannerFeedChanges,
   ): Promise<PlannerCollectionRow> {
-    return settled(() => this.changed(collection, changes));
-  }
-
-  private changed(
-    collection: PlannerCollectionRow,
-    changes: PlannerFeedChanges,
-  ): PlannerCollectionRow {
     const { feed } = collection;
     if (feed?.kind !== 'holidays') {
       throw new ApiError('invalid_request', 'This is not a holidays calendar.');
@@ -103,12 +79,8 @@ export class HolidaysFeedKind implements FeedKindHandler {
       refused(cause);
     }
     if (country === feed.country && state === feed.state) return collection;
-    return this.store.write(() => {
-      this.clear(collection);
-      return this.store.plannerCollections.update(collection.id, collection.profile_id, {
-        feed: { kind: 'holidays', country, state },
-      });
-    });
+    this.written.delete(collection.id);
+    return this.store.host.write('plannerHolidaysRegion', { collection, country, state });
   }
 
   refresh(collection: PlannerCollectionRow): Promise<PlannerCollectionRow> {
@@ -121,7 +93,7 @@ export class HolidaysFeedKind implements FeedKindHandler {
     });
   }
 
-  prepare(collection: PlannerCollectionRow, window: FeedWindow): void {
+  async prepare(collection: PlannerCollectionRow, window: FeedWindow): Promise<void> {
     const { feed } = collection;
     if (feed?.kind !== 'holidays') return;
     const signature = `${feed.country}|${feed.state ?? ''}`;
@@ -130,56 +102,7 @@ export class HolidaysFeedKind implements FeedKindHandler {
     this.written.set(collection.id, memory);
     const missing = yearsOf(window).filter((year) => !memory.years.has(year));
     if (missing.length === 0) return;
-    this.store.write(() => {
-      for (const year of missing) {
-        this.reconcile(collection, holidaysOfYear(feed.country, feed.state, year), year);
-      }
-    });
+    await this.store.host.write('plannerHolidaysYears', { collection, years: missing });
     for (const year of missing) memory.years.add(year);
-  }
-
-  private clear(collection: PlannerCollectionRow): void {
-    this.written.delete(collection.id);
-    for (const row of this.store.plannerItems.inCollection(collection.id)) {
-      this.store.plannerItems.purge(row.id, row.profile_id);
-    }
-  }
-
-  private reconcile(
-    collection: PlannerCollectionRow,
-    days: readonly HolidayDay[],
-    year: number,
-  ): void {
-    const { plannerItems } = this.store;
-    const stored = plannerItems
-      .inCollection(collection.id)
-      .filter((row) => row.ical_uid?.startsWith(`holiday:${String(year)}-`) === true);
-    const wanted = new Set(days.map(uidOf));
-    const present = new Set<string>();
-    for (const row of stored) {
-      if (row.ical_uid !== null && wanted.has(row.ical_uid) && !present.has(row.ical_uid)) {
-        present.add(row.ical_uid);
-      } else {
-        plannerItems.purge(row.id, row.profile_id);
-      }
-    }
-    let position = plannerItems
-      .inCollection(collection.id)
-      .reduce((highest, row) => Math.max(highest, row.position + 1), 0);
-    for (const day of days) {
-      if (present.has(uidOf(day))) continue;
-      plannerItems.insert(
-        allDayEvent({
-          profileId: collection.profile_id,
-          collectionId: collection.id,
-          position,
-          uid: uidOf(day),
-          title: day.name,
-          date: day.date,
-          rrule: null,
-        }),
-      );
-      position += 1;
-    }
   }
 }

@@ -1,4 +1,4 @@
-import { homedir, userInfo } from 'node:os';
+import { homedir } from 'node:os';
 import { windowsShell } from '../../collectors/windows/powershell-session';
 import { runProgram } from '../../run-program';
 import { sessionAgentDirectory } from '../../session-agent/location';
@@ -8,7 +8,7 @@ import { HomeFiles } from '../home-files';
 import { MachineRing } from '../machine-ring';
 import { modelSized } from '../model-picture';
 import { PortableMachine } from '../portable/portable-machine';
-import { PortableProcesses } from '../portable/portable-processes';
+import { processesFor } from '../processes-for';
 import {
   inheritedEnvironment,
   unsupportedAudio,
@@ -23,11 +23,9 @@ import { WindowsApps } from './windows-apps';
 import { localAppData } from './windows-environment';
 import { windowsPlaces } from './windows-places';
 import { WindowsPower } from './windows-power';
-import { WindowsProcessSource } from './windows-processes';
 import { windowsVolume } from './windows-volume';
 import { WAKE_DISPLAY_SCRIPT } from './windows-wake';
 import { z } from 'zod';
-import { describeFailure } from '@smarteverything/logging';
 
 export function windowsControls(options: ControlOptions): ComputerControls {
   const agent = new SocketSessionAgent(
@@ -39,20 +37,7 @@ export function windowsControls(options: ControlOptions): ComputerControls {
   );
   return {
     power: new WindowsPower(runProgram),
-    processes: new PortableProcesses({
-      machine: 'Windows',
-      source: new WindowsProcessSource(windowsShell),
-      signals: { end: 'SIGTERM', force: 'SIGKILL', stop: null, continue: null },
-      ownUser: userInfo().username,
-      ownPid: process.pid,
-      now: Date.now,
-      failed: (cause): void => {
-        options.log.warn('node.session_part_failed', {
-          part: 'processes',
-          failure: describeFailure(cause),
-        });
-      },
-    }),
+    processes: processesFor('win32', options.log),
     links: () => [],
     environment: inheritedEnvironment(),
     session: unsupportedSession('Windows'),

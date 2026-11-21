@@ -14,18 +14,20 @@ interface Submission {
   readonly authorize: () => void;
 }
 
-function waitMsOf(store: Store, rows: readonly CommandRow[]): number {
-  return Math.max(
-    COMMAND_WAIT_MS,
-    ...rows.map((row) =>
+async function waitMsOf(store: Store, rows: readonly CommandRow[]): Promise<number> {
+  const budgets = await Promise.all(
+    rows.map(async (row) =>
       commandBudgetMs({
         capability: row.capability,
         value: row.value,
         deviceKind:
-          row.device_id === null ? null : (store.devices.find(row.device_id)?.kind ?? null),
+          row.device_id === null
+            ? null
+            : ((await store.host.call('devices', 'find', row.device_id))?.kind ?? null),
       }),
     ),
   );
+  return Math.max(COMMAND_WAIT_MS, ...budgets);
 }
 
 export function batchedGroups(
@@ -66,12 +68,12 @@ export async function finishAutomationCommands(
   const outcome = await submitAndWait({
     feed: store.feed,
     clock,
-    waitMs: waitMsOf(store, rows),
+    waitMs: await waitMsOf(store, rows),
     submit: (): Promise<readonly CommandRow[]> => {
       dispatch(executor, submission);
       return Promise.resolve(rows);
     },
-    current: (id) => store.commands.byId(id),
+    current: (id) => store.host.call('commands', 'byId', id),
   });
   if (!outcome.allFinished) {
     throw new ApiError(

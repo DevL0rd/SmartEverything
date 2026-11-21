@@ -88,9 +88,9 @@ describe('the learned keys encoder', () => {
 });
 
 describe('the encoder registry', () => {
-  it('finds an installed encoder and names one that is missing', () => {
+  it('finds an installed encoder and names one that is missing', async () => {
     const encoders = new IrEncoders([LEARNED_KEYS_ENCODER]);
-    expect(encoders.of('learned')).toBe(LEARNED_KEYS_ENCODER);
-    expect(() => encoders.of('library:1109')).toThrow('No IR encoder named library:1109');
+    expect(await encoders.of('learned')).toBe(LEARNED_KEYS_ENCODER);
+    await expect(encoders.of('library:1109')).rejects.toThrow('No IR encoder named library:1109');
   });
 });

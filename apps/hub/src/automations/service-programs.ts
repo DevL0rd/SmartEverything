@@ -1,83 +1,52 @@
-import { randomUUID } from 'node:crypto';
 import {
   ApiError,
-  AUTOMATION_V4,
-  EMPTY_LAYOUT,
-  programReferences,
-  type AutomationAuthor,
-  type AutomationProgramComparison,
   type AutomationProgramCheckRequest,
+  type AutomationProgramComparison,
   type AutomationProgramDraftView,
   type AutomationProgramPatchReply,
-  type AutomationProgramProblem,
   type AutomationProgramReply,
   type AutomationProgramRevisionSummary,
   type AutomationRevisionRow,
-  type StoredAutomationRow,
-  type AutomationV3,
   type AutomationV4,
   type Layout,
-  type PluginOrigin,
-  type ProgramV4,
-  type ReferenceContext,
+  type NodeKindLookup,
 } from '@smarteverything/domain';
+import type { ToolHub } from '../ai-tools/tool-hub';
 import { currentExecutionAuthority } from '../assistant/turn-authority';
 import type { Caller } from '../server/auth';
-import {
-  analyse,
-  checked,
-  failure,
-  patched,
-  planValue,
-  refusalText,
-  refusedPatch,
-  reply,
-  revisionOf,
-  tally,
-  type Basis,
-  type Built,
-  type ProgramEnv,
-} from './service-programs-analysis';
+import type { Store } from '../store/store';
+import type { EngineV3 } from './engine-v3';
+import type { KindCatalog } from './plugin-kinds/catalog';
+import { pluginKindsOf, programData } from './program-data';
+import { originOf } from './program-origin';
+import { admitReach, reachRefusal } from './reach-admission';
+import type { DraftInput } from './program-history-units';
+import type { ProgramChange, ReadyProgram } from './program-units';
+import type { AutomationSecrets } from './secrets-v3';
+import { checked, failure, reply, tally } from './service-programs-analysis';
 import {
   compare,
   discardDraft,
   draftView,
+  remove,
+  rename,
   revision,
   revisions,
   saveDraft,
-  type DraftInput,
+  setEnabled,
 } from './service-programs-history';
-import { authorSpeech } from './service-programs-speech';
-import {
-  authorOf,
-  originOf,
-  requireKnownSignals,
-  requireOwnerForManifest,
-  requireOwnerForTriggers,
-  requireReachableTargets,
-  requireVisibleComputers,
-} from './service-reach';
-import { flatAutomation, flatFunction } from '../store/repositories/automation-trees';
-import { freeName, requireFreeName } from './free-name';
-import { pruneKeptData } from './kept-data-prune';
-import { usedKindsOf } from './plugin-kinds/ledger';
+import { speechPlan } from './service-programs-speech';
 
-export type { ProgramEnv } from './service-programs-analysis';
-const DEFAULT_MAX = 10;
-
-interface Stamp {
-  readonly planHash: string;
-  readonly origin: PluginOrigin | null;
-  readonly author: AutomationAuthor;
-}
-
-interface Change {
-  readonly program: AutomationV4;
-  readonly basis: Basis | null;
-  readonly save: (stamp: Stamp) => StoredAutomationRow;
+export interface ProgramEnv {
+  readonly store: Store;
+  readonly secrets: Pick<AutomationSecrets, 'list'>;
+  readonly kinds: NodeKindLookup & Pick<KindCatalog, 'kinds'>;
+  readonly tools: Pick<ToolHub, 'pluginTurnRefusal'>;
+  readonly engine: Pick<EngineV3, 'retire' | 'functionsChanged' | 'settled'>;
 }
 
 interface CreateInput {
+  readonly id?: string | undefined;
   readonly name: string;
   readonly enabled: boolean;
   readonly definition: AutomationV4;
@@ -96,316 +65,153 @@ interface PatchInput {
 }
 
 export interface AutomationPrograms {
-  readonly create: (caller: Caller, input: CreateInput) => AutomationProgramReply;
-  readonly update: (caller: Caller, id: string, input: UpdateInput) => AutomationProgramReply;
-  readonly patch: (caller: Caller, id: string, input: PatchInput) => AutomationProgramPatchReply;
+  readonly create: (caller: Caller, input: CreateInput) => Promise<AutomationProgramReply>;
+  readonly update: (
+    caller: Caller,
+    id: string,
+    input: UpdateInput,
+  ) => Promise<AutomationProgramReply>;
+  readonly patch: (
+    caller: Caller,
+    id: string,
+    input: PatchInput,
+  ) => Promise<AutomationProgramPatchReply>;
   readonly check: (
     caller: Caller,
     request: AutomationProgramCheckRequest,
-  ) => AutomationProgramReply;
-  readonly setEnabled: (id: string, enabled: boolean) => AutomationProgramReply;
-  readonly rename: (id: string, name: string) => AutomationProgramReply;
+  ) => Promise<AutomationProgramReply>;
+  readonly setEnabled: (id: string, enabled: boolean) => Promise<AutomationProgramReply>;
+  readonly rename: (id: string, name: string) => Promise<AutomationProgramReply>;
   readonly remove: (id: string) => Promise<void>;
-  readonly draft: (id: string) => AutomationProgramDraftView;
-  readonly saveDraft: (id: string, input: DraftInput) => AutomationProgramReply;
-  readonly discardDraft: (id: string, expectedRevision: number) => AutomationProgramReply;
+  readonly draft: (id: string) => Promise<AutomationProgramDraftView>;
+  readonly saveDraft: (id: string, input: DraftInput) => Promise<AutomationProgramReply>;
+  readonly discardDraft: (id: string, expectedRevision: number) => Promise<AutomationProgramReply>;
   readonly publish: (
     caller: Caller,
     id: string,
     expectedRevision: number,
-  ) => AutomationProgramReply;
-  readonly revisions: (id: string) => AutomationProgramRevisionSummary[];
-  readonly revision: (id: string, number: number) => AutomationRevisionRow;
-  readonly compare: (id: string, from: number, to: number | 'draft') => AutomationProgramComparison;
+  ) => Promise<AutomationProgramReply>;
+  readonly revisions: (id: string) => Promise<AutomationProgramRevisionSummary[]>;
+  readonly revision: (id: string, number: number) => Promise<AutomationRevisionRow>;
+  readonly compare: (
+    id: string,
+    from: number,
+    to: number | 'draft',
+  ) => Promise<AutomationProgramComparison>;
 }
 
-function stale(): ApiError {
-  return new ApiError(
-    'conflict',
-    'The automation changed since it was read. Reload it and save again.',
-  );
-}
-
-function expectRevision(row: StoredAutomationRow, expected: number): void {
-  if (row.revision !== expected) throw stale();
-}
-
-function withNewDefaults(program: AutomationV4): AutomationV4 {
-  const { policy } = program;
-  const wide = policy.mode === 'queue' || policy.mode === 'parallel';
-  return {
-    ...program,
-    policy: wide && policy.max === undefined ? { ...policy, max: DEFAULT_MAX } : policy,
-    budgets: { startBucket: 'on', feedback: 'on', effects: 'on', ...program.budgets },
-  };
-}
-
-function authorise(
+async function commit(
   env: ProgramEnv,
   caller: Caller,
-  program: AutomationV4,
-  built: Built,
-): PluginOrigin | null {
-  const { store } = env;
-  requireKnownSignals(store, program);
-  requireOwnerForTriggers(caller, program, env.kinds);
-  requireOwnerForManifest(caller, built.manifest);
-  requireVisibleComputers(store, caller, built.manifest);
-  requireReachableTargets(store, caller, built.manifest);
-  return originOf(env.tools, caller, program);
+  ready: ReadyProgram,
+): Promise<AutomationProgramReply> {
+  const origin = originOf(env.tools, caller, ready.program);
+  const speech = speechPlan(env.store, caller, ready.program, ready.prior);
+  const saved = await env.store.host.write('commitAutomationProgram', {
+    kinds: pluginKindsOf(env.kinds),
+    caller,
+    authority: currentExecutionAuthority(),
+    program: ready.program,
+    save: ready.save,
+    plan: ready.plan,
+    origin,
+    speech,
+  });
+  await env.engine.settled();
+  const summary = `Saved revision ${String(saved.revision)}. ${tally(ready.problems)}.`;
+  return reply(true, summary, saved, ready.problems);
 }
 
-function authorityProblems(
+async function change(
   env: ProgramEnv,
   caller: Caller,
-  program: ProgramV4,
-  built: Built | undefined,
-): readonly AutomationProgramProblem[] {
-  if (built === undefined || program.kind !== 'automation') return [];
+  wanted: ProgramChange,
+): Promise<AutomationProgramPatchReply> {
+  const read = await env.store.host.read('prepareAutomationProgram', {
+    data: programData(env.kinds, env.secrets),
+    caller,
+    authority: currentExecutionAuthority(),
+    change: wanted,
+  });
+  const prepared = admitReach(env.store, caller, read);
+  if (prepared.kind === 'done') return { ...prepared.reply, created: [], detached: [] };
+  const committed = await commit(env, caller, prepared);
+  const edits = prepared.edits;
+  if (edits === null) return { ...committed, created: [], detached: [] };
+  return { ...committed, created: [...edits.created], detached: [...edits.detached] };
+}
+
+async function changed(
+  env: ProgramEnv,
+  caller: Caller,
+  wanted: ProgramChange,
+): Promise<AutomationProgramReply> {
+  const { created: _created, detached: _detached, ...result } = await change(env, caller, wanted);
+  return result;
+}
+
+function refusedProblem(cause: ApiError): ReturnType<typeof failure> {
+  return failure(cause.code, cause.message);
+}
+
+function originProblems(
+  env: ProgramEnv,
+  caller: Caller,
+  program: AutomationV4 | null,
+): ReturnType<typeof failure>[] {
+  if (program === null) return [];
   try {
-    authorise(env, caller, program, built);
+    originOf(env.tools, caller, program);
     return [];
   } catch (cause) {
-    if (cause instanceof ApiError) return [failure(cause.code, cause.message)];
+    if (cause instanceof ApiError) return [refusedProblem(cause)];
     throw cause;
   }
 }
 
-function commit(env: ProgramEnv, caller: Caller, change: Change): AutomationProgramReply {
-  const { program, basis } = change;
-  const analysis = analyse(env, program);
-  const { built } = analysis;
-  if (built === undefined) {
-    const summary = `Refused: ${tally(analysis.problems)}. Nothing was saved.`;
-    return reply(false, summary, basis, analysis.problems);
-  }
-  const origin = authorise(env, caller, program, built);
-  const row = env.store.write(() => {
-    const planHash = env.plans.put('automation', planValue(built.plan));
-    const saved = change.save({ planHash, origin, author: authorOf(env.store, caller) });
-    pruneKeptData(env.store, saved.id, flatAutomation(saved.definition));
-    env.store.pluginKinds.prune(usedKindsOf(env.store));
-    env.store.harnessRecovery.effects.keep('automation', saved.id, currentExecutionAuthority());
-    authorSpeech(env.store, caller, saved);
-    return saved;
-  });
-  const summary = `Saved revision ${String(row.revision)}. ${tally(analysis.problems)}.`;
-  return reply(true, summary, { id: row.id, revision: row.revision }, analysis.problems);
-}
-
-function create(env: ProgramEnv, caller: Caller, input: CreateInput): AutomationProgramReply {
-  const program = withNewDefaults(input.definition);
-  return commit(env, caller, {
-    program,
-    basis: null,
-    save: (stamp) =>
-      env.programs.create(
-        {
-          name: freeName(env.programs, input.name),
-          enabled: input.enabled,
-          program,
-          layout: input.layout ?? EMPTY_LAYOUT,
-          planHash: stamp.planHash,
-          origin: stamp.origin,
-          author: stamp.author,
-        },
-        env.kinds,
-      ),
-  });
-}
-
-function replacement(
-  env: ProgramEnv,
-  row: StoredAutomationRow,
-  next: { readonly program: AutomationV4; readonly layout: Layout; readonly expected: number },
-): Change {
-  return {
-    program: next.program,
-    basis: { id: row.id, revision: row.revision },
-    save: (stamp) =>
-      env.programs.replace(
-        row.id,
-        {
-          program: next.program,
-          layout: next.layout,
-          expectedRevision: next.expected,
-          planHash: stamp.planHash,
-          author: stamp.author,
-        },
-        env.kinds,
-      ),
-  };
-}
-
-function update(
-  env: ProgramEnv,
-  caller: Caller,
-  id: string,
-  input: UpdateInput,
-): AutomationProgramReply {
-  const row = env.programs.byId(id);
-  expectRevision(row, input.expectedRevision);
-  return commit(
-    env,
-    caller,
-    replacement(env, row, {
-      program: input.definition,
-      layout: input.layout ?? row.layout,
-      expected: input.expectedRevision,
-    }),
-  );
-}
-
-function patch(
-  env: ProgramEnv,
-  caller: Caller,
-  id: string,
-  input: PatchInput,
-): AutomationProgramPatchReply {
-  const row = env.programs.byId(id);
-  expectRevision(row, input.expectedRevision);
-  const result = patched(row.definition, input.ops, { kinds: env.kinds, newId: randomUUID });
-  if (!result.ok) {
-    const problems = refusedPatch(result);
-    const summary = `Refused: ${refusalText(problems)}. Nothing was changed.`;
-    const basis = { id, revision: row.revision };
-    return { ...reply(false, summary, basis, problems), created: [], detached: [] };
-  }
-  const committed = commit(
-    env,
-    caller,
-    replacement(env, row, {
-      program: AUTOMATION_V4.parse(result.program),
-      layout: row.layout,
-      expected: input.expectedRevision,
-    }),
-  );
-  if (!committed.ok) return { ...committed, created: [], detached: [] };
-  return {
-    ...committed,
-    created: result.created.map(({ key, id: made }) => ({ key, id: made })),
-    detached: result.detached.map(({ owner, where, port, reads }) => ({
-      owner,
-      where,
-      port,
-      reads,
-    })),
-  };
-}
-
-function checkProgram(
-  env: ProgramEnv,
-  caller: Caller,
-  program: ProgramV4,
-  basis: Basis | null,
-): AutomationProgramReply {
-  const analysis = analyse(env, program);
-  const authority = authorityProblems(env, caller, program, analysis.built);
-  return checked(basis, [...analysis.problems, ...authority]);
-}
-
-function checkPatch(
-  env: ProgramEnv,
-  caller: Caller,
-  request: Extract<AutomationProgramCheckRequest, { ops: unknown }>,
-): AutomationProgramReply {
-  const row = env.programs.byId(request.automationId);
-  const result = patched(row.definition, request.ops, {
-    allowProblems: true,
-    kinds: env.kinds,
-    newId: randomUUID,
-  });
-  const basis = { id: row.id, revision: row.revision };
-  return result.ok
-    ? checkProgram(env, caller, result.program, basis)
-    : checked(basis, refusedPatch(result));
-}
-
-function check(
+async function check(
   env: ProgramEnv,
   caller: Caller,
   request: AutomationProgramCheckRequest,
-): AutomationProgramReply {
-  if ('ops' in request) return checkPatch(env, caller, request);
-  return checkProgram(env, caller, request.definition, null);
-}
-
-function usedBy(env: ProgramEnv, target: StoredAutomationRow): StoredAutomationRow | undefined {
-  const context: ReferenceContext = {
-    kinds: (id) => env.kinds.get(id),
-    functions: (id, pin) => {
-      const found = revisionOf(env, id, pin);
-      return found === undefined ? undefined : flatFunction(found.definition);
-    },
-  };
-  const programsOf = (row: StoredAutomationRow): readonly AutomationV3[] =>
-    [row.definition, ...(row.draft === null ? [] : [row.draft.program])].map(flatAutomation);
-  return env.programs
-    .list()
-    .find(
-      (row) =>
-        row.id !== target.id &&
-        programsOf(row).some((program) => programReferences(program, target.id, context)),
-    );
-}
-
-function setEnabled(env: ProgramEnv, id: string, enabled: boolean): AutomationProgramReply {
-  const row = env.store.write(() => env.programs.setEnabled(id, enabled));
-  const summary = `${row.name} is ${enabled ? 'on' : 'off'}.`;
-  return reply(true, summary, { id: row.id, revision: row.revision }, []);
-}
-
-function rename(env: ProgramEnv, id: string, name: string): AutomationProgramReply {
-  const row = env.store.write(() => {
-    requireFreeName(env.programs, name, id);
-    return env.programs.rename(id, name);
+): Promise<AutomationProgramReply> {
+  const result = await env.store.host.read('checkAutomationProgram', {
+    data: programData(env.kinds, env.secrets),
+    caller,
+    authority: currentExecutionAuthority(),
+    request,
   });
-  return reply(true, `Renamed to ${row.name}.`, { id: row.id, revision: row.revision }, []);
-}
-
-async function remove(env: ProgramEnv, id: string): Promise<void> {
-  const row = env.programs.byId(id);
-  const user = usedBy(env, row);
-  if (user !== undefined) {
-    throw new ApiError(
-      'conflict',
-      `The automation ${user.name} runs this automation. Remove that step first.`,
-    );
-  }
-  await env.engine.retire(id);
-  env.store.write(() => {
-    env.store.automationRunRecords.forget(id);
-    env.programs.remove(id);
-    env.store.pluginKinds.prune(usedKindsOf(env.store));
-  });
-}
-
-function publish(
-  env: ProgramEnv,
-  caller: Caller,
-  id: string,
-  expectedRevision: number,
-): AutomationProgramReply {
-  const row = env.programs.byId(id);
-  expectRevision(row, expectedRevision);
-  if (row.draft === null) throw new ApiError('conflict', 'The automation has no draft to publish.');
-  return commit(env, caller, {
-    program: row.draft.program,
-    basis: { id, revision: row.revision },
-    save: (stamp) =>
-      env.programs.publish(id, {
-        expectedRevision,
-        planHash: stamp.planHash,
-        author: stamp.author,
-      }),
-  });
+  const reach =
+    result.reach === null ? [] : [refusedProblem(reachRefusal(env.store, caller, result.reach))];
+  const origin = originProblems(env, caller, result.origin);
+  return checked(result.basis, [...result.problems, ...reach, ...origin]);
 }
 
 export function automationPrograms(env: ProgramEnv): AutomationPrograms {
   return {
-    create: (caller, input) => create(env, caller, input),
-    update: (caller, id, input) => update(env, caller, id, input),
-    patch: (caller, id, input) => patch(env, caller, id, input),
+    create: (caller, input) =>
+      changed(env, caller, {
+        kind: 'create',
+        id: input.id,
+        name: input.name,
+        enabled: input.enabled,
+        definition: input.definition,
+        layout: input.layout,
+      }),
+    update: (caller, id, input) =>
+      changed(env, caller, {
+        kind: 'update',
+        id,
+        definition: input.definition,
+        layout: input.layout,
+        expectedRevision: input.expectedRevision,
+      }),
+    patch: (caller, id, input) =>
+      change(env, caller, {
+        kind: 'patch',
+        id,
+        ops: input.ops,
+        expectedRevision: input.expectedRevision,
+      }),
     check: (caller, request) => check(env, caller, request),
     setEnabled: (id, enabled) => setEnabled(env, id, enabled),
     rename: (id, name) => rename(env, id, name),
@@ -413,7 +219,8 @@ export function automationPrograms(env: ProgramEnv): AutomationPrograms {
     draft: (id) => draftView(env, id),
     saveDraft: (id, input) => saveDraft(env, id, input),
     discardDraft: (id, expectedRevision) => discardDraft(env, id, expectedRevision),
-    publish: (caller, id, expectedRevision) => publish(env, caller, id, expectedRevision),
+    publish: (caller, id, expectedRevision) =>
+      changed(env, caller, { kind: 'publish', id, expectedRevision }),
     revisions: (id) => revisions(env, id),
     revision: (id, number) => revision(env, id, number),
     compare: (id, from, to) => compare(env, id, from, to),

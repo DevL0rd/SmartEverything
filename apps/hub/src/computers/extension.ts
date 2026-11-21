@@ -2,11 +2,10 @@ import { hostname, type as osType } from 'node:os';
 import { dirname, join } from 'node:path';
 import { serverRelayRoutes } from './server-relay';
 import type { ComputerLiveNotice } from '@smarteverything/domain';
-import { effectiveClientById } from '../server/person-access';
 import type { ExtensionContext, RunningExtension, ServerExtension } from '../extensions';
 import { computerPolicyOf } from '../metrics/history-policy';
 import { wakeOnLan } from '../network/wake-on-lan';
-import { viewerOfClient } from './computer-access';
+import { background } from '@smarteverything/logging';
 import { ComputerDirectory } from './computer-directory';
 import { resetComputerPresence } from './computer-presence';
 import { commandOrigin, computerMacs } from './computer-records';
@@ -43,17 +42,19 @@ function commandRecords({ context, service }: Wiring): ComputerDriverOptions['re
   const { store } = context;
   return {
     originOf: commandOrigin(store),
-    visibleTo: (deviceId, clientId) =>
-      service.access.visible(deviceId, viewerOfClient(store, effectiveClientById(store, clientId))),
+    visibleTo: (deviceId, clientId) => service.access.visibleTo(deviceId, clientId),
     macsOf: computerMacs(store),
     wake: wakeOnLan,
-    approve: (deviceId, action, source): Promise<void> => {
-      const device = store.devices.byId(deviceId);
-      return context.machineApprovals.require({
+    approve: async (deviceId, action, source): Promise<void> => {
+      const [device, profileId] = await Promise.all([
+        store.host.call('devices', 'byId', deviceId),
+        store.host.call('computerNodes', 'personOf', deviceId),
+      ]);
+      await context.machineApprovals.require({
         action,
         source,
         machine: device.display_name ?? device.name,
-        profileId: store.computerNodes.personOf(deviceId),
+        profileId,
       });
     },
   };
@@ -76,14 +77,24 @@ function driverOptions({
       context.live.watches.publish(notice);
     },
     deviceIdOf: drivers.deviceIdOf,
-    scopesOf: (deviceId) => store.computerScopes.read(deviceId),
+    scopesOf: (deviceId) => store.live.computerAccess.scopes(deviceId),
     directory,
     records: commandRecords({ context, directory, service, machineId, now }),
     recordAppTime: ({ deviceId, app, startedAt, endedAt }): void => {
-      store.appSessions.add({ deviceId, appId: app.id, appName: app.name, startedAt, endedAt });
+      background(
+        store.host.call('appSessions', 'add', {
+          deviceId,
+          appId: app.id,
+          appName: app.name,
+          startedAt,
+          endedAt,
+        }),
+        'computer.app_time_save_failed',
+        { deviceId },
+      );
     },
     signals: context.hub.signals,
-    personOf: (deviceId) => store.computerNodes.personOf(deviceId),
+    personOf: (deviceId) => store.live.computerAccess.personOf(deviceId),
     ears: context.computerEars,
     earHosts: context.computerEars,
     placements: context.computerPlacements,
@@ -93,9 +104,7 @@ function driverOptions({
       machineId,
       log: context.log,
     }),
-    bindHubDevice: (deviceId): void => {
-      context.computerAi.bindLocalDevice(deviceId);
-    },
+    bindHubDevice: (deviceId) => context.computerAi.bindLocalDevice(deviceId),
     now,
     log: context.log,
   };
@@ -113,7 +122,7 @@ function watchLive(wiring: Wiring): () => void {
   context.live.watches.attach({
     viewers: context.hub.drivers.viewers,
     allowed: (client, deviceId) =>
-      service.access.watchable(deviceId, viewerOfClient(store, client)),
+      service.access.watchable(deviceId, store.live.computerAccess.viewerOfClient(client)),
     keyframe: (deviceId) => keyframeOf(directory, deviceId),
   });
   return store.feed.subscribe((change) => {
@@ -137,6 +146,7 @@ function fileMediaOf(
 export function computersExtension(now: () => Date): ServerExtension {
   return async (context): Promise<RunningExtension> => {
     const { store } = context;
+    await store.live.computerAccess.load();
     await resetComputerPresence(store, context.hub.setDeviceOnline);
     const machineId = await computerMachineId(hubMachineIdFile(context.layout));
     const directory = new ComputerDirectory(machineId);

@@ -87,7 +87,7 @@ export async function useComputer(
   context: OperatingContext,
   { deviceId: wanted, change }: Request,
 ): Promise<ToolOutput> {
-  const deviceId = computerIdOf(context, wanted);
+  const deviceId = await computerIdOf(context, wanted);
   const { look, ...input } = change;
   await operate(context, 'inputComputer', { params: { deviceId }, body: input });
   const summary = inputSummary(input);

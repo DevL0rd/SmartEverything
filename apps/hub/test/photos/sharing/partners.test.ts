@@ -230,7 +230,7 @@ describe('auto-save', () => {
     const share = offer();
     kit.partners.accept(kit.bob, share.id);
     kit.partners.setAutoSave(kit.bob, share.id, { autoSave: true });
-    kit.auto.start();
+    kit.trigger.start();
     const fresh = kit.seed({ n: 5, takenAt: late, root: kit.aliceRoot });
     kit.store.feed.notice({
       type: 'drive_changed',
@@ -247,7 +247,7 @@ describe('auto-save', () => {
       .listVisibleTo(kit.bob.profileId, 'photos')
       .flatMap((album) => kit.store.driveAlbums.members(album.id, null, 50).members);
     expect(saved.map((member) => member.itemId)).toEqual([fresh]);
-    kit.auto.stop();
+    kit.trigger.stop();
     kit.store.feed.notice({ type: 'photos_ai', stage: 'faces', done: 1, total: 1 });
     expect(kit.deferred).toHaveLength(0);
   });

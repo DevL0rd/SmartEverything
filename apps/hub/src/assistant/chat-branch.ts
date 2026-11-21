@@ -103,7 +103,7 @@ export class ChatBranches {
     path: readonly AssistantMessageRow[],
     copies: ReadonlyMap<string, StoredAttachment>,
   ): AiChatRow {
-    const branch = this.store.aiChats.create({
+    const branch = this.store.live.chatWork.create({
       profileId: source.profile_id,
       kind: 'chat',
       title: body.title ?? `${BRANCH_PREFIX}${source.title}`.slice(0, AI_CHAT_TITLE_MAX),

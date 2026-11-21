@@ -25,7 +25,7 @@ import { DriveRootsRepository } from '../../../src/store/repositories/drive-root
 import { ProfilesRepository } from '../../../src/store/repositories/profiles';
 import { Sql } from '../../../src/store/sql';
 import { testLogger } from '../../support/logs';
-import { drivePathOf, personalDriveRoot, sharedDriveRoot } from '../../store/drive-roots-fixture';
+import { driveFolders, personalDriveRoot, sharedDriveRoot } from '../../store/drive-roots-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const HOME = '0d000000-0000-4000-8000-000000000001';
@@ -164,7 +164,7 @@ beforeEach(() => {
   robin = { profileId: robinId };
   sam = { profileId: samId };
   stranger = { profileId: strangerId };
-  const roots = new DriveRootsRepository(context, drivePathOf);
+  const roots = new DriveRootsRepository(context, driveFolders);
   roots.insert(sharedDriveRoot(HOME));
   roots.insert(personalDriveRoot(ROBIN_ROOT, robinId));
   roots.insert(personalDriveRoot(SAM_ROOT, samId));
@@ -261,10 +261,15 @@ describe('who can find text', () => {
 });
 
 describe('global search hits', () => {
-  it('carries the text snippet without highlight markers as the subtitle of a content hit', () => {
+  it('carries the text snippet without highlight markers as the subtitle of a content hit', async () => {
     put(draft(20, 'letter.docx', ROBIN_ROOT), 'The lighthouse keeper');
     put(draft(21, 'lighthouse notes.txt', ROBIN_ROOT));
-    const hits = driveHits(search, robin, { query: 'lighthouse', limit: 10 }, () => []);
+    const hits = await driveHits(
+      (viewer, query, limit) => Promise.resolve(search.search(viewer, query, limit)),
+      robin,
+      { query: 'lighthouse', limit: 10 },
+      () => Promise.resolve([]),
+    );
     const byName = new Map(hits.map((hit) => [hit.name, hit]));
     expect(byName.get('letter.docx')?.subtitle).toContain('lighthouse keeper');
     expect(byName.get('letter.docx')?.subtitle).not.toContain(DRIVE_SNIPPET_OPEN);

@@ -2,6 +2,7 @@ import type { DeviceCapability, JsonValue } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { IrAssumedState } from '../../src/infrared/assumed-state';
 import type { DeviceUpsert } from '../../src/database/port';
+import { settleWithHost } from '../support/host-settle';
 import { captureLogs, testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
@@ -83,7 +84,7 @@ afterEach(async () => {
 });
 
 describe('what an IR remote is assumed to be doing', () => {
-  it('follows the keys an IR remote device sent', () => {
+  it('follows the keys an IR remote device sent', async () => {
     const blaster = stored(device({ externalId: 'b' }));
     const remote = stored(
       device({
@@ -97,6 +98,7 @@ describe('what an IR remote is assumed to be doing', () => {
     succeed(remote, 'remote_key', 'Power');
     succeed(remote, 'remote_key', 'Temp-');
     succeed(remote, 'remote_key', 'Heat');
+    await settleWithHost();
     expect(opened.store.settings.irRemote(remote)).toEqual({
       on: true,
       temp: 23,
@@ -110,13 +112,14 @@ describe('what an IR remote is assumed to be doing', () => {
     });
   });
 
-  it('ignores a key that failed', () => {
+  it('ignores a key that failed', async () => {
     const remote = stored(device({ externalId: 'r', kind: 'ir_remote', capabilities: [KEYS] }));
     fail(remote, 'remote_key', 'Power');
+    await settleWithHost();
     expect(opened.store.settings.read().ir_remotes).toEqual({});
   });
 
-  it('follows the code a blaster sent for the learned remote that owns it', () => {
+  it('follows the code a blaster sent for the learned remote that owns it', async () => {
     const blaster = stored(device({ externalId: 'b' }));
     const fan = opened.store.infrared.addRemote({
       blaster_id: blaster,
@@ -144,11 +147,12 @@ describe('what an IR remote is assumed to be doing', () => {
     });
     succeed(blaster, 'ir_send', { format: 'pulses', code: 'AAA' });
     succeed(blaster, 'ir_send', { format: 'pulses', code: 'BBB' });
+    await settleWithHost();
     expect(opened.store.settings.irRemote(fan.id)).toMatchObject({ speed: 1, sentKey: 'Speed up' });
     expect(opened.store.settings.irRemote(tv.id)).toMatchObject({ muted: true, sentKey: 'Mute' });
   });
 
-  it('does not guess when two remotes learned the same code', () => {
+  it('does not guess when two remotes learned the same code', async () => {
     const blaster = stored(device({ externalId: 'b' }));
     const first = opened.store.infrared.addRemote({
       blaster_id: blaster,
@@ -171,14 +175,16 @@ describe('what an IR remote is assumed to be doing', () => {
       });
     }
     succeed(blaster, 'ir_send', { format: 'pulses', code: 'SAME' });
+    await settleWithHost();
     expect(opened.store.settings.read().ir_remotes).toEqual({});
   });
 
-  it('leaves other devices and other commands alone', () => {
+  it('leaves other devices and other commands alone', async () => {
     const plug = stored(device({ externalId: 'p', kind: 'plug' }));
     succeed(plug, 'remote_key', 'Power');
     const blaster = stored(device({ externalId: 'b' }));
     succeed(blaster, 'ir_send', { nonsense: true });
+    await settleWithHost();
     expect(opened.store.settings.read().ir_remotes).toEqual({});
   });
 

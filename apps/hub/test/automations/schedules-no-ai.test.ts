@@ -57,12 +57,12 @@ describe('scheduled AI steps on a hub without an AI chat engine', () => {
       { now: (): Date => new Date(MOMENT) },
       false,
     );
-    expect(() =>
+    await expect(
       book.create(
         { profileId: ID, clientId: null, role: 'owner', via: 'app', plugin: null },
         { label: null, timing: { kind: 'in', seconds: 10 }, steps: [AI_STEP] },
       ),
-    ).toThrow(`Step 1: ${NO_AI_ENGINE}`);
+    ).rejects.toThrow(`Step 1: ${NO_AI_ENGINE}`);
   });
 
   it('fails a due AI step with the same words instead of running it', async () => {

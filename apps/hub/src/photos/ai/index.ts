@@ -19,6 +19,14 @@ export interface EmbeddingSource {
 
 const PAGE = 2000;
 
+const SLICE_MS = 4;
+
+function nextTurn(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+}
+
 export class PhotoVectorIndex {
   private readonly entries = new Map<string, Entry>();
   private loading: Promise<void> | undefined;
@@ -55,7 +63,12 @@ export class PhotoVectorIndex {
     await this.ready();
     const unit = normalise(query);
     const hits: MeaningHit[] = [];
-    for (const [itemId, entry] of this.entries) {
+    let started = performance.now();
+    for (const [itemId, entry] of [...this.entries]) {
+      if (performance.now() - started >= SLICE_MS) {
+        await nextTurn();
+        started = performance.now();
+      }
       if (entry.model !== model) continue;
       const score = dotInt8(unit, entry.values, entry.scale);
       if (score >= minScore) hits.push({ itemId, score });
@@ -73,9 +86,7 @@ export class PhotoVectorIndex {
       const last = page.at(-1);
       if (last === undefined) return;
       after = last.itemId;
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
+      await nextTurn();
     }
   }
 }

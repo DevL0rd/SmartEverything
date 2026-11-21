@@ -10,7 +10,7 @@ import { runMemoryTool } from './tool';
 
 export interface MemorySessions {
   readonly principal: (sessionId: string) => MemoryPrincipal;
-  readonly latest: (sessionId: string) => LatestMessage | null;
+  readonly latest: (sessionId: string) => Promise<LatestMessage | null>;
 }
 
 export class HubMemoryAccess implements AiMemoryAccess {
@@ -23,10 +23,10 @@ export class HubMemoryAccess implements AiMemoryAccess {
     return this.service.offered(this.sessions.principal(sessionId));
   }
 
-  prepare(sessionId: string): Promise<void> {
-    return this.service.prepare(
+  async prepare(sessionId: string): Promise<void> {
+    await this.service.prepare(
       this.sessions.principal(sessionId),
-      this.sessions.latest(sessionId),
+      await this.sessions.latest(sessionId),
     );
   }
 

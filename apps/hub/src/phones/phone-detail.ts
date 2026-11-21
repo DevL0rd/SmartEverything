@@ -11,6 +11,7 @@ import {
 } from '@smarteverything/domain';
 import { profileIdOf, roleOfCaller, type Caller } from '../server/auth';
 import type { Store } from '../store/store';
+import type { PhoneDetails } from './phone-detail-copy';
 import type { PhoneTarget } from './phone-nodes';
 
 export interface PhoneViewer {
@@ -18,8 +19,8 @@ export interface PhoneViewer {
   readonly profileId: string | null;
 }
 
-export function phoneViewerOfCaller(store: Store, caller: Caller): PhoneViewer {
-  return { role: roleOfCaller(caller), profileId: profileIdOf(store, caller) };
+export function phoneViewerOfCaller(caller: Caller): PhoneViewer {
+  return { role: roleOfCaller(caller), profileId: profileIdOf(caller) };
 }
 
 export function phoneViewerOfClient(
@@ -41,12 +42,12 @@ export function tierOfViewer(
 }
 
 export function readPhoneDetail(
-  store: Pick<Store, 'phoneDetails'>,
+  details: PhoneDetails,
   target: PhoneTarget,
   viewer: PhoneViewer,
   sections: readonly PhoneDetailSectionName[] | undefined,
 ): PhoneDetail {
-  const stored = store.phoneDetails.read(target.deviceId);
+  const stored = details.read(target.deviceId);
   const wanted = sections === undefined ? stored : pickSections(stored, sections);
   return phoneDetailFor(wanted, tierOfViewer(target, viewer));
 }
@@ -70,9 +71,9 @@ export function detailNotice(
 }
 
 export function detailKeyframe(
-  store: Pick<Store, 'phoneDetails'>,
+  details: PhoneDetails,
   target: PhoneTarget,
   viewer: PhoneViewer,
 ): PhoneDetailNotice | null {
-  return detailNotice(target, store.phoneDetails.read(target.deviceId), viewer);
+  return detailNotice(target, details.read(target.deviceId), viewer);
 }

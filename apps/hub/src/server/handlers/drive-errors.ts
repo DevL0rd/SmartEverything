@@ -6,8 +6,8 @@ import {
   DriveAlbumCursorError,
   DriveAlbumItemError,
 } from '../../drive/albums';
-import { ConflictError } from '../../drive/conflicts';
-import { DriveWriteError, type DriveWriteFailure } from '../../drive/intents';
+import { ConflictError } from '../../drive/conflict-error';
+import { DriveWriteError, type DriveWriteFailure } from '../../drive/write-error';
 import { DrivePathError, type DrivePathFailure } from '../../drive/paths';
 import { DriveFreeSpaceError, DriveQuotaExceededError } from '../../drive/quotas';
 import { RootMarkerError } from '../../drive/root-marker';

@@ -2,9 +2,10 @@ import { ApiError } from '@smarteverything/domain';
 import { describe, expect, it } from 'vitest';
 import { attrOf, DIRECTORY_BYTES, sizeOf } from '../../../src/drive/posix/attr';
 import { guarded, PosixError, posixErrorOf } from '../../../src/drive/posix/errors';
-import { checkName, checkNewPath, isReservedPath } from '../../../src/drive/posix/names';
+import { checkName, checkNewPath } from '../../../src/drive/posix/names';
+import { isReservedPath } from '../../../src/drive/posix/reserved';
 import { after, nowNs, relatimeDue, RELATIME_WINDOW_NS } from '../../../src/drive/posix/times';
-import { DriveWriteError } from '../../../src/drive/intents';
+import { DriveWriteError } from '../../../src/drive/write-error';
 import { DrivePathError } from '../../../src/drive/paths';
 import {
   DriveFileTooLargeError,

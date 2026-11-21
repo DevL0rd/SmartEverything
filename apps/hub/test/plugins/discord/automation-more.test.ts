@@ -430,7 +430,7 @@ function performer(calls: Call[], bus?: SignalBus): Performed {
         ? Promise.resolve(failure(`no tool ${tool.name}`))
         : found.run(args, caller);
     },
-    validate: (tool, args) => byName.get(tool.name)?.validate(args) ?? null,
+    validate: (tool, args) => Promise.resolve(byName.get(tool.name)?.validate(args) ?? null),
     changes: () => () => undefined,
   };
   const handlers = pluginNodeEffects({
@@ -823,6 +823,9 @@ describe('Ask in Discord', () => {
     const perform = performer(calls, bus);
     const params = { person: GUEST_ID, question: 'Open?', answers: ['Yes', 'No'], timeout: 5000 };
     const waiting = perform('ask', params, 'wait_for_result');
+    await vi.waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
     bus.emit(answeredSignal('flow-1'));
     await expect(waiting).resolves.toEqual({
       ok: true,
@@ -834,8 +837,11 @@ describe('Ask in Discord', () => {
         args: { userId: GUEST_ID, content: 'Open?', mode: 'buttons', answers: ['Yes', 'No'] },
       },
     ]);
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const silent = perform('ask', params, 'wait_for_result');
+    await vi.waitFor(() => {
+      expect(calls).toHaveLength(2);
+    });
     await vi.advanceTimersByTimeAsync(5000);
     await expect(silent).resolves.toMatchObject({ ok: false, class: 'Timeout' });
   });

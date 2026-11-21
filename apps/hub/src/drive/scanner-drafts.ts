@@ -7,6 +7,12 @@ export interface FileType {
   readonly kind: 'image' | 'video' | 'audio' | 'document' | 'other';
 }
 
+export type ScanEntry = WalkEntry & { readonly type: FileType };
+
+export class ScanStepError extends Error {
+  override readonly name = 'ScanStepError';
+}
+
 export interface Common {
   readonly id: string;
   readonly rootId: string;

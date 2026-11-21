@@ -11,7 +11,9 @@ import { Logger } from '@smarteverything/logging';
 import { describe, expect, it } from 'vitest';
 import { CameraGate } from '../../src/extensions/push/camera-gate';
 import type { CameraNotice } from '../../src/extensions/push/camera-notice';
+import type { PushClient } from '../../src/extensions/push/push-units';
 import { captureLogs } from '../support/logs';
+import { pushClient } from '../support/push-client';
 
 const CAMERA = 'cam-1';
 const PHONE = 'phone-1';
@@ -30,7 +32,6 @@ class Bench {
   };
   zone = 'UTC';
   readonly gate = new CameraGate({
-    prefOf: (): ClientPrefRead<CameraNotificationsPref> => this.pref,
     now: (): Date => new Date(this.at),
     timeZone: (): string => this.zone,
     log: new Logger('hub.push'),
@@ -45,7 +46,11 @@ class Bench {
   }
 
   admit(kind: CameraNotificationKind, recovered = false): boolean {
-    return this.gate.admit(PHONE, notice(kind, recovered));
+    return this.gate.admit(this.phone(), notice(kind, recovered));
+  }
+
+  phone(): PushClient {
+    return pushClient({ clientId: PHONE, cameraNotifications: this.pref });
   }
 }
 
@@ -82,7 +87,9 @@ describe('which camera notices reach a phone', () => {
     const bench = new Bench();
     expect(bench.admit('doorbell')).toBe(true);
     expect(bench.admit('baby_cry')).toBe(true);
-    expect(bench.gate.admit(PHONE, { ...notice('doorbell'), deviceId: 'cam-2' })).toBe(true);
+    expect(bench.gate.admit(bench.phone(), { ...notice('doorbell'), deviceId: 'cam-2' })).toBe(
+      true,
+    );
     expect(bench.admit('doorbell')).toBe(false);
   });
 

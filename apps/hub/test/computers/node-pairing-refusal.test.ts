@@ -25,15 +25,17 @@ describe('issuing a pairing code for a computer', () => {
     'https://127.0.0.1:7880',
     'http://localhost:7880',
     'https://[::1]:7880',
-  ])('refuses the loopback address %s', (url) => {
-    expect(() => access.pair(url, ownerId)).toThrow('over loopback');
+  ])('refuses the loopback address %s', async (url) => {
+    await expect(access.pair(url, ownerId)).rejects.toThrow('over loopback');
   });
 
-  it('refuses plain http to another machine', () => {
-    expect(() => access.pair('http://192.168.1.4:7880', ownerId)).toThrow('requires HTTPS');
+  it('refuses plain http to another machine', async () => {
+    await expect(access.pair('http://192.168.1.4:7880', ownerId)).rejects.toThrow('requires HTTPS');
   });
 
-  it('issues a code for an https address', () => {
-    expect(access.pair('https://home.example.com', ownerId).url).toBe('https://home.example.com');
+  it('issues a code for an https address', async () => {
+    expect((await access.pair('https://home.example.com', ownerId)).url).toBe(
+      'https://home.example.com',
+    );
   });
 });

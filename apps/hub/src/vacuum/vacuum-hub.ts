@@ -28,6 +28,7 @@ import { VacuumLinkSlot, type VacuumDeviceIo } from './link';
 import { VacuumLiveRoute, type LiveRouteUpdate, type RouteTimer } from './live-route';
 import { VacuumLiveScene } from './live-scene';
 import { MapCache } from './map-cache';
+import type { MapDecoder } from './map-decode';
 import { MapFetcher, type MapIdentity } from './map-fetch';
 import { VacuumMapPublication } from './map-publication';
 import { VacuumMapService } from './map-service';
@@ -49,6 +50,7 @@ export interface VacuumHubPorts {
   readonly viewers: ViewerSource;
   readonly timer: RouteTimer;
   readonly video: VacuumVideoPorts;
+  readonly decoder: MapDecoder;
   readonly now: () => Date;
   readonly log: Logger;
 }
@@ -162,6 +164,7 @@ export class VacuumHub {
     } catch (cause) {
       this.ports.log.error('vacuum_video.close_failed', cause);
     }
+    await this.ports.decoder.close();
   }
 
   routes(): VacuumRouteServices {
@@ -327,6 +330,7 @@ export class VacuumHub {
       cache: this.cache,
       identity: (deviceId) => this.identityOf(deviceId),
       pushed: (deviceId) => pushedObjectsOf(deviceId, (key) => state.valueOf(deviceId, key), log),
+      decoder: this.ports.decoder,
       published: (deviceId: string, fetched: VacuumScene): void => {
         const scene = this.liveScene.fetched(deviceId, fetched);
         this.publication.published(deviceId, scene);

@@ -46,7 +46,7 @@ function turns(recorded: Recorded): MovableTurns<MovableTurn> {
 
 async function runningOnHub(): Promise<{ chat: AiChatRow; turn: MovableTurn }> {
   const chat = rig.newChat(rig.hub.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
   const current = rig.opened.store.aiChats.chat(chat.id);
   return { chat: current, turn: { chat: current } };

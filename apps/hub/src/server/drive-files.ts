@@ -22,15 +22,12 @@ import type { MediaLinks, VerifiedDriveLink } from './media-links';
 const log = new Logger('hub.drive');
 
 export interface DriveFileNodes {
-  readonly authenticate: (token: string | null) => ComputerNodeRow;
+  readonly authenticate: (token: string | null) => Promise<ComputerNodeRow>;
   readonly actorOf: (node: ComputerNodeRow) => DriveActor;
 }
 
 export interface DriveFiles {
-  readonly store: Pick<
-    Store,
-    'context' | 'driveRoots' | 'driveItems' | 'driveGrants' | 'photoLocked'
-  >;
+  readonly store: Pick<Store, 'context' | 'driveRoots' | 'driveItems' | 'driveGrants' | 'host'>;
   readonly links: MediaLinks;
   readonly nodes: DriveFileNodes;
   readonly now: () => Date;
@@ -150,7 +147,7 @@ async function serveByNode(
   token: string,
   exchange: DriveExchange,
 ): Promise<void> {
-  const actor = files.nodes.actorOf(files.nodes.authenticate(token));
+  const actor = files.nodes.actorOf(await files.nodes.authenticate(token));
   const located = locate(files, itemId, actor);
   if (located.access !== null) requireExport(located.access, located.item);
   await serveLocated(located, { cacheControl: 'private, no-cache', download: false }, exchange);
@@ -161,15 +158,15 @@ interface Signed {
   readonly located: Located;
 }
 
-function lockedSigned(files: DriveFiles, itemId: string, url: URL): Signed {
-  const { item, link } = verifyLockedLink(files.store, files.links, url, itemId);
+async function lockedSigned(files: DriveFiles, itemId: string, url: URL): Promise<Signed> {
+  const { item, link } = await verifyLockedLink(files.store.host, files.links, url, itemId);
   if (!isFileItem(item)) throw noBytes(item);
   const root = files.store.driveRoots.byId(item.rootId);
   return { link, located: { item, rootPath: root.path, access: null } };
 }
 
-function signed(files: DriveFiles, itemId: string, url: URL): Signed {
-  if (isLockedLink(url)) return lockedSigned(files, itemId, url);
+async function signed(files: DriveFiles, itemId: string, url: URL): Promise<Signed> {
+  if (isLockedLink(url)) return await lockedSigned(files, itemId, url);
   const link = files.links.verifyDrive(url);
   return { link, located: locate(files, itemId, null) };
 }
@@ -179,7 +176,7 @@ async function serveBySignature(
   itemId: string,
   exchange: DriveExchange,
 ): Promise<void> {
-  const { link, located } = signed(files, itemId, exchange.url);
+  const { link, located } = await signed(files, itemId, exchange.url);
   if (located.item.rev !== link.rev) {
     throw new ApiError(
       'link_expired',

@@ -15,9 +15,8 @@ import {
   type ReadScope,
 } from './read-port';
 import { GROUP_REF, ROOM_REF, deviceRefs } from './refs';
-import { devicesOf } from './targets';
+import { devicesOf, type TargetWorld } from './targets';
 import type { WorldReadDeps } from './deps';
-import type { Store } from '../../store/store';
 
 const DEVICE_QUERY = z.object({
   room: ROOM_REF.optional(),
@@ -38,28 +37,28 @@ function roomIdsOf(query: Query): readonly string[] {
   return [...new Set(ids)];
 }
 
-function inRooms(store: Store, query: Query): readonly DeviceRow[] | undefined {
+function inRooms(world: TargetWorld, query: Query): readonly DeviceRow[] | undefined {
   const roomIds = roomIdsOf(query);
   if (roomIds.length === 0) return undefined;
   const found = new Map<string, DeviceRow>();
   for (const roomId of roomIds) {
-    for (const device of devicesOf(store, { kind: 'room', roomId })) found.set(device.id, device);
+    for (const device of devicesOf(world, { kind: 'room', roomId })) found.set(device.id, device);
   }
   return [...found.values()];
 }
 
 function scoped(deps: WorldReadDeps, query: Query): readonly DeviceRow[] {
-  const { store } = deps;
-  const inRoom = inRooms(store, query);
+  const { world } = deps;
+  const inRoom = inRooms(world, query);
   const inGroup =
     query.group === undefined
       ? undefined
-      : devicesOf(store, { kind: 'group', groupId: query.group });
+      : devicesOf(world, { kind: 'group', groupId: query.group });
   if (inRoom !== undefined && inGroup !== undefined) {
     const members = new Set(inGroup.map((device) => device.id));
     return inRoom.filter((device) => members.has(device.id));
   }
-  return inRoom ?? inGroup ?? store.devices.list().filter((device) => !device.hidden);
+  return inRoom ?? inGroup ?? world.devices.list().filter((device) => !device.hidden);
 }
 
 function hasRole(device: DeviceRow, roles: readonly string[] | undefined): boolean {

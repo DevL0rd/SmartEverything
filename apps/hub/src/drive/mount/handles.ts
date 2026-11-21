@@ -13,7 +13,7 @@ import { OpenHandle, type MountSession } from './session';
 export interface HandleEnv {
   readonly posix: DrivePosix;
   readonly files: DriveFiles;
-  readonly store: Pick<Store, 'driveRoots'>;
+  readonly store: Pick<Store, 'host'>;
 }
 
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
@@ -42,8 +42,8 @@ export class HandleTable {
     private readonly held: HeldInodes,
   ) {}
 
-  private root(scope: PosixScope): DriveWriteRoot {
-    return this.env.store.driveRoots.byId(scope.drive.id);
+  private root(scope: PosixScope): Promise<DriveWriteRoot> {
+    return this.env.store.host.call('driveRoots', 'byId', scope.drive.id);
   }
 
   async open(session: MountSession, scope: PosixScope, ino: number): Promise<number> {
@@ -112,7 +112,7 @@ export class HandleTable {
   }
 
   private async current(handle: OpenHandle): Promise<NonNullable<OpenHandle['fd']>> {
-    const root = this.root(handle.scope);
+    const root = await this.root(handle.scope);
     const stamp = await this.env.files.stamp(await locate(root, handle.relPath));
     if (handle.fd !== null && (stamp === null || stamp.ino === handle.identity)) return handle.fd;
     return this.reopen(handle, root);

@@ -11,11 +11,11 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { fsCode } from '../fs-code';
-import type { DriveBackupsRepository } from '../store/repositories/drive-backups';
+import type { StoredDrive } from '../store/repositories/drive-roots';
+import type { DriveChildrenQuery, DriveItemWindow } from '../store/repositories/drive-items';
+import type { DriveTrashCursor, DriveTrashWindow } from '../store/repositories/drive-trash';
+import type { Store } from '../store/store';
 import { isFileItem } from './file-item';
-import type { DriveItemsRepository } from '../store/repositories/drive-items';
-import type { DriveRootsRepository, StoredDrive } from '../store/repositories/drive-roots';
-import type { DriveTrashRepository } from '../store/repositories/drive-trash';
 
 export const BACKUP_DATABASE_FILE = 'smarteverything.sqlite';
 export const BACKUP_MANIFEST_FILE = 'drive-manifest.jsonl';
@@ -62,13 +62,31 @@ export type BackupManifestLine = z.infer<typeof BACKUP_MANIFEST_LINE>;
 
 export interface BackupEnvironment {
   readonly database: DatabaseSync;
-  readonly store: {
-    readonly driveRoots: Pick<DriveRootsRepository, 'list' | 'update'>;
-    readonly driveItems: Pick<DriveItemsRepository, 'children'>;
-    readonly driveTrash: Pick<DriveTrashRepository, 'inRoot'>;
-    readonly driveBackups: Pick<DriveBackupsRepository, 'record' | 'status'>;
-  };
+  readonly store: BackupStore;
   readonly log: Logger;
+}
+
+export interface BackupStore {
+  readonly roots: () => Promise<StoredDrive[]>;
+  readonly children: (request: DriveChildrenQuery) => Promise<DriveItemWindow>;
+  readonly trashInRoot: (
+    rootId: string,
+    after: DriveTrashCursor | null,
+    limit: number,
+  ) => Promise<DriveTrashWindow>;
+  readonly report: (input: DriveBackupReportInput) => Promise<DriveBackupReport>;
+  readonly status: () => Promise<DriveBackupStatus>;
+}
+
+export function hostBackupStore(store: Pick<Store, 'host'>): BackupStore {
+  const { host } = store;
+  return {
+    roots: () => host.call('driveRoots', 'list'),
+    children: (request) => host.call('driveItems', 'children', request),
+    trashInRoot: (rootId, after, limit) => host.call('driveTrash', 'inRoot', rootId, after, limit),
+    report: (input) => host.write('driveBackupReport', input),
+    status: () => host.call('driveBackups', 'status'),
+  };
 }
 
 export interface DriveSnapshot {
@@ -86,15 +104,15 @@ function lineOf(line: BackupManifestLine): string {
   return `${JSON.stringify(BACKUP_MANIFEST_LINE.parse(line))}\n`;
 }
 
-function* fileLines(
-  items: BackupEnvironment['store']['driveItems'],
+async function* fileLines(
+  store: BackupEnvironment['store'],
   rootId: string,
-): Generator<readonly BackupManifestLine[]> {
+): AsyncGenerator<readonly BackupManifestLine[]> {
   const pending: (string | null)[] = [null];
   for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
     let after: string | null = null;
     do {
-      const window = items.children({
+      const window = await store.children({
         rootId,
         parentId: parent,
         after,
@@ -121,13 +139,13 @@ function* fileLines(
   }
 }
 
-function* trashLines(
-  trash: BackupEnvironment['store']['driveTrash'],
+async function* trashLines(
+  store: BackupEnvironment['store'],
   rootId: string,
-): Generator<readonly BackupManifestLine[]> {
-  let after: Parameters<BackupEnvironment['store']['driveTrash']['inRoot']>[1] = null;
+): AsyncGenerator<readonly BackupManifestLine[]> {
+  let after: DriveTrashCursor | null = null;
   do {
-    const window = trash.inRoot(rootId, after, WINDOW_ROWS);
+    const window = await store.trashInRoot(rootId, after, WINDOW_ROWS);
     yield window.entries.map((entry): BackupManifestLine => ({
       kind: 'trash',
       rootId,
@@ -166,15 +184,8 @@ export class DriveBackups {
     return { database, manifest, bytes, files };
   }
 
-  report(input: DriveBackupReportInput): DriveBackupReport {
-    const report = this.env.store.driveBackups.record(input);
-    if (report.ok) {
-      for (const root of this.env.store.driveRoots.list()) {
-        this.env.store.driveRoots.update(root.id, {
-          health: { ...root.health, lastBackupAt: report.at },
-        });
-      }
-    }
+  async report(input: DriveBackupReportInput): Promise<DriveBackupReport> {
+    const report = await this.env.store.report(input);
     this.env.log.info('drive.backup_reported', {
       reporter: report.reporter,
       bytes: report.bytes,
@@ -183,12 +194,13 @@ export class DriveBackups {
     return report;
   }
 
-  status(): DriveBackupStatus {
-    return this.env.store.driveBackups.status();
+  status(): Promise<DriveBackupStatus> {
+    return this.env.store.status();
   }
 
-  unprotectedRoots(): readonly StoredDrive[] {
-    return this.env.store.driveRoots.list().filter((root) => root.health.lastBackupAt === null);
+  async unprotectedRoots(): Promise<readonly StoredDrive[]> {
+    const roots = await this.env.store.roots();
+    return roots.filter((root) => root.health.lastBackupAt === null);
   }
 
   private async copyDatabase(target: string): Promise<void> {
@@ -212,7 +224,7 @@ export class DriveBackups {
     const handle = await open(target, 'wx', 0o600);
     let files = 0;
     try {
-      for (const root of this.env.store.driveRoots.list()) {
+      for (const root of await this.env.store.roots()) {
         await handle.write(
           lineOf({
             kind: 'root',
@@ -222,8 +234,8 @@ export class DriveBackups {
             indexId: root.indexId,
           }),
         );
-        files += await this.writeLines(handle, fileLines(this.env.store.driveItems, root.id));
-        await this.writeLines(handle, trashLines(this.env.store.driveTrash, root.id));
+        files += await this.writeLines(handle, fileLines(this.env.store, root.id));
+        await this.writeLines(handle, trashLines(this.env.store, root.id));
       }
     } finally {
       await handle.close();
@@ -233,10 +245,10 @@ export class DriveBackups {
 
   private async writeLines(
     handle: Awaited<ReturnType<typeof open>>,
-    windows: Generator<readonly BackupManifestLine[]>,
+    windows: AsyncGenerator<readonly BackupManifestLine[]>,
   ): Promise<number> {
     let written = 0;
-    for (const lines of windows) {
+    for await (const lines of windows) {
       if (lines.length === 0) continue;
       await handle.write(lines.map(lineOf).join(''));
       written += lines.length;

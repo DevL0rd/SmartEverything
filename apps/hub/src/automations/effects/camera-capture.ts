@@ -90,13 +90,16 @@ interface Pictures {
   readonly skipped: readonly Skipped[];
 }
 
-function recordable(store: Store, id: string): DeviceRow {
-  const device = store.devices.find(id);
+async function recordable(store: Store, id: string): Promise<DeviceRow> {
+  const device = await store.host.call('devices', 'find', id);
   if (device === undefined) throw new ApiError('not_found', 'There is no such camera.');
   if (!isCamera(device)) throw new ApiError('invalid_request', `${device.name} is not a camera.`);
   if (!device.online) throw new ApiError('camera_offline', `${device.name} is offline.`);
   const privacy = privacySwitchOf(device);
-  if (privacy !== null && isPrivate(privacy, store.state.value(device.id, privacy.key)))
+  if (
+    privacy !== null &&
+    isPrivate(privacy, await store.host.call('state', 'value', device.id, privacy.key))
+  )
     throw new ApiError('camera_privacy_on', `${device.name} is switched off for privacy.`);
   return device;
 }
@@ -110,21 +113,21 @@ function clipCommand(device: DeviceRow, seconds: number): ClipCommand {
   return { deviceId: null, capability: 'hub:record_clip', value: checked.data.value };
 }
 
-function savedClip(
+async function savedClip(
   store: Store,
   recorded: { readonly device: DeviceRow; readonly row: CommandRow; readonly since: Date },
-): SavedClip {
+): Promise<SavedClip> {
   const { device, row, since } = recorded;
-  const result = CLIP_RESULT.safeParse(store.commands.byId(row.id).result);
+  const result = CLIP_RESULT.safeParse((await store.host.call('commands', 'byId', row.id)).result);
   const clip = result.success
-    ? store.cameras
-        .recordings({
+    ? (
+        await store.host.call('cameras', 'recordings', {
           deviceIds: [device.id],
           kind: 'clip',
           from: since.toISOString(),
           limit: EVERY_CLIP,
         })
-        .find((candidate) => candidate.storage_path === result.data.storagePath)
+      ).find((candidate) => candidate.storage_path === result.data.storagePath)
     : undefined;
   if (clip === undefined)
     throw new ApiError('internal', `The clip of ${device.name} was recorded but is not saved.`);
@@ -136,7 +139,7 @@ function cameraRecord(ports: CameraCapturePorts): EffectHandler {
     const checked = parsed(RECORD_PARAMS, params);
     if (!checked.ok) return checked;
     try {
-      const device = recordable(ports.store, checked.value.camera);
+      const device = await recordable(ports.store, checked.value.camera);
       const command = clipCommand(device, checked.value.seconds);
       const since = ports.clock.now();
       const rows = await deliver({
@@ -147,7 +150,7 @@ function cameraRecord(ports: CameraCapturePorts): EffectHandler {
       });
       const [row] = rows ?? [];
       if (row === undefined) return { ok: true, value: outputs({}) };
-      const clip = savedClip(ports.store, { device, row, since });
+      const clip = await savedClip(ports.store, { device, row, since });
       return { ok: true, value: outputs({ recordingId: clip.id, at: clip.at }) };
     } catch (cause) {
       return effectFailure(cause);

@@ -1,15 +1,15 @@
 import {
   ApiError,
   SPEECH_TRIGGER,
-  type StoredAutomationRow,
   type AutomationV4,
   type JsonValue,
   type SpeechTrigger,
 } from '@smarteverything/domain';
 import type { Caller } from '../server/auth';
 import type { Store } from '../store/store';
-import { speechPrincipal } from '../transcripts/speech-principal';
+import { speechPrincipal, type SpeechPrincipal } from '../transcripts/speech-principal';
 import { admitSpeechSources } from '../transcripts/speech-readers';
+import { requireSamePrincipal, type SpeechPlan } from './program-speech';
 
 const SPEECH_KIND = 'trigger.speech';
 const DEVICE_SOURCES = ['camera', 'phone', 'computer'] as const;
@@ -68,21 +68,16 @@ function speechTriggersOf(program: AutomationV4): readonly SpeechTrigger[] {
     });
 }
 
-export function authorSpeech(store: Store, caller: Caller, row: StoredAutomationRow): void {
-  const triggers = speechTriggersOf(row.definition);
-  const prior = store.speech.grant(row.id);
-  if (triggers.length === 0 && prior === undefined) return;
+export function speechPlan(
+  store: Store,
+  caller: Caller,
+  program: AutomationV4,
+  prior: SpeechPrincipal | null,
+): SpeechPlan {
+  const triggers = speechTriggersOf(program);
+  if (triggers.length === 0 && prior === null) return { kind: 'none' };
   const principal = speechPrincipal(store, caller);
-  if (
-    prior !== undefined &&
-    (prior.principal.profileId !== principal.profileId || prior.principal.role !== principal.role)
-  ) {
-    throw new ApiError(
-      'forbidden',
-      'Only the initiating profile may change or reauthorize this speech automation.',
-    );
-  }
-  if (triggers.length === 0) store.speech.remove(row.id);
-  else
-    store.speech.save(row.id, String(row.revision), admitSpeechSources(store, principal, triggers));
+  requireSamePrincipal(prior, principal);
+  if (triggers.length === 0) return { kind: 'remove', principal };
+  return { kind: 'bind', principal, bound: admitSpeechSources(store, principal, triggers) };
 }

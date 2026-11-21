@@ -13,7 +13,7 @@ import type { StepRecord } from '@smarteverything/flow/interpret/frames';
 import type { RunState, SingleWait, Wait } from '@smarteverything/flow/state/run-state';
 import { portPreview } from '../../store/repositories/automation-run-nodes';
 import type { TraceSource } from '../../server/live-watch';
-import { traceAllowed, type TraceOwners, type TraceProfiles } from '../../server/live-visibility';
+import { traceAllowed, type TraceOwners, type TraceProfiles } from '../../server/live-trace';
 import type { Viewers } from '../../metrics/viewers';
 import type { RunSink } from './ports';
 

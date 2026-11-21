@@ -87,7 +87,7 @@ export class TurnSession {
   private assistantTalking = false;
   private readonly text = new TurnText();
   private readonly renewal = new LiveRenewal(() =>
-    liveWindow(this.options.kit.store.assistantChat.settings()),
+    liveWindow(this.options.kit.store.live.home.assistant.read()),
   );
   private readonly watchdog = new ReplyWatchdog();
   private readonly record: CallRecord;
@@ -120,7 +120,7 @@ export class TurnSession {
       chatId: who.chatId,
       profileId: who.caller.profileId,
       clientId: who.caller.clientId,
-      author: assistantLabel(kit.store.assistantChat.settings()),
+      author: assistantLabel(kit.store.live.home.assistant.read()),
       person: who.caller.person,
     });
     const conversation = new ConversationTrace(() => options.id);
@@ -272,21 +272,22 @@ export class TurnSession {
 
   private async open(resume: string | null, reason: RenewReason | null): Promise<LiveSession> {
     const { kit, who } = this.options;
-    const settings = kit.store.assistantChat.settings();
+    const settings = kit.store.live.home.assistant.read();
     this.generation += 1;
     const generation = this.generation;
     const model = voiceModelFor(settings.voice.thinking_level);
     const thinking = voiceThinkingOf(settings.voice.thinking_level);
     this.renewal.opening(reason, resume !== null, this.now());
     await kit.memory.prepare(callPrincipal({ ...who.caller, chatId: who.chatId }));
+    const system = await turnSystemOf(kit, this.hub, who, this.options.bare === true);
     return connectWithin(
       this.options.provider.live(
         {
           model,
           voice: settings.voice.voice,
-          system: turnSystemOf(kit, this.hub, who, this.options.bare === true),
+          system,
           tools: [...this.assistantTools(), ...this.tools.declarations()],
-          webSearch: callSearchesWeb(kit, who),
+          webSearch: callSearchesWeb(who),
           resume,
           window: liveWindow(settings),
           automatic: false,

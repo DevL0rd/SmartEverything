@@ -14,7 +14,7 @@ import type { DriveUploadOwner } from '../../src/store/repositories/drive-upload
 import { ProfilesRepository } from '../../src/store/repositories/profiles';
 import { Sql, StoreConflictError } from '../../src/store/sql';
 import { testLogger } from '../support/logs';
-import { drivePathOf, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
+import { driveFolders, personalDriveRoot, sharedDriveRoot } from './drive-roots-fixture';
 
 const NOW = '2026-11-07T00:00:00.000Z';
 const LATER = '2027-11-07T00:00:00.000Z';
@@ -103,7 +103,7 @@ beforeEach(() => {
   const log = testLogger();
   context = new StoreContext(new Sql(database), new ChangeFeed(log), () => new Date(NOW));
   migrate(new Sql(database), MIGRATIONS, NOW, log);
-  repositories = driveRepositories(context, drivePathOf);
+  repositories = driveRepositories(context, driveFolders);
   const profiles = new ProfilesRepository(context);
   robin = profiles.create({ name: 'Robin' }).id;
   sam = profiles.create({ name: 'Sam' }).id;

@@ -80,19 +80,19 @@ afterEach(async () => {
 });
 
 describe('the taken months of a drive change', () => {
-  it('names the month a committed photo was taken in', () => {
-    record(taken('a.jpg', '2026-03-15T10:00:00.000Z'), 'a');
+  it('names the month a committed photo was taken in', async () => {
+    await record(taken('a.jpg', '2026-03-15T10:00:00.000Z'), 'a');
     expect(months).toStrictEqual([['2026-03']]);
   });
 
-  it('is empty when the item has no capture time', () => {
-    record(taken('b.jpg', null), 'b');
+  it('is empty when the item has no capture time', async () => {
+    await record(taken('b.jpg', null), 'b');
     expect(months).toStrictEqual([[]]);
   });
 
-  it('is empty for a file that is not a photo or video and for a folder', () => {
-    record(taken('notes.txt', null), 'c');
-    record(folderDraft(newItem('albums'), 0), 'd');
+  it('is empty for a file that is not a photo or video and for a folder', async () => {
+    await record(taken('notes.txt', null), 'c');
+    await record(folderDraft(newItem('albums'), 0), 'd');
     expect(months).toStrictEqual([[], []]);
   });
 });

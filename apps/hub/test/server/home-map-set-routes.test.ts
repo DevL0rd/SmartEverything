@@ -21,7 +21,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { HomeMapSet } from '../../src/home-map/map-set';
-import { HomeMapService } from '../../src/home-map/service';
+import { directHomeMapVersions } from '../../src/home-map/map-store';
+import type { HomeMapService } from '../../src/home-map/service';
 import { HomeMapVersions } from '../../src/home-map/versions';
 import type { Caller } from '../../src/server/auth';
 import { homeMapRoutes, homeMapTag } from '../../src/server/handlers/home-map';
@@ -34,6 +35,7 @@ import { MIGRATIONS } from '../../src/store/migrations';
 import { HomeMapVersionsRepository } from '../../src/store/repositories/home-map-versions';
 import { HomeMapsRepository } from '../../src/store/repositories/home-maps';
 import { Sql } from '../../src/store/sql';
+import { directService } from '../home-map/store-fixtures';
 import { testLogger } from '../support/logs';
 import { testStore, type TestStore } from '../support/store';
 
@@ -159,24 +161,20 @@ beforeEach(async () => {
   migrate(sql, MIGRATIONS, NOW, testLogger());
   const context = new StoreContext(sql, new ChangeFeed(testLogger('store')), () => new Date(NOW));
   repository = new HomeMapsRepository(context, () => undefined);
-  service = new HomeMapService({
-    maps: repository,
-    knownModel: (): boolean => true,
-    log: testLogger('home-map'),
-  });
+  service = await directService(repository, context);
   resets = [];
   feedCalls = [];
   reached = [];
   const set = new HomeMapSet({
-    sets: repository,
     maps: service,
     removeScan: (): void => undefined,
     log: testLogger('home-map'),
   });
   const versions = new HomeMapVersions({
-    versions: new HomeMapVersionsRepository(context),
+    versions: directHomeMapVersions(repository, new HomeMapVersionsRepository(context), (work) =>
+      context.write(work),
+    ),
     maps: service,
-    mapIds: (): HomeMapId[] => repository.ids(),
     log: testLogger('home-map'),
   });
   const note = (name: string, mapId: HomeMapId | undefined): void => {
@@ -192,9 +190,9 @@ beforeEach(async () => {
       robotMapId: number,
       assignment: HomeMapFeedAssignment,
       actor: HomeMapActor,
-    ): HomeMapFeed => {
+    ): Promise<HomeMapFeed> => {
       feedCalls.push({ deviceId, robotMapId, assignment, actor });
-      return feed(robotMapId, 'target' in assignment ? null : assignment);
+      return Promise.resolve(feed(robotMapId, 'target' in assignment ? null : assignment));
     },
   };
   routes = homeMapRoutes({
@@ -206,21 +204,21 @@ beforeEach(async () => {
       imports: {
         importSource: (_request, mapId) => {
           note('importSource', mapId);
-          return { revision: 0, status: 'unchanged' };
+          return Promise.resolve({ revision: 0, status: 'unchanged' as const });
         },
         align: (_sourceId, _request, _actor, mapId) => {
           note('align', mapId);
-          return 0;
+          return Promise.resolve(0);
         },
         resolveNotice: (_noticeId, _action, _actor, mapId) => {
           note('resolveNotice', mapId);
-          return 0;
+          return Promise.resolve(0);
         },
       },
       devices: {
         place: (_request, _actor, mapId) => {
           note('place', mapId);
-          return { revision: 0, placed: 0 };
+          return Promise.resolve({ revision: 0, placed: 0 });
         },
       },
     },
@@ -233,7 +231,7 @@ beforeEach(async () => {
       reset: {
         reset: (mapId, actor, sourceId) => {
           resets.push({ mapId, actor, sourceId });
-          return { revision: service.revision(mapId), conflicts: [] };
+          return Promise.resolve({ revision: service.revision(mapId), conflicts: [] });
         },
       },
       feeds,
@@ -293,7 +291,9 @@ describe('the set of maps', () => {
       [first.id, false],
     ]);
     expect(
-      service.revisions({ mapId: second.id }).some((entry) => entry.actor.startsWith('profile:')),
+      (await service.revisions({ mapId: second.id })).some((entry) =>
+        entry.actor.startsWith('profile:'),
+      ),
     ).toBe(true);
   });
 
@@ -361,8 +361,8 @@ describe('the map id of the map endpoints', () => {
       [...listed.map((e) => e.revision)].sort(),
     );
     expect(listed.at(-1)?.revision).toBe(service.revision(second.id));
-    expect(listed.length).toBe(service.revisions({ mapId: second.id }).length);
-    expect(listed.length).not.toBe(service.revisions({ mapId: first.id }).length);
+    expect(listed.length).toBe((await service.revisions({ mapId: second.id })).length);
+    expect(listed.length).not.toBe((await service.revisions({ mapId: first.id })).length);
   });
 
   it('refuses a map that does not exist', async () => {

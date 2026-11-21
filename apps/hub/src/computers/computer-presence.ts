@@ -2,11 +2,15 @@ import { computerRoleOfModel } from '@smarteverything/domain';
 import type { Store } from '../store/store';
 
 export async function resetComputerPresence(
-  store: Pick<Store, 'devices' | 'computerNodes'>,
+  store: Pick<Store, 'host'>,
   setOnline: (deviceId: string, online: boolean) => Promise<void>,
 ): Promise<void> {
-  const paired = new Set(store.computerNodes.activeDeviceIds());
-  for (const device of store.devices.list()) {
+  const [active, devices] = await Promise.all([
+    store.host.call('computerNodes', 'activeDeviceIds'),
+    store.host.call('devices', 'list'),
+  ]);
+  const paired = new Set(active);
+  for (const device of devices) {
     if (
       device.provider === 'local' &&
       device.kind === 'computer' &&

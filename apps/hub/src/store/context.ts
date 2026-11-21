@@ -61,6 +61,7 @@ export function found<T>(row: T | undefined, what: string, key: string): T {
 
 export class StoreContext {
   private readonly enlisted = new Set<() => void>();
+  private readonly forgetters = new Set<() => void>();
 
   constructor(
     readonly sql: Sql,
@@ -103,6 +104,17 @@ export class StoreContext {
     return (): void => {
       this.enlisted.delete(hook);
     };
+  }
+
+  onForeignCommit(forget: () => void): () => void {
+    this.forgetters.add(forget);
+    return (): void => {
+      this.forgetters.delete(forget);
+    };
+  }
+
+  foreignCommitted(): void {
+    for (const forget of this.forgetters) forget();
   }
 
   speech(speech: CommittedSpeech): void {

@@ -37,6 +37,7 @@ export interface AlbumPage {
 }
 
 export type NewAlbum = {
+  readonly id?: string | undefined;
   readonly title: string;
   readonly surface: DriveAlbumSurface;
   readonly scope: DriveAlbum['scope'];
@@ -135,9 +136,12 @@ export class DriveAlbumsService {
   }
 
   create(input: NewAlbum, viewer: DriveActor): DriveAlbum {
+    if (input.id !== undefined && this.deps.albums.find(input.id) !== undefined) {
+      return this.owned(input.id, viewer);
+    }
     const now = this.deps.now();
     const base = {
-      id: this.deps.newId(),
+      id: input.id ?? this.deps.newId(),
       title: input.title,
       surface: input.surface,
       scope: input.scope,

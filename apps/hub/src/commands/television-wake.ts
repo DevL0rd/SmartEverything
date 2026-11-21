@@ -43,7 +43,7 @@ export class WakePacketsFailedError extends Error {
 
 export interface TelevisionWakeOptions {
   readonly wake: WakeOnLan;
-  readonly settingsOf: (deviceId: string) => TelevisionSettingsRow | undefined;
+  readonly settingsOf: (deviceId: string) => Promise<TelevisionSettingsRow | undefined>;
   readonly online: (deviceId: string) => boolean;
   readonly subscribe: (listener: SignalListener) => () => void;
   readonly woke: (deviceId: string) => void;
@@ -63,7 +63,7 @@ export class TelevisionWake {
     if (this.waking.has(deviceId)) {
       return null;
     }
-    const settings = this.options.settingsOf(deviceId);
+    const settings = await this.options.settingsOf(deviceId);
     if (settings === undefined || settings.wake_macs.length === 0) {
       throw new CommandRefusedError('power', NO_WAKE_ADDRESS);
     }

@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { MCP_TOKEN, hashMcpToken } from '@smarteverything/domain';
 import { ClaudeFileReadError, ClaudeNotReadyError } from '../claude/errors';
 import { join } from 'node:path';
@@ -66,37 +65,39 @@ export function startClaude(context: ServerContext, options: ClaudeWiring): Star
   });
   context.computerAi.setLocalFactory((deviceId) => {
     localDeviceId = deviceId;
-    try {
-      retainLocalCredential(options.store, deviceId, sites.directory);
-    } catch (cause) {
+    retainLocalCredential(options.store, deviceId, sites.directory).catch((cause: unknown) => {
       log.error('link.credential_unavailable', cause);
-    }
+    });
     return createClaudeHost({
       service,
       plane,
       deviceId,
       sites,
       log,
-      settings: options.store.computerAi.settings(deviceId),
+      settings: options.store.live.computers.aiSettings(deviceId),
     });
   });
   service.start();
   return { service, routes: claudeLinkRoutes({ plane, log }) };
 }
 
-function retainLocalCredential(store: Store, deviceId: string, directory: string): void {
+async function retainLocalCredential(
+  store: Store,
+  deviceId: string,
+  directory: string,
+): Promise<void> {
   const file = join(directory, 'link.token');
   let text: string;
   try {
-    text = readFileSync(file, 'utf8');
+    text = await readFile(file, 'utf8');
   } catch (cause) {
     if (isMissing(cause)) return;
     throw new ClaudeFileReadError(file, cause);
   }
   const token = MCP_TOKEN.parse(text.trim());
   const hash = hashMcpToken(token);
-  if (store.oauth.activePersonalTokenByHash(hash) === undefined) return;
-  store.computerNativeMcpPolicy.bindLocal(deviceId, hash);
+  if ((await store.host.call('oauth', 'activePersonalTokenByHash', hash)) === undefined) return;
+  await store.host.call('computerNativeMcpPolicy', 'bindLocal', deviceId, hash);
 }
 
 async function localMcp(
@@ -106,8 +107,8 @@ async function localMcp(
 ): Promise<{ url: string | null; headersCommand: string }> {
   if (deviceId === null)
     throw new ClaudeNotReadyError('mcp', 'The local native computer identity is not bound.');
-  retainLocalCredential(options.store, deviceId, sites.directory);
-  const policy = options.store.computerNativeMcpPolicy.read({
+  await retainLocalCredential(options.store, deviceId, sites.directory);
+  const policy = await options.store.host.call('computerNativeMcpPolicy', 'read', {
     device_id: deviceId,
     runtime: 'claude',
   });

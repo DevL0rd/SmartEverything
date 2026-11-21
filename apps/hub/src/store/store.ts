@@ -3,42 +3,41 @@ import { basename } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import type { Logger } from '@smarteverything/logging';
-import { StoreContext } from './context';
+import type { StoreContext } from './context';
 import { ChangeFeed } from './feed';
 import { CHECKPOINT_FRAMES, StoreCheckpoints } from './checkpoints';
 import { DriveSyncRetention } from './drive-sync-retention';
 import { StoreReader } from './reader';
 import { migrate } from './migrate';
 import { discardMigrationBackups } from './migration-backup';
-import type { DrivePathOf } from './repositories/drive-roots';
+import type { DriveFolders } from '../data-layout/drive-folders';
 import { repairPersonAccess } from './person-access-repair';
 import { MIGRATIONS } from './migrations';
-import { assistantRepositories } from './repositories/areas/assistant';
-import { automationRepositories } from './repositories/areas/automation';
-import { computerRepositories } from './repositories/areas/computers';
-import { driveRepositories } from './repositories/areas/drive';
-import { healthRepositories } from './repositories/areas/health';
-import { homeRepositories } from './repositories/areas/home';
-import { peopleRepositories } from './repositories/areas/people';
-import { photoRepositories } from './repositories/areas/photos';
-import { plannerRepositories } from './repositories/areas/planner';
-import { platformRepositories } from './repositories/areas/platform';
 import { durableSessionWrite } from './repositories/dsh-session-durability';
-import { SettingsRepository } from './repositories/settings';
+import type { SettingsRepository } from './repositories/settings';
 import { automationStorageMetrics } from './automation-storage-metrics';
 import { sweepRetention } from './retention';
 import { reportedSql } from './sql-report';
 import type { Sql } from './sql';
-import { Ledger } from '../ledger/ledger';
+import type { Ledger } from '../ledger/ledger';
+import { assembledStore, type Repositories } from './assemble';
+import { StoreHost } from './host/host';
+import { StoreLive } from './live';
 import { DAY_MS } from '../metrics/minute';
-import { messageOf } from '@smarteverything/logging';
+import { background, messageOf } from '@smarteverything/logging';
 
 export interface StoreOptions {
   readonly path: string;
   readonly log: Logger;
   readonly now: () => Date;
   readonly systemTimeZone: string;
-  readonly drivePathOf: DrivePathOf;
+  readonly driveFolders: DriveFolders | null;
+  readonly host: StoreHostSetup;
+}
+
+export interface StoreHostSetup {
+  readonly script: string;
+  readonly readers: number;
 }
 
 const BUSY_TIMEOUT_MS = 5000;
@@ -93,25 +92,25 @@ function startTimeZone(settings: SettingsRepository, options: StoreOptions): voi
   }
 }
 
-const repositoriesOf = (context: StoreContext, log: Logger, drivePathOf: DrivePathOf) =>
-  ({
-    ...homeRepositories(context, log),
-    ...computerRepositories(context),
-    ...driveRepositories(context, drivePathOf),
-    ...automationRepositories(context),
-    ...healthRepositories(context),
-    ...plannerRepositories(context),
-    ...assistantRepositories(context),
-    ...peopleRepositories(context),
-    ...photoRepositories(context),
-    ...platformRepositories(context),
-  }) as const;
+function seed(
+  settings: SettingsRepository,
+  repositories: Repositories,
+  options: StoreOptions,
+): void {
+  settings.ensure();
+  repositories.weather.ensure();
+  repositories.exchangeRates.ensure();
+  startTimeZone(settings, options);
+}
 
-export type Store = ReturnType<typeof repositoriesOf> & {
+export type Store = Repositories & {
+  readonly path: string;
   readonly context: StoreContext;
   readonly database: DatabaseSync;
   readonly feed: ChangeFeed;
   readonly reader: StoreReader;
+  readonly host: StoreHost;
+  readonly live: StoreLive;
   readonly settings: SettingsRepository;
   readonly ledger: Ledger;
   readonly now: () => Date;
@@ -191,12 +190,47 @@ function syncOpRetentionOf(sql: Sql, options: StoreOptions): () => void {
   };
 }
 
+function hostOf(
+  sql: Sql,
+  feed: ChangeFeed,
+  context: StoreContext,
+  options: StoreOptions,
+): StoreHost {
+  const host = new StoreHost({
+    script: options.host.script,
+    readers: options.host.readers,
+    path: options.path,
+    driveFolders: options.driveFolders,
+    busyTimeoutMs: BUSY_TIMEOUT_MS,
+    log: options.log,
+    now: options.now,
+    feed,
+    committed: (): void => {
+      context.foreignCommitted();
+      sql.committedElsewhere();
+      feed.committed();
+    },
+  });
+  sql.onCommit(() => {
+    host.committedOnMain();
+  });
+  return host;
+}
+
 function summaryOf(feed: ChangeFeed, log: Logger): NodeJS.Timeout {
   const timer = setInterval(() => {
     log.debug('change.summary', () => ({ ...feed.drain(), windowMs: FEED_SUMMARY_MS }));
   }, FEED_SUMMARY_MS);
   timer.unref();
   return timer;
+}
+
+function openedLog(options: StoreOptions, version: number, startedAt: number): void {
+  options.log.info('store.opened', { version });
+  options.log.debug('store.open_timed', () => ({
+    file: basename(options.path),
+    durationMs: Math.round(performance.now() - startedAt),
+  }));
 }
 
 export function openStore(options: StoreOptions): Store {
@@ -207,27 +241,25 @@ export function openStore(options: StoreOptions): Store {
   const startedAt = performance.now();
   const version = migrated(sql, options);
   const feed = new ChangeFeed(options.log);
-  const context = new StoreContext(sql, feed, options.now);
-  const settings = new SettingsRepository(context);
-  settings.ensure();
-  startTimeZone(settings, options);
+  const { context, settings, ledger, repositories } = assembledStore(sql, feed, options);
+  seed(settings, repositories, options);
   const feedSummary = summaryOf(feed, options.log);
   const retention = retentionOf(sql, options);
   const reader = new StoreReader({ ...options, busyTimeoutMs: BUSY_TIMEOUT_MS });
   const stopBackground = backgroundWorkOf(sql, options);
-  options.log.info('store.opened', { version });
-  options.log.debug('store.open_timed', () => ({
-    file: basename(options.path),
-    durationMs: Math.round(performance.now() - startedAt),
-  }));
+  const host = hostOf(sql, feed, context, options);
+  openedLog(options, version, startedAt);
   return {
+    path: options.path,
     context,
     database,
     feed,
     reader,
+    host,
+    live: new StoreLive(repositories, host, feed),
     settings,
-    ...repositoriesOf(context, options.log, options.drivePathOf),
-    ledger: new Ledger(context, () => settings.read().time_zone),
+    ...repositories,
+    ledger,
     now: options.now,
     write: (work) => context.write(work),
     durableWrite: (work) => durableSessionWrite(context, work),
@@ -237,6 +269,7 @@ export function openStore(options: StoreOptions): Store {
       retention.stop();
       stopBackground();
       reader.close();
+      background(host.close(), 'store.host_close_failed');
       stop();
       try {
         database.close();

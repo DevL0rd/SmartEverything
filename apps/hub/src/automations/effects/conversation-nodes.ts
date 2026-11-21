@@ -28,7 +28,7 @@ import { admitRun } from './run-abort';
 import { callTool, type JsonObject } from './tool';
 
 export interface ConversationEffectPorts {
-  readonly store: Pick<Store, 'profiles' | 'assistantChat'>;
+  readonly store: Pick<Store, 'host'>;
   readonly integration: Pick<IntegrationPorts, 'tools' | 'pictures' | 'ownerProfileId'>;
   readonly images: Pick<AutomationImagesSlot, 'current'>;
   readonly clock: Pick<Clock, 'now'>;
@@ -77,12 +77,12 @@ type PostAsk = z.infer<typeof POST_PARAMS>;
 
 const POSTED = z.object({ result: z.object({ id: ID }) });
 
-function attachmentOf(
+async function attachmentOf(
   store: ConversationEffectPorts['store'],
   id: string,
-): { readonly id: string; readonly profile_id: string } | undefined {
+): Promise<{ readonly id: string; readonly profile_id: string } | undefined> {
   try {
-    return store.assistantChat.attachment(id);
+    return await store.host.call('assistantChat', 'attachment', id);
   } catch (cause) {
     if (cause instanceof StoreNotFoundError) return undefined;
     throw cause;
@@ -95,7 +95,7 @@ async function pictureFile(
   pictureId: string,
   signal: AbortSignal,
 ): Promise<string> {
-  const known = attachmentOf(ports.store, pictureId);
+  const known = await attachmentOf(ports.store, pictureId);
   if (known !== undefined) {
     if (known.profile_id !== target) {
       throw new IntegrationError(
@@ -237,8 +237,13 @@ async function hitsSince(
   return [...(await hitsSince(ports, reading, page.before, run)), ...inside];
 }
 
-function speakersOf(ports: ConversationEffectPorts, hits: readonly TranscriptHit[]): JsonValue {
-  const people = new Set(ports.store.profiles.list().map((profile) => profile.id));
+async function speakersOf(
+  ports: ConversationEffectPorts,
+  hits: readonly TranscriptHit[],
+): Promise<JsonValue> {
+  const people = new Set(
+    (await ports.store.host.call('profiles', 'list')).map((profile) => profile.id),
+  );
   const spoke = hits.flatMap(({ line }) =>
     line.speaker_id !== null && people.has(line.speaker_id) ? [line.speaker_id] : [],
   );
@@ -271,7 +276,7 @@ function transcriptRead(ports: ConversationEffectPorts): EffectHandler {
             text: line.text,
             bot: line.bot,
           })),
-          speakers: speakersOf(ports, hits),
+          speakers: await speakersOf(ports, hits),
         }),
       };
     } catch (cause) {

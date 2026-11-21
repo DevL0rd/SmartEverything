@@ -1,5 +1,4 @@
 import {
-  ApiError,
   PLANNER_SIGNAL,
   type PlannerAlarmRow,
   type PlannerMissedReason,
@@ -10,10 +9,9 @@ import {
 import type { Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import type { Store } from '../store/store';
+import { PendingWork } from './pending-work';
 
-const MINUTE_MS = 60_000;
-
-export type RingStore = Pick<Store, 'profiles' | 'plannerAlarms' | 'plannerRings' | 'feed'>;
+export type RingStore = Pick<Store, 'host' | 'feed'>;
 
 export interface RingDeskOptions {
   readonly store: RingStore;
@@ -27,22 +25,14 @@ type AlarmSignalKind = Extract<
   'alarm_rang' | 'alarm_dismissed' | 'alarm_snoozed'
 >;
 
-function assertSnoozeLeft(limit: number | null, used: number): void {
-  if (limit !== null && used >= limit) {
-    throw new ApiError(
-      'conflict',
-      `This alarm allows ${String(limit)} ${limit === 1 ? 'snooze' : 'snoozes'} and they are used up.`,
-    );
-  }
-}
-
 export class RingDesk {
   private readonly snoozing = new Map<string, Cancel>();
+  private readonly work = new PendingWork('planner.alarm_resound_failed');
 
   constructor(private readonly options: RingDeskOptions) {}
 
-  ring(alarm: PlannerAlarmRow, dueAt: Date): PlannerRingRow {
-    const row = this.options.store.plannerRings.insert({
+  async ring(alarm: PlannerAlarmRow, dueAt: Date): Promise<PlannerRingRow> {
+    const row = await this.options.store.host.call('plannerRings', 'insert', {
       kind: 'alarm',
       ref_id: alarm.id,
       profile_id: alarm.profile_id,
@@ -58,78 +48,57 @@ export class RingDesk {
     return row;
   }
 
-  missed(alarm: PlannerAlarmRow, dueAt: Date, reason: PlannerMissedReason): PlannerRingRow {
-    const row = this.options.store.plannerRings.insert({
-      kind: 'alarm',
-      ref_id: alarm.id,
-      profile_id: alarm.profile_id,
-      due_at: dueAt.toISOString(),
-      rang_at: null,
-      dismissed_at: null,
-      snoozes: 0,
-      target: null,
-      outcome: 'missed',
-      missed_reason: reason,
-    });
-    this.options.log.warn('planner.alarm_missed', { alarmId: alarm.id, reason });
+  missed(row: PlannerRingRow, reason: PlannerMissedReason): void {
+    this.options.log.warn('planner.alarm_missed', { alarmId: row.ref_id, reason });
     this.notice(row);
-    return row;
   }
 
-  ringingNow(profileId: string): PlannerRingRow[] {
+  async ringingNow(profileId: string): Promise<PlannerRingRow[]> {
     const now = this.options.clock.now().getTime();
-    return this.options.store.plannerRings
-      .ringing(profileId)
-      .filter((row) => row.rang_at !== null && Date.parse(row.rang_at) <= now);
+    return (await this.options.store.host.call('plannerRings', 'ringing', profileId)).filter(
+      (row) => row.rang_at !== null && Date.parse(row.rang_at) <= now,
+    );
   }
 
-  snooze(profileId: string, ringId: string, minutes?: number): PlannerRingRow {
-    const ring = this.open(profileId, ringId);
-    const alarm = this.options.store.plannerAlarms.find(ring.ref_id, profileId);
-    assertSnoozeLeft(alarm?.snooze_limit ?? null, ring.snoozes);
-    const length = minutes ?? alarm?.snooze_minutes;
-    if (length === undefined) {
-      throw new ApiError('invalid_request', 'The alarm is gone, so say how long to snooze.');
-    }
-    const until = new Date(this.options.clock.now().getTime() + length * MINUTE_MS);
-    const row = this.options.store.plannerRings.update(ringId, {
-      snoozes: ring.snoozes + 1,
-      rang_at: until.toISOString(),
+  async snooze(profileId: string, ringId: string, minutes?: number): Promise<PlannerRingRow> {
+    const { row, label, until } = await this.options.store.host.write('plannerRingSnooze', {
+      profileId,
+      ringId,
+      minutes: minutes ?? null,
+      nowMs: this.options.clock.now().getTime(),
     });
-    this.hold(row, until);
-    this.options.emit(
-      this.signal('alarm_snoozed', row, alarm?.label ?? null, {
-        snoozes: row.snoozes,
-        until: until.toISOString(),
-      }),
-    );
+    this.hold(row, new Date(until));
+    this.options.emit(this.signal('alarm_snoozed', row, label, { snoozes: row.snoozes, until }));
     this.notice(row);
     return row;
   }
 
-  dismiss(profileId: string, ringId: string): PlannerRingRow {
-    const ring = this.open(profileId, ringId);
+  async dismiss(profileId: string, ringId: string): Promise<PlannerRingRow> {
+    const { row, label } = await this.options.store.host.write('plannerRingDismiss', {
+      profileId,
+      ringId,
+      nowMs: this.options.clock.now().getTime(),
+    });
     this.snoozing.get(ringId)?.();
     this.snoozing.delete(ringId);
-    const row = this.options.store.plannerRings.update(ringId, {
-      dismissed_at: this.options.clock.now().toISOString(),
-    });
-    const alarm = this.options.store.plannerAlarms.find(ring.ref_id, profileId);
-    this.options.emit(this.signal('alarm_dismissed', row, alarm?.label ?? null));
+    this.options.emit(this.signal('alarm_dismissed', row, label));
     this.notice(row);
     return row;
   }
 
-  reconcile(reason: PlannerMissedReason): void {
+  async reconcile(reason: PlannerMissedReason): Promise<void> {
     this.stop();
-    const now = this.options.clock.now();
-    for (const profile of this.options.store.profiles.list()) {
-      for (const alarm of this.options.store.plannerAlarms.list(profile.id)) {
-        for (const row of this.options.store.plannerRings.forRef('alarm', alarm.id)) {
-          this.settleSnooze(row, now, reason);
-        }
-      }
+    const settled = await this.options.store.host.write('plannerRingSnoozesSettle', {
+      nowMs: this.options.clock.now().getTime(),
+    });
+    for (const { row, resumeAt } of settled.held) this.hold(row, new Date(resumeAt));
+    for (const ringId of settled.dismissed) {
+      this.options.log.warn('planner.snooze_overdue', { ringId, reason });
     }
+  }
+
+  settled(): Promise<void> {
+    return this.work.settled();
   }
 
   stop(): void {
@@ -139,48 +108,25 @@ export class RingDesk {
     this.snoozing.clear();
   }
 
-  private settleSnooze(row: PlannerRingRow, now: Date, reason: PlannerMissedReason): void {
-    if (row.outcome !== 'rang' || row.dismissed_at !== null || row.snoozes === 0) {
-      return;
-    }
-    const resumeAt = new Date(Date.parse(row.rang_at ?? row.due_at));
-    if (resumeAt.getTime() > now.getTime()) {
-      this.hold(row, resumeAt);
-      return;
-    }
-    this.options.log.warn('planner.snooze_overdue', { ringId: row.id, reason });
-    this.options.store.plannerRings.update(row.id, { dismissed_at: now.toISOString() });
-  }
-
   private hold(row: PlannerRingRow, until: Date): void {
     this.snoozing.get(row.id)?.();
     this.snoozing.set(
       row.id,
       this.options.clock.at(until, () => {
         this.snoozing.delete(row.id);
-        this.resound(row.id);
+        this.work.run(this.resound(row.id), { ringId: row.id });
       }),
     );
   }
 
-  private resound(ringId: string): void {
-    const ring = this.options.store.plannerRings.find(ringId);
+  private async resound(ringId: string): Promise<void> {
+    const { host } = this.options.store;
+    const ring = await host.call('plannerRings', 'find', ringId);
     if (ring?.dismissed_at !== null) {
       return;
     }
-    const alarm = this.options.store.plannerAlarms.find(ring.ref_id, ring.profile_id);
+    const alarm = await host.call('plannerAlarms', 'find', ring.ref_id, ring.profile_id);
     this.announce(ring, alarm?.label ?? null, 'alarm_rang');
-  }
-
-  private open(profileId: string, ringId: string): PlannerRingRow {
-    const ring = this.options.store.plannerRings.find(ringId);
-    if (ring?.profile_id !== profileId) {
-      throw new ApiError('not_found', 'That ring does not exist.');
-    }
-    if (ring.outcome !== 'rang' || ring.dismissed_at !== null) {
-      throw new ApiError('conflict', 'That ring is no longer ringing.');
-    }
-    return ring;
   }
 
   private announce(row: PlannerRingRow, label: string | null, kind: AlarmSignalKind): void {

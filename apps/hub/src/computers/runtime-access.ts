@@ -17,14 +17,18 @@ const RUNTIME_COMMAND_CAPABILITIES: ReadonlyMap<string, string> = new Map([
   ['provider_command', 'provider_start'],
   ['provider_command_dispatch', 'provider_start'],
 ]);
-export function assertNativeEffectsReconciled(
-  store: Store,
+export async function assertNativeEffectsReconciled(
+  store: Pick<Store, 'host'>,
   target: ComputerRuntimeTarget,
   request: ComputerRuntimeRequest,
-): void {
+): Promise<void> {
   if (!('session_id' in request.request)) return;
   const sessionId = request.request.session_id;
-  for (const receipt of store.nativeCommandOperations.unknownRuntime(target.runtime))
+  for (const receipt of await store.host.call(
+    'nativeCommandOperations',
+    'unknownRuntime',
+    target.runtime,
+  ))
     if (receipt.scope.device_id === target.device_id && receipt.scope.session_id === sessionId)
       throw new ApiError(
         'conflict',

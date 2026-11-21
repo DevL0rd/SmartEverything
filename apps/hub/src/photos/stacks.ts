@@ -1,8 +1,9 @@
 import { ApiError, type Stack, type StackKind } from '@smarteverything/domain';
 import { z } from 'zod';
 import type { DriveActor } from '../drive/access';
-import { DRIVE_PAGE_SIZE } from '../drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../drive/page-size';
 import type { StoreContext } from '../store/context';
+import { storeUnit } from '../store/host/unit';
 import { DriveMediaRepository } from '../store/repositories/drive-media';
 import { DriveStacksRepository, type DriveStackKind } from '../store/repositories/drive-stacks';
 import { jsonText } from '../store/sql';
@@ -234,3 +235,20 @@ export class StacksService {
     );
   }
 }
+
+export const PHOTO_STACKS_UNIT = storeUnit(
+  (store, input: { readonly actor: DriveActor; readonly cursor: string | undefined }) =>
+    new StacksService(store.context).list(input.actor, input.cursor),
+);
+
+export const PHOTO_STACK_UNIT = storeUnit(
+  (store, input: { readonly actor: DriveActor; readonly stackId: string }) =>
+    new StacksService(store.context).read(input.actor, input.stackId),
+);
+
+export const PHOTO_STACK_COVER_UNIT = storeUnit(
+  (
+    store,
+    input: { readonly actor: DriveActor; readonly stackId: string; readonly itemId: string },
+  ) => new StacksService(store.context).makeCover(input.actor, input.stackId, input.itemId),
+);

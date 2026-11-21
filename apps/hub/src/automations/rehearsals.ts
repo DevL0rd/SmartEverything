@@ -20,7 +20,8 @@ export interface RehearsalPorts {
   readonly clock: Clock;
   readonly base: WorldReadDeps;
   readonly watch: DriverPorts['watch'];
-  readonly subjectOf: (automationId: string) => Subject | undefined;
+  readonly subjectOf: (automationId: string) => Promise<Subject | undefined>;
+  readonly heldSubject: (automationId: string) => Subject | undefined;
   readonly zone: () => string;
 }
 
@@ -123,20 +124,23 @@ function nodesOf(
   return ledger.records;
 }
 
-function sourceOf(
+function sourceFrom(
   ports: RehearsalPorts,
-  automationId: string,
+  subject: Subject | undefined,
   source: Omit<RehearsalSource, 'zone' | 'kinds'>,
 ): Rehearsal | undefined {
-  const subject = ports.subjectOf(automationId);
   return subject === undefined
     ? undefined
     : rehearsalOf(subject, { ...source, zone: ports.zone, kinds: ports.base.kinds });
 }
 
-function requireSource(ports: RehearsalPorts, request: RehearsalRequest): Rehearsal {
+async function requireSource(ports: RehearsalPorts, request: RehearsalRequest): Promise<Rehearsal> {
   const { inputs, startedBy, trigger } = request;
-  const source = sourceOf(ports, request.automationId, { given: inputs, startedBy, trigger });
+  const source = sourceFrom(ports, await ports.subjectOf(request.automationId), {
+    given: inputs,
+    startedBy,
+    trigger,
+  });
   if (source === undefined) throw new ApiError('not_found', 'There is no such automation.');
   return source;
 }
@@ -146,11 +150,15 @@ function childOf(
   request: RehearsalRequest,
 ): (automationId: string) => SimStart | undefined {
   return (automationId) =>
-    sourceOf(ports, automationId, { given: {}, startedBy: request.startedBy })?.start;
+    sourceFrom(ports, ports.heldSubject(automationId), { given: {}, startedBy: request.startedBy })
+      ?.start;
 }
 
-async function dryRun(ports: RehearsalPorts, request: RehearsalRequest): Promise<Played> {
-  const source = requireSource(ports, request);
+async function dryRun(
+  ports: RehearsalPorts,
+  request: RehearsalRequest,
+  source: Rehearsal,
+): Promise<Played> {
   const dry = new DryRun({
     live: { clock: ports.clock, watch: ports.watch, base: ports.base },
     start: source.start,
@@ -170,8 +178,11 @@ async function dryRun(ports: RehearsalPorts, request: RehearsalRequest): Promise
   };
 }
 
-async function simulation(ports: RehearsalPorts, request: RehearsalRequest): Promise<Played> {
-  const source = requireSource(ports, request);
+async function simulation(
+  ports: RehearsalPorts,
+  request: RehearsalRequest,
+  source: Rehearsal,
+): Promise<Played> {
   if (request.scenario === undefined) {
     throw new ApiError('invalid_request', 'A simulation needs a scenario.');
   }
@@ -197,10 +208,13 @@ async function simulation(ports: RehearsalPorts, request: RehearsalRequest): Pro
 export function rehearsals(ports: RehearsalPorts): Rehearsals {
   return {
     run: async (request): Promise<AutomationRunRehearsal> => {
+      const source = await requireSource(ports, request);
       const played =
-        request.mode === 'dry' ? await dryRun(ports, request) : await simulation(ports, request);
+        request.mode === 'dry'
+          ? await dryRun(ports, request, source)
+          : await simulation(ports, request, source);
       const root = played.runs[0];
-      const nodeIds = requireSource(ports, request).nodeIds;
+      const { nodeIds } = source;
       return {
         outcome: played.outcome,
         error: root?.error ?? null,

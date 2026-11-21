@@ -17,6 +17,7 @@ import {
   COMPUTER_AI_SETTINGS,
   type ComputerAiRequest,
   type ComputerAiStatus,
+  type ComputerAiCapabilities,
   type ComputerAiSettingsPatch,
   type ComputerAiModel,
   type ProviderTurn,
@@ -25,9 +26,10 @@ import {
   type AiNativeCommandReceipt,
   type ProviderEvent,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { z } from 'zod';
 import type { Store } from '../store/store';
+import type { ComputerAiState } from '../store/computer-ai-state';
 import type { ComputerAiHost, ComputerAiHostEvent } from './ai-host';
 import { isRead, assertEnabled, assertOperation, assertReply } from './ai-access';
 import { NativeReceipts, type NativeReceiptRequest } from './native-receipts';
@@ -41,12 +43,18 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
   private readonly listeners = new Set<(event: ComputerAiDirectoryEvent) => void>();
   private localDeviceId: string | null = null;
   private localFactory: ((deviceId: string) => ComputerAiHost) | null = null;
+  private readonly state: ComputerAiState;
 
   constructor(
     private readonly store: Store,
     private readonly log: Logger,
   ) {
     super(store, log);
+    this.state = store.live.computers;
+  }
+
+  load(): Promise<void> {
+    return this.state.load();
   }
 
   attachRuntime(
@@ -63,7 +71,7 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
     this.attachLocal();
   }
 
-  bindLocalDevice(deviceId: string): void {
+  async bindLocalDevice(deviceId: string): Promise<void> {
     if (this.localDeviceId !== null && this.localDeviceId !== deviceId) {
       throw new ApiError(
         'conflict',
@@ -72,21 +80,14 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
     }
     this.localDeviceId = deviceId;
     this.runtimes.bindLocalDevice(deviceId);
-    this.store.computerAi.initialiseLocal(
-      deviceId,
-      this.store.assistantChat.settings().claude_link_auto,
-    );
+    await this.state.initialiseLocal(deviceId);
     this.attachLocal();
   }
 
   attach(deviceId: string, host: ComputerAiHost, local: boolean): () => void {
     this.computer(deviceId);
     this.detach(deviceId);
-    this.store.computerAi.cache(
-      deviceId,
-      UNAVAILABLE_CLAUDE,
-      this.store.computerAi.models(deviceId),
-    );
+    this.cached(deviceId, UNAVAILABLE_CLAUDE);
     let leave = (): void => undefined;
     const attached = {
       deviceId,
@@ -119,18 +120,20 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
       device_id: deviceId,
       local: host?.local === true || this.localDeviceId === deviceId,
       online: host !== undefined,
-      settings: this.store.computerAi.settings(deviceId),
-      capabilities: this.store.computerAi.capabilities(deviceId) ?? UNAVAILABLE_CLAUDE,
+      settings: this.state.aiSettings(deviceId),
+      capabilities: this.state.aiCapabilities(deviceId) ?? UNAVAILABLE_CLAUDE,
     };
   }
 
   async update(deviceId: string, patch: ComputerAiSettingsPatch): Promise<ComputerAiStatus> {
     this.computer(deviceId);
-    this.store.computerNativeMcpPolicy.denyLegacy(
+    await this.store.host.call(
+      'computerNativeMcpPolicy',
+      'denyLegacy',
       { device_id: deviceId, runtime: 'claude' },
       patch.control,
     );
-    const previous = this.store.computerAi.settings(deviceId);
+    const previous = this.state.aiSettings(deviceId);
     const settings = COMPUTER_AI_SETTINGS.parse({
       control: { ...previous.control, ...patch.control },
       provider: { ...previous.provider, ...patch.provider },
@@ -146,7 +149,7 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
           'The computer returned a different operation for configure.',
         );
     }
-    this.store.computerAi.saveSettings(deviceId, settings);
+    await this.state.saveAiSettings(deviceId, settings);
     this.changed(deviceId);
     return this.status(deviceId);
   }
@@ -171,7 +174,7 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
         'forbidden',
         'Only the owner may submit or read native operation receipts.',
       );
-    const owner = { profileId: profileIdOf(this.store, caller), clientId: caller.client.id };
+    const owner = { profileId: profileIdOf(caller), clientId: caller.client.id };
     let attached: AttachedClaude;
     if (request.operation === 'native_operation') {
       attached = this.receipts.authorize(
@@ -225,9 +228,7 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
       const reason = !status.online
         ? 'The supplying computer is offline.'
         : 'The provider is disabled on this computer.';
-      return this.store.computerAi
-        .models(deviceId)
-        .map((model) => ({ ...model, available: false, reason }));
+      return this.state.aiModels(deviceId).map((model) => ({ ...model, available: false, reason }));
     }
     const attached = this.available(deviceId, { operation: 'models' });
     const reply = COMPUTER_AI_REPLY.parse(await attached.host.read({ operation: 'models' }));
@@ -238,7 +239,7 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
         'upstream_failed',
         'The computer returned models with an invalid machine binding.',
       );
-    this.store.computerAi.cache(deviceId, this.status(deviceId).capabilities, reply.value);
+    await this.state.cacheAi(deviceId, this.status(deviceId).capabilities, reply.value);
     return reply.value;
   }
 
@@ -279,11 +280,17 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
 
   private attachLocal(): void {
     const { localDeviceId, localFactory } = this;
-    if (localDeviceId === null || localFactory === null || this.hosts.has(localDeviceId)) return;
+    if (
+      localDeviceId === null ||
+      localFactory === null ||
+      !this.state.isLocal(localDeviceId) ||
+      this.hosts.has(localDeviceId)
+    )
+      return;
     const host = localFactory(localDeviceId);
     this.attach(localDeviceId, host, true);
     host
-      .execute({ operation: 'configure', settings: this.store.computerAi.settings(localDeviceId) })
+      .execute({ operation: 'configure', settings: this.state.aiSettings(localDeviceId) })
       .catch((cause: unknown) => {
         this.log.error('computer.local_configure_failed', cause);
       });
@@ -322,12 +329,8 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
   private received(deviceId: string, event: ComputerAiHostEvent, source?: AttachedClaude): void {
     if (source !== undefined && this.hosts.get(deviceId) !== source) return;
     if (event.kind === 'capabilities') {
-      if (!isDeepStrictEqual(this.store.computerAi.capabilities(deviceId), event.capabilities))
-        this.store.computerAi.cache(
-          deviceId,
-          COMPUTER_AI_CAPABILITIES.parse(event.capabilities),
-          this.store.computerAi.models(deviceId),
-        );
+      if (!isDeepStrictEqual(this.state.aiCapabilities(deviceId), event.capabilities))
+        this.cached(deviceId, COMPUTER_AI_CAPABILITIES.parse(event.capabilities));
       this.changed(deviceId);
       return;
     }
@@ -379,13 +382,21 @@ export class ComputerAiDirectory extends ComputerRuntimePorts {
   }
 
   changed(deviceId: string): void {
-    if (this.store.devices.find(deviceId) === undefined) return;
+    if (!this.state.exists(deviceId)) return;
     const status = this.status(deviceId);
     this.changes.emit(deviceId, status);
   }
 
+  private cached(deviceId: string, capabilities: ComputerAiCapabilities): void {
+    background(
+      this.state.cacheAi(deviceId, capabilities, this.state.aiModels(deviceId)),
+      'computer.ai_cache_failed',
+      { deviceId },
+    );
+  }
+
   private computer(deviceId: string): void {
-    if (this.store.devices.byId(deviceId).kind !== 'computer')
+    if (this.state.kind(deviceId) !== 'computer')
       throw new ApiError(
         'invalid_request',
         'Claude computer operations require a computer device.',

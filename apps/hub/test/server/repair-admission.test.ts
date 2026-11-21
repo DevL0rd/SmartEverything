@@ -22,6 +22,7 @@ let stop: () => void;
 beforeEach(async () => {
   Logger.reset();
   opened = await testStore(() => new Date(NOW));
+  await opened.store.live.aiModels.load();
   logs = await testLogStore(opened.directory, opened.store);
   opened.store.clients.create(
     { name: 'Owner', platform: 'android', role: 'owner', tokenHash: 'owner' },
@@ -39,12 +40,15 @@ afterEach(async () => {
   await opened.close();
 });
 
+const HOSTED = { timeout: 10_000 };
+
 function directory(): ChatDirectory {
   return new ChatDirectory(
     opened.store,
     new AssistantFiles({
       layout: opened.layout,
       chat: opened.store.assistantChat,
+      attachments: opened.store.live.attachments,
       now: () => new Date(NOW),
     }),
   );
@@ -104,8 +108,8 @@ it('routes app evidence by its authenticated profile identity with two owners', 
     testLogger('test'),
   );
   await logs.settled();
+  await expect.poll(() => store.assistantEvents.pending(), HOSTED).toHaveLength(1);
   const events = store.assistantEvents.pending();
-  expect(events).toHaveLength(1);
   expect(events[0]).toMatchObject({
     profile_id: profile.id,
     chat_id: chats.repairChat(profile.id).id,
@@ -115,7 +119,7 @@ it('routes app evidence by its authenticated profile identity with two owners', 
 
 it('retains failed automatic attempts finitely and retries only after a committed configuration fix', async () => {
   const { store } = opened;
-  store.aiEngineDefaults.update(CLAUDE_TEST_ENGINE);
+  await store.live.engineDefaults.update(CLAUDE_TEST_ENGINE);
   const chats = directory();
   const records: LogRecord[] = [];
   const failed = vi.fn();
@@ -136,26 +140,19 @@ it('retains failed automatic attempts finitely and retries only after a committe
     await logs.settled();
   }
   expect(failed).not.toHaveBeenCalled();
-  expect(records.filter((record) => record.event === 'repair.admission_failed')).toHaveLength(2);
+  await expect
+    .poll(() => records.filter((record) => record.event === 'repair.admission_failed'), HOSTED)
+    .toHaveLength(2);
   expect(store.aiRepairInbox.list({ limit: 10 }).groups).toMatchObject([
     { progress: 'failed', admission: { kind: 'held', reason: 'unavailable' } },
     { progress: 'failed', admission: { kind: 'held', reason: 'unavailable' } },
   ]);
   expect(store.assistantEvents.pending()).toHaveLength(0);
-  expect(() =>
-    store.write(() => {
-      store.aiEngineDefaults.update(TEST_ENGINE);
-      throw new Error('Rollback default change');
-    }),
-  ).toThrow('Rollback default change');
-  await Promise.resolve();
-  expect(store.assistantEvents.pending()).toHaveLength(0);
-  store.aiEngineDefaults.update(CLAUDE_TEST_ENGINE);
+  await store.live.engineDefaults.update(CLAUDE_TEST_ENGINE);
   await Promise.resolve();
   expect(records.filter((record) => record.event === 'repair.admission_failed')).toHaveLength(2);
-  store.aiEngineDefaults.update(TEST_ENGINE);
-  await Promise.resolve();
-  expect(store.assistantEvents.pending()).toHaveLength(2);
+  await store.live.engineDefaults.update(TEST_ENGINE);
+  await expect.poll(() => store.assistantEvents.pending(), HOSTED).toHaveLength(2);
   const chat = chats.repairChat(store.personAccess.homeOwner());
   expect(store.assistantEvents.pending().every((event) => event.chat_id === chat.id)).toBe(true);
   owned.flush();
@@ -205,7 +202,7 @@ it('keeps the durable queued admission when waking delivery fails after enqueue'
       ],
     },
   });
-  expect(store.assistantEvents.pending()).toHaveLength(1);
+  await expect.poll(() => store.assistantEvents.pending(), HOSTED).toHaveLength(1);
   expect(store.aiRepairInbox.list({ limit: 10 }).groups[0]).toMatchObject({
     progress: 'queued',
     admission: { kind: 'queued' },

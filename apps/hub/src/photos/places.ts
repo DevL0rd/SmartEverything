@@ -1,36 +1,51 @@
-import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { gunzip, gunzipSync } from 'node:zlib';
+import { gunzip } from 'node:zlib';
 import type { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import { found, type StoreContext } from '../store/context';
-import type { StoreReader } from '../store/reader';
-import { inSlices } from '../store/slices';
+import { sha256Hex } from '../drive/digest';
+import { fsCode } from '../fs-code';
+import type { StoreHost } from '../store/host/host';
 import type { Sql } from '../store/sql';
-import { DriveMediaRepository } from '../store/repositories/drive-media';
-import {
-  DRIVE_PLACE_ROW,
-  DrivePlacesRepository,
-  type DrivePlaceRow,
-} from '../store/repositories/drive-places';
-import { SettingsKvRepository } from '../store/repositories/settings-kv';
+import { DRIVE_PLACE_ROW, type DrivePlaceRow } from '../store/repositories/drive-places';
 
 const gunzipAsync = promisify(gunzip);
 
 const SHIPPED = new URL('places/cities.tsv.gz', import.meta.url);
 const CHECKOUT = new URL('../../assets/places/cities.tsv.gz', import.meta.url);
 
-export function placesDatasetPath(): string {
-  const found = [SHIPPED, CHECKOUT].find((candidate) => existsSync(candidate));
-  return fileURLToPath(found ?? CHECKOUT);
+async function present(candidate: URL): Promise<boolean> {
+  try {
+    await access(candidate);
+    return true;
+  } catch (cause) {
+    if (fsCode(cause) === 'ENOENT') return false;
+    throw cause;
+  }
 }
 
-const DATASET_SETTING_KEY = 'photos-places';
+export async function placesDatasetPath(): Promise<string> {
+  for (const candidate of [SHIPPED, CHECKOUT]) {
+    if (await present(candidate)) return fileURLToPath(candidate);
+  }
+  throw new Error(
+    `The places dataset is missing: neither ${fileURLToPath(SHIPPED)} nor ${fileURLToPath(CHECKOUT)} exists.`,
+  );
+}
 
-const DATASET_SETTING = z.strictObject({ sha256: z.string(), count: z.int().nonnegative() });
+export const DATASET_SETTING_KEY = 'photos-places';
+
+export const DATASET_SETTING = z.strictObject({
+  sha256: z.string(),
+  count: z.int().nonnegative(),
+});
+
+export type PlacesDataset = z.output<typeof DATASET_SETTING>;
+
+const SAVE_BATCH = 2048;
+
+const ASSIGN_BATCH = 512;
 
 const WINDOWS = [0.25, 1, 4, 16, 64, 180] as const;
 
@@ -45,13 +60,13 @@ const FIELDS = z.tuple([
   z.string(),
 ]);
 
-const LOCATED = z.strictObject({
+export const LOCATED = z.strictObject({
   item_id: z.string(),
   lat: z.number(),
   lon: z.number(),
 });
 
-const POINT = z.strictObject({ lat: z.number().nullable(), lon: z.number().nullable() });
+export type LocatedItem = z.output<typeof LOCATED>;
 
 export class PlacesDatasetError extends Error {
   override readonly name = 'PlacesDatasetError';
@@ -80,15 +95,22 @@ function placeOfLine(line: string, index: number): DrivePlaceRow {
   }
 }
 
-function datasetLines(text: string): readonly (readonly [string, number])[] {
-  return text
-    .split('\n')
-    .map((line, index) => [line, index] as const)
-    .filter(([line]) => line !== '');
+const NEWLINE = 0x0a;
+
+function* datasetLines(text: Buffer): Generator<readonly [string, number]> {
+  let start = 0;
+  let index = 0;
+  while (start < text.length) {
+    const found = text.indexOf(NEWLINE, start);
+    const end = found === -1 ? text.length : found;
+    if (end > start) yield [text.toString('utf8', start, end), index] as const;
+    start = end + 1;
+    index += 1;
+  }
 }
 
-export function parseDataset(bytes: Uint8Array): readonly DrivePlaceRow[] {
-  return datasetLines(gunzipSync(bytes).toString('utf8')).map(([line, index]) =>
+export async function parseDataset(bytes: Uint8Array): Promise<readonly DrivePlaceRow[]> {
+  return Array.from(datasetLines(await gunzipAsync(bytes)), ([line, index]) =>
     placeOfLine(line, index),
   );
 }
@@ -155,10 +177,31 @@ export class PlaceIndex {
   }
 }
 
+export interface PlacesStore {
+  readonly dataset: () => Promise<PlacesDataset | undefined>;
+  readonly save: (places: readonly DrivePlaceRow[]) => Promise<void>;
+  readonly keep: (ids: readonly string[], dataset: PlacesDataset) => Promise<void>;
+  readonly located: (everything: boolean) => Promise<LocatedItem[]>;
+  readonly assign: (itemId: string) => Promise<string | null>;
+  readonly assignLocated: (located: readonly LocatedItem[]) => Promise<void>;
+  readonly clearLost: () => Promise<void>;
+}
+
+export function hostedPlaces(host: StoreHost): PlacesStore {
+  return {
+    dataset: () => host.read('photoPlacesDataset', null),
+    save: (places) => host.write('photoPlacesSave', { places }),
+    keep: (ids, dataset) => host.write('photoPlacesKeep', { ids, dataset }),
+    located: (everything) => host.read('photoPlacesLocated', { everything }),
+    assign: (itemId) => host.write('photoPlaceAssign', { itemId }),
+    assignLocated: (located) => host.write('photoPlacesAssignLocated', { located }),
+    clearLost: () => host.write('photoPlacesClearLost', null),
+  };
+}
+
 export interface PlacesServiceOptions {
-  readonly context: StoreContext;
-  readonly reader: Pick<StoreReader, 'all'>;
-  readonly datasetPath: string;
+  readonly store: PlacesStore;
+  readonly datasetPath: () => Promise<string>;
   readonly log: Logger;
 }
 
@@ -168,23 +211,13 @@ export interface DatasetLoad {
 }
 
 export class PlacesService {
-  private readonly places: DrivePlacesRepository;
-  private readonly media: DriveMediaRepository;
-  private readonly settings: SettingsKvRepository;
-  private readonly index: PlaceIndex;
-
-  constructor(private readonly options: PlacesServiceOptions) {
-    this.places = new DrivePlacesRepository(options.context);
-    this.media = new DriveMediaRepository(options.context);
-    this.settings = new SettingsKvRepository(options.context);
-    this.index = new PlaceIndex(options.context.sql);
-  }
+  constructor(private readonly options: PlacesServiceOptions) {}
 
   async load(): Promise<DatasetLoad> {
     const loading = this.options.log.operation('photos.places_loading');
-    const bytes = await readFile(this.options.datasetPath);
-    const sha256 = createHash('sha256').update(bytes).digest('hex');
-    const saved = this.savedDataset();
+    const bytes = await readFile(await this.options.datasetPath());
+    const sha256 = await sha256Hex(bytes);
+    const saved = await this.options.store.dataset();
     const replaced = saved?.sha256 !== sha256;
     const count = saved?.sha256 === sha256 ? saved.count : await this.replaceDataset(bytes, sha256);
     const assigned = await this.assignPending(replaced);
@@ -193,63 +226,34 @@ export class PlacesService {
   }
 
   private async replaceDataset(bytes: Uint8Array, sha256: string): Promise<number> {
-    const lines = datasetLines((await gunzipAsync(bytes)).toString('utf8'));
+    const { store } = this.options;
     const ids: string[] = [];
-    await inSlices(this.options.context, lines, ([line, index]) => {
+    let batch: DrivePlaceRow[] = [];
+    for (const [line, index] of datasetLines(await gunzipAsync(bytes))) {
       const place = placeOfLine(line, index);
-      this.places.save(place);
+      batch.push(place);
       ids.push(place.id);
-    });
-    this.options.context.write(() => {
-      this.places.keepOnly(ids);
-      this.settings.save(DATASET_SETTING_KEY, { sha256, count: ids.length });
-    });
+      if (batch.length === SAVE_BATCH) {
+        await store.save(batch);
+        batch = [];
+      }
+    }
+    if (batch.length > 0) await store.save(batch);
+    await store.keep(ids, { sha256, count: ids.length });
     return ids.length;
   }
 
-  assign(itemId: string): string | null {
-    const point = found(
-      this.options.context.sql.get(
-        POINT,
-        'select place_lat as lat, place_lon as lon from drive_items where id = $itemId',
-        { itemId },
-      ),
-      'item',
-      itemId,
-    );
-    const place =
-      point.lat === null || point.lon === null
-        ? undefined
-        : this.index.nearest(point.lat, point.lon);
-    this.media.update(itemId, { place_id: place?.id ?? null });
-    return place?.id ?? null;
+  assign(itemId: string): Promise<string | null> {
+    return this.options.store.assign(itemId);
   }
 
   async assignPending(everything: boolean): Promise<number> {
-    const { context } = this.options;
-    const located = await this.options.reader.all(
-      LOCATED,
-      `select i.id as item_id, i.place_lat as lat, i.place_lon as lon
-       from drive_items i join drive_media m on m.item_id = i.id
-       where i.place_lat is not null and ($everything = 1 or m.place_id is null)`,
-      { everything: everything ? 1 : 0 },
-    );
-    await inSlices(context, located, (row) => {
-      const place = this.index.nearest(row.lat, row.lon);
-      this.media.update(row.item_id, { place_id: place?.id ?? null });
-    });
-    context.write(() =>
-      context.sql.run(
-        'clear the places of items that lost their location',
-        `update drive_media set place_id = null
-         where place_id is not null and item_id in (select id from drive_items where place_lat is null)`,
-      ),
-    );
+    const { store } = this.options;
+    const located = await store.located(everything);
+    for (let start = 0; start < located.length; start += ASSIGN_BATCH) {
+      await store.assignLocated(located.slice(start, start + ASSIGN_BATCH));
+    }
+    await store.clearLost();
     return located.length;
-  }
-
-  private savedDataset(): z.output<typeof DATASET_SETTING> | undefined {
-    const saved = this.settings.read(DATASET_SETTING_KEY);
-    return saved === null ? undefined : DATASET_SETTING.parse(saved);
   }
 }

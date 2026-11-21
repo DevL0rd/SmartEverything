@@ -44,9 +44,11 @@ afterEach(async () => {
   await opened.close();
 });
 
-function grantFor(node: ComputerNodeRow): ReturnType<typeof COMPUTER_MCP_GRANT_RESPONSE.parse> {
+async function grantFor(
+  node: ComputerNodeRow,
+): Promise<ReturnType<typeof COMPUTER_MCP_GRANT_RESPONSE.parse>> {
   return COMPUTER_MCP_GRANT_RESPONSE.parse(
-    manageComputerMcpGrant(
+    await manageComputerMcpGrant(
       { store: opened.store, connections },
       node,
       { action: 'verify', token: TOKEN },
@@ -56,26 +58,26 @@ function grantFor(node: ComputerNodeRow): ReturnType<typeof COMPUTER_MCP_GRANT_R
 }
 
 describe('the address a native MCP grant carries', () => {
-  it('is the verified public address when the computer was recorded with its LAN address', () => {
+  it('is the verified public address when the computer was recorded with its LAN address', async () => {
     opened.store.settings.setPublicUrl(PUBLIC_URL);
     opened.store.settings.recordPublicUrlCheck(PUBLIC_URL, { verified: true });
-    const grant = grantFor(NODE);
+    const grant = await grantFor(NODE);
     expect(grant.url).toBe(`${PUBLIC_URL}/mcp`);
     expect(grant.pin).toBeNull();
   });
 
-  it('is the LAN address with the hub pin when the hub has no verified public address', () => {
-    expect(grantFor(NODE)).toMatchObject({ url: `${LAN_URL}/mcp`, pin: HUB_ID });
+  it('is the LAN address with the hub pin when the hub has no verified public address', async () => {
+    expect(await grantFor(NODE)).toMatchObject({ url: `${LAN_URL}/mcp`, pin: HUB_ID });
     opened.store.settings.setPublicUrl(PUBLIC_URL);
     opened.store.settings.recordPublicUrlCheck(PUBLIC_URL, { verified: false, reason: 'offline' });
-    expect(grantFor(NODE)).toMatchObject({ url: `${LAN_URL}/mcp`, pin: HUB_ID });
+    expect(await grantFor(NODE)).toMatchObject({ url: `${LAN_URL}/mcp`, pin: HUB_ID });
   });
 
-  it('is never the recorded self-signed LAN address without its pin', () => {
+  it('is never the recorded self-signed LAN address without its pin', async () => {
     for (const verified of [false, true]) {
       opened.store.settings.setPublicUrl(verified ? PUBLIC_URL : null);
       if (verified) opened.store.settings.recordPublicUrlCheck(PUBLIC_URL, { verified });
-      const grant = grantFor(NODE);
+      const grant = await grantFor(NODE);
       expect(grant.url === `${LAN_URL}/mcp` && grant.pin === null).toBe(false);
     }
   });

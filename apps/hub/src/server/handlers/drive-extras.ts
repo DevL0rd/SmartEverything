@@ -1,14 +1,15 @@
 import type { DriveActivity } from '../../drive/activity';
 import { randomUUID } from 'node:crypto';
-import { FolderIconRefresher } from '../../drive/content/folder-icon/refresh';
+import { FolderIconRefresher, hostFolderIcons } from '../../drive/content/folder-icon/refresh';
 import type { FolderIconServing } from '../../drive/content/folder-icon/icon-route';
 import { BUNDLED_CONTENT_WORKER } from '../../drive/content/content-worker-client';
 import type { DriveContentDeps } from '../../drive/content/content-reads';
-import type { TextEnvironment } from '../../drive/content/text-job';
+import { hostText, type TextEnvironment } from '../../drive/content/text-job';
 import type { ZipEntryServing } from '../../drive/content/zip-entry-route';
 import type { ConflictEnv } from '../../drive/conflicts';
 import { DriveDownloads } from '../../drive/download-zip';
 import { DriveOffline } from '../../drive/offline';
+import { loadDriveSettings } from '../../drive/settings';
 import { DrivePlacements } from '../../drive/placements';
 import type { RootAvailability } from '../../drive/root-marker';
 import type { DriveReadService } from '../../drive/service-read';
@@ -48,7 +49,8 @@ export interface DriveExtras {
 export function iconsOf(deps: DriveDeps): FolderIconRefresher {
   const { store, layout } = deps;
   return new FolderIconRefresher({
-    store,
+    icons: hostFolderIcons(store),
+    feed: store.feed,
     derivedDirectory: (itemId) => layout.cache.derived(itemId),
     log: deps.log.forArea('hub.drive-icons'),
   });
@@ -62,7 +64,9 @@ export function textOf(
 ): TextEnvironment {
   const { store } = deps;
   return {
-    store,
+    ...hostText(store),
+    settings: () => loadDriveSettings(store),
+    feed: store.feed,
     availability,
     workerScript: deps.contentScript ?? BUNDLED_CONTENT_WORKER,
     icons,
@@ -72,21 +76,17 @@ export function textOf(
 }
 
 export function placementsOf(deps: DriveDeps): DrivePlacements {
-  return new DrivePlacements({
-    store: deps.store,
-    context: deps.store.context,
-    newId: randomUUID,
-  });
+  return new DrivePlacements({ store: deps.store, newId: randomUUID });
 }
 
-function socialOf(deps: DriveDeps, read: DriveReadService): DriveSocialServices {
+function socialOf(deps: DriveDeps): DriveSocialServices {
   const { store } = deps;
   return {
-    comments: new DriveComments({ store, read }),
+    comments: new DriveComments({ store }),
     inbox: new DriveInbox(store),
-    shortcuts: new DriveShortcuts({ store, context: store.context, read }),
-    suggestions: new DriveSuggestions(store.context, store),
-    colours: new DriveFolderColours({ store, read }),
+    shortcuts: new DriveShortcuts({ store }),
+    suggestions: new DriveSuggestions(store),
+    colours: new DriveFolderColours({ store }),
   };
 }
 
@@ -133,10 +133,11 @@ export function extrasOf(deps: DriveDeps, parts: ExtrasParts): DriveExtras {
   const { store } = deps;
   const sharing = sharingOf(deps, parts.env, parts.shares, parts.placements);
   return {
-    content: { store, context: store.context, read: parts.read, links: deps.links },
+    content: { store, links: deps.links },
     zipServing: { store, links: deps.links, now: deps.now },
     iconServing: {
-      store,
+      folder: (itemId) => store.host.call('driveItems', 'find', itemId, null),
+      icon: (itemId) => store.host.call('driveFolderIcons', 'find', itemId),
       links: deps.links,
       derivedDirectory: (itemId) => deps.layout.cache.derived(itemId),
       now: deps.now,
@@ -145,7 +146,7 @@ export function extrasOf(deps: DriveDeps, parts: ExtrasParts): DriveExtras {
     sharing: sharing.services,
     intake: sharing.intake,
     requests: sharing.requests,
-    social: socialOf(deps, parts.read),
+    social: socialOf(deps),
     offline: new DriveOffline({
       store,
       push: deps.pushCommands,

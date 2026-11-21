@@ -29,6 +29,7 @@ function newChatLog(): { readonly log: ConversationLog; readonly chatId: string 
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now,
   });
   const chat = new ChatDirectory(store, files).create(owner, { engine: TEST_ENGINE });
@@ -36,11 +37,15 @@ function newChatLog(): { readonly log: ConversationLog; readonly chatId: string 
 }
 
 describe('reply steps', () => {
-  it('keeps the tools a finished or failed reply used, with how each ended', () => {
+  it('keeps the tools a finished or failed reply used, with how each ended', async () => {
     const { log, chatId } = newChatLog();
     const chat = opened.store.aiChats.chat(chatId);
-    const done = log.startReply(chat, null, 'google/gemini-3.8-flash');
-    const answered = log.finishReply(done.id, 'Roasted chicken.', {
+    const done = await log.startReply({
+      chat: chat,
+      replyTo: null,
+      model: 'google/gemini-3.8-flash',
+    });
+    const answered = await log.finishReply(done.id, 'Roasted chicken.', {
       model: 'google/gemini-3.8-flash',
       steps: [
         { title: 'Read health', outcome: 'done' },
@@ -51,8 +56,12 @@ describe('reply steps', () => {
     });
     expect(answered.steps).toEqual(['Read health', 'Control devices']);
     expect(answered.step_states).toEqual(['done', 'retried']);
-    const broken = log.startReply(chat, null, 'google/gemini-3.8-flash');
-    log.failReply(broken.id, { text: '', reason: 'Stopped.', code: 'stopped' }, [
+    const broken = await log.startReply({
+      chat: chat,
+      replyTo: null,
+      model: 'google/gemini-3.8-flash',
+    });
+    await log.failReply(broken.id, { text: '', reason: 'Stopped.', code: 'stopped' }, [
       { title: 'Control devices', outcome: 'failed' },
     ]);
     const failed = opened.store.assistantChat.message(broken.id);
@@ -61,18 +70,22 @@ describe('reply steps', () => {
     expect(failed).toMatchObject({ state: 'failed', reason: 'Stopped.', reason_code: 'stopped' });
   });
 
-  it('attaches the web sources a finished reply cited, and replaces them on a later finish', () => {
+  it('attaches the web sources a finished reply cited, and replaces them on a later finish', async () => {
     const { log, chatId } = newChatLog();
     const chat = opened.store.aiChats.chat(chatId);
-    const reply = log.startReply(chat, null, 'google/gemini-3.8-flash');
+    const reply = await log.startReply({
+      chat: chat,
+      replyTo: null,
+      model: 'google/gemini-3.8-flash',
+    });
     const finish = (title: string): ReturnType<ConversationLog['finishReply']> =>
       log.finishReply(reply.id, 'Done.', {
         model: 'google/gemini-3.8-flash',
         steps: [],
         sources: [{ url: 'https://example.com/a', title }],
       });
-    expect(finish('First').embeds).toMatchObject([{ kind: 'web_sources' }]);
-    const again = finish('Second');
+    expect((await finish('First')).embeds).toMatchObject([{ kind: 'web_sources' }]);
+    const again = await finish('Second');
     expect(again.embeds).toHaveLength(1);
     expect(JSON.stringify(again.embeds)).toContain('Second');
     expect(JSON.stringify(again.embeds)).not.toContain('First');

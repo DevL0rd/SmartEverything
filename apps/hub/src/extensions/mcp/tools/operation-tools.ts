@@ -91,18 +91,18 @@ export function withCallingChat(
   return { ...args, [CHAT_FIELD]: chatId };
 }
 
-export function withComputer(
+export async function withComputer(
   context: Pick<ToolContext, 'store' | 'actor' | 'caller'>,
   shape: OperationShape,
   args: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, unknown>> {
+): Promise<Readonly<Record<string, unknown>>> {
   if (!shape.computer) {
     return args;
   }
   const wanted = args['deviceId'];
   return {
     ...args,
-    deviceId: computerIdOf(context, typeof wanted === 'string' ? wanted : undefined),
+    deviceId: await computerIdOf(context, typeof wanted === 'string' ? wanted : undefined),
   };
 }
 
@@ -170,18 +170,18 @@ function shownFields(name: McpPartName, args: Readonly<Record<string, unknown>>)
   }
 }
 
-function preparedArguments(
+async function preparedArguments(
   name: McpPartName,
   shape: OperationShape,
   context: OperatingContext,
   args: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, unknown>> {
+): Promise<Readonly<Record<string, unknown>>> {
   shownFields(name, args);
   checkedFields(name, args);
   const filled = filledFields(
     name,
     context,
-    resolveReferences(context, REFERENCE_FIELDS[name], args),
+    await resolveReferences(context, REFERENCE_FIELDS[name], args),
   );
   return worksOutsideChat(name) ? filled : withCallingChat(context, shape, filled);
 }
@@ -191,24 +191,21 @@ export function operationRunner(
   operation: EndpointName,
 ): (context: OperatingContext, args: Readonly<Record<string, unknown>>) => Promise<ToolOutput> {
   const shape = operationShape(operation);
-  return (context, args) => called(context, shape, preparedArguments(name, shape, context, args));
+  return async (context, args) =>
+    await called(context, shape, await preparedArguments(name, shape, context, args));
 }
 
 export function operationTool(name: McpPartName, operation: EndpointName): Tool {
   const shape = operationShape(operation);
   const input = listedInput(name, shape);
-  const prepared = (
-    context: ToolContext,
-    args: Readonly<Record<string, unknown>>,
-  ): Readonly<Record<string, unknown>> => preparedArguments(name, shape, context, args);
   return {
     name,
     input,
-    listing: listingOf(name, jsonSchemaOf(input, 'input'), operationAnnotations(operation)),
+    listing: listingOf(name, () => jsonSchemaOf(input, 'input'), operationAnnotations(operation)),
     call: operationRunner(name, operation),
-    check: (context, args): string | null => {
+    check: async (context, args): Promise<string | null> => {
       try {
-        const resolved = prepared(context, args);
+        const resolved = await preparedArguments(name, shape, context, args);
         if (!PERSON_ID.safeParse(resolved[ACTING_FIELD]).success) {
           return 'personId must be a person name or id from person_read';
         }
@@ -249,12 +246,12 @@ export const OPERATION_TOOLS: readonly Tool[] = [
     name: 'operation_call',
     input: CALL,
     annotations: combinedAnnotations(CALLABLE_OPERATIONS.map(operationAnnotations)),
-    run: (context, input) => {
+    run: async (context, input) => {
       const shape = operationShape(callable(input.operation));
       return called(
         context,
         shape,
-        withComputer(context, shape, {
+        await withComputer(context, shape, {
           ...input.arguments,
           ...(input.personId === undefined ? {} : { personId: input.personId }),
         }),

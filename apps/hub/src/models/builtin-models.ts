@@ -1,7 +1,8 @@
-import { PLUGIN_MANIFEST, type ModelSpec } from '@smarteverything/domain';
+import { setImmediate } from 'node:timers/promises';
+import { MODEL_OWNER, PLUGIN_MANIFEST, type ModelSpec } from '@smarteverything/domain';
 import type { BuiltinPlugin } from '../plugins/builtin/contract';
 import type { ModelBatch, ModelBatchResult, ModelCatalogService } from './catalog-service';
-import { entryFromSpec, type ModelEntry } from './contributions';
+import { admitEntry, entryFromSpec, type Admission, type ModelEntry } from './contributions';
 
 export const BUILTIN_MODEL_OWNER = 'builtin';
 
@@ -22,9 +23,23 @@ export function builtinModelBatches(
   ];
 }
 
-export function seedBuiltinModels(
-  service: Pick<ModelCatalogService, 'replace'>,
+async function admissionsOf(batch: ModelBatch): Promise<readonly Admission[]> {
+  const owner = MODEL_OWNER.parse(batch.owner);
+  const admissions: Admission[] = [];
+  for (const entry of batch.entries) {
+    admissions.push(admitEntry(owner, entry));
+    await setImmediate();
+  }
+  return admissions;
+}
+
+export async function seedBuiltinModels(
+  service: Pick<ModelCatalogService, 'replaceAdmitted'>,
   batches: readonly ModelBatch[],
-): readonly ModelBatchResult[] {
-  return batches.map((batch) => service.replace(batch));
+): Promise<readonly ModelBatchResult[]> {
+  const results: ModelBatchResult[] = [];
+  for (const batch of batches) {
+    results.push(service.replaceAdmitted(batch, await admissionsOf(batch)));
+  }
+  return results;
 }

@@ -1,12 +1,9 @@
 import { PhotoPipeline } from '../../photos/pipeline/runtime';
-import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { z } from 'zod';
 import type { DriveDataSpace } from '@smarteverything/domain';
 import type { Logger } from '@smarteverything/logging';
 import type { HubLayout } from '../../data-layout';
-import { DriveAlbumsService, type SmartMemberRow, type SmartQueryRunner } from '../../drive/albums';
-import { DriveBackups } from '../../drive/backups';
+import { DriveBackups, hostBackupStore } from '../../drive/backups';
 import type { ConflictEnv, DriveConflictStore } from '../../drive/conflicts';
 import { readDataSpace, type DataSpaceProbe } from '../../drive/data-space';
 import { TextCursors, type TextEnvironment } from '../../drive/content/text-job';
@@ -20,16 +17,17 @@ import type { DrivePlacements } from '../../drive/placements';
 import { DriveScrubber, type ScrubCorruption } from '../../drive/scrub';
 import { DriveReadService } from '../../drive/service-read';
 import { DriveWriteService } from '../../drive/service-write';
+import { DriveAlbums } from '../../drive/service-write-albums';
 import { DriveShares, shareOriginOf, type ShareOrigin } from '../../drive/shares';
-import { PurgeTimer } from '../../drive/trash-purge';
+import { PurgeTimer } from '../../drive/purge-timer';
 import { TusUploads, type TusEnv } from '../../drive/uploads-tus';
-import { WriteBatch } from '../../drive/write-batch';
 import { fileEnv } from '../../drive/versions';
 import { DriveWatchers, systemWatch } from '../../drive/watcher';
+import { hostScanPort } from '../../drive/scan-port';
 import { WorkQueue, defaultConcurrency } from '../../drive/work-queue';
 import type { ComputerNodeAccess } from '../../computers/node-access';
 import type { PushCommandChannel } from '../../extensions/push/commands';
-import { found, type StoreContext } from '../../store/context';
+import type { StoreContext } from '../../store/context';
 import type { Store } from '../../store/store';
 import type { MediaLinks } from '../media-links';
 import { availabilityOf } from './drive-availability';
@@ -93,43 +91,15 @@ interface Core {
   readonly lanes: DriveRootLanes;
 }
 
-const MEMBER_ROW = z.object({ id: z.string(), at: z.number() });
-
-const TOTAL_ROW = z.object({ total: z.number() });
-
-function smartRunnerOf(context: StoreContext): SmartQueryRunner {
-  return {
-    rows: (statement): readonly SmartMemberRow[] =>
-      context.sql.all(MEMBER_ROW, statement.text, statement.parameters),
-    count: (statement): number =>
-      found(
-        context.sql.get(TOTAL_ROW, statement.text, statement.parameters),
-        'smart album count',
-        statement.text,
-      ).total,
-  };
-}
-
 function scrubberOf(deps: DriveDeps, availability: DriveRuntime['availability']): DriveScrubber {
   const { store, parts, log } = deps;
   return new DriveScrubber({
-    store: {
-      feed: store.feed,
-      write: store.write,
-      now: store.now,
-      driveRoots: store.driveRoots,
-      driveScrub: store.driveScrub,
-      driveItems: {
-        find: (id) => store.driveItems.find(id, null),
-        identityOf: (id) => store.driveItems.identityOf(id),
-        setIntegrity: (id, integrity): void => {
-          parts.context.sql.run(
-            'record the file integrity',
-            'update drive_items set integrity = $integrity where id = $id',
-            { id, integrity },
-          );
-        },
-      },
+    store: { feed: store.feed, now: store.now },
+    units: {
+      window: (input) => store.host.read('driveScrubWindow', input),
+      record: (input) => store.host.write('driveScrubRecord', input),
+      overview: () => store.host.read('driveScrubOverview', null),
+      health: (input) => store.host.write('driveScrubHealth', input),
     },
     availability,
     openHasher: () => new HashWorker(deps.hasherScript ?? BUNDLED_HASH_WORKER),
@@ -160,7 +130,6 @@ function queueOf(
   const textCursors = new TextCursors();
   const handlers = driveJobHandlers({
     store: deps.store,
-    context: deps.parts.context,
     availability,
     log: deps.log.forArea('hub.drive-jobs'),
     scannerScript: deps.scannerScript ?? BUNDLED_SCANNER_WORKER,
@@ -204,8 +173,8 @@ function watchersOf(
 ): DriveWatchers {
   const { store } = deps;
   return new DriveWatchers({
-    roots: store.driveRoots,
-    index: { items: store.driveItems, inodes: store.driveInodes },
+    roots: hostScanPort(store),
+    index: (rootId, relPaths) => store.host.read('driveScanIndexed', { rootId, relPaths }),
     activity,
     mounted: (rootId) => mountedRoot(store, rootId),
     onPlacementChange: (listener) =>
@@ -227,22 +196,6 @@ function watchersOf(
     watch: systemWatch,
     settleMs: deps.watchSettleMs,
     log: deps.log.forArea('hub.drive'),
-  });
-}
-
-function albumsOf(deps: DriveDeps): DriveAlbumsService {
-  const { store } = deps;
-  return new DriveAlbumsService({
-    albums: store.driveAlbums,
-    items: store.driveItems,
-    roots: store.driveRoots,
-    grants: store.driveGrants,
-    runner: smartRunnerOf(deps.parts.context),
-    newId: randomUUID,
-    now: (): string => deps.now().toISOString(),
-    get timeZone(): string {
-      return store.settings.read().time_zone;
-    },
   });
 }
 
@@ -282,8 +235,8 @@ function dataSpaceOf(deps: DriveDeps): () => Promise<DriveDataSpace> {
 
 function healthOf(deps: DriveDeps, core: Core): DriveHealthReader {
   const { store } = deps;
-  return new DriveHealthReader(deps.parts.context, {
-    roots: () => store.driveRoots.list(),
+  return new DriveHealthReader({
+    figures: (actor) => store.host.read('driveHealthFigures', { actor }),
     watcher: (rootId) => core.watchers.status(rootId),
     scrub: () => core.scrubber.state(),
     backup: () => core.backups.status(),
@@ -295,7 +248,7 @@ function servicesOf(deps: DriveDeps, core: Core): DriveServices {
   const { store } = deps;
   const readers = {
     read: new DriveReadService(store),
-    albums: albumsOf(deps),
+    albums: new DriveAlbums(store),
     shares: sharesOf(deps),
   };
   return {
@@ -309,7 +262,7 @@ function servicesOf(deps: DriveDeps, core: Core): DriveServices {
       links: deps.links,
       nodes: {
         authenticate: (token) => deps.nodes.authenticate(token),
-        actorOf: (node) => actorOf(store, nodeCaller(store, node)),
+        actorOf: (node) => actorOf(nodeCaller(store, node)),
       },
       now: deps.now,
     },
@@ -317,22 +270,27 @@ function servicesOf(deps: DriveDeps, core: Core): DriveServices {
     probe: deps.probe,
     dataSpace: dataSpaceOf(deps),
     listings: deps.parts.listings,
+    hasher: new ContentHasher(deps.hasherScript ?? BUNDLED_HASH_WORKER),
   };
 }
 
-function uploadsOf(deps: DriveDeps, env: ConflictEnv, activity: DriveActivity): TusUploads {
+function uploadsOf(
+  deps: DriveDeps,
+  env: ConflictEnv,
+  activity: DriveActivity,
+  hasher: Pick<ContentHasher, 'hash'>,
+): TusUploads {
   const backup = photoBackupService({ store: deps.store, env });
   const tus: TusEnv = {
     ...env,
     store: deps.store,
     space: deps.probe.space,
-    completed: (item): void => {
-      backup.settleItem(item);
+    completed: async (item): Promise<void> => {
+      await backup.settle(item);
     },
     activity,
     authenticate: tusAuthentication(deps.store, deps.nodes),
-    hasher: new ContentHasher(deps.hasherScript ?? BUNDLED_HASH_WORKER),
-    settle: new WriteBatch(deps.store, deps.log.forArea('hub.drive')).write,
+    hasher,
   };
   return new TusUploads(tus);
 }
@@ -340,7 +298,7 @@ function uploadsOf(deps: DriveDeps, env: ConflictEnv, activity: DriveActivity): 
 function backupsOf(deps: DriveDeps): DriveBackups {
   return new DriveBackups({
     database: deps.parts.database,
-    store: deps.store,
+    store: hostBackupStore(deps.store),
     log: deps.log.forArea('hub.drive'),
   });
 }
@@ -382,7 +340,7 @@ export function createDrive(deps: DriveDeps): DriveRuntime {
     scrubber: core.scrubber,
     services,
     purge,
-    uploads: uploadsOf(deps, env, activity),
+    uploads: uploadsOf(deps, env, activity, services.hasher),
     availability,
     placements,
     extras: extrasOf(deps, {

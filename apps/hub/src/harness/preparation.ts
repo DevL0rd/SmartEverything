@@ -34,12 +34,12 @@ interface Preparation {
   readonly cwd?: string;
   readonly interactions?: readonly AiHarnessInteraction[];
 }
-export function prepareConversation(
+export async function prepareConversation(
   service: HarnessService,
   request: Preparation,
-): Extract<HarnessRuntimeRequest, { kind: 'open' }> {
+): Promise<Extract<HarnessRuntimeRequest, { kind: 'open' }>> {
   const chat = ownSettled(service, request.owner, request.chatId);
-  service.store.aiChats.assertWorkAllowed(chat.id);
+  service.store.live.chatWork.assertWorkAllowed(chat.id);
   const binding = service.binding(chat);
   const connection = service.directory.get(binding.execution_target);
   if (connection.host.manifest === null)
@@ -47,7 +47,7 @@ export function prepareConversation(
   const selection = service.selection(chat);
   service.routes.selected(chat.profile_id, selection, request.authority.kind === 'trigger');
   const { id, cwd } = openingLocation(service, { chat, host: connection.host, cwd: request.cwd });
-  const opened = acquireNative(service, chat, connection.host, { id, cwd });
+  const opened = await acquireNative(service, chat, connection.host, { id, cwd });
   bindOpening(service, { request, chat, host: connection.host, opened, selection, id, cwd });
   return {
     kind: 'open',

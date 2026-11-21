@@ -8,6 +8,7 @@ import {
 } from '../../src/assistant/delivery';
 import type { Engine } from '../../src/assistant/engines/engine';
 import type { StoredEvent } from '../../src/store/repositories/assistant-events';
+import { mainDeliveryEvents } from '../support/delivery-events';
 import { captureLogs, testLogger } from '../support/logs';
 import { useRig, type Rig } from './harness/support/rig';
 
@@ -61,7 +62,7 @@ function fixture(
     interrupt: (): Promise<void> => Promise.resolve(),
   };
   const delivery = new AssistantDelivery({
-    events: store.assistantEvents,
+    events: mainDeliveryEvents(store),
     route: (): ReturnType<DeliveryOptions['route']> =>
       attached ? { kind: 'engine', engine, chat } : { kind: 'waiting' },
     delivered: (): undefined => undefined,

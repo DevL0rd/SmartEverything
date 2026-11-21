@@ -39,7 +39,7 @@ interface HostLinks {
   readonly speakers: PluginSpeakers;
   readonly voice: PluginVoiceServices;
   readonly conversations: PluginConversations;
-  readonly attachments: (chatId: string) => readonly string[];
+  readonly attachments: (chatId: string) => Promise<readonly string[]>;
   readonly machineFile: PluginFiles['fromMachine'];
   readonly uploadFile: PluginFiles['fromUpload'];
   readonly pictureFile: PluginFiles['fromPicture'];
@@ -63,6 +63,7 @@ function hostOf(options: BuildOptions, links: HostLinks): PluginHost {
       layout: options.layout,
       submit: options.core.hub.submit,
       signals: options.core.hub.signals,
+      home: options.core.hub.automationWorld,
       now: options.clock.now,
     },
     contributions: {

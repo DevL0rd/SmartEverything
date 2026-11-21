@@ -10,7 +10,7 @@ import {
 import type { Store } from '../../store/store';
 
 export interface AssignmentOptions {
-  readonly store: Pick<Store, 'feed' | 'plannerItems'>;
+  readonly store: Pick<Store, 'feed' | 'host'>;
   readonly now: () => Date;
   readonly emit: (signal: SignalInput) => void;
 }
@@ -93,20 +93,23 @@ function followItem(
   }
 }
 
-function followOccurrence(
+async function followOccurrence(
   options: AssignmentOptions,
   change: LiveChange & { table: 'planner_occurrences' },
-): void {
+): Promise<void> {
   const { record, oldRecord } = change;
   if (record?.status !== 'done' || oldRecord?.status === 'done') return;
-  const item = options.store.plannerItems.findAny(record.item_id);
+  const item = await options.store.host.call('plannerItems', 'findAny', record.item_id);
   const rule = item?.rrule ?? null;
   if (item === undefined || rule === null) return;
   const assigneeId = item.assignee_id;
   if (assigneeId !== null) notify(options, item, assigneeId, 'done');
 }
 
-export function followAssignment(options: AssignmentOptions, change: LiveChange): void {
+export async function followAssignment(
+  options: AssignmentOptions,
+  change: LiveChange,
+): Promise<void> {
   if (change.table === 'planner_items') followItem(options, change);
-  else if (change.table === 'planner_occurrences') followOccurrence(options, change);
+  else if (change.table === 'planner_occurrences') await followOccurrence(options, change);
 }

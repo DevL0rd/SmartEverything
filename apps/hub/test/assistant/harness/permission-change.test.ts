@@ -21,7 +21,7 @@ async function openOn(
   host: FakeHost,
 ): Promise<{ chat: AiChatRow; epoch: number; close: () => Promise<unknown> }> {
   const chat = rig.newChat(host.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(host.target, randomUUID(), open);
   return {
     chat: rig.opened.store.aiChats.chat(chat.id),
@@ -104,7 +104,7 @@ describe('changing the Access of a chat that is open on a machine', () => {
     });
     await close();
 
-    const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+    const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
 
     expect(open.permission).toStrictEqual(READ_ONLY);
     expect(rig.opened.store.harnessSessions.permissionChange(session.session_id)).toBeNull();

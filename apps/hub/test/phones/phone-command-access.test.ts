@@ -37,7 +37,11 @@ function caller(person: TestPerson): Caller {
   return { kind: 'client', client: person.client };
 }
 
-function send(person: TestPerson, capability: string, value: JsonValue): readonly unknown[] {
+async function send(
+  person: TestPerson,
+  capability: string,
+  value: JsonValue,
+): Promise<readonly unknown[]> {
   const input: CheckedInput = {
     device_id: phone.id,
     capability,
@@ -45,12 +49,12 @@ function send(person: TestPerson, capability: string, value: JsonValue): readonl
     source: 'app',
     effect_policy: undefined,
   };
-  return checkedCommands(test.store, [input], commandPrincipal(test.store, caller(person)));
+  return checkedCommands(test.store, [input], await commandPrincipal(test.store, caller(person)));
 }
 
-function refusal(work: () => unknown): ApiError {
+async function refusal(work: () => unknown): Promise<ApiError> {
   try {
-    work();
+    await work();
   } catch (cause) {
     if (cause instanceof ApiError) return cause;
     throw cause;
@@ -72,47 +76,47 @@ describe('commanding a phone through device commands', () => {
     ['auto_rotate', false],
     ['haptic_feedback', false],
     ['touch_sounds', false],
-  ])('refuses another member %s on someone else’s phone', (capability, value) => {
-    const refused = refusal(() => send(sam, capability, value));
+  ])('refuses another member %s on someone else’s phone', async (capability, value) => {
+    const refused = await refusal(() => send(sam, capability, value));
     expect(refused.code).toBe('forbidden');
     expect(refused.message).toBe('Only an owner can do this for another person.');
   });
 
-  it('refuses another member launching an app or opening a link on someone else’s phone', () => {
-    expect(refusal(() => send(sam, 'launch_app', 'com.a')).code).toBe('forbidden');
-    expect(refusal(() => send(sam, 'open', 'https://example.com')).code).toBe('forbidden');
+  it('refuses another member launching an app or opening a link on someone else’s phone', async () => {
+    expect((await refusal(() => send(sam, 'launch_app', 'com.a'))).code).toBe('forbidden');
+    expect((await refusal(() => send(sam, 'open', 'https://example.com'))).code).toBe('forbidden');
   });
 
-  it('lets the phone’s own person and the owner change its sound and screen', () => {
-    expect(send(dana, 'ring_volume', 40)).toHaveLength(1);
-    expect(send(owner, 'brightness', 40)).toHaveLength(1);
+  it('lets the phone’s own person and the owner change its sound and screen', async () => {
+    expect(await send(dana, 'ring_volume', 40)).toHaveLength(1);
+    expect(await send(owner, 'brightness', 40)).toHaveLength(1);
   });
 
-  it('lets the phone’s person and the owner change the screen timeout and the system toggles', () => {
+  it('lets the phone’s person and the owner change the screen timeout and the system toggles', async () => {
     for (const person of [dana, owner]) {
-      expect(send(person, 'screen_timeout', '300')).toHaveLength(1);
-      expect(send(person, 'auto_rotate', false)).toHaveLength(1);
-      expect(send(person, 'haptic_feedback', true)).toHaveLength(1);
-      expect(send(person, 'touch_sounds', false)).toHaveLength(1);
+      expect(await send(person, 'screen_timeout', '300')).toHaveLength(1);
+      expect(await send(person, 'auto_rotate', false)).toHaveLength(1);
+      expect(await send(person, 'haptic_feedback', true)).toHaveLength(1);
+      expect(await send(person, 'touch_sounds', false)).toHaveLength(1);
     }
   });
 
-  it('lets only the phone’s person open a settings page, not even the owner', () => {
-    expect(send(dana, 'open_settings', 'write_settings')).toHaveLength(1);
-    const byOwner = refusal(() => send(owner, 'open_settings', 'wifi'));
+  it('lets only the phone’s person open a settings page, not even the owner', async () => {
+    expect(await send(dana, 'open_settings', 'write_settings')).toHaveLength(1);
+    const byOwner = await refusal(() => send(owner, 'open_settings', 'wifi'));
     expect(byOwner.code).toBe('forbidden');
     expect(byOwner.message).toBe('Only the person who owns this phone can do this.');
-    const byMember = refusal(() => send(sam, 'open_settings', 'wifi'));
+    const byMember = await refusal(() => send(sam, 'open_settings', 'wifi'));
     expect(byMember.message).toBe('Only the person who owns this phone can do this.');
   });
 
-  it('lets only the phone’s person launch an app, not even the owner', () => {
-    expect(send(dana, 'launch_app', 'com.a')).toHaveLength(1);
-    const refused = refusal(() => send(owner, 'launch_app', 'com.a'));
+  it('lets only the phone’s person launch an app, not even the owner', async () => {
+    expect(await send(dana, 'launch_app', 'com.a')).toHaveLength(1);
+    const refused = await refusal(() => send(owner, 'launch_app', 'com.a'));
     expect(refused.message).toBe('Only the person who owns this phone can do this.');
   });
 
-  it('lets the owner launch an app on the owner’s own phone', () => {
+  it('lets the owner launch an app on the owner’s own phone', async () => {
     const own = addPhoneDevice(test, {
       clientId: owner.client.id,
       profileId: owner.profileId,
@@ -126,11 +130,11 @@ describe('commanding a phone through device commands', () => {
       effect_policy: undefined,
     };
     expect(
-      checkedCommands(test.store, [input], commandPrincipal(test.store, caller(owner))),
+      await checkedCommands(test.store, [input], await commandPrincipal(test.store, caller(owner))),
     ).toHaveLength(1);
   });
 
-  it('applies the same rule to an assistant turn of a member', () => {
+  it('applies the same rule to an assistant turn of a member', async () => {
     const service: Caller = {
       kind: 'service',
       authority: {
@@ -154,10 +158,10 @@ describe('commanding a phone through device commands', () => {
       source: 'assistant',
       effect_policy: undefined,
     };
-    expect(
-      refusal(() => checkedCommands(test.store, [input], commandPrincipal(test.store, service)))
-        .code,
-    ).toBe('forbidden');
+    const refused = await refusal(async () =>
+      checkedCommands(test.store, [input], await commandPrincipal(test.store, service)),
+    );
+    expect(refused.code).toBe('forbidden');
   });
 });
 
@@ -177,12 +181,11 @@ describe('saving work that commands a phone', () => {
       missing: [],
     });
 
-  it('refuses a member automation that sets sound on someone else’s phone', () => {
-    expect(
-      refusal(() => {
-        requireReachableTargets(test.store, caller(sam), steps('ring_volume'));
-      }).code,
-    ).toBe('forbidden');
+  it('refuses a member automation that sets sound on someone else’s phone', async () => {
+    const refused = await refusal(() => {
+      requireReachableTargets(test.store, caller(sam), steps('ring_volume'));
+    });
+    expect(refused.code).toBe('forbidden');
   });
 
   it('accepts the phone person’s own automation and the owner’s', () => {
@@ -194,12 +197,11 @@ describe('saving work that commands a phone', () => {
     }).not.toThrow();
   });
 
-  it('refuses an owner automation that opens a settings page on someone else’s phone', () => {
-    expect(
-      refusal(() => {
-        requireReachableTargets(test.store, caller(owner), steps('open_settings'));
-      }).message,
-    ).toBe('Only the person who owns this phone can do this.');
+  it('refuses an owner automation that opens a settings page on someone else’s phone', async () => {
+    const refused = await refusal(() => {
+      requireReachableTargets(test.store, caller(owner), steps('open_settings'));
+    });
+    expect(refused.message).toBe('Only the person who owns this phone can do this.');
     expect(() => {
       requireReachableTargets(test.store, caller(dana), steps('open_settings'));
     }).not.toThrow();

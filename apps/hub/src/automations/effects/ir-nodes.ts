@@ -8,8 +8,7 @@ import {
   type JsonValue,
 } from '@smarteverything/domain';
 import { z } from 'zod';
-import { ApplianceDevices } from '../../infrared/appliance-devices';
-import type { Clock } from '../../clock';
+import { applianceExternalId } from '../../infrared/appliance-devices';
 import type { Store } from '../../store/store';
 import { effectFailure } from '../effect-failure';
 import { invalid, outputs, parsed } from '../engine-v3-effects';
@@ -20,7 +19,6 @@ import type { EffectHandlers } from './effect-run';
 
 export interface IrEffectPorts {
   readonly store: Store;
-  readonly clock: Pick<Clock, 'now'>;
   readonly setter: Pick<DeviceSetter, 'setTogether'>;
 }
 
@@ -67,18 +65,21 @@ function requireControls(device: DeviceRow, changes: readonly Change[]): void {
   throw new ApiError('command_refused', `${device.name} has no ${names} to set.`);
 }
 
-function applianceDevice(ports: IrEffectPorts, devices: ApplianceDevices, id: string): DeviceRow {
-  const row = ports.store.irAppliances.find(id);
+async function applianceDevice(ports: IrEffectPorts, id: string): Promise<DeviceRow> {
+  const row = await ports.store.host.call('irAppliances', 'find', id);
   if (row === undefined) throw new ApiError('not_found', `There is no IR appliance ${id}.`);
-  const deviceId = devices.listing(row).device_id;
-  const device = deviceId === null ? undefined : ports.store.devices.find(deviceId);
+  const device = await ports.store.host.call(
+    'devices',
+    'byExternal',
+    'local',
+    applianceExternalId(row.id),
+  );
   if (device === undefined)
     throw new ApiError('not_found', `${row.name} is not shown as a device yet.`);
   return device;
 }
 
 function irApplianceSet(ports: IrEffectPorts): EffectHandlers[string] {
-  const devices = new ApplianceDevices(ports.store, () => ports.clock.now());
   return async (params, request, run) => {
     const checked = parsed(IR_APPLIANCE_PARAMS, params);
     if (!checked.ok) return checked;
@@ -88,7 +89,7 @@ function irApplianceSet(ports: IrEffectPorts): EffectHandlers[string] {
     const goal = IR_APPLIANCE_APPLY.safeParse(asked);
     if (!goal.success) return invalid(z.prettifyError(goal.error));
     try {
-      const device = applianceDevice(ports, devices, checked.value.appliance);
+      const device = await applianceDevice(ports, checked.value.appliance);
       const changes = changesOf(goal.data);
       requireControls(device, changes);
       await ports.setter.setTogether(

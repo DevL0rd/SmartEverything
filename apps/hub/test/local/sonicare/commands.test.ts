@@ -35,7 +35,7 @@ async function open(identity = PRESTIGE): Promise<void> {
   sent = [];
   answer = { ok: true, detail: 'Done.' };
   holder = rig.owner.client.id;
-  rig.batch(0, [rig.frame('4010', '01', 0), rig.frame('4420', '00020000', 0)]);
+  await rig.batch(0, [rig.frame('4010', '01', 0), rig.frame('4420', '00020000', 0)]);
 }
 
 afterEach(async () => {
@@ -153,13 +153,13 @@ describe('changing the mode and intensity of a handle that accepts it', () => {
   it('takes any mode on a handle that writes but refuses a brush in use and a sleeping brush', async () => {
     await consent();
     await expect(run('brush_mode', 'sensitive', OWNER())).resolves.toBeDefined();
-    rig.batch(1, [
+    await rig.batch(1, [
       rig.frame('4010', '02', 1),
       rig.frame('4082', '01', 1),
       rig.frame('4090', '0100', 1),
     ]);
     await expect(run('brush_mode', 'clean', OWNER())).rejects.toThrow(/in use/);
-    rig.batch(2, [], 'asleep');
+    await rig.batch(2, [], 'asleep');
     await expect(run('brush_mode', 'clean', OWNER())).rejects.toThrow(/asleep/);
   });
 

@@ -6,9 +6,8 @@ import {
   type HomeMapSource,
   type HomeMapSourceGeometry,
 } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import { z } from 'zod';
-import type { StoredRoomLink } from '../store/repositories/vacuum-room-links';
 import { alignFrameCheck, alignedNoticeOps, twoPointAlign } from './merge/align';
 import { planImport, type FrameCheck, type ImportPlan } from './merge/pipeline';
 import { rectifyScene, type RectifiedRoom, type RectifyTransform } from './merge/rectify';
@@ -20,7 +19,8 @@ import type {
   MapSourceRegistry,
   SourceInventory,
 } from './sources/registry';
-import type { HomeMapService } from './service';
+import type { HomeMapRoomLinkStore } from './map-store';
+import type { HeldMaps, HomeMapService } from './service';
 
 export interface ImportRequest {
   readonly kind: MapSourceKind;
@@ -51,10 +51,10 @@ export type AlignRequest =
 
 export interface SourceImportPorts {
   readonly registry: Pick<MapSourceRegistry, 'get' | 'candidates'>;
-  readonly maps: Pick<HomeMapService, 'get' | 'apply'>;
+  readonly maps: Pick<HomeMapService, 'exclusive'>;
   readonly inventory: () => SourceInventory;
-  readonly links: { readonly list: (deviceId: string) => readonly StoredRoomLink[] };
-  readonly syncLinks: (deviceId: string) => number;
+  readonly links: HomeMapRoomLinkStore;
+  readonly syncLinks: (held: HeldMaps, deviceId: string) => Promise<number>;
   readonly newId: () => string;
   readonly now: () => string;
   readonly log: Logger;
@@ -66,6 +66,13 @@ const TRANSFORM = z.strictObject({
   ty: z.number(),
   mirrored: z.boolean(),
 });
+
+interface Merging {
+  readonly source: MapSource;
+  readonly request: ImportRequest;
+  readonly geometry: HomeMapSourceGeometry;
+  readonly mapId: HomeMapId | undefined;
+}
 
 const sourceOf = (map: HomeMap, deviceId: string): HomeMapSource | undefined =>
   map.sources.find((entry) => entry.deviceId === deviceId);
@@ -89,7 +96,9 @@ export class HomeMapSourceImports {
       this.watched.set(
         key,
         source.onChange(deviceId, () => {
-          this.followRobot(source.kind, deviceId);
+          background(this.followRobot(source.kind, deviceId), 'home_map.source_import_failed', {
+            deviceId,
+          });
         }),
       );
     }
@@ -100,39 +109,41 @@ export class HomeMapSourceImports {
     this.watched.clear();
   }
 
-  importSource(request: ImportRequest, mapId?: HomeMapId): ImportOutcome {
-    const source = this.sourceFor(request);
-    const pending = this.pendingOutcome(source, request.deviceId, mapId);
-    if (pending !== null) return pending;
-    const geometry = source.read(request.deviceId);
-    if (geometry === null) return this.outcome('pending', mapId);
-    return this.merge(source, request, geometry, mapId);
+  importSource(request: ImportRequest, mapId?: HomeMapId): Promise<ImportOutcome> {
+    return this.ports.maps.exclusive((maps) => this.importHeld(maps, request, mapId));
   }
 
-  align(sourceId: string, request: AlignRequest, actor: HomeMapActor, mapId?: HomeMapId): number {
-    const map = this.ports.maps.get(mapId);
-    const held = map.sources.find((entry) => entry.id === sourceId);
-    if (held === undefined) throw new ApiError('not_found', 'The map has no such robot source.');
-    const transform = this.transformOf(held, request);
-    const geometry = this.geometryOf(held);
-    const verdict: FrameCheck = () => ({
-      kind: 'realign',
-      transform,
-      ops: alignedNoticeOps(map.notices, held.id),
+  align(
+    sourceId: string,
+    request: AlignRequest,
+    actor: HomeMapActor,
+    mapId?: HomeMapId,
+  ): Promise<number> {
+    return this.ports.maps.exclusive(async (maps) => {
+      const map = maps.get(mapId);
+      const held = map.sources.find((entry) => entry.id === sourceId);
+      if (held === undefined) throw new ApiError('not_found', 'The map has no such robot source.');
+      const transform = this.transformOf(held, request);
+      const geometry = this.geometryOf(held);
+      const verdict: FrameCheck = () => ({
+        kind: 'realign',
+        transform,
+        ops: alignedNoticeOps(map.notices, held.id),
+      });
+      const plan = planImport({
+        map,
+        geometry,
+        sourceKind: held.kind,
+        sourceId: held.id,
+        deviceId: held.deviceId,
+        floorId: held.floorId,
+        importedAt: this.ports.now(),
+        newId: this.ports.newId,
+        frameCheck: verdict,
+      });
+      if (plan.kind !== 'noop') await maps.apply(plan.ops, actor, {}, mapId);
+      return maps.get(mapId).revision;
     });
-    const plan = planImport({
-      map,
-      geometry,
-      sourceKind: held.kind,
-      sourceId: held.id,
-      deviceId: held.deviceId,
-      floorId: held.floorId,
-      importedAt: this.ports.now(),
-      newId: this.ports.newId,
-      frameCheck: verdict,
-    });
-    if (plan.kind !== 'noop') this.ports.maps.apply(plan.ops, actor, {}, mapId);
-    return this.ports.maps.get(mapId).revision;
   }
 
   resolveNotice(
@@ -140,27 +151,44 @@ export class HomeMapSourceImports {
     action: NoticeAction,
     actor: HomeMapActor,
     mapId?: HomeMapId,
-  ): number {
-    const map = this.ports.maps.get(mapId);
-    const notice = map.notices.find((entry) => entry.id === noticeId);
-    if (notice === undefined) throw new ApiError('not_found', 'The map has no such notice.');
-    const ops = noticeOps({
-      map,
-      notice,
-      action,
-      robotRooms: () => this.robotRooms(map, notice.elementId),
-      newId: this.ports.newId,
+  ): Promise<number> {
+    return this.ports.maps.exclusive(async (maps) => {
+      const map = maps.get(mapId);
+      const notice = map.notices.find((entry) => entry.id === noticeId);
+      if (notice === undefined) throw new ApiError('not_found', 'The map has no such notice.');
+      const ops = noticeOps({
+        map,
+        notice,
+        action,
+        robotRooms: () => this.robotRooms(map, notice.elementId),
+        newId: this.ports.newId,
+      });
+      return (await maps.apply(ops, actor, {}, mapId)).revision;
     });
-    return this.ports.maps.apply(ops, actor, {}, mapId).revision;
   }
 
-  private followRobot(kind: MapSourceKind, deviceId: string): void {
-    if (sourceOf(this.ports.maps.get(), deviceId) === undefined) return;
+  private async followRobot(kind: MapSourceKind, deviceId: string): Promise<void> {
     try {
-      this.importSource({ kind, deviceId });
+      await this.ports.maps.exclusive(async (maps) => {
+        if (sourceOf(maps.get(), deviceId) === undefined) return;
+        await this.importHeld(maps, { kind, deviceId }, undefined);
+      });
     } catch (error) {
       this.ports.log.error('home_map.source_import_failed', { deviceId, error: String(error) });
     }
+  }
+
+  private async importHeld(
+    maps: HeldMaps,
+    request: ImportRequest,
+    mapId: HomeMapId | undefined,
+  ): Promise<ImportOutcome> {
+    const source = this.sourceFor(request);
+    const pending = this.pendingOutcome(maps, source, request.deviceId, mapId);
+    if (pending !== null) return pending;
+    const geometry = source.read(request.deviceId);
+    if (geometry === null) return this.outcome(maps, 'pending', mapId);
+    return this.merge(maps, { source, request, geometry, mapId });
   }
 
   private sourceFor(request: ImportRequest): MapSource {
@@ -175,26 +203,27 @@ export class HomeMapSourceImports {
   }
 
   private pendingOutcome(
+    maps: HeldMaps,
     source: MapSource,
     deviceId: string,
     mapId: HomeMapId | undefined,
   ): ImportOutcome | null {
     if (source.isSettled(deviceId)) return null;
     this.ports.log.info('home_map.import_pending', { deviceId });
-    return this.outcome('pending', mapId);
+    return this.outcome(maps, 'pending', mapId);
   }
 
-  private outcome(status: ImportStatus, mapId: HomeMapId | undefined): ImportOutcome {
-    return { revision: this.ports.maps.get(mapId).revision, status };
-  }
-
-  private merge(
-    source: MapSource,
-    request: ImportRequest,
-    geometry: HomeMapSourceGeometry,
+  private outcome(
+    maps: HeldMaps,
+    status: ImportStatus,
     mapId: HomeMapId | undefined,
   ): ImportOutcome {
-    const map = this.ports.maps.get(mapId);
+    return { revision: maps.get(mapId).revision, status };
+  }
+
+  private async merge(maps: HeldMaps, merging: Merging): Promise<ImportOutcome> {
+    const { source, request, geometry, mapId } = merging;
+    const map = maps.get(mapId);
     const held = sourceOf(map, request.deviceId);
     if (held !== undefined && request.floorId !== undefined && request.floorId !== held.floorId) {
       throw new ApiError('conflict', `This robot is already imported on floor ${held.floorId}.`);
@@ -211,20 +240,24 @@ export class HomeMapSourceImports {
       frameCheck: alignFrameCheck,
     });
     return plan.kind === 'noop'
-      ? this.outcome('unchanged', mapId)
-      : this.write(plan, request.deviceId, mapId);
+      ? this.outcome(maps, 'unchanged', mapId)
+      : this.write(maps, plan, request.deviceId, mapId);
   }
 
-  private write(
+  private async write(
+    maps: HeldMaps,
     plan: Exclude<ImportPlan, { readonly kind: 'noop' }>,
     deviceId: string,
     mapId: HomeMapId | undefined,
-  ): ImportOutcome {
+  ): Promise<ImportOutcome> {
     const ops =
-      plan.kind === 'first' ? withLinkedRooms(plan.ops, this.ports.links.list(deviceId)) : plan.ops;
-    const result = this.ports.maps.apply(ops, plan.actor, {}, mapId);
-    this.ports.syncLinks(deviceId);
+      plan.kind === 'first'
+        ? withLinkedRooms(plan.ops, await this.ports.links.list(deviceId))
+        : plan.ops;
+    const result = await maps.apply(ops, plan.actor, {}, mapId);
+    await this.ports.syncLinks(maps, deviceId);
     return this.outcome(
+      maps,
       plan.kind !== 'refused' && result.applied.length > 0 ? 'imported' : 'unchanged',
       mapId,
     );

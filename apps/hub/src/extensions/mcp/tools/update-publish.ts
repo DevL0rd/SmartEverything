@@ -12,7 +12,6 @@ import { publishProvidedApk } from '../../../releases/publish-apk';
 import { publishStagedDesktop } from '../../../releases/publish-desktop';
 import { publishStagedUi } from '../../../releases/publish-ui';
 import { releaseStaging } from '../../../releases/staging';
-import { readBuildSources } from '../../../self-update/build-source';
 import { runConfiguredUpdateCommand, UpdateBusyError } from '../../../self-update/command';
 import { MachineUpdatePublisher } from '../../../updates/machine-update-publication';
 import { loadRelease, ReleaseFolder } from '../../../updates/release-folder';
@@ -30,7 +29,7 @@ async function publication(
   script: 'self-update-app-command.ts' | 'self-update-desktop-command.ts',
   input: AppPublicationInput | DesktopReleaseInput,
 ): Promise<Readonly<Record<string, unknown>>> {
-  const layout = layoutOf(context);
+  const layout = await layoutOf(context);
   try {
     return await runConfiguredUpdateCommand(script, layout, {
       input,
@@ -46,12 +45,12 @@ async function publication(
   }
 }
 
-function sourceOf(
+async function sourceOf(
   context: ToolContext,
   artifact: 'apk' | 'ui' | 'desktop',
   requested: ReleaseSource | undefined,
-): ReleaseSource {
-  return requested ?? readBuildSources(context.store)[artifact];
+): Promise<ReleaseSource> {
+  return requested ?? (await context.store.host.read('buildSources', null))[artifact];
 }
 
 async function announced(
@@ -67,7 +66,7 @@ async function publishStagedApp(
   input: AppInput,
   upload: string,
 ): Promise<ToolOutput> {
-  const layout = layoutOf(context);
+  const layout = await layoutOf(context);
   const builds = new AndroidBuilds(context.store.androidBuildObservations);
   const staging = releaseStaging(layout, () => context.clock.now());
   const commit = (await staging.read(upload)).release?.commit ?? null;
@@ -80,7 +79,7 @@ async function publishStagedApp(
     clientId: input.clientId ?? null,
     notes: input.notes,
     server: publicServer(context),
-    targets: () => Promise.resolve(builds.paired(context.store.clients.list())),
+    targets: async () => builds.paired(await context.store.host.call('clients', 'list')),
     now: () => context.clock.now(),
   });
   if (result.status === 'published') await announced(context, 'app', commit);
@@ -100,14 +99,15 @@ async function publishStagedUiUpdate(
     input,
     target: input.platform,
   });
-  const layout = layoutOf(context);
+  const layout = await layoutOf(context);
   const builds = new AndroidBuilds(context.store.androidBuildObservations);
+  const clients = await context.store.host.call('clients', 'list');
   const result = await publishStagedUi(
     {
       layout,
       staging: releaseStaging(layout, () => context.clock.now()),
       now: () => context.clock.now(),
-      paired: () => builds.paired(context.store.clients.list()),
+      paired: () => builds.paired(clients),
     },
     {
       runId: input.runId,
@@ -127,7 +127,7 @@ export async function publishApp(
 ): Promise<ToolOutput> {
   requireSourceFields(input);
   if (input.action === 'app') {
-    const source = sourceOf(context, 'apk', input.source);
+    const source = await sourceOf(context, 'apk', input.source);
     if (source !== 'hub')
       return publishStagedApp(
         context,
@@ -136,7 +136,7 @@ export async function publishApp(
       );
   }
   if (input.action === 'ui') {
-    const source = sourceOf(context, 'ui', input.source);
+    const source = await sourceOf(context, 'ui', input.source);
     if (source !== 'hub') return publishStagedUiUpdate(context, input, source);
   }
   const result = await publication(context, 'self-update-app-command.ts', input);
@@ -148,10 +148,10 @@ export async function publishDesktop(
   input: DesktopReleaseInput,
 ): Promise<ToolOutput> {
   requireSourceFields(input);
-  const source = sourceOf(context, 'desktop', input.source);
+  const source = await sourceOf(context, 'desktop', input.source);
   if (source !== 'hub') {
     const upload = await stagedUpload(context, { artifact: 'desktop', source, input });
-    const layout = layoutOf(context);
+    const layout = await layoutOf(context);
     const result = await publishStagedDesktop(
       {
         staging: releaseStaging(layout, () => context.clock.now()),

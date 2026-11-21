@@ -12,7 +12,7 @@ export function callSightOf(
   budget: () => SightBudget | null,
 ): CallSight {
   const clock = new Intl.DateTimeFormat('en-GB', {
-    timeZone: options.store.settings.read().time_zone,
+    timeZone: options.store.live.home.settings.read().time_zone,
     hour: '2-digit',
     minute: '2-digit',
   });

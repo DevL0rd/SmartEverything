@@ -54,21 +54,21 @@ const DETAILS = z.looseObject({
   }),
 });
 
-function deviceOf(id: string): z.infer<typeof DETAILS>['device'] {
+async function deviceOf(id: string): Promise<z.infer<typeof DETAILS>['device']> {
   return DETAILS.parse(
-    deviceDetails(opened.store, null, OWNER, placedDevice(opened.store, null, id)),
+    await deviceDetails(opened.store, null, OWNER, await placedDevice(opened.store, null, id)),
   ).device;
 }
 
 describe('what the AI reads about IR remotes', () => {
-  it('shows an IR remote device’s assumed state, empty until something was sent', () => {
+  it('shows an IR remote device’s assumed state, empty until something was sent', async () => {
     const remote = add('ir_remote', 'ac');
-    expect(deviceOf(remote)).toMatchObject({ infrared: { assumed: EMPTY_IR_REMOTE_STATE } });
+    expect(await deviceOf(remote)).toMatchObject({ infrared: { assumed: EMPTY_IR_REMOTE_STATE } });
     opened.store.settings.setIrRemote(remote, { on: true, temp: 22 });
-    expect(deviceOf(remote)).toMatchObject({ infrared: { assumed: { on: true, temp: 22 } } });
+    expect(await deviceOf(remote)).toMatchObject({ infrared: { assumed: { on: true, temp: 22 } } });
   });
 
-  it('shows a blaster every remote under it, device and learned, with their state', () => {
+  it('shows a blaster every remote under it, device and learned, with their state', async () => {
     const blaster = add('ir_blaster', 'ir');
     const deviceRemote = add('ir_remote', 'ac', blaster);
     const learned = opened.store.infrared.addRemote({
@@ -78,13 +78,13 @@ describe('what the AI reads about IR remotes', () => {
       brand: null,
     });
     opened.store.settings.setIrRemote(learned.id, { on: false });
-    expect(deviceOf(blaster).infrared?.remotes).toEqual([
+    expect((await deviceOf(blaster)).infrared?.remotes).toEqual([
       { id: deviceRemote, name: 'ac', assumed: EMPTY_IR_REMOTE_STATE },
       { id: learned.id, name: 'Fan', assumed: { ...EMPTY_IR_REMOTE_STATE, on: false } },
     ]);
   });
 
-  it('leaves the infrared part out for any other device', () => {
-    expect(deviceOf(add('light', 'lamp-1'))).not.toHaveProperty('infrared');
+  it('leaves the infrared part out for any other device', async () => {
+    expect(await deviceOf(add('light', 'lamp-1'))).not.toHaveProperty('infrared');
   });
 });

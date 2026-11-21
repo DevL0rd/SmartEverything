@@ -98,7 +98,7 @@ async function guest(
 }> {
   const { broker, failures } = await guestBroker(origin, signal);
   return {
-    mcpUrl: broker.openMcp('claude', { url: new URL('/mcp', origin).href, pin: null }, TOKEN),
+    mcpUrl: await broker.openMcp('claude', { url: new URL('/mcp', origin).href, pin: null }, TOKEN),
     broker,
     failures,
   };
@@ -197,9 +197,9 @@ describe('guest MCP broker', () => {
   it('relays a pinned LAN grant and the public grant through the canonical hub', async () => {
     const hub = await upstream(() => ({ status: 200, body: '{}' }));
     const { broker } = await guestBroker(hub.origin, undefined, TRUST);
-    const pinned = broker.openMcp('claude', { url: `${LAN_ORIGIN}/mcp`, pin: HUB_ID }, TOKEN);
+    const pinned = await broker.openMcp('claude', { url: `${LAN_ORIGIN}/mcp`, pin: HUB_ID }, TOKEN);
     await fetch(pinned, { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` } });
-    const remote = broker.openMcp('codex', { url: `${PUBLIC_ORIGIN}/mcp`, pin: null }, TOKEN);
+    const remote = await broker.openMcp('codex', { url: `${PUBLIC_ORIGIN}/mcp`, pin: null }, TOKEN);
     await fetch(remote, { method: 'POST', headers: { authorization: `Bearer ${TOKEN}` } });
     expect(hub.seen.map((seen) => seen.url)).toEqual(['/mcp', '/mcp']);
   });
@@ -207,19 +207,19 @@ describe('guest MCP broker', () => {
   it('refuses a grant with a foreign pin, an unenrolled address or a pin it cannot check', async () => {
     const hub = await upstream(() => ({ status: 200, body: '{}' }));
     const { broker } = await guestBroker(hub.origin, undefined, TRUST);
-    expect(() =>
+    await expect(
       broker.openMcp('claude', { url: `${LAN_ORIGIN}/mcp`, pin: 'cd'.repeat(32) }, TOKEN),
-    ).toThrow('pin differs');
-    expect(() =>
+    ).rejects.toThrow('pin differs');
+    await expect(
       broker.openMcp('claude', { url: 'https://192.168.50.9:7882/mcp', pin: HUB_ID }, TOKEN),
-    ).toThrow('not an enrolled hub endpoint');
-    expect(() =>
+    ).rejects.toThrow('not an enrolled hub endpoint');
+    await expect(
       broker.openMcp('claude', { url: `${LAN_ORIGIN}/other`, pin: HUB_ID }, TOKEN),
-    ).toThrow('not a hub MCP endpoint');
+    ).rejects.toThrow('not a hub MCP endpoint');
     const untrusted = await guestBroker(hub.origin);
-    expect(() =>
+    await expect(
       untrusted.broker.openMcp('claude', { url: `${hub.origin}/mcp`, pin: HUB_ID }, TOKEN),
-    ).toThrow('pin differs');
+    ).rejects.toThrow('pin differs');
     expect(hub.seen).toHaveLength(0);
   });
 });
@@ -384,9 +384,9 @@ describe('brokers on the shared listener', () => {
     const hub = await upstream(() => ({ status: 200, body: '{}' }));
     const { broker, mcpUrl } = await guest(hub.origin);
     const canonical = { url: new URL('/mcp', hub.origin).href, pin: null };
-    const again = broker.openMcp('claude', canonical, TOKEN);
+    const again = await broker.openMcp('claude', canonical, TOKEN);
     expect(again).toBe(mcpUrl);
-    const other = broker.openMcp('claude', canonical, `scg_${'B'.repeat(43)}`);
+    const other = await broker.openMcp('claude', canonical, `scg_${'B'.repeat(43)}`);
     expect(other).toBe(mcpUrl);
     const old = await fetch(mcpUrl, { headers: { authorization: `Bearer ${TOKEN}` } });
     expect(old.status).toBe(403);

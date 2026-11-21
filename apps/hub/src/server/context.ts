@@ -79,7 +79,7 @@ export interface ServerContext {
   readonly publications: ReleasePublications;
   readonly places: PlaceFinder;
   readonly status: () => HubStatus;
-  readonly publicStatus: () => PublicStatus;
+  readonly publicStatus: () => Promise<PublicStatus>;
   readonly recordingPath: (storagePath: string) => string;
   readonly developerDevices: DeveloperDevices;
   readonly watchCaptures: WatchCaptureStore;

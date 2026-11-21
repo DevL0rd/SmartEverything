@@ -34,7 +34,6 @@ beforeEach(async () => {
   insertDriveRow(opened.store.database, { id: ROOT, scope: 'home', ownerId: null });
   pipeline = new PhotoPipeline({
     store: opened.store,
-    parts: { context: opened.store.context },
     layout: opened.layout,
     log: testLogger('photo-runtime'),
   });
@@ -80,7 +79,7 @@ it('catches up existing phone photos and processes newly indexed phone video wit
     .toBuffer();
   await writeFile(join(source, 'phone.jpg'), image);
   seed(PHOTO, 'image', 'phone.jpg', 'image/jpeg');
-  pipeline.start();
+  await pipeline.start();
   await pipeline.idle();
   const media = new DriveMediaRepository(opened.store.context);
   expect(media.byId(PHOTO).preview_state).toBe('ready');
@@ -155,7 +154,7 @@ it('serves signed phone photo thumbnails and video range requests, rejecting uns
     join(source, 'phone.mp4'),
   ]);
   seed(VIDEO, 'video', 'phone.mp4', 'video/mp4');
-  pipeline.start();
+  await pipeline.start();
   await pipeline.idle();
   const links = new MediaLinks(() => new Date(NOW));
   const deps = {
@@ -215,7 +214,7 @@ it('serves the thumbnail of a trashed photo by the revision it was trashed at, a
       .toBuffer(),
   );
   seed(PHOTO, 'image', 'phone.jpg', 'image/jpeg');
-  pipeline.start();
+  await pipeline.start();
   await pipeline.idle();
   const item = opened.store.driveItems.byId(PHOTO, null);
   opened.store.driveTrash.insert({
@@ -312,7 +311,7 @@ it('rebuilds photo and video derivatives for renamed and replaced revisions thro
     ]);
   await generateVideo('phone.mp4', 'blue');
   seed(VIDEO, 'video', 'phone.mp4', 'video/mp4');
-  pipeline.start();
+  await pipeline.start();
   await pipeline.idle();
   const env = {
     ...fileEnv(opened.store, testLogger(), () => new Date(NOW)),
@@ -328,9 +327,9 @@ it('rebuilds photo and video derivatives for renamed and replaced revisions thro
     const before = opened.store.driveItems.byId(id, null);
     await rename(join(source, before.name), join(source, name));
     const info = await stat(join(source, name));
-    const write = (): void => {
+    const write = async (): Promise<void> => {
       const item = opened.store.driveItems.byId(id, null);
-      recordItem(env, {
+      await recordItem(env, {
         draft: {
           ...item,
           name,
@@ -342,7 +341,7 @@ it('rebuilds photo and video derivatives for renamed and replaced revisions thro
         actor: { actorProfileId: null, via: 'app', deviceId: null },
       });
     };
-    write();
+    await write();
     await pipeline.idle();
     const renamed = opened.store.driveItems.byId(id, null);
     expect(renamed.rev).toBeGreaterThan(before.rev);
@@ -370,7 +369,7 @@ it('rebuilds photo and video derivatives for renamed and replaced revisions thro
           .toBuffer(),
       );
     else await generateVideo(name, 'red');
-    write();
+    await write();
     await pipeline.idle();
     const replaced = opened.store.driveItems.byId(id, null);
     expect(replaced.rev).toBeGreaterThan(renamed.rev);

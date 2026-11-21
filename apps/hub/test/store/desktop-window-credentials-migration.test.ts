@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { hiddenComputer } from '../../src/computers/computer-access';
+import { hiddenComputer } from '../../src/computers/computer-visibility';
 import { approverClients } from '../../src/machines/approval';
 import { StoreContext } from '../../src/store/context';
 import { ChangeFeed } from '../../src/store/feed';

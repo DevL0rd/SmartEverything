@@ -51,8 +51,8 @@ function accessTo(profileId: string, itemId: string): ReturnType<typeof itemAcce
   return itemAccess(store, { profileId }, store.driveRoots.byId(item.rootId), item);
 }
 
-function offer(itemId = trip.id): string {
-  return transfers.offer(owner(), { itemId, toProfileId: rig.memberId }).id;
+async function offer(itemId = trip.id): Promise<string> {
+  return (await transfers.offer(owner(), { itemId, toProfileId: rig.memberId })).id;
 }
 
 beforeEach(async () => {
@@ -65,7 +65,7 @@ beforeEach(async () => {
   note = await rig.seedFile(rig.mine, 'Trip/note.txt', 'first words');
   note = await rig.seedFile(rig.mine, 'Trip/note.txt', 'second words, longer');
   deep = await rig.seedFile(rig.mine, 'Trip/Day one/map.txt', 'a map');
-  placements = new DrivePlacements({ store, context: store.context, newId });
+  placements = new DrivePlacements({ store, newId });
   transfers = new DriveTransfers({
     env: rig.changeEnv(),
     store,
@@ -80,8 +80,8 @@ afterEach(async () => {
 });
 
 describe('offering a transfer', () => {
-  it('offers an item of the caller own drive and tells the recipient', () => {
-    const id = offer();
+  it('offers an item of the caller own drive and tells the recipient', async () => {
+    const id = await offer();
     expect(rig.opened.store.driveTransfers.byId(id)).toMatchObject({
       state: 'offered',
       itemId: trip.id,
@@ -114,7 +114,7 @@ describe('offering a transfer', () => {
         }),
       ),
     ).toMatchObject({ code: 'not_found' });
-    offer();
+    await offer();
     expect(await refused(() => offer())).toMatchObject({ code: 'conflict' });
     rig.opened.store.driveGrants.set(
       { itemId: trip.id, profileId: rig.memberId, role: 'edit', expiresAt: null },
@@ -125,17 +125,17 @@ describe('offering a transfer', () => {
     ).toMatchObject({ code: 'forbidden' });
   });
 
-  it('lists the transfers a person sent and was offered', () => {
-    const id = offer();
-    expect(transfers.list(owner(), undefined).items.map((row) => row.id)).toEqual([id]);
-    expect(transfers.list(member(), undefined).items.map((row) => row.id)).toEqual([id]);
-    expect(transfers.list({ profileId: kimId }, undefined).items).toEqual([]);
+  it('lists the transfers a person sent and was offered', async () => {
+    const id = await offer();
+    expect((await transfers.list(owner(), undefined)).items.map((row) => row.id)).toEqual([id]);
+    expect((await transfers.list(member(), undefined)).items.map((row) => row.id)).toEqual([id]);
+    expect((await transfers.list({ profileId: kimId }, undefined)).items).toEqual([]);
   });
 });
 
 describe('declining and cancelling', () => {
   it('lets the recipient decline, tells the sender and moves nothing', async () => {
-    const id = offer();
+    const id = await offer();
     const declined = await transfers.answer(member(), id, { accept: false });
     expect(declined.state).toBe('declined');
     expect(
@@ -146,28 +146,30 @@ describe('declining and cancelling', () => {
       actorProfileId: rig.memberId,
     });
     expect(rig.opened.store.driveItems.byId(trip.id, rig.ownerId).rootId).toBe(rig.mine.id);
-    expect(offer()).toBeTypeOf('string');
+    expect(await offer()).toBeTypeOf('string');
   });
 
   it('lets only the sender cancel and only the recipient answer, once', async () => {
-    const id = offer();
+    const id = await offer();
     expect(await refused(() => transfers.cancel(member(), id))).toMatchObject({
       code: 'not_found',
     });
     expect(await refused(() => transfers.answer(owner(), id, { accept: true }))).toMatchObject({
       code: 'not_found',
     });
-    expect(transfers.cancel(owner(), id).state).toBe('cancelled');
+    expect((await transfers.cancel(owner(), id)).state).toBe('cancelled');
     expect(await refused(() => transfers.answer(member(), id, { accept: true }))).toMatchObject({
       code: 'conflict',
     });
-    expect(await refused(() => transfers.cancel(owner(), id))).toMatchObject({ code: 'conflict' });
+    expect(await refused(() => transfers.cancel(owner(), id))).toMatchObject({
+      code: 'conflict',
+    });
   });
 });
 
 describe('accepting a transfer', () => {
   it('moves the folder with everything in it into the top of the recipient drive and keeps the ids', async () => {
-    const id = offer();
+    const id = await offer();
     const accepted = await transfers.answer(member(), id, { accept: true });
     expect(accepted.state).toBe('accepted');
     const { store } = rig.opened;
@@ -197,7 +199,7 @@ describe('accepting a transfer', () => {
   });
 
   it('gives the previous owner an edit grant and the recipient the ownership', async () => {
-    await transfers.answer(member(), offer(), { accept: true });
+    await transfers.answer(member(), await offer(), { accept: true });
     expect(accessTo(rig.memberId, trip.id)).toBe('own');
     expect(accessTo(rig.ownerId, trip.id)).toBe('edit');
     expect(accessTo(rig.ownerId, deep.id)).toBe('edit');
@@ -220,7 +222,7 @@ describe('accepting a transfer', () => {
     );
     const versions = store.driveVersions.forItem(note.id, null, 10).versions;
     expect(versions).toHaveLength(1);
-    await transfers.answer(member(), offer(), { accept: true });
+    await transfers.answer(member(), await offer(), { accept: true });
     expect(store.driveItems.byId(trip.id, rig.ownerId).starred).toBe(true);
     expect(accessTo(kimId, deep.id)).toBe('view');
     expect(store.driveGrants.forPerson(deep.id, rig.memberId)).toBeUndefined();
@@ -238,7 +240,7 @@ describe('accepting a transfer', () => {
 
   it('numbers the moved folder when the recipient already has one with that name', async () => {
     await rig.seedFolder(rig.theirs, 'Trip');
-    await transfers.answer(member(), offer(), { accept: true });
+    await transfers.answer(member(), await offer(), { accept: true });
     const moved = rig.opened.store.driveItems.byId(trip.id, rig.memberId);
     expect(moved.relPath).toBe('Trip (2)');
     expect(await readFile(join(rig.theirs.path, 'Trip (2)', 'note.txt'), 'utf8')).toBe(
@@ -248,7 +250,7 @@ describe('accepting a transfer', () => {
 
   it('moves a single file the same way', async () => {
     const loose = await rig.seedFile(rig.mine, 'loose.txt', 'loose');
-    await transfers.answer(member(), offer(loose.id), { accept: true });
+    await transfers.answer(member(), await offer(loose.id), { accept: true });
     expect(rig.opened.store.driveItems.byId(loose.id, rig.memberId)).toMatchObject({
       rootId: rig.theirs.id,
       relPath: 'loose.txt',
@@ -265,7 +267,7 @@ describe('accepting a transfer', () => {
     expect(placement?.rootId).toBe(rig.mine.id);
     const heard: (readonly string[])[] = [];
     placements.onDeviceChanged((devices) => heard.push(devices));
-    await transfers.answer(member(), offer(), { accept: true });
+    await transfers.answer(member(), await offer(), { accept: true });
     expect(rig.opened.store.drivePlacements.byId(placement?.id ?? '')).toMatchObject({
       rootId: rig.theirs.id,
       folderItemId: trip.id,
@@ -275,7 +277,7 @@ describe('accepting a transfer', () => {
 
   it('adds the moved items to the feed of the new drive', async () => {
     const before = rig.opened.store.driveFeed.latestSeqInRoot(rig.theirs.id);
-    await transfers.answer(member(), offer(), { accept: true });
+    await transfers.answer(member(), await offer(), { accept: true });
     const rows = rig.opened.store.driveFeed.sinceInRoot(rig.theirs.id, before, 100).rows;
     expect(new Set(rows.map((row) => row.itemId))).toEqual(
       new Set([trip.id, sub.id, note.id, deep.id]),
@@ -286,7 +288,7 @@ describe('accepting a transfer', () => {
   it('moves the bytes in the usage of the people', async () => {
     const { store } = rig.opened;
     const before = store.driveQuotas.usage(rig.ownerId);
-    await transfers.answer(member(), offer(), { accept: true });
+    await transfers.answer(member(), await offer(), { accept: true });
     expect(store.driveQuotas.usage(rig.ownerId).live).toBeLessThan(before.live);
     expect(store.driveQuotas.usage(rig.memberId).live).toBe(
       before.live - store.driveQuotas.usage(rig.ownerId).live,
@@ -296,7 +298,7 @@ describe('accepting a transfer', () => {
   it('refuses when it would not fit the quota of the recipient, names the shortfall and moves nothing', async () => {
     const { store } = rig.opened;
     store.driveQuotas.set(rig.memberId, 5);
-    const id = offer();
+    const id = await offer();
     const error = await refused(() => transfers.answer(member(), id, { accept: true }));
     expect(error).toBeInstanceOf(DriveQuotaExceededError);
     expect(error instanceof Error ? error.message : '').toMatch(/space limit is 5 bytes/u);
@@ -309,7 +311,7 @@ describe('accepting a transfer', () => {
   });
 
   it('refuses when the item no longer belongs to the sender', async () => {
-    const id = offer();
+    const id = await offer();
     await transfers.answer(member(), id, { accept: true });
     const again = rig.opened.store.driveTransfers.offer({
       itemId: trip.id,
@@ -340,14 +342,14 @@ describe('what a transfer leaves behind', () => {
       createdBy: rig.ownerId,
       createdAt: new Date().toISOString(),
     });
-    await transfers.answer(member(), offer(), { accept: true });
-    expect(shares.list(owner(), deep.id)).toEqual([]);
-    expect(shares.list(member(), deep.id).map((row) => row.id)).toEqual([link.id]);
-    expect(shares.revoke(member(), link.id).revokedAt).not.toBeNull();
+    await transfers.answer(member(), await offer(), { accept: true });
+    expect(await shares.list(owner(), deep.id)).toEqual([]);
+    expect((await shares.list(member(), deep.id)).map((row) => row.id)).toEqual([link.id]);
+    expect((await shares.revoke(member(), link.id)).revokedAt).not.toBeNull();
   });
 
   it('refuses to cancel while the offer is being accepted and finishes the transfer', async () => {
-    const id = offer();
+    const id = await offer();
     const accepting = transfers.answer(member(), id, { accept: true });
     expect(await refused(() => transfers.cancel(owner(), id))).toMatchObject({
       code: 'conflict',
@@ -370,7 +372,7 @@ describe('what a transfer leaves behind', () => {
       deviceId: null,
     });
     expect(store.driveTrash.find(deep.id)).toBeDefined();
-    await transfers.answer(member(), offer(), { accept: true });
+    await transfers.answer(member(), await offer(), { accept: true });
     expect(store.driveTrash.find(deep.id)).toBeUndefined();
     expect(store.driveTrash.find(outside.id)).toBeDefined();
   });

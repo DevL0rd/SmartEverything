@@ -33,8 +33,8 @@ const REGISTERED_PORTS: CheckoutPorts = {
   },
 };
 
-function configuredSource(layout: HubLayout, root: string): HubUpdateSource {
-  const configured = findCheckoutSource(layout);
+async function configuredSource(layout: HubLayout, root: string): Promise<HubUpdateSource> {
+  const configured = await findCheckoutSource(layout);
   if (configured === undefined)
     throw new SyncedCheckoutError(
       'This hub has no update checkout: run tooling/configure-update-source.ts --checkout.',
@@ -138,7 +138,7 @@ export async function syncedCheckout(
   options: CheckoutOptions = {},
 ): Promise<string> {
   const { revision, ports = REGISTERED_PORTS } = options;
-  const source = configuredSource(layout, root);
+  const source = await configuredSource(layout, root);
   await requireCleanBranch(source);
   const tip = await fetchedTip(source);
   const target = revision ?? tip;

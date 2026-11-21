@@ -92,12 +92,7 @@ function cleaningRoomsOf(
   if (!ON_A_JOB.has(state)) return [];
   const job = vacuumJob(values);
   if (job === null) return undefined;
-  const homeRooms = new Map(
-    deps.store.vacuumRoomLinks
-      .list(device.id)
-      .filter((link) => link.missingSince === null)
-      .map((link) => [link.mapRoomId, link.roomId] as const),
-  );
+  const homeRooms = deps.world.vacuumRooms.linked(device.id);
   return [...new Set(job.rooms.flatMap((mapRoom) => homeRooms.get(mapRoom) ?? []))];
 }
 
@@ -114,7 +109,7 @@ function valuesOf(deps: WorldReadDeps, device: DeviceRow): VacuumValues {
 }
 
 function vacuumRead(deps: WorldReadDeps, vacuum: string): ReadResult {
-  const device = deviceById(deps.store, vacuum);
+  const device = deviceById(deps.world, vacuum);
   const values = valuesOf(deps, device);
   try {
     const state = stateOf(values);

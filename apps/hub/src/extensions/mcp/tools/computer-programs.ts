@@ -67,7 +67,7 @@ export async function listPrograms(
   context: OperatingContext,
   { deviceId: wanted, pid, tree, ...query }: z.output<typeof LIST_INPUT>,
 ): Promise<Fields> {
-  const deviceId = computerIdOf(context, wanted);
+  const deviceId = await computerIdOf(context, wanted);
   if (pid !== undefined) {
     const detail = await operate(context, 'readComputerProcess', {
       params: { deviceId, pid: String(pid) },
@@ -85,7 +85,7 @@ export async function endProgram(
   context: OperatingContext,
   { deviceId: wanted, pid, signal, nice }: z.output<typeof END_INPUT>,
 ): Promise<Fields> {
-  const deviceId = computerIdOf(context, wanted);
+  const deviceId = await computerIdOf(context, wanted);
   if (signal === 'priority') {
     await operate(context, 'prioritiseComputerProcess', {
       params: { deviceId, pid: String(pid) },

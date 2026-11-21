@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DriveActor } from '../../../src/drive/access';
-import { LibraryReader } from '../../../src/photos/library';
+import { LibraryReader, type LibraryPages } from '../../../src/photos/library';
 import { z } from 'zod';
 import { PEOPLE_COUNT_SQL } from '../../../src/photos/people/counts';
 import { PhotoSearch, type MeaningSource } from '../../../src/photos/people/search';
-import { PhotoSuggest } from '../../../src/photos/people/suggest';
 import { testLogger } from '../../support/logs';
 import {
   BOB_ROOT,
@@ -16,7 +15,6 @@ import {
   context,
   database,
   direction,
-  groups,
   people,
   resetConsent,
   seed,
@@ -35,6 +33,15 @@ const MARCH = '2026-03';
 
 function reader(): LibraryReader {
   return new LibraryReader(context, () => 'UTC');
+}
+
+function pages(): LibraryPages {
+  const sync = reader();
+  return {
+    buckets: (actor, scope, meaning) => Promise.resolve(sync.buckets(actor, scope, meaning)),
+    page: (actor, month, query, meaning) =>
+      Promise.resolve(sync.page(actor, month, query, meaning)),
+  };
 }
 
 function ids(actor: DriveActor, scope: Parameters<LibraryReader['page']>[2]): readonly string[] {
@@ -66,7 +73,7 @@ describe('people and pets as library tokens', () => {
     addFace({ itemId: c, embedding: direction(8) });
     const service = people();
     await service.regroup(alice.profileId, 'person');
-    const big = service.people(alice).groups.find((group) => group.count === 2);
+    const big = (await service.people(alice)).groups.find((group) => group.count === 2);
     expect(ids(alice, { filter: 'all', groupIds: [big?.id ?? ''] })).toEqual([b, a]);
     expect(reader().buckets(alice, { filter: 'all', groupIds: [big?.id ?? ''] })).toEqual([
       { month: MARCH, count: 2 },
@@ -80,7 +87,7 @@ describe('people and pets as library tokens', () => {
     addFace({ itemId: b, embedding: direction(0, 0.05) });
     const service = people();
     await service.regroup(alice.profileId, 'person');
-    const [one, two] = service.people(alice).groups;
+    const [one, two] = (await service.people(alice)).groups;
     expect(ids(alice, { filter: 'all', groupIds: [one?.id ?? '', two?.id ?? ''] })).toEqual([a]);
     await service.regroup(bob.profileId, 'person');
     expect(ids(bob, { filter: 'all', groupIds: [one?.id ?? ''] })).toEqual([]);
@@ -92,7 +99,7 @@ describe('people and pets as library tokens', () => {
     addText(a, 'invoice 4421');
     const service = people();
     await service.regroup(alice.profileId, 'person');
-    const [group] = service.people(alice).groups;
+    const [group] = (await service.people(alice)).groups;
     database
       .prepare('insert into photo_archive (profile_id, item_id, archived_at) values (?, ?, ?)')
       .run(alice.profileId, a, '2026-11-14T10:00:00.000Z');
@@ -136,7 +143,7 @@ describe('words, text in photos and meaning', () => {
         return Promise.resolve([{ itemId: c, score: 0.7 }]);
       },
     };
-    const search = new PhotoSearch(reader(), meaning, testLogger('photos'), () => 0);
+    const search = new PhotoSearch(pages(), meaning, testLogger('photos'), () => 0);
     const page = await search.page(alice, MARCH, { filter: 'all', meaning: 'dog' });
     expect(page.ids).toEqual([c, b, a]);
     expect(await search.buckets(alice, { filter: 'all', meaning: 'dog' })).toEqual([
@@ -171,7 +178,7 @@ describe('words, text in photos and meaning', () => {
       },
     };
     let clock = 0;
-    const search = new PhotoSearch(reader(), meaning, testLogger('photos'), () => clock);
+    const search = new PhotoSearch(pages(), meaning, testLogger('photos'), () => clock);
     expect((await search.page(alice, MARCH, { filter: 'all', meaning: 'cat' })).ids).toEqual([a]);
     expect((await search.page(alice, MARCH, { filter: 'all', meaning: 'cat' })).ids).toEqual([a]);
     clock = 120_000;
@@ -184,7 +191,7 @@ describe('words, text in photos and meaning', () => {
     const meaning: MeaningSource = {
       meaning: () => Promise.resolve([{ itemId: secret, score: 0.9 }]),
     };
-    const search = new PhotoSearch(reader(), meaning, testLogger('photos'), () => 0);
+    const search = new PhotoSearch(pages(), meaning, testLogger('photos'), () => 0);
     expect((await search.page(alice, MARCH, { filter: 'all', meaning: 'x' })).ids).toEqual([]);
   });
 });
@@ -202,16 +209,20 @@ describe('suggestions and counts', () => {
     const service = people();
     await service.regroup(alice.profileId, 'person');
     await service.regroup(alice.profileId, 'pet');
-    for (const group of service.people(alice).groups)
-      service.update(alice, group.id, { name: group.kind === 'pet' ? 'Sunny' : 'Susan' });
-    const suggest = new PhotoSuggest(context, service, groups());
-    const result = suggest.read(alice, 'su');
+    for (const group of (await service.people(alice)).groups)
+      await service.update(alice, group.id, { name: group.kind === 'pet' ? 'Sunny' : 'Susan' });
+    const result = await service.suggest(alice, 'su');
     expect(result.people.map((entry) => entry.name)).toEqual(['Susan']);
     expect(result.pets.map((entry) => entry.name)).toEqual(['Sunny']);
     expect(result.things.map((entry) => entry.label)).toEqual(['sunflower', 'sunset']);
     expect(result.text.map((entry) => entry.itemId)).toEqual([a]);
-    expect(suggest.read(alice, 'zzz')).toEqual({ people: [], pets: [], things: [], text: [] });
-    expect(suggest.read(bob, 'su').people).toEqual([]);
+    expect(await service.suggest(alice, 'zzz')).toEqual({
+      people: [],
+      pets: [],
+      things: [],
+      text: [],
+    });
+    expect((await service.suggest(bob, 'su')).people).toEqual([]);
   });
 
   it('counts the visible, unhidden people and pets for the rail', async () => {
@@ -228,8 +239,8 @@ describe('suggestions and counts', () => {
       })?.total ?? -1;
     expect(total(alice)).toBe(3);
     expect(total(bob)).toBe(0);
-    const [first] = service.people(alice).groups;
-    service.update(alice, first?.id ?? '', { hidden: true });
+    const [first] = (await service.people(alice)).groups;
+    await service.update(alice, first?.id ?? '', { hidden: true });
     expect(total(alice)).toBe(2);
   });
 });

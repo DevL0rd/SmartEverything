@@ -103,7 +103,7 @@ function rig(replies: readonly Reply[], options: { readonly stop?: string } = {}
     agents: {
       open: (launch) => {
         launches.push(launch);
-        return session;
+        return Promise.resolve(session);
       },
     },
     tools: { list: () => [TOOL, HUMAN_TOOL] },
@@ -265,8 +265,11 @@ describe('limits of a one-shot dsh agent call', () => {
 
   it('cancels the agent when the automation run is cancelled', async () => {
     const run = new AbortController();
-    const { model, state } = rig([{ text: 'never', hang: true }]);
+    const { model, said, state } = rig([{ text: 'never', hang: true }]);
     const pending = model.ask(request({ signal: run.signal }));
+    await vi.waitFor(() => {
+      expect(said).toHaveLength(1);
+    });
     run.abort();
     expect(await failure(pending)).toBeInstanceOf(AgentCancelledError);
     expect(state.interrupted).toBe(1);

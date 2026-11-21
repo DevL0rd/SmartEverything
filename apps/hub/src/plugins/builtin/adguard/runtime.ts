@@ -71,8 +71,10 @@ function createMonitor(
       mirror.update(snapshot);
       if (mirror.attached) recordRate(ctx, snapshot, rate);
     },
-    publish: (snapshot): void => {
-      ctx.data.publish(SNAPSHOT_STREAM, snapshot);
+    publish: (snapshot, audience): void => {
+      if (audience === 'viewers')
+        ctx.viewers.publish(ADGUARD_EXTERNAL_ID, SNAPSHOT_STREAM, snapshot);
+      else ctx.data.publish(SNAPSHOT_STREAM, snapshot);
       const signature = adguardSearchSignature(snapshot.filters);
       if (signature !== searched) {
         searched = signature;

@@ -38,13 +38,13 @@ function target(
   request: IncomingMessage,
   params: Readonly<Record<string, string>>,
 ): Promise<Target> {
-  return guarded(() => {
-    const caller = authenticate(options.store, request, 'member', false);
+  return guarded(async () => {
+    const caller = await authenticate(options.store, request, 'member', false);
     const chatId = params['chatId'] ?? '';
     const computerId = params['computerId'] ?? '';
     const port = SERVER_PORT.parse(Number(params['port']));
     projectCallerAuthority(options.store, caller, chatId);
-    options.service.access.device(computerId, options.service.viewer(caller));
+    await options.service.access.device(computerId, options.service.viewer(caller));
     const relay = options.directory.byDevice(computerId).relay;
     return { relay, port, prefix: chatServerPrefix(chatId, { computerId, port }) };
   });

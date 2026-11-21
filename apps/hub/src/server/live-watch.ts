@@ -263,6 +263,10 @@ export class LiveWatch<Subscriber extends WatchConnection> {
     }));
   }
 
+  watches(connection: Subscriber, deviceId: string): boolean {
+    return this.watching.get(connection)?.devices.topics.has(deviceTarget(deviceId)) === true;
+  }
+
   close(connection: Subscriber): void {
     if (!this.watching.delete(connection)) return;
     this.viewersOf().forEach((viewers) => {

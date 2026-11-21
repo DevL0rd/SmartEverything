@@ -87,7 +87,7 @@ function authority(overrides: Partial<ConversationAuthority> = {}): Conversation
 }
 
 describe('a tool grant', () => {
-  it('admits a routed tool by its served name, never by the internal part it runs', () => {
+  it('admits a routed tool by its served name, never by the internal part it runs', async () => {
     const granted = chat({ tools: ['device_find'] });
     const scoped = eventAuthority(opened.store, event(granted, ownerId));
     const context = { store: opened.store, actor: null, caller: null };
@@ -99,8 +99,8 @@ describe('a tool grant', () => {
           () => ({ structured: { ran: true } }),
         ),
       );
-    expect(run('device_find')).toStrictEqual({ structured: { ran: true } });
-    expect(() => run()).toThrow('does not expose this tool');
+    await expect(run('device_find')).resolves.toStrictEqual({ structured: { ran: true } });
+    await expect(run()).rejects.toThrow('does not expose this tool');
   });
 });
 
@@ -201,14 +201,16 @@ describe('hub commands issued by unattended work', () => {
     return { kind: 'service', authority: value, profileId: value.profile_id, chatId: null };
   }
 
-  it('carry the role the work was started with', () => {
-    expect(commandPrincipal(opened.store, service(authority()))).toEqual({
+  it('carry the role the work was started with', async () => {
+    await expect(commandPrincipal(opened.store, service(authority()))).resolves.toEqual({
       clientId: null,
       role: 'owner',
       profileId,
       devices: null,
     });
-    expect(commandPrincipal(opened.store, service(authority({ role: 'member' })))).toEqual({
+    await expect(
+      commandPrincipal(opened.store, service(authority({ role: 'member' }))),
+    ).resolves.toEqual({
       clientId: null,
       role: 'member',
       profileId,

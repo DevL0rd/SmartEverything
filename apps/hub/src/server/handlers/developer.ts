@@ -14,7 +14,7 @@ export const developerRoutes = ({ developerDevices, watchCaptures, store }: Serv
     saveWatchCaptures: bound(E.saveWatchCaptures, async ({ body, caller }) => {
       const client = clientOf(caller);
       developerDevices.require(client);
-      store.devices.byId(body.deviceId);
+      await store.host.call('devices', 'byId', body.deviceId);
       const saved = await watchCaptures.save(
         { deviceId: body.deviceId, clientId: client.id },
         body.files,

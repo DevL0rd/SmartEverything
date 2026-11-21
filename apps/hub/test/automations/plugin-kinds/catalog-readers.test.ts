@@ -7,6 +7,8 @@ import {
   type NodeKindLookup,
 } from '@smarteverything/domain';
 import type { ReadRequest } from '@smarteverything/flow/interpret/frames';
+import { AutomationMemory } from '../../../src/automations/automation-memory';
+import { hostEngineStore } from '../../../src/automations/engine-store';
 import { PlanBook } from '../../../src/automations/engine-v3-plans';
 import { readPort } from '../../../src/automations/engine-v3-context';
 import {
@@ -100,7 +102,7 @@ afterEach(async () => {
 });
 
 describe('hub readers resolve kinds through the catalog', () => {
-  it('lowers a program with the kinds the plan book was given', () => {
+  it('lowers a program with the kinds the plan book was given', async () => {
     const { store } = opened;
     const row = saveAutomation(store, {
       triggers: [trigger('trigger.time', { at: '23:00' })],
@@ -114,13 +116,13 @@ describe('hub readers resolve kinds through the catalog', () => {
       },
       has: (id) => STATIC_KIND_LOOKUP.has(id),
     };
-    const repositories = {
-      plans: store.automationPlans,
-      owned: store.automationOwnedValues,
-      functions: store.automationFunctions,
-    };
-    const book = new PlanBook(repositories, testLogger('plans'), kinds);
-    expect(book.compile(row)).toBeDefined();
+    const engineStore = hostEngineStore(store.host);
+    const memory = new AutomationMemory({
+      writes: engineStore.writes,
+      now: (): Date => new Date(),
+    });
+    const book = new PlanBook({ store: engineStore, memory }, testLogger('plans'), kinds);
+    expect(await book.compile(row)).toBeDefined();
     expect(asked).toContain('debug.log');
   });
 
@@ -185,13 +187,7 @@ describe('hub readers resolve kinds through the catalog', () => {
       comparePrograms(before, after, kinds).map((change) => change.summary);
     expect(summaries(catalog).join(' ')).toContain('Post a message');
     expect(summaries(createKindCatalog()).join(' ')).not.toContain('Post a message');
-    const env = {
-      store: opened.store,
-      programs: opened.store.automations,
-      functions: opened.store.automationFunctions,
-      plans: opened.store.automationPlans,
-      secrets: { list: (): never[] => [] },
-    };
+    const env = { store: opened.store, secrets: new Set<string>(), pending: null };
     expect(lintContextOf({ ...env, kinds: catalog }).kinds(POST)?.id).toBe(POST);
     expect(lintContextOf({ ...env, kinds: createKindCatalog() }).kinds(POST)).toBeUndefined();
   });
@@ -229,7 +225,7 @@ describe('hub readers resolve kinds through the catalog', () => {
     const routes = automationProgramReadRoutes({
       store: opened.store,
       secrets: { list: (): never[] => [] },
-      functions: { list: (): never[] => [] },
+      functions: { list: () => Promise.resolve([]) },
       kinds: chatHub(),
     });
     const raw = {

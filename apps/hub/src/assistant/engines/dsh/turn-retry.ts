@@ -20,6 +20,18 @@ export interface TurnFailure {
   readonly message: string;
 }
 
+const FINAL_FAILURES: ReadonlySet<string> = new Set([
+  'quota_exhausted',
+  'route_unavailable',
+  'subscription_unavailable',
+  'capability_unsupported',
+  'composition_incompatible',
+]);
+
+export function finalFailure(failure: TurnFailure): boolean {
+  return FINAL_FAILURES.has(failure.code);
+}
+
 export interface TurnRetryPorts<T extends RetryableTurn> {
   readonly resume: (turn: T, deliveryId: string, text: string) => Promise<void>;
   readonly active: (turn: T) => boolean;
@@ -37,6 +49,14 @@ export class TurnRetries<T extends RetryableTurn> {
   }
 
   failed(turn: T, failure: TurnFailure): void {
+    if (this.timers.has(turn.event.id)) {
+      log.debug('turn.retry_already_waiting', {
+        eventId: turn.event.id,
+        chatId: turn.chat.id,
+        failureCode: failure.code,
+      });
+      return;
+    }
     const attempt = (this.attempts.get(turn.event.id) ?? 0) + 1;
     this.attempts.set(turn.event.id, attempt);
     log.warn('turn.retry_scheduled', {

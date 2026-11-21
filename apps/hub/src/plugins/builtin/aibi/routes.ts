@@ -51,9 +51,9 @@ const DETECT_INTENT_PATH = '/aibi/voice/detectintent';
 const HOUR_MS = 3_600_000;
 const NATIVE_IDS: ReadonlySet<string> = new Set(ACTIONS.map((action) => action.id));
 
-function parseJson(message: Response): Json | null {
+async function parseJson(message: Response): Promise<Json | null> {
   try {
-    const parsed: unknown = JSON.parse(decodedBody(message).toString('utf8'));
+    const parsed: unknown = JSON.parse((await decodedBody(message)).toString('utf8'));
     return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
       ? Object.fromEntries(Object.entries(parsed))
       : null;
@@ -284,12 +284,12 @@ export class AibiRoutes implements Routes {
     if (isOfferPath(exchange.path)) {
       return this.trapOffer(exchange, response);
     }
-    this.learn(exchange, response);
+    await this.learn(exchange, response);
     return relay(response);
   }
 
-  private learn(exchange: Exchange, response: Response): void {
-    const json = parseJson(response);
+  private async learn(exchange: Exchange, response: Response): Promise<void> {
+    const json = await parseJson(response);
     const summary = json === null ? null : summarize(json);
     if (summary === null || (summary.behavior === '' && summary.url === '')) {
       return;
@@ -319,8 +319,8 @@ export class AibiRoutes implements Routes {
     );
   }
 
-  private trapOffer(exchange: Exchange, response: Response): Response {
-    const json = parseJson(response);
+  private async trapOffer(exchange: Exchange, response: Response): Promise<Response> {
+    const json = await parseJson(response);
     if (json === null) {
       return relay(response);
     }

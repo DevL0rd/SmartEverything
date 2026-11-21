@@ -62,7 +62,7 @@ async function startHub(): Promise<Hub> {
     for (const entry of endpoints) {
       const params = matchPath(entry.endpoint.path, url.pathname);
       if (entry.endpoint.method !== request.method || params === null) continue;
-      const caller = authenticate(store, request, entry.endpoint.access, false);
+      const caller = await authenticate(store, request, entry.endpoint.access, false);
       assertOwnerRoute(store, caller, entry.endpoint);
       const body = parseJsonBody(request, await readBody(request, BODY_LIMIT));
       sendJson(

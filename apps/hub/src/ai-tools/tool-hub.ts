@@ -82,8 +82,8 @@ export class ToolHub {
         {
           tools: () => this.list().filter(visible),
           call: (tool, args, caller) => this.callAdmitted(tool.name, args, caller),
-          validate: (tool, args, caller): string | null => {
-            const checked = this.check(tool.name, args, caller);
+          validate: async (tool, args, caller): Promise<string | null> => {
+            const checked = await this.check(tool.name, args, caller);
             return checked.ok ? null : checked.reason;
           },
           changes: (listener) => this.changes(listener),
@@ -188,11 +188,11 @@ export class ToolHub {
     );
   }
 
-  check(
+  async check(
     asked: string,
     askedArgs: Readonly<Record<string, unknown>>,
     caller?: ToolCaller,
-  ): ToolCheck {
+  ): Promise<ToolCheck> {
     try {
       const { name, arguments: args } = forwardedCall(asked, askedArgs);
       const found = this.locate(name);
@@ -207,7 +207,7 @@ export class ToolHub {
         }
         return { ok: true, tool: found.tool };
       }
-      const reason = found.source.validate(found.tool, args, caller);
+      const reason = await found.source.validate(found.tool, args, caller);
       return reason === null ? { ok: true, tool: found.tool } : { ok: false, reason };
     } catch (cause) {
       return {

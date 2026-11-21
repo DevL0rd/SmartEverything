@@ -1,15 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { open, readdir, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { ApiError, type DriveItem } from '@smarteverything/domain';
+import { ApiError } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { isMissing } from '../../fs-util';
 import type { Store } from '../../store/store';
 import { commitContent, type ChangeActor, type ChangeEnv } from '../changes';
 import type { DataSpaceProbe } from '../data-space';
-import { readDriveSettings } from '../settings';
+import { loadDriveSettings } from '../settings';
 import { locate, TMP_DIRECTORY, type DriveWriteRoot } from '../intents';
-import { checkDriveFreeSpace, checkDriveQuota } from '../quotas';
+import { checkDriveFreeSpace, loadedQuotaCheck } from '../quotas';
 import { freeNameAt } from '../uploads-tus-wire';
 import type { PublicFileRequest } from './file-requests';
 
@@ -129,10 +129,10 @@ export class FileRequestIntake {
     const { env, space, store } = this.deps;
     const root = found.root;
     const start = { ...cleaned(raw), length: raw.length };
-    await this.sweepStale(root, readDriveSettings(store).uploadExpiryDays * DAY_MS);
+    await this.sweepStale(root, (await loadDriveSettings(store)).uploadExpiryDays * DAY_MS);
     const partials = await this.openPartials(root);
     const mine = partials.filter((partial) => partial.requestId === found.request.id);
-    this.admit(found, start.length + sum(mine, (partial) => partial.declared));
+    await this.admit(found, start.length + sum(mine, (partial) => partial.declared));
     await checkDriveFreeSpace(
       space,
       root.path,
@@ -272,7 +272,7 @@ export class FileRequestIntake {
         partial.requestId === found.request.id &&
         partial.name !== `${PARTIAL_PREFIX}${found.request.id}-${uploadId}`,
     );
-    this.admit(found, intake.length + sum(others, (partial) => partial.declared));
+    await this.admit(found, intake.length + sum(others, (partial) => partial.declared));
     const staged = await this.staged(found, uploadId, intake.length);
     const relPath = await this.freeRelPath(found, intake.name);
     const actor: ChangeActor = { actorProfileId: null, via: 'share', deviceId: null };
@@ -282,9 +282,16 @@ export class FileRequestIntake {
       staged,
       relPath,
       actor,
-      alongside: (item) => {
-        this.record(found, item, intake.uploader);
-      },
+      alongside: [
+        {
+          kind: 'fileRequest',
+          requestId: found.request.id,
+          receiverProfileId: found.receiverProfileId,
+          createdBy: found.request.createdBy,
+          folderId: found.folder.id,
+          uploaderName: intake.uploader,
+        },
+      ],
     });
     log.info('drive_file_request.received', {
       requestId: found.request.id,
@@ -301,34 +308,8 @@ export class FileRequestIntake {
     };
   }
 
-  private record(found: PublicFileRequest, item: DriveItem, uploader: string): void {
-    const { store } = this.deps;
-    store.write(() => {
-      store.context.sql.run(
-        'count the received file toward the space of the drive owner',
-        'update drive_items set added_by_profile_id = $owner where id = $id',
-        { owner: found.receiverProfileId, id: item.id },
-      );
-      store.driveFileRequests.recordUpload({
-        requestId: found.request.id,
-        itemId: item.id,
-        uploaderName: uploader,
-        bytes: item.bytes,
-      });
-      store.driveNotifications.add({
-        profileId: found.request.createdBy,
-        kind: 'file_request_upload',
-        itemId: found.folder.id,
-        actorProfileId: null,
-        actorName: uploader,
-        refId: found.request.id,
-      });
-    });
-  }
-
-  private admit(found: PublicFileRequest, bytes: number): void {
-    const { store } = this.deps;
-    checkDriveQuota((profileId) => store.driveQuotas.status(profileId), {
+  private admit(found: PublicFileRequest, bytes: number): Promise<void> {
+    return loadedQuotaCheck(this.deps.store, {
       profileId: found.receiverProfileId,
       addBytes: bytes,
       releasedBytes: 0,
@@ -352,7 +333,7 @@ export class FileRequestIntake {
     for (let attempt = 1; ; attempt += 1) {
       const candidate = freeNameAt(name, attempt);
       const relPath = `${found.folder.relPath}/${candidate}`;
-      const indexed = store.driveItems.byPath(found.root.id, relPath, null);
+      const indexed = await store.host.call('driveItems', 'byPath', found.root.id, relPath, null);
       const onDisk = await env.files.stamp(await locate(found.root, relPath));
       if (indexed === undefined && onDisk === null) return relPath;
     }

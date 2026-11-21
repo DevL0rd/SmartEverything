@@ -188,11 +188,11 @@ describe('the activity feed for any signal', () => {
     sinks.event({ kind: 'idle', subject: null, data: {} });
     await router.settled();
     const source = pluginSignalSource(manifest.id);
-    const listed = eventsOf(db.store, null, OWNER, { source, limit: 10 });
+    const listed = await eventsOf(db.store, null, OWNER, { source, limit: 10 });
     expect(listed).toMatchObject([
       { kind: 'signal', details: { source, kind: 'pressed', label: 'Pressed' } },
     ]);
-    expect(eventsOf(db.store, null, OWNER, { limit: 10 })).toHaveLength(1);
+    expect(await eventsOf(db.store, null, OWNER, { limit: 10 })).toHaveLength(1);
   });
 });
 
@@ -305,25 +305,27 @@ describe('event_find with signal rows', () => {
     await router.settled();
   });
 
-  it('filters by signal source and by signal kind', () => {
-    const sourceOf = (input: Parameters<typeof eventsOf>[3]): readonly unknown[] =>
-      eventsOf(db.store, null, OWNER, input).map((event) => detail(event, 'source'));
-    expect(sourceOf({ source: 'hub', limit: 10 })).toStrictEqual(['hub']);
-    expect(sourceOf({ source: 'plugin_garage', limit: 10 })).toStrictEqual(['plugin_garage']);
-    expect(sourceOf({ signalKind: 'storm', limit: 10 })).toStrictEqual(['hub']);
-    expect(sourceOf({ source: 'hub', signalKind: 'door_moved', limit: 10 })).toStrictEqual([]);
-    expect(sourceOf({ kinds: ['signal'], limit: 10 })).toHaveLength(2);
+  it('filters by signal source and by signal kind', async () => {
+    const sourceOf = async (input: Parameters<typeof eventsOf>[3]): Promise<readonly unknown[]> =>
+      (await eventsOf(db.store, null, OWNER, input)).map((event) => detail(event, 'source'));
+    expect(await sourceOf({ source: 'hub', limit: 10 })).toStrictEqual(['hub']);
+    expect(await sourceOf({ source: 'plugin_garage', limit: 10 })).toStrictEqual(['plugin_garage']);
+    expect(await sourceOf({ signalKind: 'storm', limit: 10 })).toStrictEqual(['hub']);
+    expect(await sourceOf({ source: 'hub', signalKind: 'door_moved', limit: 10 })).toStrictEqual(
+      [],
+    );
+    expect(await sourceOf({ kinds: ['signal'], limit: 10 })).toHaveLength(2);
   });
 
   it('shows a person only the signal rows that are theirs or the home’s', async () => {
     bus.emit(garage('door_moved', KID));
     bus.emit({ ...garage('door_moved', PARENT), at: '2026-10-18T10:00:01.000Z' });
     await router.settled();
-    const own = eventsOf(db.store, null, { role: 'member', profileId: KID }, { limit: 50 });
+    const own = await eventsOf(db.store, null, { role: 'member', profileId: KID }, { limit: 50 });
     const profiles = own.map((event) => detail(event, 'profileId'));
     expect(profiles).toHaveLength(3);
     expect(profiles).toContain(KID);
     expect(profiles).not.toContain(PARENT);
-    expect(eventsOf(db.store, null, OWNER, { limit: 50 })).toHaveLength(4);
+    expect(await eventsOf(db.store, null, OWNER, { limit: 50 })).toHaveLength(4);
   });
 });

@@ -72,7 +72,7 @@ beforeEach(async () => {
     provider,
     transcriptionProvider: transcription,
     chat: test.store.assistantChat,
-    ledger: test.store.ledger,
+    ledger: test.store.host,
     filesRoot: test.directory,
     describeImages: (): boolean => false,
     inputModalities: (): readonly string[] | null => null,

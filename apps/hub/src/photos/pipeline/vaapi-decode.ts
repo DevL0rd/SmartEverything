@@ -93,7 +93,7 @@ export function vaapiDecodeArguments(
   ];
 }
 
-function run(args: readonly string[], signal: AbortSignal): Promise<Buffer> {
+function decodeWith(args: readonly string[], signal: AbortSignal): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const child = spawn(ffmpegPath(), [...args], { signal, stdio: ['ignore', 'pipe', 'pipe'] });
     const chunks: Buffer[] = [];
@@ -134,7 +134,10 @@ export async function decodeOnGpu(file: PreviewFile, signal: AbortSignal): Promi
       ? undefined
       : (await sharp(file.path, UNLIMITED_PIXELS).metadata()).orientation;
     const pixels = parsePam(
-      await run(vaapiDecodeArguments(file, device, DERIVED_LONG_EDGE.preview, orientation), signal),
+      await decodeWith(
+        vaapiDecodeArguments(file, device, DERIVED_LONG_EDGE.preview, orientation),
+        signal,
+      ),
     );
     return {
       kind: 'decoded',

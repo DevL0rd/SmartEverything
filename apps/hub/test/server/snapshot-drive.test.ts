@@ -10,11 +10,11 @@ async function seen(token: string): Promise<{
   readonly listed: readonly string[];
 }> {
   const { base } = suite.current;
-  const snapshot = API_ENDPOINTS.readSnapshot.response.parse(
-    (await call(base, token, { method: 'GET', path: '/api/snapshot' })).body,
-  );
   const listed = API_ENDPOINTS.listRoots.response.parse(
     (await call(base, token, { method: 'GET', path: '/api/drive/roots' })).body,
+  );
+  const snapshot = API_ENDPOINTS.readSnapshot.response.parse(
+    (await call(base, token, { method: 'GET', path: '/api/snapshot' })).body,
   );
   return {
     snapshot: (snapshot.tables.drive_roots ?? []).map((root) => root.id).sort(),

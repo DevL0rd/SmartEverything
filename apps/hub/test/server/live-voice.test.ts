@@ -39,7 +39,7 @@ function rig(allowed: boolean): {
     send: (_connection, message): void => {
       sent.push(message);
     },
-    profileOf: (): string => 'profile-1',
+    profileOf: (): Promise<string> => Promise.resolve('profile-1'),
     log: testLogger('live-voice'),
   });
   voice.attach(source);
@@ -47,32 +47,32 @@ function rig(allowed: boolean): {
 }
 
 describe('live voice watching', () => {
-  it('logs a refused watch with the call and the connection instead of staying silent', () => {
+  it('logs a refused watch with the call and the connection instead of staying silent', async () => {
     const { voice, events } = rig(false);
-    expect(voice.watch(CONNECTION, 'call-1')).toBe(false);
+    await expect(voice.watch(CONNECTION, 'call-1')).resolves.toBe(false);
     expect(events()).toEqual(['voice_watch.refused']);
   });
 
-  it('stays quiet about an accepted watch', () => {
+  it('stays quiet about an accepted watch', async () => {
     const { voice, events } = rig(true);
-    expect(voice.watch(CONNECTION, 'call-1')).toBe(true);
+    await expect(voice.watch(CONNECTION, 'call-1')).resolves.toBe(true);
     expect(events()).toEqual([]);
   });
 
-  it('refuses every watch while no level source is attached', () => {
+  it('refuses every watch while no level source is attached', async () => {
     const logs = captureLogs();
     const voice = new LiveVoice<typeof CONNECTION>({
       send: (): void => undefined,
-      profileOf: (): string => 'profile-1',
+      profileOf: (): Promise<string> => Promise.resolve('profile-1'),
       log: testLogger('live-voice'),
     });
-    expect(voice.watch(CONNECTION, 'call-1')).toBe(false);
+    await expect(voice.watch(CONNECTION, 'call-1')).resolves.toBe(false);
     expect(logs.events()).toEqual(['voice_watch.refused']);
   });
 
-  it('hands the watcher the connection, its role and its profile and sends notices to that connection', () => {
+  it('hands the watcher the connection, its role and its profile and sends notices to that connection', async () => {
     const { voice, watchers, sent } = rig(true);
-    voice.watch(CONNECTION, 'call-1');
+    await voice.watch(CONNECTION, 'call-1');
     const [watcher] = watchers;
     expect(watcher?.key).toBe('7');
     expect(watcher?.owner).toBe(true);

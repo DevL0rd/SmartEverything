@@ -12,6 +12,7 @@ import { CAMERA, LAMP, fakeModule, type FakeModule } from './fake-provider';
 import { captureLogs, testLogger } from './logs';
 import { LogLines } from '../../src/service/log-lines';
 import { bundledLogWorker } from './log-worker';
+import { bundledCodecWorker } from './codec-worker';
 import {
   call,
   changedTo,
@@ -20,6 +21,7 @@ import {
   openLive,
   temporaryDirectory,
 } from './server';
+import { testStoreHost } from './store-host';
 
 export const PUBLIC_URL = 'https://home.example.com';
 
@@ -79,6 +81,8 @@ export async function bootServer(
     clock,
     logLines: new LogLines(),
     logWorkerScript: await bundledLogWorker(directory),
+    storeHostScript: testStoreHost().script,
+    codecWorkerScript: await bundledCodecWorker(directory),
     ...extra,
   });
   base = server.url;

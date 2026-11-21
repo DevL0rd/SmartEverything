@@ -34,7 +34,7 @@ function actorOf(store: Store, caller: Caller, chat: AiChatRow): ReactionActor {
     caller.pluginId === undefined &&
     caller.authority === undefined
   ) {
-    const profile = store.profiles.byId(chatOwnerOf(store, caller).profileId);
+    const profile = store.profiles.byId(chatOwnerOf(caller).profileId);
     return { actor: { kind: 'person', id: profile.id, label: profile.name } };
   }
   return assistantActor(store, caller, chat);
@@ -64,7 +64,7 @@ export function setMessageReaction(
   change: AssistantReactionChange,
 ): readonly AssistantReaction[] {
   return store.write(() => {
-    const chat = mutableChat(chats, engines, chatOwnerOf(store, caller), target.chatId);
+    const chat = mutableChat(chats, engines, chatOwnerOf(caller), target.chatId);
     const reacting = actorOf(store, caller, chat);
     const { emoji, present, in_parent: parent } = change;
     if (parent !== true)

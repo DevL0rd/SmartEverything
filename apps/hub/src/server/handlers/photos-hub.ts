@@ -11,16 +11,10 @@ import type { PhotoAi } from '../../photos/ai/service';
 import { photoBackupRoutes, type PhotoBackupRoutes } from '../../photos/backup-routes';
 import { BackupService } from '../../photos/backup';
 import { photoDuplicateRoutes, type PhotoDuplicateRoutes } from '../../photos/duplicates-routes';
-import {
-  PhotoFolderService,
-  photoFolderRoutes,
-  type PhotoFolderRoutes,
-} from '../../photos/folder-routes';
+import { photoFolderRoutes, type PhotoFolderRoutes } from '../../photos/folder-routes';
 import type { DuplicatesService } from '../../photos/duplicates';
 import { photoEditRoutes, type PhotoEditRoutes } from '../../photos/edits/routes';
 import { photoEditDeps } from '../../photos/edits/wiring';
-import { InsightsReader } from '../../photos/insights';
-import { RailCountsReader } from '../../photos/insights-rail';
 import { photoInsightRoutes, type PhotoInsightRoutes } from '../../photos/insights-routes';
 import { PhotoMedia, photoMediaRoutes, type PhotoMediaRoutes } from '../../photos/media-routes';
 import {
@@ -34,18 +28,15 @@ import type { PhotoSharingHub } from '../../photos/sharing/wiring';
 import type { PhotoSharingRoutes } from '../../photos/sharing/routes';
 import type { PhotoPeopleRoutes } from '../../photos/people/routes';
 import { PlacedMetaEditor } from '../../photos/placed-meta';
-import type { PlacesService } from '../../photos/places';
-import { PlaceQueries } from '../../photos/places-queries';
 import { photoPlaceRoutes, type PhotoPlaceRoutes } from '../../photos/places-routes';
 import { AiImageSource } from '../../photos/sources/ai-images';
 import { CameraSource } from '../../photos/sources/cameras';
 import { photoSourceRoutes, type PhotoSourceRoutes } from '../../photos/sources/routes';
 import type { SourceService } from '../../photos/sources/shapes';
-import { StacksService } from '../../photos/stacks';
 import { DriveBackupRepository } from '../../store/repositories/drive-backup';
 import type { Store } from '../../store/store';
 import type { MediaLinks } from '../media-links';
-import { photoReaders, photosRoutes, type PhotoRoutes } from './photos';
+import { photosRoutes, type PhotoRoutes } from './photos';
 
 export interface PhotoHubInputs {
   readonly store: Store;
@@ -62,11 +53,10 @@ export interface PhotoHubInputs {
   readonly layout: HubLayout;
   readonly decoders: PreviewDecoders;
   readonly openRouter: Pick<OpenRouterPlatform, 'client'>;
-  readonly places: Pick<PlacesService, 'assign'>;
 }
 
 function sourcesOf(inputs: PhotoHubInputs): Readonly<Record<PhotoSource, SourceService>> {
-  const env = { ...inputs.env, store: inputs.store, sql: inputs.store.context.sql };
+  const env = { ...inputs.env, store: inputs.store };
   return {
     cameras: new CameraSource({
       env,
@@ -102,31 +92,24 @@ export type PhotoHubRoutes = PhotoRoutes &
 
 export function photoHubRoutes(inputs: PhotoHubInputs): PhotoHubRoutes {
   const { store } = inputs;
-  const { context } = store;
-  const readers = photoReaders(context);
   const { sharing } = inputs;
   return {
-    ...photosRoutes(store, readers),
-    ...photoInsightRoutes(store, {
-      insights: new InsightsReader(context),
-      rail: new RailCountsReader(context, (actor) => sharing.reader.unread(actor)),
-    }),
-    ...photoDuplicateRoutes(store, inputs.duplicates, new StacksService(context)),
-    ...photoPlaceRoutes(store, new PlaceQueries(context)),
-    ...photoMediaRoutes(store, new PhotoMedia(context, inputs.read, store)),
+    ...photosRoutes(store),
+    ...photoInsightRoutes(store),
+    ...photoDuplicateRoutes(store, inputs.duplicates),
+    ...photoPlaceRoutes(store),
+    ...photoMediaRoutes(new PhotoMedia(store.host)),
     ...photoSourceRoutes(store, sourcesOf(inputs)),
     ...photoBackupRoutes(store, photoBackupService(inputs)),
-    ...photoFolderRoutes(store, new PhotoFolderService(store, inputs.env.now)),
+    ...photoFolderRoutes(store),
     ...photoAiRoutes(
-      store,
       inputs.ai,
-      new PhotoModelCatalogue(store, () => inputs.openRouter.client.zdrModelIds()),
+      new PhotoModelCatalogue(store.live, () => inputs.openRouter.client.zdrModelIds()),
     ),
     ...photoPeople({ store, ai: inputs.ai, timeZone: () => store.settings.read().time_zone }),
     ...sharing.routes,
     ...photoEditRoutes(
-      store,
-      photoEditDeps({ ...inputs, eraserModel: () => inputs.ai.models.read().eraser }),
+      photoEditDeps({ ...inputs, eraserModel: async () => (await inputs.ai.models()).eraser }),
     ),
     ...photoOrganiseRoutes(store, placedOrganise(inputs)),
   };
@@ -140,8 +123,7 @@ function placedOrganise(inputs: PhotoHubInputs): OrganiseServices {
       write: inputs.write,
       links: inputs.links,
       now: inputs.env.now,
-      timeZone: () => store.settings.read().time_zone,
     }),
-    meta: new PlacedMetaEditor(store, inputs.places),
+    meta: new PlacedMetaEditor(store.host),
   };
 }

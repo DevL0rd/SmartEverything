@@ -223,7 +223,7 @@ export class Conversation {
     this.meter.summarize();
     this.turnTrace.callEnded(reason, cause, this.meter);
     this.hooks.ended(reason, detail, cause);
-    this.line.release(this.session, this.hooks.history());
+    this.line.release(this.session, await this.hooks.history());
     await this.input?.release();
   }
 
@@ -280,11 +280,9 @@ export class Conversation {
     );
   }
 
-  private opened(session: LiveSession, fresh: boolean, starting: boolean): LiveSession {
-    const note = fresh ? this.hooks.note(starting ? this.line.known() : null, starting) : '';
-    if (note !== '') {
-      session.text(note, false);
-    }
+  private async opened(session: LiveSession, fresh: boolean, open: boolean): Promise<LiveSession> {
+    const note = fresh ? await this.hooks.note(open ? this.line.known() : null, open) : '';
+    if (note !== '') session.text(note, false);
     return session;
   }
 

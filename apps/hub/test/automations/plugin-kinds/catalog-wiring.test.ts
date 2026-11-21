@@ -79,7 +79,7 @@ describe('the engine reads kinds from the catalog it was given', () => {
     captureLogs();
     const rig = await rigV3({ kinds: chatHub() });
     const row = rig.add(watching());
-    expect(rig.engine.sync()).toMatchObject({ loaded: 1, refused: 0 });
+    expect(await rig.engine.sync()).toMatchObject({ loaded: 1, refused: 0 });
     press(rig);
     await rig.until(() => rig.runs(row.id).length === 1);
     expect(rig.runs(row.id)).toHaveLength(1);
@@ -89,7 +89,7 @@ describe('the engine reads kinds from the catalog it was given', () => {
     captureLogs();
     const rig = await rigV3();
     const row = rig.add(watching());
-    rig.engine.sync();
+    await rig.engine.sync();
     press(rig);
     await rig.settle();
     expect(rig.runs(row.id)).toHaveLength(0);
@@ -103,16 +103,20 @@ describe('saving an automation checks plugin triggers against the catalog', () =
     rig.close();
   });
 
-  function create(definition: AutomationV4, kinds: KindCatalog, member: boolean): boolean {
+  async function create(
+    definition: AutomationV4,
+    kinds: KindCatalog,
+    member: boolean,
+  ): Promise<boolean> {
     rig = programRig();
     const service = automationPrograms({ ...rig.env, kinds });
     const caller = member ? rig.member.caller : rig.owner.caller;
-    return service.create(caller, { name: 'Vault', enabled: true, definition }).ok;
+    return (await service.create(caller, { name: 'Vault', enabled: true, definition })).ok;
   }
 
-  function refused(work: () => void): ApiError {
+  async function refused(work: Promise<unknown>): Promise<ApiError> {
     try {
-      work();
+      await work;
     } catch (cause) {
       if (cause instanceof ApiError) return cause;
       throw cause;
@@ -133,19 +137,18 @@ describe('saving an automation checks plugin triggers against the catalog', () =
       ...catalog,
       get: (id) => (id === OWNER_ONLY ? ownerOnlyTrigger() : catalog.get(id)),
       has: (id) => id === OWNER_ONLY || catalog.has(id),
+      kinds: () => [...catalog.kinds(), ownerOnlyTrigger()],
     };
   }
 
-  it('refuses a member an automation started by an owner only plugin trigger', () => {
-    const error = refused(() => {
-      create(vaultProgram(), withOwnerOnly(), true);
-    });
+  it('refuses a member an automation started by an owner only plugin trigger', async () => {
+    const error = await refused(create(vaultProgram(), withOwnerOnly(), true));
     expect(error.code).toBe('forbidden');
     expect(error.message).toContain('The vault opened');
   });
 
-  it('lets the owner save it', () => {
-    expect(create(vaultProgram(), withOwnerOnly(), false)).toBe(true);
+  it('lets the owner save it', async () => {
+    expect(await create(vaultProgram(), withOwnerOnly(), false)).toBe(true);
   });
 });
 
@@ -158,12 +161,12 @@ describe('the assistant search reads kinds from the catalog', () => {
       name: 'Greeter',
       triggers: [savedTrigger(POSTED, { channel: 'c-9' })],
     });
-    const named = (kinds: KindCatalog): string[] =>
-      automationHits(store, { query: 'A message is posted', limit: 10 }, kinds).map((hit) =>
+    const named = async (kinds: KindCatalog): Promise<string[]> =>
+      (await automationHits(store, { query: 'A message is posted', limit: 10 }, kinds)).map((hit) =>
         String(hit['name']),
       );
-    expect(named(chatHub())).toEqual(['Greeter']);
-    expect(named(createKindCatalog())).toEqual([]);
+    expect(await named(chatHub())).toEqual(['Greeter']);
+    expect(await named(createKindCatalog())).toEqual([]);
     await opened.close();
   });
 });

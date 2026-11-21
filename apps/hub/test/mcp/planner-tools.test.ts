@@ -247,12 +247,12 @@ describe('planner scope of a member AI', () => {
     });
   }
 
-  it('reaches only its own planner and is refused another person', () => {
+  it('reaches only its own planner and is refused another person', async () => {
     const { context, profileId } = member(['planner']);
-    expect(profileFor(context, {})).toBe(profileId);
-    expect(() => profileFor(context, { personId: opened.store.profiles.first().id })).toThrow(
-      'Only an owner may act for another person or app.',
-    );
+    expect(await profileFor(context, {})).toBe(profileId);
+    await expect(
+      profileFor(context, { personId: opened.store.profiles.first().id }),
+    ).rejects.toThrow('Only an owner may act for another person or app.');
   });
 
   it('hides the planner tools and the planner search lines without the planner area', async () => {

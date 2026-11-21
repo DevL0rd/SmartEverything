@@ -47,7 +47,7 @@ function contextAction(
       }
       const reach = await services.authority.reach(caller, eventId, input.channelId);
       return plain(
-        services.context.query({
+        await services.context.query({
           origin: reach.origin,
           mode,
           limit: input.limit,

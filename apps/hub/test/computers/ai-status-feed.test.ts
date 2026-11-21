@@ -100,11 +100,12 @@ describe('computer AI status notices', () => {
   it('stays silent for a simulated minute of unchanged reads and capability reports', async () => {
     const deviceId = computerId();
     const directory = new ComputerAiDirectory(opened.store, testLogger('computers'));
+    await directory.load();
     const sent: ComputerAiStatus[] = [];
     directory.onChange((status) => sent.push(status));
     const { host, emit } = fakeHost(deviceId);
     directory.attach(deviceId, host, false);
-    opened.store.computerAi.saveSettings(deviceId, {
+    await opened.store.live.computers.saveAiSettings(deviceId, {
       control: { enabled: false, auto_link: false, mcp_areas: null },
       provider: { enabled: true, options: { builtin_tools: [] } },
     });
@@ -144,14 +145,15 @@ it('lists cached Codex models without a native read when the connected host cann
     available: true,
     reason: null,
   };
-  opened.store.computerRuntimes.saveSettings(target, {
+  await opened.store.live.computers.load();
+  await opened.store.live.computers.saveRuntimeSettings(target, {
     runtime: 'codex',
     settings: {
       ...DEFAULT_CODEX_AI_SETTINGS,
       provider: { ...DEFAULT_CODEX_AI_SETTINGS.provider, enabled: true },
     },
   });
-  opened.store.computerRuntimes.cache(target, capabilities, [model]);
+  await opened.store.live.computers.cacheRuntime(target, capabilities, [model]);
   const directory = new ComputerAiDirectory(opened.store, testLogger('computers'));
   const read = vi.fn().mockRejectedValue(new Error('Unexpected native read'));
   directory.runtimes.attach(

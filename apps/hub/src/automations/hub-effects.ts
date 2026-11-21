@@ -89,13 +89,9 @@ function invalid(error: z.ZodError): NodeResult {
   return { ok: false, class: 'Invalid', message: z.prettifyError(error) };
 }
 
-function whoOf(ports: HubEffectPorts, run: EffectRun): Who {
-  const row = ports.store.automations.find(run.automationId);
-  return {
-    name: row?.name ?? 'Automation',
-    profileId: row?.author?.profile_id ?? ports.store.profiles.first().id,
-    plugin: row?.origin ?? null,
-  };
+async function whoOf(ports: HubEffectPorts, run: EffectRun): Promise<Who> {
+  const author = await ports.store.host.read('automationAuthor', run.automationId);
+  return { name: author.name ?? 'Automation', profileId: author.profileId, plugin: author.origin };
 }
 
 function originOf(who: Who, run: EffectRun): ActionOrigin {
@@ -163,9 +159,9 @@ function askHandler(ports: HubEffectPorts): EffectHandler {
     const checked = ASK.safeParse(params);
     if (!checked.success) return invalid(checked.error);
     const ask = checked.data;
-    const who = whoOf(ports, run);
+    const who = await whoOf(ports, run);
     try {
-      ports.questions.open({
+      await ports.questions.open({
         id: request.key,
         automationId: run.automationId,
         runId: run.runId,
@@ -188,16 +184,16 @@ function askHandler(ports: HubEffectPorts): EffectHandler {
       );
       return { ok: true, value: { notificationId: request.key } };
     } catch (cause) {
-      ports.questions.close(request.key);
+      await ports.questions.close(request.key);
       return effectFailure(cause);
     }
   };
 }
 
 function personHandler(ports: HubEffectPorts): EffectHandler {
-  return handle(NOTIFY_PERSON, (request, run, effect) => {
-    const who = whoOf(ports, run);
+  return handle(NOTIFY_PERSON, async (request, run, effect) => {
     const { image, tag, link, sound } = request;
+    const who = await whoOf(ports, run);
     return delivered(effect, run, async () => {
       const result = await notifier(ports).person(
         {
@@ -219,14 +215,14 @@ function personHandler(ports: HubEffectPorts): EffectHandler {
 }
 
 function speakHandler(ports: HubEffectPorts): EffectHandler {
-  return handle(SPEAK, (request, run, effect) => {
+  return handle(SPEAK, async (request, run, effect) => {
     const noDevices = request.target === null || request.target === undefined;
     if (noDevices && request.channel === undefined) {
       throw new IntegrationError('Invalid', 'Pick a device or a Talk channel to speak on.');
     }
     const targets = reachTargets(ports.store, request);
-    const who = whoOf(ports, run);
     const { volume, voice } = request;
+    const who = await whoOf(ports, run);
     return delivered(effect, run, async () => {
       const { spokenOn } = await notifier(ports).speakAll(
         {
@@ -247,8 +243,8 @@ function speakHandler(ports: HubEffectPorts): EffectHandler {
 function notifyHandlers(ports: HubEffectPorts): EffectHandlers {
   return {
     'notify.ask': askHandler(ports),
-    'notify.feed': handle(FEED, ({ message }, run, effect) => {
-      const who = whoOf(ports, run);
+    'notify.feed': handle(FEED, async ({ message }, run, effect) => {
+      const who = await whoOf(ports, run);
       return delivered(effect, run, () => {
         notifier(ports).feed({ automationId: run.automationId, name: who.name }, message);
         return Promise.resolve({});
@@ -262,7 +258,7 @@ function notifyHandlers(ports: HubEffectPorts): EffectHandlers {
 function aiHandlers(ports: HubEffectPorts): EffectHandlers {
   return {
     'ai.wake': handle(WAKE, async (request, run) => {
-      const who = whoOf(ports, run);
+      const who = await whoOf(ports, run);
       await wakeAssistant(
         ports.ai,
         {
@@ -276,7 +272,7 @@ function aiHandlers(ports: HubEffectPorts): EffectHandlers {
       return {};
     }),
     'tool.call': handle(TOOL, async (request, run) => {
-      const who = whoOf(ports, run);
+      const who = await whoOf(ports, run);
       const result = await callTool(
         ports.ai.current().tools,
         {
@@ -289,7 +285,7 @@ function aiHandlers(ports: HubEffectPorts): EffectHandlers {
       return { result, ok: true };
     }),
     'device.operation': handle(OPERATION, async (request, run) => {
-      const who = whoOf(ports, run);
+      const who = await whoOf(ports, run);
       const result: JsonValue = await runDeviceOperation(
         ports.ai.current().tools,
         { operation: request.operation, args: request.args, profileId: who.profileId },

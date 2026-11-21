@@ -31,8 +31,8 @@ function observe(): Promise<void> {
   return Promise.resolve();
 }
 
-function deviceOf(): DeviceRow {
-  return device;
+function deviceOf(): Promise<DeviceRow> {
+  return Promise.resolve(device);
 }
 
 function wearables(): Promise<{ wearables: []; skipped: [] }> {

@@ -28,8 +28,6 @@ import {
 } from '../../../src/local/treadmill/automation-tools';
 import { runTreadmillCommand, type CommandDeps } from '../../../src/local/treadmill/commands';
 import { NoStepsGuard } from '../../../src/local/treadmill/guard';
-import { TreadmillHealth } from '../../../src/local/treadmill/health';
-import { treadmillOf } from '../../../src/local/treadmill/known';
 import { testRun } from '../../automations-v3/effects/support';
 import { captureLogs, testLogger } from '../../support/logs';
 import {
@@ -64,12 +62,11 @@ beforeEach(async () => {
     },
     guard: new NoStepsGuard(),
     holderOf: (): string | null => rig.holder.clientId,
-    walkerOf: (): string => rig.owner.profile.id,
     holderName: (): string => 'Owner phone',
     now: rig.clock.now,
     log: testLogger('treadmill'),
   };
-  rig.batch(tick, [statusHex({ state: IDLE })]);
+  await rig.batch(tick, [statusHex({ state: IDLE })]);
 });
 
 afterEach(async () => {
@@ -83,7 +80,6 @@ async function allowRemoteStart(): Promise<void> {
       fleet: rig.fleet,
       local: { observe: () => Promise.resolve() },
       bridges: { takeOver: () => Promise.reject(new Error('unused')) },
-      health: new TreadmillHealth(rig.test.store),
       broker: deps.broker,
       holderOf: deps.holderOf,
       now: rig.clock.now,
@@ -101,14 +97,14 @@ async function allowRemoteStart(): Promise<void> {
   );
 }
 
-function beltRuns(): void {
+async function beltRuns(): Promise<void> {
   tick += 1;
-  rig.batch(tick, [statusHex({ state: COUNTDOWN })]);
+  await rig.batch(tick, [statusHex({ state: COUNTDOWN })]);
   tick += 1;
-  rig.batch(tick, [statusHex({ state: RUNNING, speed10: 30, time: 1, steps: 0 })]);
+  await rig.batch(tick, [statusHex({ state: RUNNING, speed10: 30, time: 1, steps: 0 })]);
 }
 
-function issued(device: DeviceRow, control: string, value: JsonValue): Promise<JsonValue> {
+async function issued(device: DeviceRow, control: string, value: JsonValue): Promise<JsonValue> {
   const [row] = rig.test.store.commands.insert([
     { deviceId: device.id, capability: control, value, source: 'automation', requestedBy: null },
   ]);
@@ -119,7 +115,10 @@ function issued(device: DeviceRow, control: string, value: JsonValue): Promise<J
     capability: CAPABILITY_KEY.parse(control),
     value,
   });
-  if (control === 'belt_command' && value === 'start') beltRuns();
+  if (control === 'belt_command' && value === 'start') {
+    const [done] = await Promise.allSettled([result, beltRuns()]);
+    if (done.status === 'rejected') throw done.reason;
+  }
   return result;
 }
 
@@ -128,7 +127,7 @@ function perform(params: Record<string, string | number>): Promise<unknown> {
   registerTreadmillAutomation(
     catalog,
     treadmillAutomationRuntime({
-      find: (deviceId) => treadmillOf(rig.test.store, deviceId),
+      find: (deviceId) => rig.fleet.roster.member(deviceId),
       issue: issued,
     }),
   );
@@ -199,17 +198,17 @@ describe('the Start the treadmill node in a run', () => {
 });
 
 describe('the treadmill runtime registration', () => {
-  it('declares the tool of every node the treadmill offers and drops it when the driver stops', () => {
+  it('declares the tool of every node the treadmill offers and drops it when the driver stops', async () => {
     const catalog = createKindCatalog();
     const stop = registerTreadmillAutomation(
       catalog,
-      treadmillAutomationRuntime({ find: () => null, issue: issued }),
+      treadmillAutomationRuntime({ find: () => Promise.resolve(null), issue: issued }),
     );
     const nodes = (TREADMILL_AUTOMATION.automation.nodes ?? []).map((node) => node.run.tool);
     expect(nodes).toEqual(['start']);
     expect(catalog.driverNodes.declaration(pluginNodeKindId(OWNER, 'start'))).toBeDefined();
     const tools = catalog.driverNodes.over(() => new ToolHub([]));
-    expect(tools.check(pluginToolName(OWNER.id, 'start'), { device: 'x' }).ok).toBe(true);
+    expect((await tools.check(pluginToolName(OWNER.id, 'start'), { device: 'x' })).ok).toBe(true);
     stop();
     expect(catalog.driverNodes.declaration(pluginNodeKindId(OWNER, 'start'))).toBeUndefined();
   });

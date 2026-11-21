@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { type IncomingMessage, type ServerResponse } from 'node:http';
 import { COMPUTER_MCP_TOKEN, type ComputerAiRuntime } from '@smarteverything/domain';
@@ -85,6 +85,7 @@ function underPrefix(url: string | undefined, prefix: string): boolean {
 
 export class HubGuestBroker {
   private readonly families = new Map<string, BrokerFamily>([[MCP_KIND, mcpFamily]]);
+  private readonly runtimeTails = new Map<ComputerAiRuntime, Promise<void>>();
   private readonly listener = new LoopbackListener<string, BrokerGrant>({
     name: 'Guest broker',
     event: 'guest.refused',
@@ -118,28 +119,41 @@ export class HubGuestBroker {
   private grantFile(runtime: ComputerAiRuntime): string {
     return join(this.options.directory, `mcp-${runtime}.grant-id`);
   }
-  private persistedId(runtime: ComputerAiRuntime): string {
+  private async persistedId(runtime: ComputerAiRuntime): Promise<string> {
     const file = this.grantFile(runtime);
     try {
-      const stored = readFileSync(file, 'utf8').trim();
+      const stored = (await readFile(file, 'utf8')).trim();
       if (GRANT_ID.test(stored)) return stored;
     } catch (cause) {
       if (!isMissing(cause)) throw cause;
     }
     const created = randomBytes(32).toString('hex');
-    mkdirSync(this.options.directory, { recursive: true, mode: 0o700 });
+    await mkdir(this.options.directory, { recursive: true, mode: 0o700 });
     const temporary = `${file}.${randomBytes(8).toString('hex')}.tmp`;
     try {
-      writeFileSync(temporary, `${created}\n`, { mode: 0o600 });
-      renameSync(temporary, file);
+      await writeFile(temporary, `${created}\n`, { mode: 0o600 });
+      await rename(temporary, file);
     } finally {
-      rmSync(temporary, { force: true });
+      await rm(temporary, { force: true });
     }
     return created;
   }
-  revokeMcp(runtime: ComputerAiRuntime): void {
-    this.closeOwner(`mcp:${runtime}`);
-    rmSync(this.grantFile(runtime), { force: true });
+  private inOrder<T>(runtime: ComputerAiRuntime, work: () => Promise<T>): Promise<T> {
+    const result = (this.runtimeTails.get(runtime) ?? Promise.resolve()).then(work);
+    this.runtimeTails.set(
+      runtime,
+      result.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return result;
+  }
+  revokeMcp(runtime: ComputerAiRuntime): Promise<void> {
+    return this.inOrder(runtime, async () => {
+      this.closeOwner(`mcp:${runtime}`);
+      await rm(this.grantFile(runtime), { force: true });
+    });
   }
   register(family: BrokerFamily): void {
     if (!FAMILY_KIND.test(family.kind))
@@ -159,8 +173,18 @@ export class HubGuestBroker {
     });
     return this.grantUrl(kind, id);
   }
-  openMcp(runtime: ComputerAiRuntime, address: McpGrantAddress, credential: string): string {
-    if (!this.listener.running) throw new HubTransportError('Guest broker listener is unavailable');
+  openMcp(
+    runtime: ComputerAiRuntime,
+    address: McpGrantAddress,
+    credential: string,
+  ): Promise<string> {
+    return this.inOrder(runtime, () => this.openMcpNow(runtime, address, credential));
+  }
+  private async openMcpNow(
+    runtime: ComputerAiRuntime,
+    address: McpGrantAddress,
+    credential: string,
+  ): Promise<string> {
     const token = COMPUTER_MCP_TOKEN.parse(credential);
     const url = this.admittedMcpUrl(address);
     const owner = `mcp:${runtime}`;
@@ -168,10 +192,12 @@ export class HubGuestBroker {
       (entry) => entry.owner === owner && entry.value.credentials.token === token,
     );
     if (known !== undefined) return this.mcpUrl(known);
+    const id = await this.persistedId(runtime);
+    if (!this.listener.running) throw new HubTransportError('Guest broker listener is unavailable');
     this.closeOwner(owner);
     const lease = this.authority.lease(url);
     lease.signal.throwIfAborted();
-    const id = this.listener.addAs(this.persistedId(runtime), {
+    this.listener.addAs(id, {
       owner,
       value: { family: mcpFamily, credentials: { url, token } },
       signal: lease.signal,

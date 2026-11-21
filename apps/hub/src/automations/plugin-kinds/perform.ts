@@ -40,7 +40,7 @@ export interface PluginNodeDeclaration {
 }
 
 export interface PluginNodePorts {
-  readonly store: Pick<Store, 'plugins' | 'automations' | 'profiles'>;
+  readonly store: Pick<Store, 'plugins' | 'host'>;
   readonly events: Pick<EventRouter, 'record'>;
   readonly clock: Pick<Clock, 'now'>;
   readonly signals: Pick<SignalBus, 'subscribe'>;
@@ -69,13 +69,13 @@ export function pluginNodeDeclaration(
   return undefined;
 }
 
-function whoOf(store: PluginNodePorts['store'], automationId: string): Who {
-  const row = store.automations.find(automationId);
+async function whoOf(store: PluginNodePorts['store'], automationId: string): Promise<Who> {
+  const author = await store.host.read('automationAuthor', automationId);
   return {
     automationId,
-    name: row?.name ?? 'Automation',
-    profileId: row?.author?.profile_id ?? store.profiles.first().id,
-    plugin: row?.origin ?? null,
+    name: author.name ?? 'Automation',
+    profileId: author.profileId,
+    plugin: author.origin,
   };
 }
 
@@ -159,18 +159,18 @@ async function callPlugin(
   context: Context,
   found: PluginNodeDeclaration,
   args: BoundArgs,
-  run: Pick<EffectRun, 'automationId'>,
+  who: Who,
 ): Promise<NodeResult> {
-  const { ports, dispatchers } = context;
+  const { dispatchers } = context;
   try {
-    const tools = ports.tools();
+    const tools = context.ports.tools();
     const name = pluginToolName(found.pluginId, found.node.run.tool);
-    const check = tools.check(name, args);
+    const check = await tools.check(name, args);
     if (!check.ok) return failed('Unreachable', check.reason, 'unavailable');
     const batchArg = found.node.batch?.arg;
     const problem = argumentProblem(check.tool.inputSchema, sentForm(args, batchArg));
     if (problem !== null) return failed('Invalid', problem, 'invalid_arguments');
-    const caller = callerOf(whoOf(ports.store, run.automationId));
+    const caller = callerOf(who);
     const reply = await dispatchers.of(found.pluginId).submit({
       identity: JSON.stringify(caller),
       tool: name,
@@ -195,7 +195,11 @@ interface Sent {
   readonly run: Pick<EffectRun, 'runId' | 'automationId'>;
 }
 
-function recordLate(ports: PluginNodePorts, sent: Sent, failure: EffectFailureResult): void {
+async function recordLate(
+  ports: PluginNodePorts,
+  sent: Sent,
+  failure: EffectFailureResult,
+): Promise<void> {
   const { found, request, run } = sent;
   log.warn('plugin_node.late_failure', {
     kind: request.kind,
@@ -206,13 +210,15 @@ function recordLate(ports: PluginNodePorts, sent: Sent, failure: EffectFailureRe
     class: failure.class,
     reason: failure.message,
   });
+  const occurredAt = ports.clock.now().toISOString();
+  const { name } = await whoOf(ports.store, run.automationId);
   ports.events.record({
     deviceId: null,
     kind: 'automation_run',
-    occurredAt: ports.clock.now().toISOString(),
+    occurredAt,
     details: {
       automationId: run.automationId,
-      name: whoOf(ports.store, run.automationId).name,
+      name,
       message: `${found.node.title} failed after it was sent: ${failure.message}`,
     },
   });
@@ -220,8 +226,8 @@ function recordLate(ports: PluginNodePorts, sent: Sent, failure: EffectFailureRe
 
 function sendLater(ports: PluginNodePorts, sent: Sent, work: Promise<NodeResult>): void {
   background(
-    work.then((result) => {
-      if (!result.ok) recordLate(ports, sent, result);
+    work.then(async (result) => {
+      if (!result.ok) await recordLate(ports, sent, result);
     }),
     'automation.late_failure',
     { kind: sent.request.kind, runId: sent.run.runId, automationId: sent.run.automationId },
@@ -281,7 +287,8 @@ async function completed(
   if (waiting !== undefined && !('watch' in waiting)) return waiting;
   try {
     const args = bindArgs(found.node.run.args, params);
-    const result = await callPlugin(context, found, args, run);
+    const who = await whoOf(context.ports.store, run.automationId);
+    const result = await callPlugin(context, found, args, who);
     return await afterEvent(found, waiting, params, result);
   } finally {
     waiting?.watch.cancel();
@@ -298,7 +305,8 @@ export function pluginNodePerformer(ports: PluginNodePorts): EffectHandler {
       return failed('Unreachable', `No installed plugin declares ${request.kind}.`, 'unavailable');
     if (modeFor(found.node, request.mode) === 'fire_and_forget') {
       const args = bindArgs(found.node.run.args, params);
-      sendLater(ports, { found, request, run }, callPlugin(context, found, args, run));
+      const who = await whoOf(ports.store, run.automationId);
+      sendLater(ports, { found, request, run }, callPlugin(context, found, args, who));
       return { ok: true, value: { sent: true } };
     }
     return await awaitRun(completed(context, found, params, run), run);

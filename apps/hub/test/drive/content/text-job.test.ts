@@ -9,11 +9,8 @@ import { build } from 'esbuild';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { scanHandler, type ScanEnvironment } from '../../../src/drive/jobs';
 import { DriveRootLanes } from '../../../src/drive/root-lanes';
-import { DriveInodesRepository } from '../../../src/store/repositories/drive-inodes';
-import { DriveMissingRepository } from '../../../src/store/repositories/drive-missing';
 import {
   TextCursors,
-  collectTextBacklog,
   textHandler,
   textTrigger,
   type TextEnvironment,
@@ -30,6 +27,9 @@ import { DriveItemTextRepository } from '../../../src/store/repositories/drive-i
 import { testLogger } from '../../support/logs';
 import { driveRoot, NOW, openDriveFixture, type DriveFixture } from '../drive-fixture';
 import { zipOf, pngOf, solid } from './builders';
+import { localFolderIcons, localScans, localText } from '../local-ports';
+import { collectTextBacklog, type TextStore } from '../../../src/drive/units/text';
+import type { DriveItemsRepository } from '../../../src/store/repositories/drive-items';
 
 const ROOT = '0d000000-0000-4000-8000-000000000002';
 
@@ -129,17 +129,15 @@ const signal = (): AbortSignal => new AbortController().signal;
 
 async function scan(): Promise<void> {
   const env: ScanEnvironment = {
-    store: {
-      driveRoots: fixture.roots,
-      driveItems: fixture.items,
-      driveInodes: new DriveInodesRepository(fixture.context),
-      driveMissing: new DriveMissingRepository(fixture.context),
+    ...localScans({
+      roots: fixture.roots,
+      items: fixture.items,
+      context: fixture.context,
       feed: fixture.feed,
-      write: (work) => fixture.context.write(work),
       now: () => new Date(NOW),
-    },
+    }),
     availability: () => Promise.resolve('online'),
-    mounted: (): boolean => false,
+    mounted: () => Promise.resolve(false),
     workerScript: scannerScript,
     lanes: new DriveRootLanes(),
     log: testLogger(),
@@ -147,33 +145,25 @@ async function scan(): Promise<void> {
   await scanHandler(env)({ kind: 'scan', rootId: ROOT }, signal());
 }
 
-function textEnvironment(): TextEnvironment {
+function textEnvironment(items: DriveItemsRepository = fixture.items): TextEnvironment {
   const refresher = new FolderIconRefresher({
-    store: {
-      driveItems: fixture.items,
-      driveFolderIcons: icons,
-      driveFeed,
-      feed: fixture.feed,
-    },
+    icons: localFolderIcons(fixture, icons, items),
+    feed: fixture.feed,
     derivedDirectory: (): string => derived,
     log: testLogger(),
   });
   return {
-    store: {
-      driveRoots: fixture.roots,
-      driveItems: fixture.items,
-      driveItemText: texts,
-      driveFeed,
-      settingsKv: fixture.settings,
-      feed: fixture.feed,
-      write: (work) => fixture.context.write(work),
-    },
+    ...localText(fixture, items),
     availability: () => Promise.resolve('online'),
     workerScript: contentScript,
     activity: new DriveActivity(),
     icons: refresher,
     log: testLogger(),
   };
+}
+
+function textStore(): TextStore {
+  return { driveItems: fixture.items, driveItemText: texts, driveFeed };
 }
 
 async function readText(): Promise<void> {
@@ -247,9 +237,7 @@ describe('reading the text of a drive', () => {
     await scan();
     await readText();
     const before = texts.find(indexed('notes.txt').id);
-    expect(
-      collectTextBacklog({ store: textEnvironment().store }, fixture.roots.byId(ROOT)).work,
-    ).toEqual([]);
+    expect(collectTextBacklog(textStore(), ROOT).work).toEqual([]);
     put('notes.txt', 'second words here');
     utimesSync(
       join(tree, 'notes.txt'),
@@ -257,7 +245,7 @@ describe('reading the text of a drive', () => {
       new Date('2026-11-08T00:00:00Z'),
     );
     await scan();
-    const stale = collectTextBacklog({ store: textEnvironment().store }, fixture.roots.byId(ROOT));
+    const stale = collectTextBacklog(textStore(), ROOT);
     expect(stale.work.map((item) => item.name)).toEqual(['notes.txt']);
     await readText();
     const after = texts.find(indexed('notes.txt').id);
@@ -271,22 +259,16 @@ describe('reading the text of a drive', () => {
     put('b/two.txt', 'beta words');
     put('b/three.png', await pngOf(8, 8, solid(8, 8, [255, 255, 255, 255])));
     await scan();
-    const env = textEnvironment();
     let listed = 0;
-    const items = env.store.driveItems;
-    const counted: TextEnvironment = {
-      ...env,
-      store: {
-        ...env.store,
-        driveItems: new Proxy(items, {
-          get(target, key, receiver): unknown {
-            if (key === 'children') listed += 1;
-            const value: unknown = Reflect.get(target, key, receiver);
-            return typeof value === 'function' ? value.bind(target) : value;
-          },
-        }),
-      },
-    };
+    const counted = textEnvironment(
+      new Proxy(fixture.items, {
+        get(target, key, receiver): unknown {
+          if (key === 'children') listed += 1;
+          const value: unknown = Reflect.get(target, key, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      }),
+    );
     const cursors = new TextCursors();
     const run = textHandler(counted, cursors);
     await run({ kind: 'text', rootId: ROOT }, signal());

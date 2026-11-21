@@ -55,6 +55,7 @@ function fixture({ store, directory }: TestStore): ReactionFixture {
   const files = new AssistantFiles({
     layout: hubLayout(directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: store.now,
   });
   const chats = new ChatDirectory(store, files);

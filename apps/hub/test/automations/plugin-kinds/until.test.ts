@@ -1,3 +1,4 @@
+import { settleWithHost } from '../../support/host-settle';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pluginSignalSource, pluginSignalSpec, type SignalInput } from '@smarteverything/domain';
 import { AutomationRunCancelledError } from '../../../src/automations/effects/run-abort';
@@ -69,7 +70,7 @@ async function settledOf(work: Promise<unknown>): Promise<boolean> {
       done = true;
     },
   );
-  for (let turn = 0; turn < 5; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+  await settleWithHost();
   return done;
 }
 
@@ -112,6 +113,7 @@ describe('plugin node until', () => {
     vi.useFakeTimers();
     test.answer(answered({ id: 'm1' }));
     const result = test.perform(BY_PORT, { channel: 'c1' }, 'wait_for_result');
+    await settleWithHost();
     await vi.advanceTimersByTimeAsync(4999);
     test.bus.emit(message('c2'));
     await vi.advanceTimersByTimeAsync(1);

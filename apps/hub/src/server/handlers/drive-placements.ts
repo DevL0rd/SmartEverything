@@ -1,6 +1,5 @@
 import { API_ENDPOINTS as E } from '@smarteverything/domain';
 import type { DrivePlacements } from '../../drive/placements';
-import type { Store } from '../../store/store';
 import { DONE_REPLY, bound, type Routes } from '../router';
 import { refusing } from './drive-errors';
 import { actorOf } from './drive-services';
@@ -10,23 +9,20 @@ type DrivePlacementRoute =
 
 export type DrivePlacementRoutes = Routes<DrivePlacementRoute>;
 
-export function drivePlacementRoutes(
-  store: Store,
-  placements: DrivePlacements,
-): DrivePlacementRoutes {
+export function drivePlacementRoutes(placements: DrivePlacements): DrivePlacementRoutes {
   return {
     listPlacements: bound(E.listPlacements, ({ caller }) =>
-      refusing(() => placements.list(actorOf(store, caller))),
+      refusing(() => placements.list(actorOf(caller))),
     ),
     setPlacement: bound(E.setPlacement, ({ body, caller }) =>
-      refusing(() => placements.set(actorOf(store, caller), body)),
+      refusing(() => placements.set(actorOf(caller), body)),
     ),
     setComputerMount: bound(E.setComputerMount, ({ body, caller }) =>
-      refusing(() => placements.setMount(actorOf(store, caller), body)),
+      refusing(() => placements.setMount(actorOf(caller), body)),
     ),
     removePlacement: bound(E.removePlacement, ({ params, caller }) =>
-      refusing(() => {
-        placements.removeFor(actorOf(store, caller), params.placementId);
+      refusing(async () => {
+        await placements.removeFor(actorOf(caller), params.placementId);
         return DONE_REPLY;
       }),
     ),

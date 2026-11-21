@@ -81,6 +81,15 @@ export const COVERAGE_ROW = z.strictObject({
   backed_up: COUNT_FIELD,
 });
 
+export function localDay(now: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
+
 export interface InsightsContext {
   readonly today: string;
   readonly home: GeoPoint | null;

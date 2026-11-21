@@ -4,13 +4,8 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { DriveItem } from '@smarteverything/domain';
 import sharp from 'sharp';
-import {
-  commitContent,
-  folderDraft,
-  identityOf,
-  isoOf,
-  recordItem,
-} from '../../../src/drive/changes';
+import { commitContent, folderDraft, recordItem } from '../../../src/drive/changes';
+import { identityOf, isoOf } from '../../../src/drive/change-rows';
 import { ensureDrives, personalDrive } from '../../../src/drive/spaces';
 import { DriveReadService } from '../../../src/drive/service-read';
 import type { DriveCaller } from '../../../src/drive/service-write-support';
@@ -58,10 +53,7 @@ function depsOf(
     env: envOf(opened),
     store: opened.store,
     read: new DriveReadService(opened.store),
-    guard: {
-      status: (profileId) => opened.store.driveQuotas.status(profileId),
-      space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: guard.freeBytes }),
-    },
+    space: () => Promise.resolve({ totalBytes: 10 ** 12, freeBytes: guard.freeBytes }),
     layout: opened.layout,
     decoders,
     colour: new ColourRunner(script),
@@ -79,7 +71,7 @@ async function seedFolder(
   await mkdir(path, { recursive: true });
   const stamp = await nodeFiles.stamp(path);
   if (stamp === null) return;
-  recordItem(deps.env, {
+  await recordItem(deps.env, {
     draft: folderDraft(
       {
         rootId: mine.id,

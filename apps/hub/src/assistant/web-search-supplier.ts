@@ -126,10 +126,3 @@ function rememberSources(service: HarnessService, id: string, sources: readonly 
       ],
     });
 }
-
-export function savedWebSources(service: HarnessService, message: string): readonly WebSource[] {
-  return service.store.assistantChat.message(message).embeds.flatMap((embed) => {
-    const parsed = WEB_SOURCES_EMBED.safeParse(embed);
-    return parsed.success ? parsed.data.sources : [];
-  });
-}

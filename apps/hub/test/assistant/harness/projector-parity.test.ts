@@ -29,14 +29,14 @@ interface Conversation {
   readonly reply: AssistantMessageRow;
   readonly claim: DshWriterClaim;
   readonly sessionId: string;
-  readonly append: (events: readonly Omit<DshSessionEvent, 'seq'>[]) => void;
+  readonly append: (events: readonly Omit<DshSessionEvent, 'seq'>[]) => Promise<void>;
   readonly send: (body: Record<string, unknown>) => void;
 }
 
 async function conversation(): Promise<Conversation> {
   const { store } = rig.opened;
   const chat = rig.newChat(rig.hub.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.hub.target, randomUUID(), open);
   const question = addMessage(rig, chat.id, { role: 'person', text: 'work' });
   const reply = addMessage(rig, chat.id, { role: 'responder', text: '' });
@@ -61,10 +61,10 @@ async function conversation(): Promise<Conversation> {
     reply,
     claim: open.claim,
     sessionId: open.claim.session_id,
-    append: (events): void => {
+    append: async (events): Promise<void> => {
       const next =
         store.dshSessions.stat(open.claim.session_id, rig.owner.profileId)?.next_seq ?? 0;
-      const appended = store.dshSessions.append(
+      const appended = await store.live.dshSessions.append(
         {
           claim: open.claim,
           operation_id: randomUUID(),
@@ -211,20 +211,20 @@ async function liveTurn(ending: JsonValue): Promise<unknown> {
   });
   const done = streams.start(live.event, live.chat, live.reply.id);
   live.send({ kind: 'open' });
-  live.append(log['claim'] ?? []);
+  await live.append(log['claim'] ?? []);
   live.send({ kind: 'input', message_id: live.event.id, turn: 1 });
   live.send({ kind: 'status', status: 'running', work: [] });
-  live.append(log['prompt'] ?? []);
+  await live.append(log['prompt'] ?? []);
   live.send({ kind: 'attempt', id: 'a:1', state: 'started' });
   live.send({ kind: 'reasoning', delta: 'Thinking. ' });
   live.send({ kind: 'text', delta: 'Looking. ' });
   live.send({ kind: 'attempt', id: 'a:1', state: 'committed' });
-  live.append(log['first'] ?? []);
+  await live.append(log['first'] ?? []);
   live.send({ kind: 'attempt', id: 'a:2', state: 'started' });
   live.send({ kind: 'text', delta: 'Done.' });
   live.send({ kind: 'attempt', id: 'a:2', state: 'committed' });
-  live.append(log['second'] ?? []);
-  live.append(log['end'] ?? []);
+  await live.append(log['second'] ?? []);
+  await live.append(log['end'] ?? []);
   await done;
   off();
   return shown(live, store);
@@ -234,9 +234,11 @@ async function replayedTurn(ending: JsonValue, withEnd = true): Promise<unknown>
   const { store } = rig.opened;
   const replayed = await conversation();
   const log = records(replayed.event.id, ending);
-  for (const part of ['claim', 'prompt', 'first', 'second']) replayed.append(log[part] ?? []);
-  if (withEnd) replayed.append(log['end'] ?? []);
-  reconcileNativeReplies(projectorOf(rig));
+  for (const part of ['claim', 'prompt', 'first', 'second']) await replayed.append(log[part] ?? []);
+  if (withEnd) await replayed.append(log['end'] ?? []);
+  const projector = projectorOf(rig);
+  await reconcileNativeReplies(projector);
+  await projector.settled();
   return shown(replayed, store);
 }
 
@@ -278,13 +280,13 @@ describe('a turn rebuilt from the log after the hub stopped', () => {
     const replayed = await conversation();
     const log = records(replayed.event.id, { kind: 'completed' });
     for (const part of ['claim', 'prompt', 'first', 'second', 'end'])
-      replayed.append(log[part] ?? []);
+      await replayed.append(log[part] ?? []);
     const user = addMessage(rig, replayed.chat.id, {
       role: 'person',
       text: 'While the tool was running',
     });
     const conversationLog = new ConversationLog(store);
-    conversationLog.timeline(
+    await conversationLog.timeline(
       replayed.reply.id,
       CHAT_TIMELINE_EMBED.parse({
         kind: 'chat_timeline',
@@ -296,7 +298,9 @@ describe('a turn rebuilt from the log after the hub stopped', () => {
         ],
       }),
     );
-    reconcileNativeReplies(projectorOf(rig));
+    const projector = projectorOf(rig);
+    await reconcileNativeReplies(projector);
+    await projector.settled();
     const row = store.assistantChat.message(replayed.reply.id);
     const timeline = CHAT_TIMELINE_EMBED.parse(
       row.embeds.find((embed) => embed.kind === 'chat_timeline'),

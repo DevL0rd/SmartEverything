@@ -1,4 +1,5 @@
-import { brotliCompressSync, brotliDecompressSync } from 'node:zlib';
+import { promisify } from 'node:util';
+import { brotliCompressSync, brotliDecompress } from 'node:zlib';
 import {
   LIBRARY_INDEX,
   LIBRARY_MODEL,
@@ -50,16 +51,18 @@ export function buildPack(
   };
 }
 
-export function readPackIndex(bytes: Uint8Array): LibraryIndex {
-  return LIBRARY_INDEX.parse(JSON.parse(brotliDecompressSync(bytes).toString('utf8')));
+const decompress = promisify(brotliDecompress);
+
+export async function readPackIndex(bytes: Uint8Array): Promise<LibraryIndex> {
+  return LIBRARY_INDEX.parse(JSON.parse((await decompress(bytes)).toString('utf8')));
 }
 
-export function readPackModel(entry: LibraryEntry, bytes: Uint8Array): LibraryModel {
+export async function readPackModel(entry: LibraryEntry, bytes: Uint8Array): Promise<LibraryModel> {
   if (bytes.length !== entry.length) {
     throw new LibraryPackError(
       entry.id,
       `it holds ${String(bytes.length)} bytes, not ${String(entry.length)}`,
     );
   }
-  return LIBRARY_MODEL.parse(JSON.parse(brotliDecompressSync(bytes).toString('utf8')));
+  return LIBRARY_MODEL.parse(JSON.parse((await decompress(bytes)).toString('utf8')));
 }

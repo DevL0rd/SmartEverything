@@ -3,7 +3,7 @@ import { ApiError, type DriveItem, type DrivePlacement } from '@smarteverything/
 import type { StoredDrive } from '../../store/repositories/drive-roots';
 import { canWrite } from '../access';
 import { placementAccess, type PlacementAccessStore } from '../placement-access';
-import { HOLD_REASONS } from '../placement-lifecycle';
+import { HOLD_REASONS } from '../units/placement-reconcile';
 import type { Store } from '../../store/store';
 
 export type SyncMode = 'sync' | 'subscribe';
@@ -97,24 +97,6 @@ export function resolveScope(
     indexId: indexIdOf(drive, placement),
     writable: canWrite(access),
   };
-}
-
-function under(path: string, folder: string): boolean {
-  return path === folder || path.startsWith(`${folder}/`);
-}
-
-export function toDrivePath(scope: SyncScope, wirePath: string): string {
-  return scope.base === null ? wirePath : `${scope.base.relPath}/${wirePath}`;
-}
-
-export function inScope(scope: SyncScope, drivePath: string): boolean {
-  if (scope.base !== null && !drivePath.startsWith(`${scope.base.relPath}/`)) return false;
-  return !scope.excluded.some((wire) => under(drivePath, toDrivePath(scope, wire)));
-}
-
-export function toWirePath(scope: SyncScope, drivePath: string): string | null {
-  if (!inScope(scope, drivePath)) return null;
-  return scope.base === null ? drivePath : drivePath.slice(scope.base.relPath.length + 1);
 }
 
 export function assertWritable(scope: SyncScope): void {

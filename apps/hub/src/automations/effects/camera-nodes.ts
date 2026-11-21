@@ -68,8 +68,12 @@ function writable(device: DeviceRow, control: string): PresentedCapability | und
   return presented?.writable === true ? presented : undefined;
 }
 
-function movable(store: Store, id: string, control: 'ptz' | 'ptz_preset'): DeviceRow {
-  const device = store.devices.find(id);
+async function movable(
+  store: Store,
+  id: string,
+  control: 'ptz' | 'ptz_preset',
+): Promise<DeviceRow> {
+  const device = await store.host.call('devices', 'find', id);
   if (device === undefined) throw new ApiError('not_found', 'There is no such camera.');
   if (!isCamera(device)) throw new ApiError('invalid_request', `${device.name} is not a camera.`);
   if (writable(device, control) === undefined)
@@ -142,14 +146,14 @@ function cameraMove(ports: CameraEffectPorts): EffectHandler {
       if (ask.preset !== undefined)
         await turnToPreset(
           ports,
-          movable(ports.store, ask.camera, 'ptz_preset'),
+          await movable(ports.store, ask.camera, 'ptz_preset'),
           ask.preset,
           sending,
         );
       else if (ask.direction !== undefined)
         await turnSteps(
           ports,
-          movable(ports.store, ask.camera, 'ptz'),
+          await movable(ports.store, ask.camera, 'ptz'),
           { direction: ask.direction, steps: ask.steps },
           sending,
         );
@@ -211,9 +215,11 @@ function planCamera(device: DeviceRow, ask: SetAsk): readonly Change[] | string 
   return changes.length === 0 ? 'It has none of the camera settings asked for.' : changes;
 }
 
-function camerasOf(store: Store, ask: SetAsk): readonly DeviceRow[] {
+async function camerasOf(store: Store, ask: SetAsk): Promise<readonly DeviceRow[]> {
   if (ask.everyCamera)
-    return store.devices.list().filter((device) => !device.hidden && isCamera(device));
+    return (await store.host.call('devices', 'list')).filter(
+      (device) => !device.hidden && isCamera(device),
+    );
   if (ask.target === undefined) return [];
   return resolveTarget(store, ask.target);
 }
@@ -250,7 +256,7 @@ async function setCameras(
   ask: SetAsk,
   sending: Sending,
 ): Promise<{ readonly sent: readonly string[]; readonly skipped: readonly Skipped[] }> {
-  const devices = camerasOf(ports.store, ask);
+  const devices = await camerasOf(ports.store, ask);
   if (devices.length === 0) throw new ApiError('not_found', 'This target has no cameras.');
   const skipped: Skipped[] = [];
   const plans: { readonly device: DeviceRow; readonly changes: readonly Change[] }[] = [];

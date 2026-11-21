@@ -1,5 +1,5 @@
 import { assistantLabel, type TranscriptPauseReason } from '@smarteverything/domain';
-import type { Logger } from '@smarteverything/logging';
+import { background, type Logger } from '@smarteverything/logging';
 import type { AssistantVoice } from '../assistant-voice/assistant-voice';
 import type { HostedCall } from '../assistant-voice/outreach';
 import type { Clock } from '../clock';
@@ -177,7 +177,7 @@ function listeningOf(
     },
     log: options.log.forArea('hub.listening'),
   });
-  listening.start();
+  background(listening.start(), 'listening.start_failed');
   return listening;
 }
 

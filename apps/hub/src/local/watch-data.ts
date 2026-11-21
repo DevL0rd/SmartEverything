@@ -9,18 +9,23 @@ export interface WatchDataOptions {
 export class WatchDataService {
   constructor(private readonly options: WatchDataOptions) {}
 
-  dataOf(profileId: string): WatchData {
+  async dataOf(profileId: string): Promise<WatchData> {
     const { store } = this.options;
-    const row = store.weather.read();
-    const weight = store.bodyReadings
-      .ofProfile(profileId)
-      .reduce<number | null>((latest, reading) => reading.weight_kg ?? latest, null);
+    const [row, readings, profile] = await Promise.all([
+      store.host.call('weather', 'read'),
+      store.host.call('bodyReadings', 'ofProfile', profileId),
+      store.host.call('profiles', 'byId', profileId),
+    ]);
+    const weight = readings.reduce<number | null>(
+      (latest, reading) => reading.weight_kg ?? latest,
+      null,
+    );
     return {
       weather:
         row.forecast === null || row.fetched_at === null
           ? null
           : watchWeatherOf(row.forecast, store.settings.read().home_name, row.fetched_at),
-      user: watchUserOf(store.profiles.byId(profileId), weight, this.options.now()),
+      user: watchUserOf(profile, weight, this.options.now()),
     };
   }
 }

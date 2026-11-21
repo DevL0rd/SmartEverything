@@ -6,8 +6,8 @@ export class EndOfSpeechPause {
   private readonly listeners = new Set<(pauseMs: PauseChoiceMs) => void>();
   private readonly stop: () => void;
 
-  constructor(store: Pick<Store, 'settings' | 'feed'>) {
-    this.current = store.settings.read().end_of_speech_pause_ms;
+  constructor(store: Pick<Store, 'live' | 'feed'>) {
+    this.current = store.live.home.settings.read().end_of_speech_pause_ms;
     this.stop = store.feed.subscribe((change) => {
       if (change.table !== 'settings' || change.record === null) return;
       const next = change.record.end_of_speech_pause_ms;

@@ -7,7 +7,7 @@ import {
 import type { BottleSyncPlan } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { entryConfigOf, saveConfig } from '../../../src/local/bottle/config';
-import { planDepsOf } from '../../../src/local/bottle/ingest';
+import { planDepsOf } from '../../../src/local/bottle/sync';
 import { actionPlanOf, syncPlanOf } from '../../../src/local/bottle/plan';
 import { captureLogs } from '../../support/logs';
 import { bottleRig, tofRow, type BottleRig } from '../../support/bottle-rig';

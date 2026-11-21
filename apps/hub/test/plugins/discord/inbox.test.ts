@@ -14,6 +14,7 @@ import { Transcripts } from '../../../src/transcripts/transcript-service';
 import { testLogger } from '../../support/logs';
 import { testStore, type TestStore } from '../../support/store';
 import { hubLayout } from '../../../src/data-layout';
+import { storePluginHome } from '../../support/plugin-home';
 
 const NOW = new Date('2026-10-16T10:00:00.000Z');
 
@@ -63,13 +64,14 @@ async function hostOf(opened: TestStore): Promise<PluginHost> {
         log: testLogger('plugin-voice'),
       },
       conversations: { forPlugin: unused },
-      attachments: (): string[] => [],
+      attachments: (): Promise<string[]> => Promise.resolve([]),
       machineFile: unused,
       uploadFile: unused,
       pictureFile: unused,
       layout: hubLayout(directory, {}),
       submit: (): [] => [],
       signals: { emit: nothing },
+      home: storePluginHome(store),
       now,
     },
     contributions: {
@@ -95,6 +97,7 @@ interface Rig {
 
 async function rigged(): Promise<Rig> {
   const opened = await testStore(() => NOW);
+  await opened.store.live.aiModels.load();
   const { store } = opened;
   const manifest = PLUGIN_MANIFEST.parse({
     id: 'discord',
@@ -108,6 +111,7 @@ async function rigged(): Promise<Rig> {
   const files = new AssistantFiles({
     layout: hubLayout(opened.directory, {}),
     chat: store.assistantChat,
+    attachments: store.live.attachments,
     now: (): Date => NOW,
   });
   const handed: string[] = [];
@@ -173,7 +177,7 @@ describe('plugin inbox', () => {
     for (let index = 0; index < 40; index += 1) {
       rig.inbox.receive('discord', message(index, `channel-${String(index)}`));
     }
-    await expect.poll(() => rig.handed.length).toBe(40);
+    await expect.poll(() => rig.handed.length, { timeout: 10_000 }).toBe(40);
   });
 
   it('keeps plugin chats in the first profile when the desktop switches profile', async () => {
@@ -185,7 +189,7 @@ describe('plugin inbox', () => {
     );
     const other = store.profiles.create({ name: 'Sam' });
     store.clients.useProfile(owner.id, other.id);
-    new PluginPeople(store).set('discord', '42', { name: 'Me', status: 'owner' });
+    await new PluginPeople(store).set('discord', '42', { name: 'Me', status: 'owner' });
     rig.inbox.receive('discord', message(1));
     await expect.poll(() => rig.handed.length).toBe(1);
     expect(rig.handed).toStrictEqual([first.id]);
@@ -195,7 +199,7 @@ describe('plugin inbox', () => {
 
   it('runs a stranger and an approved person with no home person as limited guests in the owner profile', async () => {
     const { store } = rig.opened;
-    new PluginPeople(store).set('discord', '42', { name: 'Sam', status: 'approved' });
+    await new PluginPeople(store).set('discord', '42', { name: 'Sam', status: 'approved' });
     rig.inbox.receive('discord', message(1));
     await expect.poll(() => rig.handed.length).toBe(1);
     expect(rig.handed).toStrictEqual([store.personAccess.homeOwner()]);
@@ -205,7 +209,7 @@ describe('plugin inbox', () => {
   it('gives a stranger a chat of their own, never the chat the owner has in the same channel', async () => {
     const { store } = rig.opened;
     const home = store.personAccess.homeOwner();
-    new PluginPeople(store).set('discord', '43', { name: 'Me', status: 'owner' });
+    await new PluginPeople(store).set('discord', '43', { name: 'Me', status: 'owner' });
     rig.inbox.receive('discord', { ...message(1), from: { id: '43', name: 'Me', trusted: false } });
     await expect.poll(() => rig.handed.length).toBe(1);
     rig.inbox.receive('discord', message(2));
@@ -227,7 +231,7 @@ describe('plugin inbox', () => {
   it('answers a linked guest whose time has ended with a refusal, starts no chat and records it', async () => {
     const { store } = rig.opened;
     const guest = store.profiles.create({ name: 'Lee' });
-    new PluginPeople(store).set('discord', '42', {
+    await new PluginPeople(store).set('discord', '42', {
       name: 'Lee',
       status: 'approved',
       profile_id: guest.id,
@@ -249,15 +253,14 @@ describe('plugin inbox', () => {
     );
     expect(rig.handed).toStrictEqual([]);
     expect(store.aiChats.bySource(guest.id, pluginChatKey('discord', 'channel'))).toBeUndefined();
-    expect(store.accessAudit.list(10, guest.id).map((entry) => entry.kind)).toStrictEqual([
-      'refused_expired',
-    ]);
+    const audit = await store.host.call('accessAudit', 'list', 10, guest.id);
+    expect(audit.map((entry) => entry.kind)).toStrictEqual(['refused_expired']);
   });
 
   it('runs an approved person linked to a member in that member’s own chat, not the owner’s', async () => {
     const { store } = rig.opened;
     const sam = store.profiles.create({ name: 'Sam' });
-    new PluginPeople(store).set('discord', '42', {
+    await new PluginPeople(store).set('discord', '42', {
       name: 'Sam',
       status: 'approved',
       profile_id: sam.id,
@@ -274,7 +277,7 @@ describe('plugin inbox', () => {
 
   it('keeps the owner of the plugin an owner in the home owner profile', async () => {
     const { store } = rig.opened;
-    new PluginPeople(store).set('discord', '42', { name: 'Me', status: 'owner' });
+    await new PluginPeople(store).set('discord', '42', { name: 'Me', status: 'owner' });
     rig.inbox.receive('discord', message(1));
     await expect.poll(() => rig.handed.length).toBe(1);
     expect(rig.handed).toStrictEqual([store.personAccess.homeOwner()]);
@@ -285,8 +288,8 @@ describe('plugin inbox', () => {
     const { store } = rig.opened;
     const sam = store.profiles.create({ name: 'Sam' });
     const people = new PluginPeople(store);
-    people.set('discord', '42', { name: 'Sam', status: 'approved', profile_id: sam.id });
-    people.set('discord', '43', { name: 'Me', status: 'owner' });
+    await people.set('discord', '42', { name: 'Sam', status: 'approved', profile_id: sam.id });
+    await people.set('discord', '43', { name: 'Me', status: 'owner' });
     rig.inbox.receive('discord', message(1));
     await expect.poll(() => rig.handed.length).toBe(1);
     rig.inbox.receive('discord', { ...message(2), from: { id: '43', name: 'Me', trusted: false } });

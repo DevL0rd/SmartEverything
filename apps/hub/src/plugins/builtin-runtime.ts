@@ -14,6 +14,7 @@ import type {
   Unsubscribe,
 } from './builtin/contract';
 import { builtinContext, type BuiltinContextOptions } from './builtin-context';
+import { PluginRecordMirror } from './plugin-records';
 import type { PluginRuntime, RuntimeSinks, RuntimeTool } from './runtime';
 
 export interface BuiltinRuntimeOptions {
@@ -40,11 +41,18 @@ export class BuiltinRuntime implements PluginRuntime {
   constructor(private readonly options: BuiltinRuntimeOptions) {}
 
   async start(): Promise<void> {
+    const manifest = PLUGIN_MANIFEST.parse(this.options.plugin.manifest);
+    const [records] = await Promise.all([
+      PluginRecordMirror.load(this.options.context.store, manifest.id),
+      this.options.context.people.load(manifest.id),
+      this.options.context.home.load(),
+    ]);
     const controller = new AbortController();
     this.controller = controller;
     const started = await this.options.plugin.start(
       builtinContext(this.options.context, {
-        manifest: PLUGIN_MANIFEST.parse(this.options.plugin.manifest),
+        manifest,
+        records,
         signal: controller.signal,
         sinks: this.options.sinks,
         tools: (tools): void => {

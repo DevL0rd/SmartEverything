@@ -155,7 +155,7 @@ describe('the Locked folder and the AI', () => {
     });
     answers.readItem = (): unknown => image();
     await expect(edit('attach_to_chat', { itemId: ITEM })).rejects.toThrow(/no such file/u);
-    expect(() => read('item', { itemId: ITEM })).toThrow(/no such file/u);
+    await expect(read('item', { itemId: ITEM })).rejects.toThrow(/no such file/u);
     expect(calls).toEqual([]);
   });
 });
@@ -174,12 +174,10 @@ describe('the owner’s AI follows the access rule of every drive', () => {
       ...base,
       operations: {
         run: (name, caller): Promise<unknown> => {
-          const actor = actorOf(opened.store, caller);
+          const actor = actorOf(caller);
           if (name === 'readItem') return Promise.resolve(reads.readItem(actor, SAM_FILE));
           if (name === 'listRoots') return Promise.resolve(reads.listRoots(actor));
-          return Promise.resolve(
-            readDriveUsage(opened.store.driveQuotas, usageViewerOf(opened.store, caller)),
-          );
+          return Promise.resolve(readDriveUsage(opened.store.driveQuotas, usageViewerOf(caller)));
         },
       },
     };
@@ -230,10 +228,10 @@ describe('the owner’s AI follows the access rule of every drive', () => {
     expect(roots).toHaveLength(2);
   });
 
-  it('refuses the owner’s AI on a member’s unshared item', () => {
-    expect(() =>
+  it('refuses the owner’s AI on a member’s unshared item', async () => {
+    await expect(
       selected(DRIVE_READ, 'item').run(real(owner, ownerProfile), { itemId: SAM_FILE }, {}),
-    ).toThrow();
+    ).rejects.toThrow();
   });
 
   it('gives the owner’s AI per-person totals through usage and the member only their own', async () => {

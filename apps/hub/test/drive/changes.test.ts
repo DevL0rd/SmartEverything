@@ -3,7 +3,7 @@ import { lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { type DriveConflict, type DriveConflictResolution } from '@smarteverything/domain';
+import type { DriveConflict } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   commitContent,
@@ -23,21 +23,18 @@ import { refusalReason } from '../../src/drive/service-write-support';
 import { StoreConflictError } from '../../src/store/sql';
 import { recoverIntents, type DriveWriteRoot } from '../../src/drive/intents';
 import { hashRequested } from '../../src/drive/blocks';
-import { ScanCommitter, type CommitDependencies } from '../../src/drive/scanner-commit';
+import { TestScan, type TestScanDeps } from './local-ports';
 import type { WalkEntry } from '../../src/drive/scanner-walk';
-import {
-  commitRestore,
-  commitTrash,
-  MAX_TIMER_DELAY_MS,
-  PurgeTimer,
-  purgeDue,
-} from '../../src/drive/trash-purge';
+import { commitRestore, commitTrash } from '../../src/drive/trash-purge';
+import { MAX_TIMER_DELAY_MS, PurgeTimer, purgeDue } from '../../src/drive/purge-timer';
 import { commitBytes, nodeFiles, stageBytes } from '../../src/drive/versions';
 import { isMissing } from '../../src/fs-util';
 import { captureLogs, testLogger } from '../support/logs';
 import type { TestStore } from '../support/store';
 import { sharedDriveRoot } from '../store/drive-roots-fixture';
 import { driveTestStore } from './spaces-fixture';
+import type { WriteUnits } from '../../src/store/host/registry';
+import type { UnitInput } from '../../src/store/host/unit';
 
 const DAY_MS = 86_400_000;
 const START = new Date('2026-11-07T00:00:00.000Z');
@@ -54,7 +51,6 @@ let notices: {
   cursor: number;
 }[] = [];
 let purgeCalls = 0;
-let conflictRows: Map<string, DriveConflict>;
 
 function actor(via: ChangeActor['via'] = 'app'): ChangeActor {
   return via === 'sync' || via === 'mount'
@@ -79,19 +75,7 @@ function env(now: () => Date = () => START): ChangeEnv {
 function conflictEnv(now: () => Date = () => START): ConflictEnv {
   return {
     ...env(now),
-    conflicts: {
-      insert: (conflict): void => {
-        conflictRows.set(conflict.id, conflict);
-      },
-      find: (id) => conflictRows.get(id),
-      resolve: (id, resolution: DriveConflictResolution, at): DriveConflict => {
-        const found = conflictRows.get(id);
-        if (found === undefined) throw new Error('missing');
-        const resolved = { ...found, resolution, resolvedAt: at };
-        conflictRows.set(id, resolved);
-        return resolved;
-      },
-    },
+    conflicts: opened.store.driveConflicts,
   };
 }
 
@@ -132,7 +116,7 @@ async function walkEntry(relPath: string): Promise<WalkEntry> {
   };
 }
 
-function commitDependencies(): CommitDependencies {
+function commitDependencies(): TestScanDeps {
   return {
     items: opened.store.driveItems,
     inodes: opened.store.driveInodes,
@@ -155,21 +139,13 @@ function commitDependencies(): CommitDependencies {
 }
 
 async function reconcile(relPath: string): Promise<void> {
-  const committer = new ScanCommitter(
-    commitDependencies(),
-    opened.store.driveRoots.byId(root.id),
-    null,
-  );
+  const committer = new TestScan(commitDependencies(), opened.store.driveRoots.byId(root.id), null);
   committer.apply([await walkEntry(relPath)]);
   await committer.finish([]);
 }
 
 async function scanTree(): Promise<void> {
-  const committer = new ScanCommitter(
-    commitDependencies(),
-    opened.store.driveRoots.byId(root.id),
-    null,
-  );
+  const committer = new TestScan(commitDependencies(), opened.store.driveRoots.byId(root.id), null);
   const folder = await walkEntry('d');
   const entries: WalkEntry[] = [];
   if ((await text('d/x.txt')) !== null) entries.push(await walkEntry('d/x.txt'));
@@ -220,7 +196,6 @@ beforeEach(async () => {
   person = opened.store.profiles.first().id;
   notices = [];
   purgeCalls = 0;
-  conflictRows = new Map();
   opened.store.feed.subscribeNotices((notice) => {
     if (notice.type === 'drive_changed') {
       notices.push(notice);
@@ -297,11 +272,9 @@ describe('committing bytes', () => {
         staged,
         relPath: 'a.txt',
         actor: actor(),
-        alongside: () => {
-          throw new Error('record failed');
-        },
+        alongside: [{ kind: 'uploadComplete', uploadId: 'no-such-upload' }],
       }),
-    ).rejects.toThrow('record failed');
+    ).rejects.toThrow();
     expect(opened.store.driveItems.byPath(root.id, 'a.txt', null)).toBeUndefined();
     expect(opened.store.driveFeed.latestSeq()).toBe(0);
   });
@@ -341,7 +314,7 @@ describe('metadata changes', () => {
     const created = await write('hello', 'a.txt');
     const identity = opened.store.driveItems.identityOf(created.item.id);
     if (identity === null) throw new Error('identity');
-    const touched = recordItem(env(), {
+    const touched = await recordItem(env(), {
       draft: { ...created.item, modifiedAt: '2026-11-08T00:00:00.000Z' },
       identity,
       op: 'update',
@@ -417,9 +390,18 @@ describe('restoring while a scan indexes the moved file', () => {
   it('puts the file back into the trash when the index refuses the restore', async () => {
     const created = await write('hello', 'a.txt');
     await commitTrash(env(), root, created.item.id, actor());
-    vi.spyOn(opened.store, 'write').mockImplementationOnce(() => {
-      throw new StoreConflictError('create the drive item', new Error('constraint failed'));
-    });
+    const { host } = opened.store;
+    const hostWrite = host.write.bind(host);
+    vi.spyOn(host, 'write').mockImplementation(
+      <N extends keyof WriteUnits>(name: N, input: UnitInput<WriteUnits[N]>) =>
+        name === 'driveOps' &&
+        Array.isArray(input) &&
+        input.some((op: unknown) => typeof op === 'object' && op !== null && 'reinstate' in op)
+          ? Promise.reject(
+              new StoreConflictError('create the drive item', new Error('constraint failed')),
+            )
+          : hostWrite(name, input),
+    );
     await expect(commitRestore(env(), root, created.item.id, actor())).rejects.toBeInstanceOf(
       StoreConflictError,
     );
@@ -490,7 +472,7 @@ describe('conflicts', () => {
       conflict.conflictRelPath,
     );
     expect(conflict).toMatchObject({ itemId: hubId, hubRev: 1, baseRev: 1, resolution: null });
-    expect(conflictRows.get(conflict.id)).toEqual(conflict);
+    expect(opened.store.driveConflicts.find(conflict.id)).toEqual(conflict);
   });
 
   it('keep_hub trashes the copy', async () => {
@@ -606,6 +588,7 @@ describe('the purge timer', () => {
     const { e, timer } = clocked();
     timer.start();
     await trashAt(e, 'a.txt');
+    await timer.settled();
     const delays = spy.mock.calls.map((call) => Number(call[1]));
     expect(delays.length).toBeGreaterThan(0);
     expect(Math.max(...delays)).toBeLessThanOrEqual(MAX_TIMER_DELAY_MS);
@@ -617,8 +600,10 @@ describe('the purge timer', () => {
     const { e, timer } = clocked();
     timer.start();
     const later = await trashAt(e, 'later.txt');
+    await timer.settled();
     await vi.advanceTimersByTimeAsync(100 * DAY_MS);
     const earlier = await trashAt(e, 'earlier.txt');
+    await timer.settled();
     opened.store.driveTrash.remove(earlier);
     opened.store.driveTrash.insert({
       ...opened.store.driveTrash.byId(later),
@@ -626,6 +611,7 @@ describe('the purge timer', () => {
       purgeAt: new Date(Date.now() + 10 * DAY_MS).toISOString(),
     });
     timer.rearm();
+    await timer.settled();
     await vi.advanceTimersByTimeAsync(10 * DAY_MS);
     await timer.settled();
     expect(opened.store.driveTrash.find(earlier)).toBeUndefined();
@@ -636,11 +622,13 @@ describe('the purge timer', () => {
   it('arms nothing while there is nothing to purge and purges the versions on their own deadline', async () => {
     const { e, timer } = clocked();
     timer.start();
+    await timer.settled();
     const spy = vi.spyOn(globalThis, 'setTimeout');
     expect(spy).not.toHaveBeenCalled();
     const made = await write('one', 'a.txt', actor(), e);
     const replaced = await write('two', 'a.txt', actor(), e);
     expect(replaced.version).not.toBeNull();
+    await timer.settled();
     expect(spy).toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(365 * DAY_MS);
     await timer.settled();

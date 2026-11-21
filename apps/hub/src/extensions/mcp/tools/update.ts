@@ -58,7 +58,7 @@ export const UPDATE_TOOLS: readonly Tool[] = [
     annotations: PHYSICAL,
     answer: true,
     run: async (context, input) => ({
-      structured: await recoverHubUpdate(layoutOf(context), input.id, input.holdSeconds),
+      structured: await recoverHubUpdate(await layoutOf(context), input.id, input.holdSeconds),
     }),
   }),
   defineTool({

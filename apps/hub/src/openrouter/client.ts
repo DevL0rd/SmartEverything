@@ -48,6 +48,10 @@ export interface OpenRouterClientOptions {
   readonly shutdown?: AbortSignal;
 }
 
+export class EncodedJson {
+  constructor(readonly blob: Blob) {}
+}
+
 export interface OpenRouterCall {
   readonly path: string;
   readonly method?: 'GET' | 'POST';
@@ -55,6 +59,10 @@ export interface OpenRouterCall {
   readonly key?: string | null;
   readonly signal?: AbortSignal;
   readonly responseBytesMax?: number;
+}
+
+function encodedBody(body: unknown): Blob | string {
+  return body instanceof EncodedJson ? body.blob : JSON.stringify(body);
 }
 
 async function failureOf(response: Response, limit?: number): Promise<OpenRouterError> {
@@ -264,7 +272,7 @@ export class OpenRouterClient {
         method: call.method ?? 'GET',
         headers,
         signal,
-        ...(call.body === undefined ? {} : { body: JSON.stringify(call.body) }),
+        ...(call.body === undefined ? {} : { body: encodedBody(call.body) }),
       });
     } catch (cause) {
       if (cause instanceof OpenRouterError) {

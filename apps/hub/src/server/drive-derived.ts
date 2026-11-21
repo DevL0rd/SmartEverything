@@ -20,14 +20,15 @@ import type { VerifiedDriveLink } from './media-links';
 
 const SIZE = z.enum(['thumb', 'preview', 'playable']);
 
-type DerivedDeps = PhotoPipelineDeps & Pick<DriveDeps, 'links' | 'now'>;
+type DerivedDeps = PhotoPipelineDeps &
+  Pick<DriveDeps, 'links' | 'now'> & { readonly parts: Pick<DriveDeps['parts'], 'context'> };
 
-function verified(
+async function verified(
   deps: DerivedDeps,
   url: URL,
   itemId: string,
-): { readonly item: DriveItem; readonly link: VerifiedDriveLink } {
-  if (isLockedLink(url)) return verifyLockedLink(deps.store, deps.links, url, itemId);
+): Promise<{ readonly item: DriveItem; readonly link: VerifiedDriveLink }> {
+  if (isLockedLink(url)) return await verifyLockedLink(deps.store.host, deps.links, url, itemId);
   const link = deps.links.verifyDrive(url);
   const item = deps.store.driveItems.byId(itemId, null);
   if (inLockedFolder(item))
@@ -47,10 +48,10 @@ export async function serveDriveDerived(
     await serveTrashed(deps, exchange, itemId, size);
     return;
   }
-  const { item, link } = verified(deps, exchange.url, itemId);
+  const { item, link } = await verified(deps, exchange.url, itemId);
   if (item.rev !== link.rev)
     throw new ApiError('link_expired', 'This file changed; request a new link.');
-  mediaPipeline.runner.prioritise(itemId);
+  await mediaPipeline.runner.prioritise(itemId);
   if (size === 'playable') {
     const media = new DriveMediaRepository(deps.parts.context).byId(itemId);
     const location = await locatePlayable(deps.layout, item, media, () => locateMedia(deps, item));

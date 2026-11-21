@@ -10,7 +10,7 @@ import type { WakeTest } from '../wake-name/wake-test';
 import { WakeListeners } from '../wake-name/wake-listeners';
 import type { Store } from '../store/store';
 import type { ServerContext } from './context';
-import { messageOf } from '@smarteverything/logging';
+import { background, messageOf } from '@smarteverything/logging';
 
 export interface WakeWiring {
   readonly rules: ReachRules;
@@ -35,7 +35,7 @@ const WINNER_LABELS: Readonly<Record<WakeClaim['source'], string>> = {
 };
 
 export interface CameraWakeDeps {
-  readonly store: Pick<Store, 'profiles' | 'aiOutreach'>;
+  readonly store: Pick<Store, 'host'>;
   readonly service: Pick<ReachService, 'camera' | 'hangUp'>;
   readonly log: Logger;
 }
@@ -62,9 +62,12 @@ export async function wakeCamera(
     const by = WINNER_LABELS[winner.source];
     service
       .hangUp(answered.id)
-      .then(() => {
-        store.aiOutreach.step(answered.id, { state: 'ended', detail: `Answered by ${by}` });
-      })
+      .then(() =>
+        store.host.call('aiOutreach', 'step', answered.id, {
+          state: 'ended',
+          detail: `Answered by ${by}`,
+        }),
+      )
       .catch((cause: unknown) => {
         log.warn('wake.supersede_failed', {
           cameraId: wake.cameraId,
@@ -77,7 +80,12 @@ export async function wakeCamera(
     settle();
   });
   row = await service.camera(
-    { profileId: store.profiles.first().id, role: 'owner', clientId: null, chatId: null },
+    {
+      profileId: (await store.host.call('profiles', 'first')).id,
+      role: 'owner',
+      clientId: null,
+      chatId: null,
+    },
     { cameraId: wake.cameraId, reason: wakeReason(wake.phrase) },
     wake.heard,
   );
@@ -110,6 +118,6 @@ export function startWakeName(context: ServerContext, wiring: WakeWiring): WakeL
   context.hub.onStreamAdded((cameraId) => {
     listeners.cameraAvailable(cameraId);
   });
-  listeners.start();
+  background(listeners.start(), 'wake.listeners_start_failed');
   return listeners;
 }

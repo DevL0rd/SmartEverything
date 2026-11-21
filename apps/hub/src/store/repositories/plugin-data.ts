@@ -23,8 +23,6 @@ const STORED_STREAM = z
 const LATEST = `select d.plugin_id, d.stream, d.value, max(d.at) as at from plugin_data d
   join plugins p on p.id = d.plugin_id where p.enabled = 1`;
 
-const STORED_RECORD = z.strictObject({ key: z.string(), value: SQL_JSON.pipe(JSON_VALUE) });
-
 const STORED_ENTRY = z.strictObject({
   plugin_id: z.string(),
   entry: SQL_JSON.pipe(PLUGIN_SEARCH_ENTRY),
@@ -35,52 +33,27 @@ export interface PluginSearchRow {
   readonly entry: PluginSearchEntry;
 }
 
-export interface PluginRecordRow {
+export interface PluginRecordEntry {
+  readonly collection: string;
   readonly key: string;
   readonly value: JsonValue;
 }
 
+const STORED_ENTRY_RECORD = z.strictObject({
+  collection: z.string(),
+  key: z.string(),
+  value: SQL_JSON.pipe(JSON_VALUE),
+});
+
 const LIVE_KEPT = 1;
 
-const ENABLED_PLUGIN = z.strictObject({ id: z.string() });
-
-function liveKey(pluginId: string, stream: string): string {
-  return `${pluginId}\u0000${stream}`;
-}
-
 export class PluginDataRepository {
-  private readonly live = new Map<string, PluginStreamRow>();
-  private readonly unsaved = new Set<string>();
-
   constructor(private readonly context: StoreContext) {}
 
-  publishLive(pluginId: string, point: PluginDataPoint): void {
-    const key = liveKey(pluginId, point.stream);
-    const before = this.live.get(key);
-    const row = { plugin_id: pluginId, ...point };
-    this.live.set(key, row);
-    this.unsaved.add(key);
-    this.context.changed(
-      'plugin_streams',
-      before === undefined ? 'INSERT' : 'UPDATE',
-      row,
-      before ?? null,
-    );
-  }
-
-  saveLive(pluginId: string): number {
-    const saving = [...this.unsaved].flatMap((key) => {
-      const row = this.live.get(key);
-      if (row?.plugin_id !== pluginId) return [];
-      return [{ key, row }];
-    });
+  saveLatest(pluginId: string, points: readonly PluginDataPoint[]): void {
     this.context.write(() => {
-      for (const { key, row } of saving) {
-        this.insert(pluginId, row, LIVE_KEPT);
-        this.unsaved.delete(key);
-      }
+      for (const point of points) this.insert(pluginId, point, LIVE_KEPT);
     });
-    return saving.length;
   }
 
   publish(pluginId: string, point: PluginDataPoint, keep: number): void {
@@ -107,15 +80,14 @@ export class PluginDataRepository {
   }
 
   streams(): PluginStreamRow[] {
-    const saved = this.context.sql.all(STORED_STREAM, `${LATEST} group by d.plugin_id, d.stream`);
-    const newer = new Map(saved.map((row) => [liveKey(row.plugin_id, row.stream), row]));
-    const enabled = new Set(
-      this.context.sql
-        .all(ENABLED_PLUGIN, 'select id from plugins where enabled = 1')
-        .map((row) => row.id),
+    return this.context.sql.all(STORED_STREAM, `${LATEST} group by d.plugin_id, d.stream`);
+  }
+
+  everyStream(): PluginStreamRow[] {
+    return this.context.sql.all(
+      STORED_STREAM,
+      'select plugin_id, stream, value, max(at) as at from plugin_data group by plugin_id, stream',
     );
-    for (const [key, row] of this.live) if (enabled.has(row.plugin_id)) newer.set(key, row);
-    return [...newer.values()];
   }
 
   private insert(pluginId: string, point: PluginDataPoint, keep: number): void {
@@ -151,22 +123,12 @@ export class PluginDataRepository {
     );
   }
 
-  record(pluginId: string, collection: string, key: string): JsonValue | null {
-    const row = this.context.sql.get(
-      STORED_RECORD,
-      `select key, value from plugin_records
-       where plugin_id = $pluginId and collection = $collection and key = $key`,
-      { pluginId, collection, key },
-    );
-    return row === undefined ? null : row.value;
-  }
-
-  records(pluginId: string, collection: string): PluginRecordRow[] {
+  allRecords(pluginId: string): PluginRecordEntry[] {
     return this.context.sql.all(
-      STORED_RECORD,
-      `select key, value from plugin_records where plugin_id = $pluginId and collection = $collection
-       order by key`,
-      { pluginId, collection },
+      STORED_ENTRY_RECORD,
+      `select collection, key, value from plugin_records where plugin_id = $pluginId
+       order by collection, key`,
+      { pluginId },
     );
   }
 

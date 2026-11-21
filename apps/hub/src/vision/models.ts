@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { isMissing } from '../fs-util';
 
 export const FACE_DETECTOR_FILE = 'face_detection_yunet_2023mar.onnx';
 export const FACE_RECOGNIZER_FILE = 'face_recognition_sface_2021dec.onnx';
@@ -32,9 +33,12 @@ export interface FaceModelBytes {
 export async function readFaceModels(directory: string): Promise<FaceModelBytes> {
   const [detector, recognizer] = await Promise.all(
     [FACE_DETECTOR_FILE, FACE_RECOGNIZER_FILE].map(async (file) => {
-      const path = `${directory}/${file}`;
-      if (!existsSync(path)) throw new VisionModelsMissingError(directory);
-      return new Uint8Array(await readFile(path));
+      try {
+        return new Uint8Array(await readFile(`${directory}/${file}`));
+      } catch (cause) {
+        if (isMissing(cause)) throw new VisionModelsMissingError(directory);
+        throw cause;
+      }
     }),
   );
   if (detector === undefined || recognizer === undefined)

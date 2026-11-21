@@ -9,7 +9,6 @@ import type { RemoteEar, RemoteEars } from '../listening/remote-ears-port';
 import type { SpeechSegment } from '../listening/speech-segment';
 import type { Store } from '../store/store';
 import type { ListeningBudget } from '../transcripts/listening-budget';
-import { ownerProfileOf } from '../transcripts/owner';
 import type { Transcriber } from '../transcripts/transcriber';
 import { Utterances } from '../transcripts/utterances';
 import type { OnSuperseded, Superseded, WakeClaim } from '../wake-name/wake-claims';
@@ -29,7 +28,7 @@ export interface TalkHeard {
 }
 
 export interface TalkListeningOptions {
-  readonly store: Pick<Store, 'talk' | 'clients' | 'profiles' | 'personAccess'>;
+  readonly store: Pick<Store, 'host'>;
   readonly ears: Pick<RemoteEars, 'open'>;
   readonly transcriber: Pick<Transcriber, 'transcribe'>;
   readonly budget: Pick<ListeningBudget, 'capReached'>;
@@ -139,7 +138,12 @@ class MessageListener implements PacketSink {
     const joined = texts.flatMap((text) => (text === null ? [] : [text])).join(' ');
     const transcript = joined === '' ? null : joined;
     if (transcript !== null) {
-      this.options.store.talk.setTranscript(this.message.messageId, transcript);
+      await this.options.store.host.call(
+        'talk',
+        'setTranscript',
+        this.message.messageId,
+        transcript,
+      );
     }
     if (this.phrase !== null && this.winner === null) {
       this.options.heard({
@@ -158,17 +162,17 @@ class MessageListener implements PacketSink {
       this.options.log.info('talk.transcript_skipped', { messageId, reason: skipped });
       return null;
     }
-    const { store, clock } = this.options;
-    const since = new Date(clock.now().getTime() - CONTEXT_WINDOW_MS).toISOString();
+    const { host } = this.options.store;
+    const since = new Date(this.options.clock.now().getTime() - CONTEXT_WINDOW_MS).toISOString();
+    const profileId = await host.call('personAccess', 'homeOwner');
+    const recent = await host.call('talk', 'recentTranscripts', channel.id, since, CONTEXT_LINES);
     const text = await this.options.transcriber
       .transcribe({
         pcm16k: segment.pcm,
-        profileId: ownerProfileOf(store),
+        profileId,
         pluginId: null,
         names: this.options.names(),
-        recent: store.talk
-          .recentTranscripts(channel.id, since, CONTEXT_LINES)
-          .flatMap((row) => (row.transcript === null ? [] : [row.transcript])),
+        recent: recent.flatMap((row) => (row.transcript === null ? [] : [row.transcript])),
         meta: { listening: 'talk', channel_id: channel.id, message_id: messageId },
       })
       .catch((cause: unknown) => {

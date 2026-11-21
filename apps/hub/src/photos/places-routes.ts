@@ -1,6 +1,5 @@
 import {
   PHOTOS_ENDPOINTS,
-  PLACE_PARAMS,
   type PhotoPlace as DomainPlace,
   type PlaceCluster,
   type PlaceCountry,
@@ -8,14 +7,14 @@ import {
 import { photoActor } from './actor';
 import { bound, type Bound } from '../server/router';
 import type { Store } from '../store/store';
-import type { PlaceQueries } from './places-queries';
-import type { PhotoMapClusters, PhotoPlace, PhotoPlaceList } from './places-schema';
+import {
+  placeNumber,
+  type PhotoMapClusters,
+  type PhotoPlace,
+  type PhotoPlaceList,
+} from './places-schema';
 
 const E = PHOTOS_ENDPOINTS;
-
-export function placeNumber(id: string): number {
-  return PLACE_PARAMS.shape.placeId.parse(id);
-}
 
 export function domainPlace(
   place: PhotoPlace,
@@ -62,17 +61,22 @@ export interface PhotoPlaceRoutes {
   readonly listPlaceClusters: Bound<typeof E.listPlaceClusters>;
 }
 
-export function photoPlaceRoutes(store: Store, queries: PlaceQueries): PhotoPlaceRoutes {
+export function photoPlaceRoutes(store: Store): PhotoPlaceRoutes {
   return {
-    listPlaces: bound(E.listPlaces, ({ caller }) =>
-      domainCountries(queries.list(photoActor(store, caller))),
+    listPlaces: bound(E.listPlaces, async ({ caller }) =>
+      domainCountries(await store.host.read('photoPlaceList', { actor: photoActor(caller) })),
     ),
-    readPlace: bound(E.readPlace, ({ params, caller }) => {
-      const detail = queries.detail(photoActor(store, caller), String(params.placeId));
+    readPlace: bound(E.readPlace, async ({ params, caller }) => {
+      const detail = await store.host.read('photoPlaceDetail', {
+        actor: photoActor(caller),
+        placeId: String(params.placeId),
+      });
       return domainPlace(detail.place, detail.items, detail.coverItemId);
     }),
-    listPlaceClusters: bound(E.listPlaceClusters, ({ query, caller }) =>
-      domainClusters(queries.clusters(photoActor(store, caller), query)),
+    listPlaceClusters: bound(E.listPlaceClusters, async ({ query, caller }) =>
+      domainClusters(
+        await store.host.read('photoPlaceClusters', { actor: photoActor(caller), query }),
+      ),
     ),
   };
 }

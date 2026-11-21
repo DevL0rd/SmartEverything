@@ -39,7 +39,7 @@ function advertiseCommands(
 
 async function openedChat(): Promise<{ chat: AiChatRow; sessionId: DshSessionId; epoch: number }> {
   const chat = rig.newChat(rig.desk.target);
-  const open = rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
+  const open = await rig.service.prepare(rig.owner, chat.id, rig.authority, rig.clientId);
   await rig.service.directory.execute(rig.desk.target, randomUUID(), open);
   return { chat, sessionId: DSH_SESSION_ID.parse(open.claim.session_id), epoch: open.claim.epoch };
 }

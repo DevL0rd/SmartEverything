@@ -43,11 +43,11 @@ export class StepRunner {
     private readonly ai: AiTurns | null,
   ) {}
 
-  isRepeatable(step: ScheduleStep): boolean {
+  async isRepeatable(step: ScheduleStep): Promise<boolean> {
     if (step.kind !== 'tool') {
       return true;
     }
-    const check = this.tools.check(step.tool, step.args);
+    const check = await this.tools.check(step.tool, step.args);
     return check.ok && check.tool.annotations.readOnlyHint;
   }
 
@@ -61,14 +61,15 @@ export class StepRunner {
     }
   }
 
-  private callerOf(row: ScheduleRow): ToolCaller {
+  private async callerOf(row: ScheduleRow): Promise<ToolCaller> {
     const authority = effectAuthority(this.store, 'schedule', row.id);
     if (authority !== undefined)
       return {
         authority,
         profileId: authority.profile_id,
         role: executionRole(authority),
-        chatId: this.store.assistantEvents.event(authority.event_id).chat_id,
+        chatId: (await this.store.host.call('assistantEvents', 'event', authority.event_id))
+          .chat_id,
         clientId: authority.client_id,
         via: 'schedule',
         ...limitsOf(authority.requester ?? undefined, authority.plugin_id ?? undefined),
@@ -88,11 +89,12 @@ export class StepRunner {
     row: ScheduleRow,
     line: string,
   ): Promise<StepOutcome> {
+    const caller = await this.callerOf(row);
     const result = await withEffectTool(
       this.store,
       effectAuthority(this.store, 'schedule', row.id),
       step.tool,
-      () => this.tools.call(step.tool, step.args, this.callerOf(row)),
+      () => this.tools.call(step.tool, step.args, caller),
     );
     const error = result.response['error'];
     if (typeof error === 'string') {

@@ -44,6 +44,7 @@ beforeEach(async () => {
   captureLogs();
   opened = await testStore(now);
   const { store } = opened;
+  await store.live.aiModels.load();
   const client = store.clients.create(
     { name: 'This computer', platform: 'desktop', role: 'owner', tokenHash: 'a' },
     true,
@@ -53,7 +54,12 @@ beforeEach(async () => {
   refuse = false;
   chats = new ChatDirectory(
     store,
-    new AssistantFiles({ layout: hubLayout(opened.directory, {}), chat: store.assistantChat, now }),
+    new AssistantFiles({
+      layout: hubLayout(opened.directory, {}),
+      chat: store.assistantChat,
+      attachments: store.live.attachments,
+      now,
+    }),
     {
       validate: (engine): void => {
         checked.push(engine);
@@ -75,7 +81,7 @@ describe('creating a chat before any model route is known', () => {
     expect(chats.conversationChat(owner.profileId).engine).toEqual(expected);
   });
 
-  it('runs a chat made from a default picked on a device on the hub, with no inherited session', () => {
+  it('runs a chat made from a default picked on a device on the hub, with no inherited session', async () => {
     const picked: Engine = {
       kind: 'dsh',
       execution_target: { kind: 'device', device_id: '11111111-1111-4111-8111-111111111111' },
@@ -85,7 +91,7 @@ describe('creating a chat before any model route is known', () => {
       effort: null,
       permission: { sandbox: 'danger-full-access', approval: 'never' },
     };
-    opened.store.aiEngineDefaults.update(picked);
+    await opened.store.live.engineDefaults.update(picked);
     const expected = { ...picked, execution_target: { kind: 'server' }, session_id: null };
     expect(chats.forTurn(owner.profileId, undefined, 'Lights').engine).toEqual(expected);
     expect(chats.conversationChat(owner.profileId).engine).toEqual(expected);
@@ -93,8 +99,11 @@ describe('creating a chat before any model route is known', () => {
     expect(chats.create(owner, { engine: picked }).engine).toEqual(picked);
   });
 
-  it('uses the engine the owner made the default', () => {
-    opened.store.aiEngineDefaults.update({ ...onTheHub(owner.profileId), model: 'openai/gpt-5' });
+  it('uses the engine the owner made the default', async () => {
+    await opened.store.live.engineDefaults.update({
+      ...onTheHub(owner.profileId),
+      model: 'openai/gpt-5',
+    });
     expect(chats.create(owner, {}).engine).toMatchObject({ kind: 'dsh', model: 'openai/gpt-5' });
     expect(chats.forTurn(owner.profileId, undefined, 'Lights').engine).toMatchObject({
       kind: 'dsh',

@@ -27,7 +27,7 @@ function lookable(item: DriveItem): DriveFile {
 }
 
 async function bytesOf(context: OperatingContext, item: DriveFile): Promise<Buffer> {
-  const path = context.store.driveRoots.find(item.rootId)?.path ?? null;
+  const path = (await context.store.host.call('driveRoots', 'find', item.rootId))?.path ?? null;
   if (path === null) {
     throw new ToolError(`${item.name} is not stored on this hub.`);
   }
@@ -58,8 +58,8 @@ export function attachToChat(): Selection {
       requireExport(
         itemAccess(
           store,
-          { profileId: profileFor(context, as) },
-          store.driveRoots.byId(file.rootId),
+          { profileId: await profileFor(context, as) },
+          await store.host.call('driveRoots', 'byId', file.rootId),
           file,
         ),
         file,

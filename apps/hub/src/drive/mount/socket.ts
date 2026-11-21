@@ -35,6 +35,8 @@ const REASON_LIMIT = 120;
 
 class Connection {
   private bound: MountSession | null = null;
+  private held: Frame[] | null = null;
+  closed = false;
   private pong = Date.now();
   private writes = 0;
   private paused = false;
@@ -66,6 +68,14 @@ class Connection {
 
   get session(): MountSession | null {
     return this.bound;
+  }
+
+  get waiting(): Frame[] | null {
+    return this.held;
+  }
+
+  hold(frames: Frame[] | null): void {
+    this.held = frames;
   }
 
   bind(session: MountSession): void {
@@ -109,7 +119,7 @@ export class DriveMountSocket {
     });
   }
 
-  upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+  async upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
     const offered = (request.headers['sec-websocket-protocol'] ?? '')
       .split(',')
       .map((value) => value.trim());
@@ -119,16 +129,16 @@ export class DriveMountSocket {
         `Open this socket with the ${MOUNT_SUBPROTOCOL} subprotocol.`,
       );
     }
-    const node = this.authenticated(request);
+    const node = await this.authenticated(request);
     const caller = this.callerOf(node);
     this.server.handleUpgrade(request, socket, head, (ws) => {
       this.accept(ws, caller);
     });
   }
 
-  private authenticated(request: IncomingMessage): ComputerNodeRow {
+  private async authenticated(request: IncomingMessage): Promise<ComputerNodeRow> {
     try {
-      return this.access.authenticate(bearerOf(request));
+      return await this.access.authenticate(bearerOf(request));
     } catch (cause) {
       this.options.log.warn('drive_mount.refused_upgrade', { reason: messageOf(cause) });
       throw cause;
@@ -137,7 +147,7 @@ export class DriveMountSocket {
 
   private callerOf(node: ComputerNodeRow): PosixCaller {
     return {
-      profileId: profileIdOf(this.store, nodeCaller(this.store, node)),
+      profileId: profileIdOf(nodeCaller(this.store, node)),
       nodeId: node.device_id,
     };
   }
@@ -189,6 +199,7 @@ export class DriveMountSocket {
       this.options.log.warn('drive_mount.socket_error', { reason: messageOf(cause) });
     });
     socket.on('close', () => {
+      connection.closed = true;
       outbox.stop();
       this.connections.delete(connection);
       if (connection.session !== null)
@@ -208,6 +219,14 @@ export class DriveMountSocket {
       this.refuse(connection, cause);
       return;
     }
+    if (connection.waiting !== null) {
+      connection.waiting.push(frame);
+      return;
+    }
+    this.route(connection, frame);
+  }
+
+  private route(connection: Connection, frame: Frame): void {
     if (frame.op === OPS.HELLO.code) {
       this.greet(connection, frame);
     } else if (connection.session === null) {
@@ -230,14 +249,24 @@ export class DriveMountSocket {
       connection.socket.close(CLOSE_POLICY, 'This channel already said hello.');
       return;
     }
+    const waiting: Frame[] = [];
+    connection.hold(waiting);
+    background(this.greeted(connection, frame, waiting), 'drive_mount.hello_failed');
+  }
+
+  private async greeted(connection: Connection, frame: Frame, waiting: Frame[]): Promise<void> {
     try {
       const request = decodeMeta(REQUEST_META.HELLO, frame.meta);
-      const greeting = this.mount.services.registry.hello(
+      const greeting = await this.mount.services.registry.hello(
         connection.link,
         connection.caller,
         request,
       );
       connection.bind(greeting.session);
+      if (connection.closed) {
+        this.mount.services.registry.detach(greeting.session, connection.link);
+        return;
+      }
       connection.link.send(replyFrame('HELLO', frame.requestId, greeting.reply, null));
       this.afterHello(greeting.session, greeting.lost, greeting.reply.resumed);
     } catch (cause) {
@@ -245,6 +274,9 @@ export class DriveMountSocket {
       connection.link.send(
         errorFrame(frame.op, frame.requestId, { code: 'EINVAL', message: messageOf(cause) }),
       );
+    } finally {
+      connection.hold(null);
+      for (const next of waiting) this.route(connection, next);
     }
   }
 
@@ -257,7 +289,7 @@ export class DriveMountSocket {
       session.link?.send(pushFrame('LOCK_LOST', { ino: lock.ino, owner: lock.owner.owner }));
     if (!resumed) return;
     for (const attachment of session.attachments.values()) {
-      this.mount.services.push.pump(session, attachment);
+      background(this.mount.services.push.pump(session, attachment), 'drive_mount.push_failed');
     }
   }
 

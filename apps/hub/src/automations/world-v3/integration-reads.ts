@@ -41,7 +41,7 @@ function machineReadings(
   deviceId: string,
   keys: Readonly<Record<string, string>>,
 ): ReadResult {
-  if (deps.store.devices.find(deviceId) === undefined) {
+  if (deps.world.devices.find(deviceId) === undefined) {
     throw new ReadFailure('NotFound', `There is no device ${deviceId}`);
   }
   return outputsOf(
@@ -63,7 +63,7 @@ function extreme(
 
 function forecastRead(deps: WorldReadDeps, inputs: ReadInputs): ReadResult {
   const { hours, rainAbove } = parseInputs('weather.forecast', FORECAST, inputs);
-  const { forecast } = deps.store.weather.read();
+  const { forecast } = deps.world.weather.read();
   if (forecast === null) return outputsOf({});
   const from = deps.clock.now().getTime() - 3_600_000;
   const ahead = forecast.hourly.filter((hour) => Date.parse(hour.at) > from).slice(0, hours);

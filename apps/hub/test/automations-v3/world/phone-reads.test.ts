@@ -49,7 +49,7 @@ function report(values: Readonly<Record<string, JsonValue>>): void {
   });
 }
 
-function savePlace(profileId: string, place: string | null): void {
+async function savePlace(profileId: string, place: string | null): Promise<void> {
   home.test.store.phoneContexts.save({
     deviceId: phone.id,
     profileId,
@@ -61,13 +61,14 @@ function savePlace(profileId: string, place: string | null): void {
     phoneInUse: null,
     reportedAt: '2026-10-25T10:00:00.000Z',
   });
+  await home.world.phoneReported(phone.id);
 }
 
 const read = (): Readonly<Record<string, unknown>> =>
   home.read('phone.read', { phone: { phone: phone.id } }).outputs;
 
 describe('phone.read', () => {
-  it('reads every figure the phone reports under its output name', () => {
+  it('reads every figure the phone reports under its output name', async () => {
     report({
       battery: 64,
       charging: true,
@@ -89,7 +90,7 @@ describe('phone.read', () => {
       power_save: true,
       thermal_state: 'light',
     });
-    savePlace(OWNER, 'Home');
+    await savePlace(OWNER, 'Home');
     expect(read()).toEqual({
       battery: 64,
       charging: true,
@@ -119,9 +120,9 @@ describe('phone.read', () => {
     expect(read()).toEqual({ battery: 30, charging: false });
   });
 
-  it('leaves out a null alarm, a null track and an unknown place', () => {
+  it('leaves out a null alarm, a null track and an unknown place', async () => {
     report({ next_alarm: null, now_playing: null, in_call: true });
-    savePlace(OWNER, null);
+    await savePlace(OWNER, null);
     expect(read()).toEqual({ inCall: true });
   });
 
@@ -132,21 +133,21 @@ describe('phone.read', () => {
     expect(() => home.read('phone.read', {})).toThrow(/cannot read/);
   });
 
-  it('shows a person everything of their own phone', () => {
+  it('shows a person everything of their own phone', async () => {
     report({ now_playing: 'Mine', notification_count: 2 });
-    savePlace(MEMBER, 'Work');
+    await savePlace(MEMBER, 'Work');
     const outputs = withExecutionAuthority(authority(MEMBER, 'member'), read);
     expect(outputs).toMatchObject({ place: 'Work', nowPlaying: 'Mine', notificationCount: 2 });
   });
 
-  it('hides place and playing from the owner on another person phone', () => {
+  it('hides place and playing from the owner on another person phone', async () => {
     report({ battery: 50, now_playing: 'Theirs', notification_count: 2, phone_context: 'walking' });
-    savePlace(MEMBER, 'Work');
+    await savePlace(MEMBER, 'Work');
     const outputs = withExecutionAuthority(authority(OWNER, 'owner'), read);
     expect(outputs).toEqual({ battery: 50, notificationCount: 2, context: 'walking' });
   });
 
-  it('hides everything private from another member', () => {
+  it('hides everything private from another member', async () => {
     report({
       battery: 50,
       now_playing: 'Theirs',
@@ -155,7 +156,7 @@ describe('phone.read', () => {
       screen_time_today: 10,
       wifi_on: true,
     });
-    savePlace(OWNER, 'Home');
+    await savePlace(OWNER, 'Home');
     const outputs = withExecutionAuthority(authority(MEMBER, 'member'), read);
     expect(outputs).toEqual({ battery: 50, wifiOn: true });
   });

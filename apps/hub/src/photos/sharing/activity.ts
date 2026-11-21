@@ -5,10 +5,11 @@ import {
   type AlbumActivity,
   type AlbumActivityCreate,
 } from '@smarteverything/domain';
+import { Logger } from '@smarteverything/logging';
 import { z } from 'zod';
 import { decodeCursor, encodeCursor } from '../../drive/search';
 import type { DriveActor } from '../../drive/access';
-import { DRIVE_PAGE_SIZE } from '../../drive/service-read';
+import { DRIVE_PAGE_SIZE } from '../../drive/page-size';
 import type { PhotoAlbumActivityRow } from '../../store/repositories/photo-album-activity';
 import type { Store } from '../../store/store';
 import { requireAccess } from './access';
@@ -18,6 +19,8 @@ export type ActivityStore = Pick<
   Store,
   'context' | 'write' | 'driveAlbums' | 'photoAlbumMembers' | 'photoAlbumActivity'
 >;
+
+const log = new Logger('hub.photos');
 
 const CURSOR = z.strictObject({ createdAt: z.string().min(1), id: z.string().min(1) });
 
@@ -66,11 +69,13 @@ export class AlbumActivityService {
   add(actor: DriveActor, albumId: string, input: AlbumActivityCreate): AlbumActivity {
     return this.store.write(() => {
       requireAccess(this.store, actor, albumId);
+      const made = this.alreadyMade(actor, albumId, input);
+      if (made !== undefined) return activityOf(made);
       const itemId = input.itemId ?? null;
       if (itemId !== null) this.requireInAlbum(albumId, itemId);
       const text = input.kind === 'comment' ? input.text : null;
       const row = this.store.photoAlbumActivity.add({
-        id: randomUUID(),
+        id: input.id ?? randomUUID(),
         albumId,
         itemId,
         profileId: actor.profileId,
@@ -96,6 +101,22 @@ export class AlbumActivityService {
       }
       this.store.photoAlbumActivity.remove(activityId);
     });
+  }
+
+  private alreadyMade(
+    actor: DriveActor,
+    albumId: string,
+    input: AlbumActivityCreate,
+  ): PhotoAlbumActivityRow | undefined {
+    const made = input.id === undefined ? undefined : this.store.photoAlbumActivity.find(input.id);
+    if (made === undefined) return undefined;
+    const same =
+      made.albumId === albumId && made.profileId === actor.profileId && made.kind === input.kind;
+    if (!same) {
+      throw new ApiError('forbidden', 'That comment or like belongs to someone else.');
+    }
+    log.debug('photos_activity.duplicate_add_ignored', { activityId: made.id, albumId });
+    return made;
   }
 
   private existingLike(

@@ -3,7 +3,6 @@ import { pipeline, Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { attachment } from '../../computers/file-download';
 import type { DriveDownloads } from '../../drive/download-zip';
-import type { Store } from '../../store/store';
 import { zipChunks } from '../../zip/zip-stream';
 import type { RawRoute } from '../http-server';
 import type { MediaLinks } from '../media-links';
@@ -13,13 +12,10 @@ import { actorOf } from './drive-services';
 
 const streamed = promisify(pipeline);
 
-export function driveDownloadRoutes(
-  store: Store,
-  downloads: DriveDownloads,
-): Routes<'prepareDriveDownload'> {
+export function driveDownloadRoutes(downloads: DriveDownloads): Routes<'prepareDriveDownload'> {
   return {
     prepareDriveDownload: bound(E.prepareDriveDownload, ({ body, caller }) =>
-      refusing(() => downloads.prepare(actorOf(store, caller), body.itemIds)),
+      refusing(() => downloads.prepare(actorOf(caller), body.itemIds)),
     ),
   };
 }

@@ -69,6 +69,7 @@ function endpointOf(id: string): {
 
 beforeEach(async () => {
   opened = await testStore();
+  await opened.store.live.home.load();
   systems = [];
   sent = [];
   chatId = opened.store.aiChats.create({

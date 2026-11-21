@@ -3,7 +3,7 @@ import { Logger } from '@smarteverything/logging';
 import type { Cancel, Clock } from '../clock';
 import type { CommandExecutor } from '../commands/executor';
 import type { WatchStateStore } from '../signals/signal-watchers';
-import type { AutomationOwnedValuesRepository } from '../store/repositories/automation-owned-values';
+import type { AutomationMemory } from './automation-memory';
 import type { Store } from '../store/store';
 import type { DecisionLog } from './driver/decisions';
 import type { FinishedRun, RefusedStart } from './driver/ports';
@@ -28,13 +28,10 @@ import { createWorldReads } from './world-v3/world-reads';
 import type { WorldReadDeps } from './world-v3/deps';
 import type { KeptData } from './world-v3/kept-data';
 
-interface AssemblyRepositories extends EngineRepositories {
-  readonly owned: Pick<AutomationOwnedValuesRepository, 'list' | 'create' | 'write'>;
-}
-
 export interface EngineAssemblyPorts {
   readonly store: Store;
-  readonly repositories: AssemblyRepositories;
+  readonly repositories: EngineRepositories;
+  readonly memory: AutomationMemory;
   readonly clock: Clock;
   readonly signals: SignalFeed;
   readonly watchState: WatchStateStore;
@@ -44,6 +41,7 @@ export interface EngineAssemblyPorts {
   readonly issuer: CommandIssuer;
   readonly secrets: Pick<AutomationSecrets, 'resolve'>;
   readonly world: WorldReadDeps;
+  readonly ready: () => Promise<void>;
   readonly kept: Pick<KeptData, 'read' | 'write'>;
   readonly place: () => Place | null;
   readonly zone: () => string;
@@ -67,7 +65,7 @@ export interface AssembledEngine {
 }
 
 function effectPorts(ports: EngineAssemblyPorts): EffectPorts {
-  const { store, repositories, clock } = ports;
+  const { store, clock } = ports;
   const setter = new DeviceSetter({ store, executor: ports.executor, issuer: ports.issuer });
   return {
     setter,
@@ -81,10 +79,16 @@ function effectPorts(ports: EngineAssemblyPorts): EffectPorts {
         : new TemporaryDeviceChanges(store, clock, ports.effects),
     http: new HttpEffects(ports.secrets, clock),
     store,
-    owned: repositories.owned,
+    owned: ports.memory.owned,
     kept: ports.kept,
     extra: {
-      ...deviceExtraHandlers({ setter, store, feed: store.feed, clock }),
+      ...deviceExtraHandlers({
+        setter,
+        store,
+        feed: store.feed,
+        clock,
+        observed: ports.world.observed,
+      }),
       'debug.log': debugLogHandler(ports.log ?? new Logger('hub.automations')),
       ...ports.extraEffects,
     },
@@ -105,12 +109,14 @@ export function assembleEngineV3(ports: EngineAssemblyPorts): AssembledEngine {
     place: ports.place,
     zone: ports.zone,
     repositories,
+    memory: ports.memory,
     kinds: ports.world.kinds,
     world: {
       reads: createWorldReads(ports.world),
       persistent: ports.world.persistent,
-      stateMemory: stateMemoryFromRows(store.automationNodeState, ports.timers),
+      stateMemory: stateMemoryFromRows(ports.memory.state, ports.timers),
     },
+    ready: ports.ready,
     effects: performer(handlers),
     retain: ports.retain,
     watch: (wait, resume): Cancel => waits.watch(wait, resume),

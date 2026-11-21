@@ -8,6 +8,7 @@ import {
 import type { DriveActor } from '../../src/drive/access';
 import { targetAccess } from '../../src/drive/placement-access';
 import { DrivePlacements } from '../../src/drive/placements';
+import { placementChangeIn } from '../../src/drive/units/placements';
 import type { Store } from '../../src/store/store';
 import { personalDriveRoot, sharedDriveRoot } from '../store/drive-roots-fixture';
 import type { TestStore } from '../support/store';
@@ -107,7 +108,7 @@ export async function openPlacementWorld(): Promise<PlacementWorld> {
   });
   putItem(store, { rootId: ROBIN_DRIVE, id: ROBIN_PRIVATE, relPath: 'Private', kind: 'folder' });
   putItem(store, { rootId: IDA_DRIVE, id: IDA_PRIVATE, relPath: 'Private', kind: 'folder' });
-  const placements = new DrivePlacements({ store, context: store.context, newId });
+  const placements = new DrivePlacements({ store, newId });
   return {
     test,
     store,
@@ -217,5 +218,13 @@ export function place(
       ...(rest.enabled === undefined ? {} : { enabled: rest.enabled }),
     });
   }
-  return world.placements.set(actor, placementRequest(deviceId, rest));
+  const result = world.store.write(() =>
+    placementChangeIn(world.store, [
+      { op: 'set', actor, input: placementRequest(deviceId, rest), id: newId() },
+    ]),
+  );
+  world.placements.changed(result.devices);
+  const [placed] = result.placements;
+  if (placed === undefined || placed === null) throw new Error('The placement was not set.');
+  return placed;
 }

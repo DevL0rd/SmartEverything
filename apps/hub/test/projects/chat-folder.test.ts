@@ -47,7 +47,7 @@ describe('a chat folder lives under its owner in the layout', () => {
   it('is the root of the project service and is created with its areas', async () => {
     const chat = chatOf(opened.store.profiles.create({ name: 'Sam' }).id);
 
-    const root = projects.ensure(chat.id);
+    const root = await projects.ensure(chat.id);
 
     expect(root).toBe(layout.chat(chat.profile_id, chat.id).project);
     expect((await stat(join(root, 'workspace'))).isDirectory()).toBe(true);
@@ -59,7 +59,7 @@ describe('a chat folder lives under its owner in the layout', () => {
     const gone = chatOf(profileId);
     const kept = chatOf(profileId);
     for (const chat of [gone, kept]) {
-      await mkdir(join(projects.ensure(chat.id), 'workspace'), { recursive: true });
+      await mkdir(join(await projects.ensure(chat.id), 'workspace'), { recursive: true });
       await writeFile(join(projects.root(chat.id), 'workspace', 'note.txt'), 'x');
     }
 

@@ -3,13 +3,13 @@ import type { DriveItem } from '@smarteverything/domain';
 import {
   commitContent,
   folderDraft,
-  identityOf,
-  isoOf,
   recordItem,
   type ChangeActor,
   type ChangeEnv,
 } from '../changes';
-import { DriveWriteError, locate, type DriveWriteRoot } from '../intents';
+import { identityOf, isoOf } from '../change-rows';
+import { locate, type DriveWriteRoot } from '../intents';
+import { DriveWriteError } from '../write-error';
 import { checkDriveWrite, DriveFreeSpaceError, DriveQuotaExceededError } from '../quotas';
 import type { DriveWriteGuard } from '../quotas';
 import { freeNameAt } from '../uploads-tus-wire';

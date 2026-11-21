@@ -9,8 +9,11 @@ import { IMAGE_LIMIT_BYTES, LIVE_CAMERA_TOOL, SNAPSHOT_TYPE } from './camera-liv
 import { READS, ToolError, WRITES, defineTool, type Tool, type ToolContext } from './registry';
 import { deviceNames, placedDevice } from './targets';
 
-export function latestSnapshot(store: Store, deviceId: string): RecordingRow {
-  const [snapshot] = store.cameras.recordings({
+export async function latestSnapshot(
+  store: Pick<Store, 'host'>,
+  deviceId: string,
+): Promise<RecordingRow> {
+  const [snapshot] = await store.host.call('cameras', 'recordings', {
     deviceIds: [deviceId],
     kind: 'snapshot',
     limit: 1,
@@ -47,19 +50,19 @@ const SAVED = z
     message: 'give deviceId or recordingId',
   });
 
-function recordingFor(
+async function recordingFor(
   store: Store,
   scope: DeviceScope | null,
   input: z.infer<typeof SAVED>,
-): RecordingRow {
+): Promise<RecordingRow> {
   if (input.recordingId === undefined) {
     if (input.deviceId === undefined) {
       throw new ToolError('Give deviceId or recordingId');
     }
-    return latestSnapshot(store, placedDevice(store, scope, input.deviceId).device.id);
+    return latestSnapshot(store, (await placedDevice(store, scope, input.deviceId)).device.id);
   }
-  const recording = store.cameras.recording(input.recordingId);
-  placedDevice(store, scope, recording.device_id);
+  const recording = await store.host.call('cameras', 'recording', input.recordingId);
+  await placedDevice(store, scope, recording.device_id);
   if (recording.kind !== 'snapshot') {
     throw new ToolError(
       `Recording ${recording.id} is a video clip; assistants receive images only`,
@@ -75,11 +78,11 @@ export const CAMERA_TOOLS: readonly Tool[] = [
     input: SAVED,
     annotations: READS,
     run: async (context, input) => {
-      const recording = recordingFor(context.store, deviceScopeOfActor(context), input);
+      const recording = await recordingFor(context.store, deviceScopeOfActor(context), input);
       return {
         structured: {
           deviceId: recording.device_id,
-          device: deviceNames(context.store).get(recording.device_id) ?? null,
+          device: (await deviceNames(context.store)).get(recording.device_id) ?? null,
           recordingId: recording.id,
           takenAt: recording.started_at,
           mimeType: SNAPSHOT_TYPE,
@@ -102,13 +105,14 @@ export const CAMERA_TOOLS: readonly Tool[] = [
           device_id: null,
           capability: 'hub:record_clip',
           value: {
-            deviceId: placedDevice(context.store, deviceScopeOfActor(context), input.deviceId)
-              .device.id,
+            deviceId: (
+              await placedDevice(context.store, deviceScopeOfActor(context), input.deviceId)
+            ).device.id,
             seconds: input.seconds,
           },
         },
       ]);
-      return { structured: reported(context, outcome) };
+      return { structured: await reported(context, outcome) };
     },
   }),
 ];

@@ -13,7 +13,7 @@ import type { AutomationRunNodesRepository } from '../store/repositories/automat
 import type { AutomationRunRecordsRepository } from '../store/repositories/automation-run-records';
 import { StoreNotFoundError } from '../store/context';
 import type { LiveWatch, WatchConnection } from './live-watch';
-import type { TraceOwners, TraceProfiles } from './live-visibility';
+import type { TraceOwners, TraceProfiles } from './live-trace';
 
 export interface AutomationTraceWiringParts {
   readonly live: {

@@ -28,6 +28,7 @@ import type { VoiceCallTap } from '../src/listening/voice-activity';
 import { idleHostedCall } from './support/hosted-call';
 import { FakeClock } from './support/fake-clock';
 import { testLogger } from './support/logs';
+import { settleWithHost } from './support/host-settle';
 import { testStore, type TestStore } from './support/store';
 import { TEST_ENGINE } from './support/engine';
 
@@ -58,7 +59,7 @@ function transport(
   clients: () => ClientRow[],
 ): RingTransport {
   return {
-    targets: (): ClientRow[] => clients(),
+    targets: (): Promise<ClientRow[]> => Promise.resolve(clients()),
     ring: (row): Promise<string | null> => {
       bench.rang.push(row);
       return Promise.resolve(null);
@@ -66,7 +67,7 @@ function transport(
     cancel: (row): void => {
       bench.cancelled.push(row.id);
     },
-    unreachable: (): string => 'Can’t reach them.',
+    unreachable: (): Promise<string> => Promise.resolve('Can’t reach them.'),
   };
 }
 
@@ -131,6 +132,7 @@ async function bench(): Promise<Bench> {
       reachable: true,
       stuck: false,
     };
+  await store.live.home.load();
   const rules = new ReachRules(store, clock.now);
   const audio = new ComputerCallAudio({
     sendOf:
@@ -233,6 +235,7 @@ describe('call_start ring', () => {
     });
     expect(answer.kind).toBe('answer');
     expect(answer.kind === 'answer' ? answer.opening : '').toContain('The baby is crying');
+    await settleWithHost();
     expect(current.opened.store.aiOutreach.byId(row.id).state).toBe('live');
   });
 
@@ -250,6 +253,7 @@ describe('call_start ring', () => {
   it('turns missed after 45 seconds, cancels the ring and tells the calling chat', async () => {
     const row = await callMe();
     current.clock.advanceTo('2026-10-08T10:00:46.000Z');
+    await settleWithHost();
     expect(current.opened.store.aiOutreach.byId(row.id).state).toBe('missed');
     expect(current.cancelled).toEqual([row.id]);
     expect(current.turns[0]?.text).toContain('was not answered');
@@ -264,12 +268,13 @@ describe('call_start ring', () => {
       chatId: row.chat_id ?? '',
     });
     current.service.ended(row.id, 'finished', 'Person: thanks');
+    await settleWithHost();
     expect(current.opened.store.aiOutreach.byId(row.id).state).toBe('ended');
     expect(current.turns).toHaveLength(0);
   });
 
   it('respects quiet hours and lets urgent through only when allowed', async () => {
-    current.rules.save(current.asker.profileId, {
+    await current.rules.save(current.asker.profileId, {
       quiet: { from: '09:00', to: '11:00', urgent: true },
     });
     await expect(callMe()).rejects.toBeInstanceOf(ReachRefusedError);
@@ -507,24 +512,26 @@ describe('phone transport', () => {
   it('rings a connected phone over the live connection without push', async () => {
     const sent: string[] = [];
     const phone = phoneTransport(new Set([current.phone.id]), false, sent);
-    const targets = phone.targets(current.asker.profileId);
+    const targets = await phone.targets(current.asker.profileId);
     expect(targets.map((client) => client.id)).toEqual([current.phone.id]);
     const row = await callMe();
     await expect(phone.ring(row, targets)).resolves.toBeNull();
     expect(sent).toHaveLength(0);
   });
 
-  it('says push is not set up when the phone app is not connected', () => {
+  it('says push is not set up when the phone app is not connected', async () => {
     const phone = phoneTransport(new Set(), false, []);
-    expect(phone.targets(current.asker.profileId)).toHaveLength(0);
-    expect(phone.unreachable(current.asker.profileId, 'Me')).toContain(
+    expect(await phone.targets(current.asker.profileId)).toHaveLength(0);
+    expect(await phone.unreachable(current.asker.profileId, 'Me')).toContain(
       "push notifications aren't set up",
     );
   });
 
-  it('says to open the app once when push is set up but the phone never signed up', () => {
+  it('says to open the app once when push is set up but the phone never signed up', async () => {
     const phone = phoneTransport(new Set(), true, []);
-    expect(phone.unreachable(current.asker.profileId, 'Me')).toContain('open SmartEverything');
+    expect(await phone.unreachable(current.asker.profileId, 'Me')).toContain(
+      'open SmartEverything',
+    );
   });
 });
 
@@ -568,9 +575,9 @@ describe('computer conversations', () => {
     await current.service.hangUp(row.id);
   });
 
-  it('refuses a device that is not a computer', () => {
-    expect(() =>
+  it('refuses a device that is not a computer', async () => {
+    await expect(
       current.service.computer(current.asker, { computerId: computerId('phone'), reason: 'x' }),
-    ).toThrow(ReachRefusedError);
+    ).rejects.toThrow(ReachRefusedError);
   });
 });

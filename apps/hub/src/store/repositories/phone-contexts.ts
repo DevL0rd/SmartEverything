@@ -48,6 +48,10 @@ const COLUMNS =
 export class PhoneContextsRepository {
   constructor(private readonly context: StoreContext) {}
 
+  list(): PhoneContextEntry[] {
+    return this.context.sql.all(STORED_ENTRY, `select ${COLUMNS} from phone_contexts`);
+  }
+
   latestOf(profileId: string): PhoneContextEntry | undefined {
     return this.context.sql.get(
       STORED_ENTRY,
