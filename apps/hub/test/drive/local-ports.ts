@@ -21,11 +21,12 @@ import type { ScanPort } from '../../src/drive/scan-port';
 import {
   scanApply,
   scanBegin,
+  scanCommit,
   scanEnd,
   scanIndexed,
+  scanLoad,
   scanPlace,
   scanSettle,
-  scanSweep,
 } from '../../src/drive/units/scan';
 import type { IndexReader } from '../../src/drive/watch-reflect';
 import type { StoreContext } from '../../src/store/context';
@@ -54,24 +55,24 @@ export function localScanPort(drive: LocalDrive): ScanPort {
     driveInodes: new DriveInodesRepository(drive.context),
     driveMissing: new DriveMissingRepository(drive.context),
     now: drive.now,
+    write: <T>(work: () => T): T => drive.context.write(work),
   };
   const run = written(drive.context);
+  const bare = <T>(work: () => T): Promise<T> => Promise.resolve().then(work);
   return {
     root: (rootId) => run(() => drive.roots.find(rootId)),
     update: (rootId, patch) => run(() => drive.roots.update(rootId, patch)),
-    begin: (input) => run(() => scanBegin(store, input)),
-    apply: (input) =>
-      run(() => {
-        scanApply(store, input);
-      }),
-    settle: (input) => run(() => scanSettle(store, input)),
+    begin: (input) => bare(() => scanBegin(store, input)),
+    load: (input) => bare(() => scanLoad(store, input)),
+    apply: (input) => bare(() => scanApply(store, input)),
+    settle: (input) => bare(() => scanSettle(store, input)),
     place: (input) =>
-      run(() => {
+      bare(() => {
         scanPlace(store, input);
       }),
-    sweep: (input) => run(() => scanSweep(store, input)),
+    commit: (input) => bare(() => scanCommit(store, input)),
     end: (input) =>
-      run(() => {
+      bare(() => {
         scanEnd(store, input);
       }),
   };
@@ -88,7 +89,6 @@ export function localIndex(drive: Pick<LocalDrive, 'items' | 'context'>): IndexR
 
 export interface TestScanDeps extends CommitDependencies {
   readonly hash: (entry: WalkEntry) => Promise<string | null>;
-  readonly write: <T>(work: () => T) => T;
 }
 
 export class TestScan {
@@ -99,7 +99,8 @@ export class TestScan {
     root: DriveRoot,
     scopes: readonly string[] | null,
   ) {
-    this.committer = deps.write(() => new ScanCommitter(deps, root, scopes));
+    this.committer = new ScanCommitter(deps, root, scopes);
+    while (this.committer.load());
   }
 
   get previous(): number {
@@ -107,19 +108,17 @@ export class TestScan {
   }
 
   apply(entries: readonly WalkEntry[]): void {
-    this.deps.write(() => {
-      this.committer.apply(entries.map(scanEntryOf));
-    });
+    let rest = entries.map(scanEntryOf);
+    while (rest.length > 0) rest = rest.slice(this.committer.apply(rest));
   }
 
   async finish(unreadable: readonly string[]): Promise<void> {
-    const wanted = this.deps.write(() => this.committer.settle(unreadable));
+    let settled = this.committer.settle(unreadable);
+    while (!settled.done) settled = this.committer.settle(unreadable);
     const hashes: (string | null)[] = [];
-    for (const entry of wanted) hashes.push(await this.deps.hash(entry));
-    this.deps.write(() => {
-      this.committer.place(hashes);
-    });
-    while (this.deps.write(() => this.committer.sweep()));
+    for (const entry of settled.wanted) hashes.push(await this.deps.hash(entry));
+    this.committer.place(hashes);
+    while (this.committer.commit());
   }
 }
 

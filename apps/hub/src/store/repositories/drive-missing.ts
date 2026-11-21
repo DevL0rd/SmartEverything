@@ -1,10 +1,12 @@
 import { z } from 'zod';
-import type { StoreContext } from '../context';
+import { found, type StoreContext } from '../context';
 import { DriveTrashRows, MISSING_LEDGER, type StashedRow } from './drive-trash-rows';
 
 const ITEMS = 'drive_items';
 
 const INODES = 'drive_inodes';
+
+const EXPIRING = z.strictObject({ expiring: z.union([z.literal(0), z.literal(1)]) });
 
 const MISSING_COLUMNS = z
   .strictObject({
@@ -14,15 +16,13 @@ const MISSING_COLUMNS = z
     sha256: z.string().nullable(),
     missing_at: z.string().min(1),
   })
-  .transform(
-    (row): MissingItem => ({
-      itemId: row.item_id,
-      relPath: row.rel_path,
-      bytes: row.bytes,
-      sha256: row.sha256,
-      missingAt: row.missing_at,
-    }),
-  );
+  .transform((row): MissingItem => ({
+    itemId: row.item_id,
+    relPath: row.rel_path,
+    bytes: row.bytes,
+    sha256: row.sha256,
+    missingAt: row.missing_at,
+  }));
 
 export interface MissingItem {
   readonly itemId: string;
@@ -99,6 +99,16 @@ export class DriveMissingRepository {
        where root_id = $rootId order by missing_at desc, item_id`,
       { rootId },
     );
+  }
+
+  expiring(rootId: string, at: string): boolean {
+    const row = this.context.sql.get(
+      EXPIRING,
+      `select exists (select 1 from drive_missing where root_id = $rootId and purge_at <= $at)
+         as expiring`,
+      { rootId, at },
+    );
+    return found(row, 'drive missing expiry', rootId).expiring === 1;
   }
 
   expire(rootId: string, at: string): number {

@@ -1,4 +1,4 @@
-import { readdirSync, statSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 export const repositoryRoot = join(import.meta.dirname, '..', '..');
@@ -6,9 +6,10 @@ export const applicationSource = join(repositoryRoot, 'apps', 'app', 'src');
 export const applicationRoutes = join(repositoryRoot, 'apps', 'app', 'app');
 
 export function filesUnder(from: string, found: string[] = []): readonly string[] {
-  for (const entry of readdirSync(from)) {
-    const at = join(from, entry);
-    if (statSync(at).isDirectory()) {
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    if (entry.name === 'node_modules') continue;
+    const at = join(from, entry.name);
+    if (entry.isDirectory()) {
       filesUnder(at, found);
     } else {
       found.push(at);

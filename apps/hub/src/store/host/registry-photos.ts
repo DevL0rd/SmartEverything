@@ -156,6 +156,7 @@ import {
   PHOTO_PLACES_DATASET_UNIT,
   PHOTO_PLACES_KEEP_UNIT,
   PHOTO_PLACES_LOCATED_UNIT,
+  PHOTO_PLACES_LOST_UNIT,
   PHOTO_PLACES_SAVE_UNIT,
 } from '../../photos/places-records';
 import { PHOTO_TRIPS_UNIT } from '../../photos/trips';
@@ -223,6 +224,7 @@ export const PHOTOS_READ_UNITS = {
   photoAiImageKept: PHOTO_AI_IMAGE_KEPT_UNIT,
   photoPlacesDataset: PHOTO_PLACES_DATASET_UNIT,
   photoPlacesLocated: PHOTO_PLACES_LOCATED_UNIT,
+  photoPlacesLost: PHOTO_PLACES_LOST_UNIT,
   photoLockedLinkTarget: PHOTO_LOCKED_LINK_TARGET_UNIT,
   photoLockedLinkItems: PHOTO_LOCKED_LINK_ITEMS_UNIT,
   photoLockedHeld: PHOTO_LOCKED_HELD_UNIT,

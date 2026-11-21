@@ -102,6 +102,7 @@ describe('expiring access', () => {
     const id = grant(ROBIN_TRIP, world.ida.profileId, 'view', '2026-11-07T07:10:00+07:00');
     expect(world.store.driveGrants.byId(id).expiresAt).toBe(at(10));
     await expiry.idle();
+    world.store.feed.settleTotals();
     const timers = vi.getTimerCount();
     await elapse(9);
     expect(grantIds(ROBIN_TRIP)).toEqual([id]);

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { gzipSync } from 'node:zlib';
 import { PLACE_CLUSTER, PLACE_COUNTRY } from '@smarteverything/domain';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { DriveActor } from '../../src/drive/access';
 import {
@@ -204,9 +204,10 @@ function contextPlaces(): PlacesStore {
       later(() => {
         records.assignLocated(located);
       }),
-    clearLost: () =>
+    lost: () => later(() => records.lost()),
+    clearLost: (itemIds) =>
       later(() => {
-        records.clearLost();
+        records.clearLost(itemIds);
       }),
   };
 }
@@ -400,6 +401,17 @@ describe('assigning a place', () => {
     );
     await places.assignPending(false);
     expect(placeOf(1)).toBeNull();
+  });
+
+  it('writes nothing in the sweep when no placed item lost its location', async () => {
+    const places = await loaded();
+    seed({ n: 1, lat: 41.2, lon: -8.6, takenAt: '2026-03-01T10:00:00.000Z' });
+    await places.assign(itemId(1));
+    const clear = vi.spyOn(PlaceRecords.prototype, 'clearLost');
+    await places.assignPending(false);
+    expect(clear).not.toHaveBeenCalled();
+    expect(placeOf(1)).toBe('1002');
+    clear.mockRestore();
   });
 });
 

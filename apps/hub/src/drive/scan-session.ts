@@ -18,8 +18,13 @@ export class ScanSession {
     paths: readonly string[] | null,
   ): Promise<ScanSession> {
     const scanId = randomUUID();
-    const begun = await port.begin({ scanId, rootId, paths });
-    return new ScanSession(port, scanId, begun.previous, begun.scopes);
+    const { scopes } = await port.begin({ scanId, rootId, paths });
+    try {
+      return new ScanSession(port, scanId, await loaded(port, scanId), scopes);
+    } catch (cause) {
+      await port.end({ scanId });
+      throw cause;
+    }
   }
 
   get scoped(): readonly string[] {
@@ -27,8 +32,10 @@ export class ScanSession {
     return this.scopes;
   }
 
-  apply(entries: readonly WalkEntry[]): Promise<void> {
-    return this.port.apply({ scanId: this.scanId, entries: entries.map(scanEntryOf) });
+  async apply(entries: readonly WalkEntry[]): Promise<void> {
+    const { scanId } = this;
+    let rest = entries.map(scanEntryOf);
+    while (rest.length > 0) rest = rest.slice(await this.port.apply({ scanId, entries: rest }));
   }
 
   async finish(
@@ -36,16 +43,23 @@ export class ScanSession {
     hash: (entry: WalkEntry) => Promise<string | null>,
   ): Promise<void> {
     const { scanId } = this;
-    const wanted = await this.port.settle({ scanId, unreadable });
+    let settled = await this.port.settle({ scanId, unreadable });
+    while (!settled.done) settled = await this.port.settle({ scanId, unreadable });
     const hashes: (string | null)[] = [];
-    for (const entry of wanted) hashes.push(await hash(entry));
+    for (const entry of settled.wanted) hashes.push(await hash(entry));
     await this.port.place({ scanId, hashes });
-    while (await this.port.sweep({ scanId }));
+    while (await this.port.commit({ scanId }));
   }
 
   end(): Promise<void> {
     return this.port.end({ scanId: this.scanId });
   }
+}
+
+async function loaded(port: ScanPort, scanId: string): Promise<number> {
+  let step = await port.load({ scanId });
+  while (step.more) step = await port.load({ scanId });
+  return step.previous;
 }
 
 export async function withScan<T>(

@@ -40,12 +40,13 @@ import {
 } from '../../drive/units/scrub';
 import {
   DRIVE_SCAN_APPLY_UNIT,
+  DRIVE_SCAN_COMMIT_UNIT,
   DRIVE_SCAN_BEGIN_UNIT,
   DRIVE_SCAN_END_UNIT,
   DRIVE_SCAN_INDEXED_UNIT,
+  DRIVE_SCAN_LOAD_UNIT,
   DRIVE_SCAN_PLACE_UNIT,
   DRIVE_SCAN_SETTLE_UNIT,
-  DRIVE_SCAN_SWEEP_UNIT,
 } from '../../drive/units/scan';
 import {
   DRIVE_TEXT_BACKLOG_UNIT,
@@ -115,10 +116,11 @@ export const DRIVE_WRITE_UNITS = {
   driveScrubRecord: DRIVE_SCRUB_RECORD_UNIT,
   driveScrubHealth: DRIVE_SCRUB_HEALTH_UNIT,
   driveScanBegin: DRIVE_SCAN_BEGIN_UNIT,
+  driveScanLoad: DRIVE_SCAN_LOAD_UNIT,
   driveScanApply: DRIVE_SCAN_APPLY_UNIT,
   driveScanSettle: DRIVE_SCAN_SETTLE_UNIT,
   driveScanPlace: DRIVE_SCAN_PLACE_UNIT,
-  driveScanSweep: DRIVE_SCAN_SWEEP_UNIT,
+  driveScanCommit: DRIVE_SCAN_COMMIT_UNIT,
   driveScanEnd: DRIVE_SCAN_END_UNIT,
   driveMetadataRecord: DRIVE_METADATA_RECORD_UNIT,
   driveTextRecord: DRIVE_TEXT_RECORD_UNIT,

@@ -14,6 +14,7 @@ import {
 } from './places';
 
 const POINT = z.strictObject({ lat: z.number().nullable(), lon: z.number().nullable() });
+const ITEM_ID = z.strictObject({ item_id: z.string() });
 
 export class PlaceRecords {
   private readonly places: DrivePlacesRepository;
@@ -83,14 +84,28 @@ export class PlaceRecords {
     });
   }
 
-  clearLost(): void {
-    this.context.write(() =>
-      this.context.sql.run(
-        'clear the places of items that lost their location',
-        `update drive_media set place_id = null
-         where place_id is not null and item_id in (select id from drive_items where place_lat is null)`,
-      ),
-    );
+  lost(): string[] {
+    return this.context.sql
+      .all(
+        ITEM_ID,
+        `select m.item_id from drive_media m join drive_items i on i.id = m.item_id
+         where m.place_id is not null and i.place_lat is null`,
+      )
+      .map((row) => row.item_id);
+  }
+
+  clearLost(itemIds: readonly string[]): void {
+    this.context.write(() => {
+      for (const itemId of itemIds) {
+        this.context.sql.run(
+          'clear the place of an item that lost its location',
+          `update drive_media set place_id = null
+           where item_id = $itemId and place_id is not null
+             and exists (select 1 from drive_items i where i.id = $itemId and i.place_lat is null)`,
+          { itemId },
+        );
+      }
+    });
   }
 }
 
@@ -125,6 +140,12 @@ export const PHOTO_PLACES_ASSIGN_LOCATED_UNIT = storeUnit(
   },
 );
 
-export const PHOTO_PLACES_CLEAR_LOST_UNIT = storeUnit((store, _input: null) => {
-  new PlaceRecords(store.context).clearLost();
-});
+export const PHOTO_PLACES_LOST_UNIT = storeUnit((store, _input: null) =>
+  new PlaceRecords(store.context).lost(),
+);
+
+export const PHOTO_PLACES_CLEAR_LOST_UNIT = storeUnit(
+  (store, input: { readonly itemIds: readonly string[] }) => {
+    new PlaceRecords(store.context).clearLost(input.itemIds);
+  },
+);

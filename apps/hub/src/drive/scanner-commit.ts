@@ -35,8 +35,17 @@ import {
   withHash,
   type Unknown,
 } from './scanner-reuse';
-import { indexedAt, indexedChildren, parentPathOf, ScanOrderError } from './scanner-scope';
-import { WALK_BATCH_ROWS, type WalkEntry } from './scanner-walk';
+import { IndexLoader, ScanOrderError } from './scanner-scope';
+import type { WalkEntry } from './scanner-walk';
+import {
+  placingOf,
+  stepped,
+  type Placing,
+  type ScanSettled,
+  type ScanWork,
+  type ScanWriter,
+  type Waiting,
+} from './scan-steps';
 
 export interface CommitDependencies {
   readonly items: Pick<
@@ -44,14 +53,18 @@ export interface CommitDependencies {
     'byPath' | 'children' | 'find' | 'identityOf' | 'remove' | 'write'
   >;
   readonly inodes: Pick<DriveInodesRepository, 'findMany' | 'names' | 'ofItem'>;
-  readonly missing: Pick<DriveMissingRepository, 'expire' | 'ofRoot' | 'reclaim' | 'record'>;
+  readonly missing: Pick<
+    DriveMissingRepository,
+    'expire' | 'expiring' | 'ofRoot' | 'reclaim' | 'record'
+  >;
   readonly now: () => Date;
   readonly newId: () => string;
+  readonly write: ScanWriter;
 }
 
-interface Waiting {
-  readonly entry: ScanEntry;
-  readonly hashed: boolean;
+interface Loaded {
+  readonly count: number;
+  readonly known: boolean;
 }
 
 export class ScanCommitter {
@@ -61,78 +74,110 @@ export class ScanCommitter {
   private readonly seen = new Set<string>();
   private readonly deferred: ScanEntry[] = [];
   private readonly unknown: ScanEntry[] = [];
+  private readonly loader: IndexLoader;
+  private loaded: Loaded | null = null;
+  private settled = 0;
   private waiting: readonly Waiting[] | null = null;
   private sized: ReadonlyMap<number, readonly Indexed[]> | null = null;
+  private placing: readonly Placing[] | null = null;
+  private placed = 0;
   private unreadable: readonly string[] = [];
   private gone: readonly Indexed[] | null = null;
   private swept = 0;
   private readonly reuse: ReuseIndex;
-  private readonly known: boolean;
-  private readonly count: number;
 
   constructor(
     private readonly deps: CommitDependencies,
     private readonly root: DriveRoot,
     private readonly scopes: readonly string[] | null,
   ) {
-    deps.missing.expire(root.id, deps.now().toISOString());
+    const at = deps.now().toISOString();
+    if (deps.missing.expiring(root.id, at)) deps.write(() => deps.missing.expire(root.id, at));
     this.reuse = new ReuseIndex(deps.missing.ofRoot(root.id));
-    this.load();
-    this.count = this.live.size;
-    this.known = scopes !== null || this.count > 0;
+    this.loader = new IndexLoader(deps, root.id, scopes, {
+      anchor: (indexed): void => {
+        this.live.set(indexed.relPath, indexed);
+        this.seen.add(indexed.id);
+      },
+      note: (indexed): void => {
+        this.note(indexed);
+      },
+    });
   }
 
   get previous(): number {
-    return this.count;
+    return this.index().count;
   }
 
-  apply(entries: readonly ScanEntry[]): void {
-    for (const entry of entries) this.entry(entry);
+  load(): boolean {
+    if (this.loader.step()) return true;
+    this.loaded ??= { count: this.live.size, known: this.scopes !== null || this.live.size > 0 };
+    return false;
   }
 
-  settle(unreadable: readonly string[]): readonly WalkEntry[] {
-    for (const entry of this.deferred.splice(0)) this.settleEntry(entry);
+  apply(entries: readonly ScanEntry[]): number {
+    this.index();
+    return stepped(entries, 0, this.deps.write, (entry) => this.route(entry));
+  }
+
+  settle(unreadable: readonly string[]): ScanSettled {
+    this.settled = stepped(this.deferred, this.settled, this.deps.write, (entry) => (): void => {
+      this.settleEntry(entry);
+    });
+    if (this.settled < this.deferred.length) return { done: false };
     this.unreadable = unreadable;
     const sized = filesBySize(this.unseen(unreadable));
     this.sized = sized;
     this.waiting = this.unknown
       .splice(0)
       .map((entry) => ({ entry, hashed: this.reuse.wantsHash(entry, this.open(sized, entry)) }));
-    return this.waiting.filter((waiting) => waiting.hashed).map((waiting) => waiting.entry);
+    return {
+      done: true,
+      wanted: this.waiting.filter((waiting) => waiting.hashed).map((waiting) => waiting.entry),
+    };
   }
 
   place(hashes: readonly (string | null)[]): void {
-    const { waiting, sized } = this;
-    if (waiting === null || sized === null) {
+    if (this.waiting === null) {
       throw new ScanStepError('The scan placed its new entries before it settled.');
     }
-    const wanted = waiting.filter((entry) => entry.hashed).length;
-    if (hashes.length !== wanted) {
-      throw new ScanStepError(
-        `The scan asked for ${String(wanted)} hashes and got ${String(hashes.length)}.`,
-      );
-    }
-    let next = 0;
-    for (const { entry, hashed } of waiting) {
-      const sha256 = hashed ? hashes[next] : null;
-      if (sha256 === undefined)
-        throw new ScanStepError(`The scan has no hash for ${entry.relPath}.`);
-      if (hashed) next += 1;
-      this.placeEntry(entry, sha256, this.open(sized, entry));
-    }
+    this.placing = placingOf(this.waiting, hashes);
     this.waiting = null;
-    this.gone = this.unseen(this.unreadable).sort(
-      (left, right) => left.relPath.length - right.relPath.length,
-    );
   }
 
-  sweep(): boolean {
-    const { gone } = this;
-    if (gone === null) throw new ScanStepError('The scan swept before it placed its new entries.');
-    const batch = gone.slice(this.swept, this.swept + WALK_BATCH_ROWS);
-    for (const indexed of batch) this.sweepIndexed(indexed);
-    this.swept += batch.length;
-    return this.swept < gone.length;
+  commit(): boolean {
+    const { placing, sized } = this;
+    if (placing === null || sized === null) {
+      throw new ScanStepError('The scan committed before it placed its new entries.');
+    }
+    if (this.placed < placing.length) {
+      this.placed = stepped(
+        placing,
+        this.placed,
+        this.deps.write,
+        ({ entry, sha256 }) =>
+          (): void => {
+            this.placeEntry(entry, sha256, this.open(sized, entry));
+          },
+      );
+      return true;
+    }
+    this.gone ??= this.unseen(this.unreadable).sort(
+      (left, right) => left.relPath.length - right.relPath.length,
+    );
+    this.swept = stepped(this.gone, this.swept, this.deps.write, (indexed) =>
+      this.live.get(indexed.relPath)?.id === indexed.id
+        ? (): void => {
+            this.sweepIndexed(indexed);
+          }
+        : null,
+    );
+    return this.swept < this.gone.length;
+  }
+
+  private index(): Loaded {
+    if (this.loaded === null) throw new ScanStepError('The scan has not loaded its index yet.');
+    return this.loaded;
   }
 
   private unseen(unreadable: readonly string[]): Indexed[] {
@@ -168,35 +213,6 @@ export class ScanCommitter {
     this.save(null, entry, sha256);
   }
 
-  private load(): void {
-    if (this.scopes === null) {
-      this.loadBelow(null);
-      return;
-    }
-    for (const scope of this.scopes) this.loadScope(scope);
-  }
-
-  private loadBelow(start: string | null): void {
-    const pending: (string | null)[] = [start];
-    for (let parent = pending.pop(); parent !== undefined; parent = pending.pop()) {
-      pending.push(...this.loadChildren(parent));
-    }
-  }
-
-  private loadScope(scope: string): void {
-    const parent = parentPathOf(scope);
-    if (parent !== null) {
-      const anchor = indexedAt(this.deps, this.root.id, parent);
-      if (anchor?.kind !== 'folder') throw new ScanOrderError(scope);
-      this.live.set(anchor.relPath, anchor);
-      this.seen.add(anchor.id);
-    }
-    const indexed = indexedAt(this.deps, this.root.id, scope);
-    if (indexed === undefined) return;
-    this.note(indexed);
-    if (indexed.kind === 'folder') this.loadBelow(indexed.id);
-  }
-
   private note(indexed: Indexed): void {
     this.live.set(indexed.relPath, indexed);
     const key = identityKey(indexed.dev, indexed.ino);
@@ -209,37 +225,30 @@ export class ScanCommitter {
     this.reuse.noteLive(indexed);
   }
 
-  private loadChildren(parent: string | null): readonly string[] {
-    const folders: string[] = [];
-    for (const indexed of indexedChildren(this.deps, this.root.id, parent)) {
-      this.note(indexed);
-      if (indexed.kind === 'folder') folders.push(indexed.id);
-    }
-    return folders;
-  }
-
-  private entry(entry: ScanEntry): void {
+  private route(entry: ScanEntry): ScanWork | null {
     const hit = this.live.get(entry.relPath);
-    if (hit !== undefined && sameIdentity(hit, entry)) {
-      this.keep(hit, entry);
-      return;
-    }
+    if (hit !== undefined && sameIdentity(hit, entry)) return this.kept(hit, entry);
     const mover = linked(entry) ? undefined : this.mover(entry);
     if (mover !== undefined) {
-      this.move(mover, entry, hit);
-      return;
+      return () => {
+        this.move(mover, entry, hit);
+      };
     }
-    this.unmatched(hit, entry);
+    return this.unmatched(hit, entry);
   }
 
-  private unmatched(hit: Indexed | undefined, entry: ScanEntry): void {
+  private unmatched(hit: Indexed | undefined, entry: ScanEntry): ScanWork | null {
     if (linked(entry) || (hit !== undefined && hit.kind !== 'folder' && entry.kind === 'file')) {
       this.deferred.push(entry);
-    } else if (hit === undefined && this.reuse.mayReuse(entry)) {
-      this.unknown.push(entry);
-    } else {
-      this.save(hit ?? null, entry, null);
+      return null;
     }
+    if (hit === undefined && this.reuse.mayReuse(entry)) {
+      this.unknown.push(entry);
+      return null;
+    }
+    return () => {
+      this.save(hit ?? null, entry, null);
+    };
   }
 
   private settleEntry(entry: ScanEntry): void {
@@ -262,15 +271,17 @@ export class ScanCommitter {
     );
   }
 
-  private keep(hit: Indexed, entry: ScanEntry): void {
+  private kept(hit: Indexed, entry: ScanEntry): ScanWork | null {
     if (
       (entry.kind === 'folder' && entry.childCount === null) ||
       (sameContent(hit, entry) && !modeDrifts(hit.mode, entry))
     ) {
       this.seen.add(hit.id);
-      return;
+      return null;
     }
-    this.save(hit, entry, null);
+    return () => {
+      this.save(hit, entry, null);
+    };
   }
 
   private move(mover: Indexed, entry: ScanEntry, occupant: Indexed | undefined): void {
@@ -393,7 +404,7 @@ export class ScanCommitter {
       addedAt: base?.addedAt ?? this.deps.now().toISOString(),
       starred: false,
       shared: false,
-      outside: this.known,
+      outside: this.index().known,
       ...ownersOf(base),
     };
   }

@@ -46,6 +46,7 @@ export type PlacesDataset = z.output<typeof DATASET_SETTING>;
 const SAVE_BATCH = 2048;
 
 const ASSIGN_BATCH = 512;
+const CLEAR_BATCH = 512;
 
 const WINDOWS = [0.25, 1, 4, 16, 64, 180] as const;
 
@@ -184,7 +185,8 @@ export interface PlacesStore {
   readonly located: (everything: boolean) => Promise<LocatedItem[]>;
   readonly assign: (itemId: string) => Promise<string | null>;
   readonly assignLocated: (located: readonly LocatedItem[]) => Promise<void>;
-  readonly clearLost: () => Promise<void>;
+  readonly lost: () => Promise<string[]>;
+  readonly clearLost: (itemIds: readonly string[]) => Promise<void>;
 }
 
 export function hostedPlaces(host: StoreHost): PlacesStore {
@@ -195,7 +197,8 @@ export function hostedPlaces(host: StoreHost): PlacesStore {
     located: (everything) => host.read('photoPlacesLocated', { everything }),
     assign: (itemId) => host.write('photoPlaceAssign', { itemId }),
     assignLocated: (located) => host.write('photoPlacesAssignLocated', { located }),
-    clearLost: () => host.write('photoPlacesClearLost', null),
+    lost: () => host.read('photoPlacesLost', null),
+    clearLost: (itemIds) => host.write('photoPlacesClearLost', { itemIds }),
   };
 }
 
@@ -253,7 +256,10 @@ export class PlacesService {
     for (let start = 0; start < located.length; start += ASSIGN_BATCH) {
       await store.assignLocated(located.slice(start, start + ASSIGN_BATCH));
     }
-    await store.clearLost();
+    const lost = await store.lost();
+    for (let start = 0; start < lost.length; start += CLEAR_BATCH) {
+      await store.clearLost(lost.slice(start, start + CLEAR_BATCH));
+    }
     return located.length;
   }
 }

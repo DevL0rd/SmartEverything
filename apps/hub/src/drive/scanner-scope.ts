@@ -1,6 +1,7 @@
 import type { DriveItemsRepository } from '../store/repositories/drive-items';
 import type { CommitDependencies } from './scanner-commit';
 import { indexedOf, under, type Indexed } from './scanner-index';
+import { stepBudget } from './scan-steps';
 import { WALK_BATCH_ROWS } from './scanner-walk';
 
 type IndexReader = Pick<CommitDependencies, 'items' | 'inodes'>;
@@ -21,28 +22,33 @@ export function indexedAt(deps: IndexReader, rootId: string, relPath: string): I
   return indexedOf({ item, identity: deps.items.identityOf(item.id), inodeId: inode.id }, inode);
 }
 
-export function* indexedChildren(
+export interface IndexedWindow {
+  readonly indexed: readonly Indexed[];
+  readonly next: string | null;
+}
+
+export function indexedWindow(
   deps: IndexReader,
   rootId: string,
   parentId: string | null,
-): Generator<Indexed> {
-  let after: string | null = null;
-  do {
-    const window = deps.items.children({
-      rootId,
-      parentId,
-      after,
-      limit: WALK_BATCH_ROWS,
-      viewer: null,
-    });
-    const inodes = new Map(
-      deps.inodes
-        .findMany(window.entries.map((entry) => entry.inodeId))
-        .map((inode) => [inode.id, inode]),
-    );
-    for (const entry of window.entries) yield indexedOf(entry, inodes.get(entry.inodeId));
-    after = window.next;
-  } while (after !== null);
+  after: string | null,
+): IndexedWindow {
+  const window = deps.items.children({
+    rootId,
+    parentId,
+    after,
+    limit: WALK_BATCH_ROWS,
+    viewer: null,
+  });
+  const inodes = new Map(
+    deps.inodes
+      .findMany(window.entries.map((entry) => entry.inodeId))
+      .map((inode) => [inode.id, inode]),
+  );
+  return {
+    indexed: window.entries.map((entry) => indexedOf(entry, inodes.get(entry.inodeId))),
+    next: window.next,
+  };
 }
 
 export function parentPathOf(relPath: string): string | null {
@@ -77,4 +83,63 @@ export function scopesOf(
     if (!scopes.some((kept) => under(scope, kept))) scopes.push(scope);
   }
   return scopes;
+}
+
+interface Pending {
+  readonly parentId: string | null;
+  readonly after: string | null;
+}
+
+export interface IndexSink {
+  readonly anchor: (indexed: Indexed) => void;
+  readonly note: (indexed: Indexed) => void;
+}
+
+export class IndexLoader {
+  private readonly pending: Pending[] = [];
+
+  constructor(
+    private readonly deps: IndexReader,
+    private readonly rootId: string,
+    scopes: readonly string[] | null,
+    private readonly sink: IndexSink,
+  ) {
+    if (scopes === null) this.pending.push({ parentId: null, after: null });
+    else for (const scope of scopes) this.seed(scope);
+  }
+
+  step(): boolean {
+    const within = stepBudget();
+    for (
+      let next = this.pending.pop();
+      next !== undefined;
+      next = within() ? this.pending.pop() : undefined
+    ) {
+      this.window(next);
+    }
+    return this.pending.length > 0;
+  }
+
+  private seed(scope: string): void {
+    const parent = parentPathOf(scope);
+    if (parent !== null) {
+      const anchor = indexedAt(this.deps, this.rootId, parent);
+      if (anchor?.kind !== 'folder') throw new ScanOrderError(scope);
+      this.sink.anchor(anchor);
+    }
+    const indexed = indexedAt(this.deps, this.rootId, scope);
+    if (indexed === undefined) return;
+    this.noted(indexed);
+  }
+
+  private window(pending: Pending): void {
+    const window = indexedWindow(this.deps, this.rootId, pending.parentId, pending.after);
+    for (const indexed of window.indexed) this.noted(indexed);
+    if (window.next !== null) this.pending.push({ parentId: pending.parentId, after: window.next });
+  }
+
+  private noted(indexed: Indexed): void {
+    this.sink.note(indexed);
+    if (indexed.kind === 'folder') this.pending.push({ parentId: indexed.id, after: null });
+  }
 }

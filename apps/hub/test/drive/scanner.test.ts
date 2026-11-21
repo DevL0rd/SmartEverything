@@ -620,8 +620,10 @@ describe('the 100k index', () => {
       missing: new DriveMissingRepository(context),
       now: () => new Date(NOW),
       newId: randomUUID,
+      write: (work) => context.write(work),
     };
     const committer = new ScanCommitter(dependencies, roots.byId(ROOT), null);
+    while (committer.load());
     expect(committer.previous).toBe(FOLDERS + FILES);
   });
 });

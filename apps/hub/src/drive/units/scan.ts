@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import type { HostStore } from '../../store/host/host-store';
-import { storeUnit } from '../../store/host/unit';
+import { bareStoreUnit, storeUnit } from '../../store/host/unit';
 import { ScanCommitter } from '../scanner-commit';
+import type { ScanSettled } from '../scan-steps';
 import { ScanStepError, type ScanEntry } from '../scanner-drafts';
 import type { Indexed } from '../scanner-index';
 import { indexedAt, scopesOf } from '../scanner-scope';
-import type { WalkEntry } from '../scanner-walk';
 
 export type ScanStore = Pick<
   HostStore,
-  'driveRoots' | 'driveItems' | 'driveInodes' | 'driveMissing' | 'now'
+  'driveRoots' | 'driveItems' | 'driveInodes' | 'driveMissing' | 'now' | 'write'
 >;
 
 const SCANS = new Map<string, ScanCommitter>();
@@ -27,9 +27,11 @@ export interface ScanBeginInput {
 }
 
 export interface ScanBegun {
-  readonly previous: number;
   readonly scopes: readonly string[] | null;
 }
+
+export type ScanLoaded =
+  { readonly more: true } | { readonly more: false; readonly previous: number };
 
 export function scanBegin(store: ScanStore, input: ScanBeginInput): ScanBegun {
   if (SCANS.has(input.scanId)) throw new ScanStepError(`The scan ${input.scanId} already runs.`);
@@ -42,12 +44,18 @@ export function scanBegin(store: ScanStore, input: ScanBeginInput): ScanBegun {
       missing: store.driveMissing,
       now: store.now,
       newId: randomUUID,
+      write: store.write,
     },
     root,
     scopes,
   );
   SCANS.set(input.scanId, scan);
-  return { previous: scan.previous, scopes };
+  return { scopes };
+}
+
+export function scanLoad(_store: ScanStore, input: ScanIdInput): ScanLoaded {
+  const scan = scanOf(input.scanId);
+  return scan.load() ? { more: true } : { more: false, previous: scan.previous };
 }
 
 export interface ScanApplyInput {
@@ -55,8 +63,8 @@ export interface ScanApplyInput {
   readonly entries: readonly ScanEntry[];
 }
 
-export function scanApply(_store: ScanStore, input: ScanApplyInput): void {
-  scanOf(input.scanId).apply(input.entries);
+export function scanApply(_store: ScanStore, input: ScanApplyInput): number {
+  return scanOf(input.scanId).apply(input.entries);
 }
 
 export interface ScanSettleInput {
@@ -64,7 +72,7 @@ export interface ScanSettleInput {
   readonly unreadable: readonly string[];
 }
 
-export function scanSettle(_store: ScanStore, input: ScanSettleInput): readonly WalkEntry[] {
+export function scanSettle(_store: ScanStore, input: ScanSettleInput): ScanSettled {
   return scanOf(input.scanId).settle(input.unreadable);
 }
 
@@ -81,25 +89,27 @@ export interface ScanIdInput {
   readonly scanId: string;
 }
 
-export function scanSweep(_store: ScanStore, input: ScanIdInput): boolean {
-  return scanOf(input.scanId).sweep();
+export function scanCommit(_store: ScanStore, input: ScanIdInput): boolean {
+  return scanOf(input.scanId).commit();
 }
 
 export function scanEnd(_store: ScanStore, input: ScanIdInput): void {
   SCANS.delete(input.scanId);
 }
 
-export const DRIVE_SCAN_BEGIN_UNIT = storeUnit(scanBegin);
+export const DRIVE_SCAN_BEGIN_UNIT = bareStoreUnit(scanBegin);
 
-export const DRIVE_SCAN_APPLY_UNIT = storeUnit(scanApply);
+export const DRIVE_SCAN_LOAD_UNIT = bareStoreUnit(scanLoad);
 
-export const DRIVE_SCAN_SETTLE_UNIT = storeUnit(scanSettle);
+export const DRIVE_SCAN_APPLY_UNIT = bareStoreUnit(scanApply);
 
-export const DRIVE_SCAN_PLACE_UNIT = storeUnit(scanPlace);
+export const DRIVE_SCAN_SETTLE_UNIT = bareStoreUnit(scanSettle);
 
-export const DRIVE_SCAN_SWEEP_UNIT = storeUnit(scanSweep);
+export const DRIVE_SCAN_PLACE_UNIT = bareStoreUnit(scanPlace);
 
-export const DRIVE_SCAN_END_UNIT = storeUnit(scanEnd);
+export const DRIVE_SCAN_COMMIT_UNIT = bareStoreUnit(scanCommit);
+
+export const DRIVE_SCAN_END_UNIT = bareStoreUnit(scanEnd);
 
 export interface ScanIndexedInput {
   readonly rootId: string;
