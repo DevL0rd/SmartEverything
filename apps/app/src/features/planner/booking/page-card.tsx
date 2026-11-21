@@ -13,7 +13,7 @@ import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { joinParts, plural } from '../../../format/text';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import { weekdayLetterOf } from '../clock/alarm-text';
 import type { BookingWrites } from '../data';
 import { bookingDayLabelOf } from './booking-lists';
@@ -94,8 +94,8 @@ function WeekStrip({
   order,
   label,
 }: Pick<PageCardProps, 'page' | 'order'> & { readonly label: string }): ReactNode {
-  const span = hourSpanOf(page.availability);
   const format = useClockFormat();
+  const span = hourSpanOf(page.availability);
   return (
     <View
       className="flex-row items-stretch gap-2"

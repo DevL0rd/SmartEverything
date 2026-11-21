@@ -13,24 +13,32 @@ export function readDailyFigures(
   firstDay: string,
   lastDay: string,
   metrics: readonly HealthMetric[],
+  signal: AbortSignal,
 ): Promise<DailyFigure[]> {
-  return api().call(E.readHealthDaily, {
-    query: { from: firstDay, to: lastDay, metrics: [...metrics] },
-  });
+  return api().call(
+    E.readHealthDaily,
+    { query: { from: firstDay, to: lastDay, metrics: [...metrics] } },
+    { signal },
+  );
 }
 
 export function readRecords(
   types: readonly HealthRecordType[],
   from: number,
   to: number,
+  signal: AbortSignal,
 ): Promise<HealthRecord[]> {
-  return api().call(E.readHealthRecords, {
-    query: {
-      types: [...types],
-      from: new Date(from).toISOString(),
-      to: new Date(to).toISOString(),
+  return api().call(
+    E.readHealthRecords,
+    {
+      query: {
+        types: [...types],
+        from: new Date(from).toISOString(),
+        to: new Date(to).toISOString(),
+      },
     },
-  });
+    { signal },
+  );
 }
 
 export interface BestDay {
@@ -38,13 +46,20 @@ export interface BestDay {
   readonly value: number;
 }
 
-export function readBestDay(metric: HealthMetric, lowest: boolean): Promise<BestDay | null> {
-  return api().call(E.readBestDay, { query: { metric, lowest } });
+export function readBestDay(
+  metric: HealthMetric,
+  lowest: boolean,
+  signal: AbortSignal,
+): Promise<BestDay | null> {
+  return api().call(E.readBestDay, { query: { metric, lowest } }, { signal });
 }
 
-export async function readRecord(recordId: string): Promise<HealthRecord | null> {
+export async function readRecord(
+  recordId: string,
+  signal: AbortSignal,
+): Promise<HealthRecord | null> {
   try {
-    return await api().call(E.readHealthRecord, { params: { recordId } });
+    return await api().call(E.readHealthRecord, { params: { recordId } }, { signal });
   } catch (error) {
     if (error instanceof ApiError && error.code === 'not_found') {
       return null;
@@ -53,6 +68,10 @@ export async function readRecord(recordId: string): Promise<HealthRecord | null>
   }
 }
 
-export function readSightings(since: number): Promise<SourceSighting[]> {
-  return api().call(E.readHealthSightings, { query: { since: new Date(since).toISOString() } });
+export function readSightings(since: number, signal: AbortSignal): Promise<SourceSighting[]> {
+  return api().call(
+    E.readHealthSightings,
+    { query: { since: new Date(since).toISOString() } },
+    { signal },
+  );
 }

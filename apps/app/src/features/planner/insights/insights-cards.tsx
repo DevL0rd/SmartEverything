@@ -37,7 +37,7 @@ import {
   type LoadBucket,
 } from './insights-model';
 import { kpisOf } from './summary-model';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const KPI_COLUMNS = { compact: 2, medium: 3, expanded: 5 } as const;
 const DONUT_SIZE = 112;
@@ -48,7 +48,8 @@ export function KpiStrip({ stats }: { readonly stats: PlannerStats }): ReactNode
 }
 
 export function KpiSkeleton(): ReactNode {
-  const per = stripColumnsAt(useFrameBodyWidth(), KPI_COLUMNS);
+  const frameBodyWidth = useFrameBodyWidth();
+  const per = stripColumnsAt(frameBodyWidth, KPI_COLUMNS);
   return (
     <View className="gap-2">
       {stripChunks(KPI_KEYS, per).map((row) => (
@@ -127,8 +128,8 @@ export function DoneHeatCard({ stats }: { readonly stats: PlannerStats }): React
 }
 
 export function HoursCard({ stats }: { readonly stats: PlannerStats }): ReactNode {
-  const peak = peakHourOf(stats);
   const format = useClockFormat();
+  const peak = peakHourOf(stats);
   return (
     <Card title="When you get things done" className="grow">
       <Caption text={peak === null ? 'Nothing done yet' : `Best ${hourWindowOf(peak, format)}`} />

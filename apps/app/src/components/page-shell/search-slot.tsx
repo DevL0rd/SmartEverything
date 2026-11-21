@@ -110,7 +110,8 @@ function ShellSearchField({
 
 export function ShellSearch({ search }: { readonly search: ShellSearchConfig }): ReactNode {
   const pointer = useIdiom() === 'pointer';
-  const place = searchOptionsPlaceOf(pointer, useSizeClass().width === 'compact');
+  const sizeClass = useSizeClass();
+  const place = searchOptionsPlaceOf(pointer, sizeClass.width === 'compact');
   const field = <ShellSearchField search={search} trailing={trailingOf(search, place)} />;
   if (place === 'inside' || search.options === undefined) return field;
   return (

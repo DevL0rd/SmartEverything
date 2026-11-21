@@ -1,4 +1,4 @@
-import { createContext, use, type ReactNode } from 'react';
+import { use, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useIdiom } from '../../../design/platform';
@@ -16,6 +16,7 @@ import type { FileBrowserHandle, FileBrowserHost } from './browser-types';
 import { layoutOf } from './column-model';
 import { BrowserSelection } from './selection';
 import { useFileBrowser } from './use-file-browser';
+import { DockedContext } from './docked-context';
 
 export interface NodeListInput<O> {
   readonly source: FileSource<O>;
@@ -70,8 +71,6 @@ export function useNodeList<O>(input: NodeListInput<O>): FileBrowserHandle<O> {
     host: { ...input.host, compact: true },
   });
 }
-
-const DockedContext = createContext<boolean | null>(null);
 
 class NoNodeListFrameError extends Error {
   override readonly name = 'NoNodeListFrameError';

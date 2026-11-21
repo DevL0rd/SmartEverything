@@ -43,7 +43,8 @@ function useNativeRuntime(
   return useScreenQuery({
     queryKey: ['window', 'computer-runtime', deviceId, runtime, 'status'],
     enabled: chat !== undefined && owner,
-    queryFn: () => api().call(E.readComputerRuntime, { params: { deviceId, runtime } }),
+    queryFn: ({ signal }) =>
+      api().call(E.readComputerRuntime, { params: { deviceId, runtime } }, { signal }),
   });
 }
 interface NativeInput {

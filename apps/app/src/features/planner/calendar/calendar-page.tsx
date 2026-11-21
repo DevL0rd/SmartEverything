@@ -13,7 +13,7 @@ import { joinParts } from '../../../format/text';
 import { dayKeyOf, zonedStartOfDay } from '../../../format/time';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useMinuteOf } from '../../../store/clock';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import { useIsOwner, useSettings } from '../../../store/selectors';
 import { rangeQuery, usePlannerPreferences } from '../data';
 import { usePlannerCalendars } from '../data/sharing';
@@ -74,10 +74,11 @@ function useCalendarKeys(
 }
 
 function useCalendarState(prefs: Prefs, compact: boolean): CalendarState {
-  const views = viewsFor(useIsOwner());
+  const isOwner = useIsOwner();
   const today = useMinuteOf(dayKeyOf);
   const [chosen, setView] = useState<CalendarView | null>(null);
   const [picked, setDay] = useState<string | null>(null);
+  const views = viewsFor(isOwner);
   const view = chosen ?? openingViewOf(prefs.calendar.default_view, views, compact);
   const day = picked ?? today;
   const step = (by: number): void => {

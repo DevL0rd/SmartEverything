@@ -46,7 +46,7 @@ afterEach(() => {
 describe('seedState', () => {
   it('puts the read state into the live store when no live part has arrived yet', async () => {
     answers.set(E.readComputerAudio, sound(40));
-    await seedState(DEVICE, 'audio');
+    await seedState(DEVICE, 'audio', new AbortController().signal);
     expect(computerLive.store(DEVICE).get().parts.audio).toEqual(sound(40));
   });
 
@@ -58,19 +58,21 @@ describe('seedState', () => {
       at: new Date().toISOString(),
       parts: { audio: sound(70) },
     });
-    await seedState(DEVICE, 'audio');
+    await seedState(DEVICE, 'audio', new AbortController().signal);
     expect(computerLive.store(DEVICE).get().parts.audio).toEqual(sound(70));
   });
 
   it('rejects with the read failure so the page can show it', async () => {
-    await expect(seedState(DEVICE, 'displays')).rejects.toThrow('Sound control failed');
+    await expect(seedState(DEVICE, 'displays', new AbortController().signal)).rejects.toThrow(
+      'Sound control failed',
+    );
     expect(computerLive.store(DEVICE).get().parts.displays).toBeUndefined();
   });
 
   it('reads the tiling layout of a computer into the live store', async () => {
     const layout: TilingState = { overviewOpen: true, outputs: [], workspaces: [], windows: [] };
     answers.set(E.readComputerTiling, layout);
-    await seedState(DEVICE, 'tiling');
+    await seedState(DEVICE, 'tiling', new AbortController().signal);
     expect(computerLive.store(DEVICE).get().parts.tiling).toEqual(layout);
   });
 });

@@ -238,6 +238,37 @@ describe('running a microwave program', () => {
     ]);
   });
 
+  it("does not wake the report wait on another device's state frames", async () => {
+    const { run } = harness((entry) =>
+      entry.capability === MICROWAVE_KEYS.mode ? REPORT_ALL(entry) : [],
+    );
+    const finished = runProgram(run, CHANGE);
+    await vi.advanceTimersByTimeAsync(5000);
+    const reads = vi.spyOn(run.store, 'get');
+    for (let index = 0; index < 50; index += 1) {
+      run.store.apply(
+        wired([
+          {
+            seq: next(),
+            type: 'change',
+            table: 'device_state',
+            operation: 'UPDATE',
+            record: {
+              device_id: '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d',
+              capability: 'temperature',
+              value: index,
+              observed_at: NOW,
+            },
+            oldRecord: null,
+          },
+        ]),
+      );
+    }
+    expect(reads).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await finished).toBe(false);
+  });
+
   it('does not start when the microwave never reports the settings', async () => {
     const { run, sent } = harness((entry) =>
       entry.capability === MICROWAVE_KEYS.mode ? REPORT_ALL(entry) : [],

@@ -14,6 +14,9 @@ vi.mock('../../api/watches', () => api);
 vi.mock('../../components/toast-store', () => toast);
 
 const { WatchActionError, outcomeOf, runInOrder, useWatchCommand } = await import('./watch-config');
+const { EntityStore } = await import('../../store/entity-store');
+const { CommandLedger } = await import('../../store/command-ledger');
+const { StoreContext } = await import('../../store/store-runtime');
 
 const WATCH = { id: 'watch-1' };
 const SYNC = { type: 'refresh' } as const;
@@ -58,8 +61,13 @@ describe('useWatchCommand', () => {
       captured.push(useWatchCommand(WATCH));
       return null;
     }
+    const store = new EntityStore();
     renderToStaticMarkup(
-      createElement(QueryClientProvider, { client: new QueryClient() }, createElement(Probe)),
+      createElement(
+        StoreContext.Provider,
+        { value: { store, ledger: new CommandLedger(store) } },
+        createElement(QueryClientProvider, { client: new QueryClient() }, createElement(Probe)),
+      ),
     );
     const [first] = captured;
     if (first === undefined) {

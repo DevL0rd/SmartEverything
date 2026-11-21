@@ -51,6 +51,7 @@ function Score({ score }: { readonly score: number }): ReactNode {
         bands={SCORE_BANDS}
         size={84}
         label={`Body score ${decimal(score, 0)}`}
+        ticking={false}
       >
         <Text variant="title-3" className="tabular">
           {decimal(score, 0)}

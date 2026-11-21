@@ -7,7 +7,7 @@ import type { DonutSlice } from '../../../components/charts';
 import { Text } from '../../../components/text';
 import { askAssistantWith } from '../../assistant';
 import { changeFactsOf, changePromptOf, changeTitleOf } from './summary-model';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 export function ChangeCard({
   stats,

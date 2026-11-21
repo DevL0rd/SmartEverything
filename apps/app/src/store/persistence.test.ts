@@ -333,10 +333,10 @@ describe('persistSnapshots', () => {
     );
     settle();
     expect(storedMeta().seq).toBe(5);
-    expect(stored('device_state')).toEqual([expect.objectContaining({ value: true })]);
+    expect(storedRows('device_state')).toEqual([[expect.objectContaining({ value: true })]]);
     expect(storedRows('t.rooms')).toEqual([{ id: CLIENT, name: 'Hall', position: 0 }]);
     vi.advanceTimersByTime(20_000);
-    expect(stored('device_state')).toEqual([expect.objectContaining({ value: false })]);
+    expect(storedRows('device_state')).toEqual([[expect.objectContaining({ value: false })]]);
     expect(storedMeta().seq).toBe(6);
     stop();
   });
@@ -523,6 +523,26 @@ describe('restoreSnapshot', () => {
     await restoreSnapshot(SERVER, reader);
     expect(reader.get().loaded).toBe(false);
     expect(disk.items.size).toBe(0);
+  });
+
+  it('discards and deletes the single device_state key of the earlier layout', async () => {
+    const snapshot = snapshotOf('owner', 9);
+    const writer = new EntityStore();
+    const stop = await persisting(writer);
+    writer.replace(snapshot);
+    settle();
+    stop();
+    const base = ([...disk.items.keys()].find((key) => key.endsWith('.meta')) ?? '').replace(
+      /\.meta$/u,
+      '',
+    );
+    disk.items.set(`${base}.meta`, JSON.stringify({ version: '4.2.0', layout: 'rows', seq: 9 }));
+    disk.items.delete(`${base}.device_state.${DEVICE}`);
+    disk.items.set(`${base}.device_state`, JSON.stringify(snapshot.tables.device_state));
+    const reader = new EntityStore();
+    await restoreSnapshot(SERVER, reader);
+    expect(reader.get().loaded).toBe(false);
+    expect(disk.items.has(`${base}.device_state`)).toBe(false);
   });
 
   it('discards and deletes a snapshot that is not readable', async () => {

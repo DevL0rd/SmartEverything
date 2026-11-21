@@ -30,6 +30,7 @@ function BudgetRing({ today }: { readonly today: PrinterOverview['today'] }): Re
         thickness={9}
         colour={over ? 'warning' : 'primary'}
         trackColour="track"
+        ticking={false}
       />
       <View className="absolute inset-x-0 top-0 h-26 items-center justify-center">
         <Text variant="title-3" className="tabular">
@@ -91,6 +92,7 @@ export function TodayBand({
               progress={share}
               colour="viz-magenta"
               label="Colour share of printed pages"
+              ticking={false}
             />
             <Text variant="caption" tone="variant">
               Colour {String(today.color)} · Black and white {String(today.mono)}

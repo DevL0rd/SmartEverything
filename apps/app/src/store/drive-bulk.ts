@@ -54,9 +54,24 @@ const VERBS: Readonly<Record<DriveChange['action'], string>> = {
   keep_source_item: 'Keeping',
 };
 
+function copyIdsFor(
+  body: Extract<DriveChange, { readonly action: 'copy' }>,
+  itemIds: readonly string[],
+): readonly string[] | undefined {
+  const { copyIds } = body;
+  if (copyIds === undefined) return undefined;
+  const copyIdOf = new Map(body.itemIds.map((id, index) => [id, copyIds[index]]));
+  return itemIds.flatMap((id) => {
+    const copyId = copyIdOf.get(id);
+    return copyId === undefined ? [] : [copyId];
+  });
+}
+
 function withIds(body: DriveChange, itemIds: readonly string[]): DriveChange {
   if (!('itemIds' in body)) throw new Error(`${body.action} changes carry no item list`);
-  return { ...body, itemIds };
+  if (body.action !== 'copy') return { ...body, itemIds };
+  const copyIds = copyIdsFor(body, itemIds);
+  return copyIds === undefined ? { ...body, itemIds } : { ...body, itemIds, copyIds };
 }
 
 export async function changeDriveBatched(

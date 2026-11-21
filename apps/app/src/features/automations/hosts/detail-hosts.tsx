@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { AutomationRunSummary } from '@smarteverything/domain';
 import { useProfiles } from '../../../store/people';
 import { useAutomation } from '../data/use-automation';
+import { useAutomationName } from '../data/use-automations';
 import { DetailScreen, type DetailEnvironment } from '../detail/detail-screen';
 import { RunsScreen } from '../runs/runs-screen';
 import { detailLinks, runHref } from './host-links';
@@ -65,10 +66,10 @@ export function DetailHost(): ReactNode {
 }
 
 function Runs({ automationId }: { readonly automationId: string | null }): ReactNode {
-  const { row } = useAutomation(automationId ?? '');
+  const name = useAutomationName(automationId);
   const { timeZone } = usePlace();
   const onOpenRun = useOpenRun();
-  const title = automationId === null ? 'Runs' : row === null ? 'Runs' : `${row.name} runs`;
+  const title = name === null ? 'Runs' : `${name} runs`;
   return (
     <PageShell
       title={title}

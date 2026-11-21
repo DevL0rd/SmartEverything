@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 import type { AlbumActivity, DriveAlbum } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { Button } from '../../../components/button';
@@ -12,12 +11,13 @@ import { TextField } from '../../../components/text-field';
 import { count } from '../../../format/number';
 import { shiftDay } from '../../../format/time';
 import { useDayKey } from '../../../store/clock';
-import { useMutationState } from '../../../store/mutation';
 import { useActiveProfile } from '../../../store/people';
 import { ActivityDayList } from './activity-feed';
-import { addAlbumActivity, removeAlbumActivity } from './api';
+import { useActivityWriter } from './activity-writes';
+import { removeAlbumActivity } from './api';
 import { daysOf, likedBy, likesOf } from './model';
-import { invalidateAlbumActivity, useAlbumActivity } from './queries';
+import { useAlbumActivity } from './queries';
+import { removedTargets } from './shown';
 
 export interface ActivityPanelProps {
   readonly album: DriveAlbum;
@@ -39,24 +39,20 @@ function LikeBar({
   readonly entries: readonly AlbumActivity[];
 }): ReactNode {
   const me = useActiveProfile()?.id ?? null;
-  const mutation = useMutationState();
-  const client = useQueryClient();
+  const { busy, write, add } = useActivityWriter(album.id);
   const mine = likedBy(entries, null, me);
   const likes = likesOf(entries, null);
   const toggle = (): void => {
-    mutation.run(
-      async () => {
-        if (mine === undefined) await addAlbumActivity(album.id, { kind: 'like' });
-        else await removeAlbumActivity(album.id, mine.id);
-      },
-      {
-        failure: mine === undefined ? 'The like was not added' : 'The like was not removed',
-        label: 'photos.album_activity.like',
-        onDone: () => {
-          invalidateAlbumActivity(client, album.id);
-        },
-      },
-    );
+    if (mine === undefined) {
+      add(me, { kind: 'like' }, 'The like was not added');
+      return;
+    }
+    write({
+      event: 'photos.album_activity.unlike',
+      targets: removedTargets(album.id, mine.id),
+      send: () => removeAlbumActivity(album.id, mine.id),
+      failure: 'The like was not removed',
+    });
   };
   return (
     <View className="flex-row flex-wrap items-center gap-3">
@@ -64,7 +60,7 @@ function LikeBar({
         label={mine === undefined ? 'Like' : 'Liked'}
         icon="heart"
         variant={mine === undefined ? 'tonal' : 'filled'}
-        loading={mutation.busy}
+        disabled={busy}
         onPress={toggle}
       />
       <Text variant="footnote" tone="variant" className="tabular-nums">
@@ -76,37 +72,25 @@ function LikeBar({
 
 function CommentBox({ album }: { readonly album: DriveAlbum }): ReactNode {
   const [text, setText] = useState('');
-  const mutation = useMutationState();
-  const client = useQueryClient();
+  const me = useActiveProfile()?.id ?? null;
+  const { add } = useActivityWriter(album.id);
   const send = (): void => {
     const trimmed = text.trim();
     if (trimmed === '') return;
-    mutation.run(() => addAlbumActivity(album.id, { kind: 'comment', text: trimmed }), {
-      failure: 'The comment was not sent',
-      label: 'photos.album_activity.comment',
-      onDone: () => {
-        setText('');
-        invalidateAlbumActivity(client, album.id);
-      },
+    add(me, { kind: 'comment', text: trimmed }, 'The comment was not sent', () => {
+      setText(trimmed);
     });
+    setText('');
   };
   return (
     <View className="w-full gap-2 self-stretch">
-      <TextField
-        label="Add a comment"
-        value={text}
-        multiline
-        disabled={mutation.busy}
-        onChange={setText}
-        onSubmit={send}
-      />
+      <TextField label="Add a comment" value={text} multiline onChange={setText} onSubmit={send} />
       <View className="flex-row justify-end">
         <Button
           label="Send"
           icon="messageCircle"
           variant="filled"
           disabled={text.trim() === ''}
-          loading={mutation.busy}
           onPress={send}
         />
       </View>
@@ -115,15 +99,13 @@ function CommentBox({ album }: { readonly album: DriveAlbum }): ReactNode {
 }
 
 function useRemove(albumId: string): (entry: AlbumActivity) => void {
-  const mutation = useMutationState();
-  const client = useQueryClient();
+  const { write } = useActivityWriter(albumId);
   return (entry) => {
-    mutation.run(() => removeAlbumActivity(albumId, entry.id), {
+    write({
+      event: 'photos.album_activity.remove',
+      targets: removedTargets(albumId, entry.id),
+      send: () => removeAlbumActivity(albumId, entry.id),
       failure: entry.kind === 'like' ? 'The like was not removed' : 'The comment was not deleted',
-      label: 'photos.album_activity.remove',
-      onDone: () => {
-        invalidateAlbumActivity(client, albumId);
-      },
     });
   };
 }

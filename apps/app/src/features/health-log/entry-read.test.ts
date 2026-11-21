@@ -14,17 +14,19 @@ beforeEach(() => {
 describe('findEntry', () => {
   it('reads the entry by its id alone', async () => {
     api.readEntry.mockResolvedValue({ id: 'entry-1' });
-    await expect(findEntry('entry-1')).resolves.toEqual({ id: 'entry-1' });
-    expect(api.readEntry).toHaveBeenCalledExactlyOnceWith('entry-1');
+    await expect(findEntry('entry-1', new AbortController().signal)).resolves.toEqual({
+      id: 'entry-1',
+    });
+    expect(api.readEntry).toHaveBeenCalledExactlyOnceWith('entry-1', expect.any(AbortSignal));
   });
 
   it('answers null for an entry that was removed', async () => {
     api.readEntry.mockRejectedValue(new ApiError('not_found', 'gone'));
-    await expect(findEntry('entry-1')).resolves.toBeNull();
+    await expect(findEntry('entry-1', new AbortController().signal)).resolves.toBeNull();
   });
 
   it('lets any other failure through', async () => {
     api.readEntry.mockRejectedValue(new ApiError('internal', 'broken'));
-    await expect(findEntry('entry-1')).rejects.toThrow('broken');
+    await expect(findEntry('entry-1', new AbortController().signal)).rejects.toThrow('broken');
   });
 });

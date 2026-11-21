@@ -17,7 +17,7 @@ export function useMessageHits(query: string, archived: boolean): MessageHits {
   const text = useDebouncedValue(query.trim(), SEARCH_DELAY_MS);
   const result = useScreenQuery({
     queryKey: chatSearchKey(text, archived),
-    queryFn: () => searchAiChats(text, { archived, limit: HITS_MAX }),
+    queryFn: ({ signal }) => searchAiChats(text, { archived, limit: HITS_MAX }, signal),
     enabled: text !== '',
   });
   const settled = text === query.trim();

@@ -60,8 +60,8 @@ export async function removeLocalDevice(deviceId: string): Promise<void> {
   await api().call(E.removeLocalDevice, { params: { deviceId } });
 }
 
-export async function listWatchCandidates(): Promise<WatchCandidates> {
-  return api().call(E.listWatchCandidates, {});
+export async function listWatchCandidates(signal: AbortSignal): Promise<WatchCandidates> {
+  return api().call(E.listWatchCandidates, {}, { signal });
 }
 
 export async function addXiaomiWatch(address: string, profileId: string): Promise<DeviceRow> {

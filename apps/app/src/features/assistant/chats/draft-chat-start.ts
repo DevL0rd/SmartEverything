@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { randomUUID } from 'expo-crypto';
 import { AI_CHAT_AREA_ENDPOINTS as E, ApiError, type Engine } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { rawErrorText } from '../../../format/errors';
 import { createAiChat, sendAiChatMessage } from '../../../api/ai';
+import { notify } from '../../../components/toast-store';
+import type { EntityStore } from '../../../store/entity-store';
 import { useEntityStore } from '../../../store/store-context';
 import {
   captureAssistantWrite,
@@ -20,8 +23,10 @@ import {
   moveDraft,
 } from '../data/drafts';
 import type { MessageSender, SendExtras } from '../components/composer';
-import { aiDrafts } from '../data/ai-drafts';
+import { aiDrafts, type PendingMessage } from '../data/ai-drafts';
 import { clearSubmittedUploads } from '../data/uploads';
+import { deliverUnsent } from '../data/outbox';
+import { dropOutgoing, markOutgoing } from '../data/outgoing';
 import {
   MACHINE_UNAVAILABLE_NOTICE,
   draftNeedsChat,
@@ -30,6 +35,7 @@ import {
   type StartOutcome,
 } from '../model/draft-chat-request';
 import { trimmedReferences } from '../references/spans';
+import { createStartedChat } from './started-chat';
 
 const log = new Logger('app.draft-chat');
 const startDraftChat = createDraftChatStarter();
@@ -70,19 +76,29 @@ export function useDraftChatStart(
       if (selected === null) throw new DraftSelectionChangedError();
       const authority = captureAssistantWrite(store);
       assertAssistantWriteCurrent(authority);
-      const chat = await authority.client.call(E.createAiChat, {
-        body: { engine: selected },
+      const chatId = randomUUID();
+      const created = createStartedChat({
+        store,
+        chatId,
+        engine: selected,
+        create: async () => {
+          assertAssistantWriteCurrent(authority);
+          return authority.client.call(E.createAiChat, { body: { id: chatId, engine: selected } });
+        },
       });
-      assertAssistantWriteCurrent(authority);
-      return chat.id;
+      moveDraft(draftKey, chatId);
+      actions.opened(chatId);
+      try {
+        await created;
+      } catch (error) {
+        moveDraft(chatId, draftKey);
+        notify({ message: 'Chat not created', error, tone: 'critical' });
+        throw error;
+      }
+      return chatId;
     },
     onSettled: (): void => {
       setSendPhase(draftKey, null);
-    },
-    onSuccess: (chatId) => {
-      if (!session.valid()) return;
-      moveDraft(draftKey, chatId);
-      actions.opened(chatId);
     },
   });
   return {
@@ -108,6 +124,7 @@ function failureText(selected: Engine, cause: unknown, host: string): string {
 }
 
 interface FirstMessage {
+  readonly store: EntityStore;
   readonly draftKey: string;
   readonly text: string;
   readonly attachments: readonly string[];
@@ -116,6 +133,14 @@ interface FirstMessage {
   readonly authority: AssistantWriteScope;
   readonly sessionKey: string;
 }
+
+type FirstSend =
+  | { readonly kind: 'stale' }
+  | {
+      readonly kind: 'started';
+      readonly message: PendingMessage;
+      readonly outcome: Promise<StartOutcome>;
+    };
 
 function firstMessageId(input: FirstMessage): string {
   const { draftKey, text, attachments, extras } = input;
@@ -130,28 +155,46 @@ function firstMessageId(input: FirstMessage): string {
   );
 }
 
-function startFirstMessage(input: FirstMessage): Promise<StartOutcome> {
-  const { draftKey, text, attachments, extras, selected, authority, sessionKey } = input;
-  const clientMessageId = firstMessageId(input);
+function firstMessageChat(
+  draftKey: string,
+  clientMessageId: string,
+  sessionKey: string,
+): string | null {
   const chat = draftSubmission(draftKey, clientMessageId)?.chat;
-  if (chat !== undefined && chat.sessionKey !== sessionKey) {
-    return Promise.resolve({
-      kind: 'failed',
-      stage: 'create',
-      cause: new DraftSelectionChangedError(),
-    });
-  }
-  const message = trimmedReferences({ text, references: extras.references ?? [] });
-  return startDraftChat(JSON.stringify([sessionKey, clientMessageId]), {
-    chatId: chat?.id ?? null,
-    created: (chatId): void => {
-      bindDraftSubmissionChat(draftKey, clientMessageId, { id: chatId, sessionKey });
-    },
-    create: async () => {
-      assertAssistantWriteCurrent(authority);
-      return createAiChat({ engine: selected });
-    },
-    send: (chatId) => {
+  if (chat !== undefined) return chat.sessionKey === sessionKey ? chat.id : null;
+  const id = randomUUID();
+  bindDraftSubmissionChat(draftKey, clientMessageId, { id, sessionKey });
+  return id;
+}
+
+function startFirstMessage(input: FirstMessage): FirstSend {
+  const { store, draftKey, attachments, extras, selected, authority, sessionKey } = input;
+  const clientMessageId = firstMessageId(input);
+  const chatId = firstMessageChat(draftKey, clientMessageId, sessionKey);
+  if (chatId === null) return { kind: 'stale' };
+  const trimmed = trimmedReferences({ text: input.text, references: extras.references ?? [] });
+  const message: PendingMessage = {
+    id: clientMessageId,
+    chatId,
+    text: trimmed.text,
+    attachments,
+    queuedAt: new Date().toISOString(),
+    references: trimmed.references,
+    ...(extras.quoteMessageId === undefined ? {} : { quoteMessageId: extras.quoteMessageId }),
+  };
+  const outcome = startDraftChat(JSON.stringify([sessionKey, clientMessageId]), {
+    chatId,
+    create: () =>
+      createStartedChat({
+        store,
+        chatId,
+        engine: selected,
+        create: async () => {
+          assertAssistantWriteCurrent(authority);
+          return createAiChat({ id: chatId, engine: selected });
+        },
+      }),
+    send: () => {
       assertAssistantWriteCurrent(authority);
       return sendAiChatMessage(chatId, message.text, attachments, {
         ...extras,
@@ -160,6 +203,7 @@ function startFirstMessage(input: FirstMessage): Promise<StartOutcome> {
       });
     },
   });
+  return { kind: 'started', message, outcome };
 }
 
 function submittedUploadKeys(attachments: readonly string[]): readonly string[] {
@@ -169,6 +213,30 @@ function submittedUploadKeys(attachments: readonly string[]): readonly string[] 
       (upload) => upload.attachment !== null && attachments.includes(upload.attachment.id),
     )
     .map((upload) => upload.key);
+}
+
+function settleFirstMessage(
+  outcome: StartOutcome,
+  message: PendingMessage,
+  uploadKeys: readonly string[],
+): void {
+  if (outcome.kind === 'sent') {
+    markOutgoing(message, { phase: 'sent' });
+    clearSubmittedUploads(uploadKeys);
+    return;
+  }
+  log.warn('draft_chat.start_failed', {
+    stage: outcome.stage,
+    chatId: outcome.chatId,
+    reason: rawErrorText(outcome.cause),
+  });
+  if (outcome.stage === 'send') {
+    clearSubmittedUploads(uploadKeys);
+    deliverUnsent(message, outcome.cause);
+    return;
+  }
+  dropOutgoing(message.id);
+  notify({ message: 'Chat not created', error: outcome.cause, tone: 'critical' });
 }
 
 export function useDraftSender(
@@ -187,7 +255,8 @@ export function useDraftSender(
       return false;
     }
     const uploadKeys = submittedUploadKeys(attachments);
-    const outcome = await startFirstMessage({
+    const first = startFirstMessage({
+      store,
       draftKey,
       text,
       attachments,
@@ -196,17 +265,17 @@ export function useDraftSender(
       authority: captureAssistantWrite(store),
       sessionKey: session.key,
     });
-    if (outcome.kind === 'failed') {
-      log.warn('draft_chat.start_failed', {
-        stage: outcome.stage,
-        reason: rawErrorText(outcome.cause),
-      });
-      setFailure(failureText(selected, outcome.cause, host));
+    if (first.kind === 'stale') {
+      setFailure(failureText(selected, new DraftSelectionChangedError(), host));
       return false;
     }
-    clearSubmittedUploads(uploadKeys);
-    if (session.valid()) openSentChat(outcome.chatId, actions.opened);
-    return true;
+    markOutgoing(first.message, { phase: 'sending' });
+    if (session.valid()) openSentChat(first.message.chatId, actions.opened);
+    const outcome = await first.outcome;
+    settleFirstMessage(outcome, first.message, uploadKeys);
+    if (outcome.kind === 'sent' || outcome.stage === 'send') return true;
+    setFailure(failureText(selected, outcome.cause, host));
+    return false;
   };
   return { send, failure };
 }

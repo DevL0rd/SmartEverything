@@ -33,43 +33,59 @@ function person(personId: PersonId): { readonly personId?: string } {
   return personId === undefined ? {} : { personId };
 }
 
-export async function readPlannerDay(personId: PersonId, date: string): Promise<PlannerDay> {
-  return api().call(E.readPlannerDay, { query: { ...person(personId), date } });
+export async function readPlannerDay(
+  personId: PersonId,
+  date: string,
+  signal: AbortSignal,
+): Promise<PlannerDay> {
+  return api().call(E.readPlannerDay, { query: { ...person(personId), date } }, { signal });
 }
 
 export async function readPlannerRange(
   personId: PersonId,
   from: string,
   to: string,
-  collections: readonly string[] | undefined,
+  {
+    collections,
+    signal,
+  }: { readonly collections: readonly string[] | undefined; readonly signal: AbortSignal },
 ): Promise<PlannerRange> {
-  return api().call(E.readPlannerRange, {
-    query: {
-      ...person(personId),
-      from,
-      to,
-      ...(collections === undefined ? {} : { collections: [...collections] }),
+  return api().call(
+    E.readPlannerRange,
+    {
+      query: {
+        ...person(personId),
+        from,
+        to,
+        ...(collections === undefined ? {} : { collections: [...collections] }),
+      },
     },
-  });
+    { signal },
+  );
 }
 
 export async function readPlannerStats(
   personId: PersonId,
   range: PlannerStatsRange,
+  signal: AbortSignal,
 ): Promise<PlannerStats> {
-  return api().call(E.readPlannerStats, { query: { ...person(personId), range } });
+  return api().call(E.readPlannerStats, { query: { ...person(personId), range } }, { signal });
 }
 
 export async function readPlannerRings(
   personId: PersonId,
   from: string,
   to: string,
+  signal: AbortSignal,
 ): Promise<PlannerRingRow[]> {
-  return api().call(E.listPlannerRings, { query: { ...person(personId), from, to } });
+  return api().call(E.listPlannerRings, { query: { ...person(personId), from, to } }, { signal });
 }
 
-export async function readPlannerPreferences(personId: PersonId): Promise<PlannerPreferences> {
-  return api().call(E.readPlannerPreferences, { query: person(personId) });
+export async function readPlannerPreferences(
+  personId: PersonId,
+  signal: AbortSignal,
+): Promise<PlannerPreferences> {
+  return api().call(E.readPlannerPreferences, { query: person(personId) }, { signal });
 }
 
 export async function writePlannerPreferences(
@@ -186,15 +202,17 @@ export async function movePlannerItem(
 export async function parsePlannerText(
   personId: PersonId,
   body: Body<'parsePlannerText'>,
+  signal: AbortSignal,
 ): Promise<PlannerParse> {
-  return api().call(E.parsePlannerText, { query: person(personId), body });
+  return api().call(E.parsePlannerText, { query: person(personId), body }, { signal });
 }
 
 export async function suggestPlannerCompletion(
   personId: PersonId,
   body: Body<'suggestPlannerCompletion'>,
+  signal: AbortSignal,
 ): Promise<PlannerSuggestion[]> {
-  return api().call(E.suggestPlannerCompletion, { query: person(personId), body });
+  return api().call(E.suggestPlannerCompletion, { query: person(personId), body }, { signal });
 }
 
 export async function readPlannerFreeSlots(
@@ -265,12 +283,16 @@ export async function readPlannerSleep(
   personId: PersonId,
   from: string,
   to: string,
+  signal: AbortSignal,
 ): Promise<PlannerSleep> {
-  return api().call(E.readPlannerSleep, { query: { ...person(personId), from, to } });
+  return api().call(E.readPlannerSleep, { query: { ...person(personId), from, to } }, { signal });
 }
 
-export async function searchPlannerRadio(text: string): Promise<PlannerRadioResult[]> {
-  return api().call(E.searchPlannerRadio, { query: { text } });
+export async function searchPlannerRadio(
+  text: string,
+  signal: AbortSignal,
+): Promise<PlannerRadioResult[]> {
+  return api().call(E.searchPlannerRadio, { query: { text } }, { signal });
 }
 
 export async function playPlannerSleepSound(

@@ -22,7 +22,9 @@ import {
   useDriveOpenItem,
   useDriveRoots,
   useViewerId,
+  type AccessAsk,
 } from '../data';
+import type { SentAccessRequest } from '../data/row-shown';
 import { DriveFrame } from '../components/drive-frame';
 import { openHrefOf } from '../recent/recent-model';
 import {
@@ -124,14 +126,15 @@ function Ask({
   itemId,
   ownerName,
   declined,
+  ask,
 }: {
   readonly itemId: string;
   readonly ownerName: string | null;
   readonly declined: DriveAccessRequest | null;
+  readonly ask: AccessAsk;
 }): ReactNode {
   const now = useMinute();
   const live = useSyncStatus().status === 'live';
-  const ask = useAccessRequest();
   const [role, setRole] = useState<DriveGrantRole>('view');
   const [message, setMessage] = useState('');
   return (
@@ -198,7 +201,7 @@ function Sent({
   request,
   ownerName,
 }: {
-  readonly request: DriveAccessRequest;
+  readonly request: SentAccessRequest;
   readonly ownerName: string | null;
 }): ReactNode {
   const now = useMinute();
@@ -235,23 +238,28 @@ function Opening({ item }: { readonly item: DriveItem }): ReactNode {
   );
 }
 
-function useLiveState(itemId: string, state: AccessScreenState | null): AccessScreenState | null {
+function useLiveState(
+  itemId: string,
+  sent: SentAccessRequest | null,
+  state: AccessScreenState | null,
+): AccessScreenState | null {
   const viewerId = useViewerId();
   const mine = useDriveAccessRequestRows().find(
     (row) =>
       row.itemId === itemId && row.requesterProfileId === viewerId && row.state === 'pending',
   );
   if (state === null || state.kind === 'open') return state;
-  return mine === undefined ? state : { kind: 'sent', request: mine };
+  if (mine !== undefined) return { kind: 'sent', request: mine };
+  return sent?.itemId === itemId ? { kind: 'sent', request: sent } : state;
 }
 
-function useOwnerName(request: DriveAccessRequest | null): string | null {
+function useOwnerName(request: SentAccessRequest | null): string | null {
   const profiles = useProfiles();
   if (request === null) return null;
   return profiles.find((profile) => profile.id === request.ownerProfileId)?.name ?? null;
 }
 
-function requestOf(state: AccessScreenState): DriveAccessRequest | null {
+function requestOf(state: AccessScreenState): SentAccessRequest | null {
   return state.kind === 'sent' || state.kind === 'declined' ? state.request : null;
 }
 
@@ -260,12 +268,14 @@ function Content({ itemId }: { readonly itemId: string }): ReactNode {
   const answered = useDriveAccessRequestRows().some(
     (row) => row.itemId === itemId && row.state === 'approved',
   );
+  const ask = useAccessRequest();
   const { refetch } = query;
   useEffect(() => {
     if (answered) background(refetch(), 'drive.open_item.refetch_failed');
   }, [answered, refetch]);
   const state = useLiveState(
     itemId,
+    ask.sent,
     query.data === undefined ? null : accessScreenStateOf(query.data),
   );
   const ownerName = useOwnerName(state === null ? null : requestOf(state));
@@ -297,9 +307,9 @@ function Content({ itemId }: { readonly itemId: string }): ReactNode {
         />
       );
     case 'declined':
-      return <Ask itemId={itemId} ownerName={ownerName} declined={state.request} />;
+      return <Ask itemId={itemId} ownerName={ownerName} declined={state.request} ask={ask} />;
     case 'ask':
-      return <Ask itemId={itemId} ownerName={null} declined={null} />;
+      return <Ask itemId={itemId} ownerName={null} declined={null} ask={ask} />;
   }
 }
 

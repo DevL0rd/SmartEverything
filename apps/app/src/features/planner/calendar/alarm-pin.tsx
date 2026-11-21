@@ -5,7 +5,7 @@ import { Icon } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import {
   ICON_PILL,
   clusterLabel,

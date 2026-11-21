@@ -34,7 +34,7 @@ export function useSleepNights(
 ): UseQueryResult<PlannerSleep> {
   return useScreenQuery({
     queryKey: sleepKey(person, window),
-    queryFn: () => readPlannerSleep(apiPerson(person), window.from, window.to),
+    queryFn: ({ signal }) => readPlannerSleep(apiPerson(person), window.from, window.to, signal),
   });
 }
 

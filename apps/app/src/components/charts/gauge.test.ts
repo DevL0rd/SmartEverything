@@ -24,6 +24,7 @@ describe('Gauge', () => {
         size: 120,
         label: 'Load',
         bands: SHORT_BANDS,
+        ticking: false,
       }),
     );
     expect(html).toContain('aria-label="Load"');
@@ -32,7 +33,15 @@ describe('Gauge', () => {
 
   it('renders no band strokes when no bands are configured', () => {
     const html = renderToStaticMarkup(
-      createElement(Gauge, { value: 10, min: 0, max: 100, size: 120, label: 'Empty', bands: [] }),
+      createElement(Gauge, {
+        value: 10,
+        min: 0,
+        max: 100,
+        size: 120,
+        label: 'Empty',
+        bands: [],
+        ticking: false,
+      }),
     );
     expect(html).toContain('aria-label="Empty"');
     expect(html).not.toContain('<path');
@@ -47,6 +56,7 @@ describe('Gauge', () => {
         size: 120,
         label: 'Load',
         bands: SHORT_BANDS,
+        ticking: false,
       }),
     );
     expect(html.match(/stroke-dasharray/g)).toHaveLength(1);

@@ -35,6 +35,7 @@ export function PendingCell({
           size={cellMedallionSize(cls)}
           label={line}
           offline
+          ticking={false}
         />
       }
       state={<CellLine text={line} />}

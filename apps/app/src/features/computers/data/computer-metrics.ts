@@ -27,7 +27,7 @@ export function useComputerDetail(
 ): ReturnType<typeof useScreenQuery<ComputerDetail>> {
   return useScreenQuery({
     queryKey: ['window', 'computer-detail', deviceId],
-    queryFn: () => api().call(E.readComputer, { params: { deviceId } }),
+    queryFn: ({ signal }) => api().call(E.readComputer, { params: { deviceId } }, { signal }),
     enabled,
   });
 }

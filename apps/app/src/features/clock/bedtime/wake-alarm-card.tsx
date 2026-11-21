@@ -1,4 +1,5 @@
 import type { PlannerAlarmRow, PlannerBedtimeNight } from '@smarteverything/domain';
+import { randomUUID } from 'expo-crypto';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { Button } from '../../../components/button';
@@ -8,9 +9,9 @@ import { Interactive } from '../../../components/interactive';
 import { notifyFailure } from '../../../components/toast-store';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
-import { nextRingTextOf, usePlannerWrites, useShownAlarm } from '../../planner';
+import { nextRingTextOf, usePlannerWrites, useShownAlarm, type AlarmDefaults } from '../../planner';
 import { AlarmEditor } from '../alarm/alarm-editor';
-import { useClockLabel } from '../format/clock-format';
+import { useClockLabel } from '../../../store/clock-format';
 import { daysTextOf, wakeAlarmBodyOf, wakeAlarmOf, wakeDaysOf } from './schedule-model';
 
 export interface WakeAlarmProps {
@@ -20,6 +21,7 @@ export interface WakeAlarmProps {
   readonly now: number;
   readonly zone: string;
   readonly offline: boolean;
+  readonly defaults: AlarmDefaults;
 }
 
 function LinkedAlarm({
@@ -76,8 +78,8 @@ function MissingAlarm({
 }): ReactNode {
   const writes = usePlannerWrites(null);
   const [busy, setBusy] = useState(false);
-  const body = wakeAlarmBodyOf(night);
   const clockLabel = useClockLabel();
+  const body = wakeAlarmBodyOf(night);
   return (
     <View className="flex-row flex-wrap items-center gap-3 rounded-md border-hairline border-outline-variant px-3 py-2">
       <View className="min-w-0 grow basis-48 flex-row items-center gap-3">
@@ -95,7 +97,13 @@ function MissingAlarm({
         onPress={() => {
           setBusy(true);
           writes
-            .createAlarm({ ...body, days: [...body.days] })
+            .createAlarm({
+              ...card.defaults,
+              ...body,
+              id: randomUUID(),
+              days: [...body.days],
+              targets: [...card.defaults.targets],
+            })
             .catch(notifyFailure('The wake alarm was not created'))
             .finally(() => {
               setBusy(false);

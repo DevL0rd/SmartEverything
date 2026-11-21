@@ -10,6 +10,7 @@ import { aiDrafts } from '../data/ai-drafts';
 import { captureDraftSubmission, draftSubmission, setDraft } from '../data/drafts';
 import { sendNormal } from '../components/send-normal-draft';
 import { usePickerSession } from '../picker/model-search-session';
+import { outgoingMessage } from '../data/outgoing';
 import { useDraftChatStart, useDraftSender, type DraftSender } from './draft-chat-start';
 
 const mocks = vi.hoisted(() => ({ create: vi.fn(), send: vi.fn(), clearUploads: vi.fn() }));
@@ -60,7 +61,7 @@ const engine = DSH_ENGINE.parse({
 });
 let store: EntityStore;
 let root: Root;
-const opened = vi.fn();
+const opened = vi.fn<(chatId: string) => void>();
 const capture = vi.fn<(sender: DraftSender) => void>();
 function sessionOfStore(): typeof session {
   const current = store.get().session;
@@ -86,6 +87,13 @@ function mount(): void {
   act(() => {
     root.render(createElement(Sender));
   });
+}
+function firstSubmission(): string {
+  return captureDraftSubmission('new-chat', {
+    text: 'First request',
+    attachments: [],
+    references: [],
+  }).id;
 }
 function submit(): Promise<void> {
   return sendNormal(
@@ -138,6 +146,12 @@ function showStart(): void {
     );
   });
 }
+function onlyOpened(): string {
+  expect(opened).toHaveBeenCalledTimes(1);
+  const chatId = opened.mock.lastCall?.[0];
+  if (chatId === undefined) throw new Error('Expected an opened chat');
+  return chatId;
+}
 function startAction(): ReturnType<typeof useDraftChatStart> {
   const current = startCapture.mock.lastCall?.[0];
   if (current === undefined) throw new Error('Expected explicit start controls');
@@ -159,9 +173,40 @@ describe('explicit draft chat creation ownership', () => {
       return Promise.resolve();
     });
     expect(client.call).toHaveBeenCalledTimes(1);
-    expect(opened).toHaveBeenCalledExactlyOnceWith('empty-chat');
-    expect(aiDrafts.get().drafts['empty-chat']?.text).toBe('/command');
+    const chatId = onlyOpened();
+    expect(client.call.mock.lastCall?.[1]).toEqual({ body: { id: chatId, engine } });
+    expect(store.get().tables.ai_chats.byId[chatId]?.engine).toEqual(engine);
+    expect(aiDrafts.get().drafts[chatId]?.text).toBe('/command');
     expect(aiDrafts.get().drafts['new-chat']).toBeUndefined();
+  });
+
+  it('shows the started chat at once and puts it back on the draft when the Hub refuses it', async () => {
+    notifyManager.setScheduler((callback) => {
+      callback();
+    });
+    let refuse = (_error: Error): void => {
+      throw new Error('Expected pending creation');
+    };
+    client.call.mockReset().mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          refuse = reject;
+        }),
+    );
+    setDraft('new-chat', '/command');
+    showStart();
+    await act(() => {
+      startAction().start();
+      return Promise.resolve();
+    });
+    const chatId = onlyOpened();
+    expect(store.get().tables.ai_chats.byId[chatId]).toBeDefined();
+    await act(() => {
+      refuse(new Error('refused'));
+      return Promise.resolve();
+    });
+    expect(store.get().tables.ai_chats.byId[chatId]).toBeUndefined();
+    expect(aiDrafts.get().drafts['new-chat']?.text).toBe('/command');
   });
 
   it('retains explicit start ownership and pending status through remount', async () => {
@@ -193,17 +238,62 @@ describe('explicit draft chat creation ownership', () => {
       return Promise.resolve();
     });
     expect(client.call).toHaveBeenCalledTimes(1);
+    const chatId = onlyOpened();
     await act(() => {
-      created({ id: 'empty-chat' });
+      created({ id: chatId });
       return Promise.resolve();
     });
-    expect(opened).toHaveBeenCalledExactlyOnceWith('empty-chat');
-    expect(aiDrafts.get().drafts['empty-chat']?.text).toBe('/command');
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(aiDrafts.get().drafts[chatId]?.text).toBe('/command');
     expect(startAction().pending).toBe(false);
   });
 });
 
 describe('first-message acceptance and navigation', () => {
+  it('opens the new chat with its first message before the Hub answers', async () => {
+    setDraft('new-chat', 'First request');
+    const messageId = firstSubmission();
+    let finish = (_chat: unknown): void => {
+      throw new Error('Expected pending creation');
+    };
+    mocks.create.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const sending = submit();
+    const chatId = onlyOpened();
+    expect(store.get().tables.ai_chats.byId[chatId]?.title).toBe('New chat');
+    expect(outgoingMessage(messageId)).toMatchObject({
+      chatId,
+      text: 'First request',
+      phase: 'sending',
+    });
+    await act(async () => {
+      finish({ id: chatId });
+      await sending;
+    });
+    expect(mocks.create).toHaveBeenCalledExactlyOnceWith({ id: chatId, engine });
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+    expect(mocks.send.mock.lastCall?.[0]).toBe(chatId);
+    expect(aiDrafts.get().drafts['new-chat']?.text).toBe('');
+    expect(aiDrafts.get().drafts['new-chat']?.submission).toBeUndefined();
+  });
+
+  it('removes the shown chat and restores the draft when the Hub refuses to create it', async () => {
+    setDraft('new-chat', 'First request');
+    const messageId = firstSubmission();
+    mocks.create.mockRejectedValueOnce(new Error('refused'));
+    await act(submit);
+    const chatId = onlyOpened();
+    expect(store.get().tables.ai_chats.byId[chatId]).toBeUndefined();
+    expect(outgoingMessage(messageId)).toBeUndefined();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(aiDrafts.get().drafts['new-chat']?.text).toBe('First request');
+    expect(sender().failure).toContain('Your message is still here.');
+  });
+
   it('opens one chat and consumes its first draft when own client metadata changes during send', async () => {
     setDraft('new-chat', 'First request');
     mocks.send.mockImplementationOnce(() => {
@@ -219,20 +309,9 @@ describe('first-message acceptance and navigation', () => {
     await act(submit);
     expect(mocks.create).toHaveBeenCalledTimes(1);
     expect(mocks.send).toHaveBeenCalledTimes(1);
-    expect(opened).toHaveBeenCalledExactlyOnceWith('chat-1');
+    onlyOpened();
     expect(aiDrafts.get().drafts['new-chat']?.text).toBe('');
     expect(aiDrafts.get().drafts['new-chat']?.submission).toBeUndefined();
-  });
-
-  it('does not restore an acknowledged message when sync becomes interrupted before navigation', async () => {
-    setDraft('new-chat', 'First request');
-    mocks.send.mockImplementationOnce(() => {
-      store.update((state) => ({ ...state, sync: { ...state.sync, status: 'interrupted' } }));
-      return Promise.resolve(null);
-    });
-    await act(submit);
-    expect(opened).not.toHaveBeenCalled();
-    expect(aiDrafts.get().drafts['new-chat']?.text).toBe('');
   });
 
   it('keeps accepted delivery consumed when opening the chat throws', async () => {
@@ -245,30 +324,46 @@ describe('first-message acceptance and navigation', () => {
     expect(aiDrafts.get().drafts['new-chat']?.submission).toBeUndefined();
   });
 
-  it('restores uncertain delivery and retries only its original chat and request ID after remount', async () => {
+  it('retries a create that failed under the same chat id, which the Hub de-duplicates', async () => {
     setDraft('new-chat', 'First request');
     const original = captureDraftSubmission('new-chat', {
       text: 'First request',
       attachments: [],
       references: [],
     });
-    mocks.send.mockRejectedValueOnce(new Error('acknowledgement lost'));
+    mocks.create.mockRejectedValueOnce(new Error('acknowledgement lost'));
     await act(submit);
-    expect(aiDrafts.get().drafts['new-chat']?.text).toBe('First request');
-    expect(draftSubmission('new-chat', original.id)?.chat?.id).toBe('chat-1');
-    expect(sender().failure).toContain('Your message is still here.');
-    expect(mocks.send).toHaveBeenCalledTimes(1);
+    const chatId = draftSubmission('new-chat', original.id)?.chat?.id;
+    expect(chatId).toBeDefined();
     act(() => {
       root.unmount();
     });
     mount();
     await act(submit);
-    expect(mocks.create).toHaveBeenCalledTimes(1);
-    expect(mocks.send).toHaveBeenNthCalledWith(2, 'chat-1', 'First request', [], {
+    expect(mocks.create).toHaveBeenCalledTimes(2);
+    expect(mocks.create).toHaveBeenLastCalledWith({ id: chatId, engine });
+    expect(mocks.send).toHaveBeenCalledExactlyOnceWith(chatId, 'First request', [], {
       clientMessageId: original.id,
       references: [],
     });
-    expect(opened).toHaveBeenCalledExactlyOnceWith('chat-1');
+  });
+
+  it('hands a first message the Hub did not acknowledge to the outbox of the created chat', async () => {
+    setDraft('new-chat', 'First request');
+    const messageId = firstSubmission();
+    mocks.send.mockRejectedValueOnce(new Error('acknowledgement lost'));
+    await act(submit);
+    const chatId = onlyOpened();
+    expect(aiDrafts.get().drafts['new-chat']?.text).toBe('');
+    expect(mocks.send).toHaveBeenCalledTimes(2);
+    expect(mocks.send).toHaveBeenNthCalledWith(1, chatId, 'First request', [], {
+      clientMessageId: messageId,
+      references: [],
+    });
+    expect(mocks.send).toHaveBeenNthCalledWith(2, chatId, 'First request', [], {
+      clientMessageId: messageId,
+      references: [],
+    });
   });
 
   it('preserves references and quotes and only clears files belonging to the accepted submission', async () => {
@@ -322,7 +417,7 @@ describe('first-message acceptance and navigation', () => {
       ).toBe(true);
     });
     expect(mocks.send).toHaveBeenCalledExactlyOnceWith(
-      'chat-1',
+      onlyOpened(),
       '@Plugin question',
       ['attachment'],
       {
@@ -332,17 +427,6 @@ describe('first-message acceptance and navigation', () => {
       },
     );
     expect(mocks.clearUploads).toHaveBeenCalledExactlyOnceWith(['submitted-file']);
-  });
-
-  it('keeps edits made while an uncertain first message is pending', async () => {
-    setDraft('new-chat', 'First request');
-    mocks.send.mockImplementationOnce(() => {
-      setDraft('new-chat', 'Next request');
-      return Promise.reject(new Error('acknowledgement lost'));
-    });
-    await act(submit);
-    expect(aiDrafts.get().drafts['new-chat']?.text).toBe('Next request');
-    expect(aiDrafts.get().drafts['new-chat']?.submission).toBeUndefined();
   });
 
   it('invalidates captured picker authority on a real profile change', () => {

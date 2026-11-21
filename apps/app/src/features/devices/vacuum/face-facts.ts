@@ -26,9 +26,9 @@ function numberOf(value: unknown): number | null {
 
 export function useFaceFacts(device: Device): FaceFacts {
   const vacuum = useVacuum(device);
+  const linksValue = useRoomLinksValue(device.id);
   const { snapshot } = vacuum;
   const version = readingOf(() => parseMapVersion(snapshot.mapVersionText));
-  const linksValue = useRoomLinksValue(device.id);
   const { scene } = useVacuumSceneOf(device.id, valueOrNull(version), linksValue);
   const links = linkNoticeOf(useRoomLinksSummaryOf(device.id, linksValue));
   return {

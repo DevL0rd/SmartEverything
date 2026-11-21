@@ -1,6 +1,7 @@
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import type { SmartRule } from '@smarteverything/domain';
 import { AdaptivePanel, usePanelFrame } from '../../../components/adaptive-panel';
 import { Button } from '../../../components/button';
@@ -8,9 +9,9 @@ import { IconButton } from '../../../components/icon-button';
 import { SwitchRow } from '../../../components/rows';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
-import { notify } from '../../../components/toast-store';
-import { useMutationState } from '../../../store/mutation';
+import { notify, notifyFailure } from '../../../components/toast-store';
 import { useSyncStatus } from '../../../store/selectors';
+import { useEntityStore } from '../../../store/store-context';
 import { AddRuleRow } from './add-rule';
 import { RuleChipRow, usePlaceOf } from './rule-chip-view';
 import {
@@ -24,7 +25,7 @@ import {
   type SaveMode,
   type SmartDraft,
 } from './rule-chips';
-import { createSmartFolder, renameSmartFolder } from './smart-data';
+import { renameSmartFolder, startSmartFolder } from './smart-data';
 import { matchesText, smartFolderHref, type SmartFolder } from './smart-model';
 
 export interface SaveSmartFolderRequest {
@@ -212,20 +213,18 @@ function Form({
 
 interface FooterProps {
   readonly opened: Opened;
-  readonly busy: boolean;
   readonly live: boolean;
   readonly onClose: () => void;
   readonly onSave: () => void;
 }
 
-function Footer({ opened, busy, live, onClose, onSave }: FooterProps): ReactNode {
+function Footer({ opened, live, onClose, onSave }: FooterProps): ReactNode {
   return (
     <View className="flex-row justify-end gap-2">
       <Button label="Cancel" variant="text" onPress={onClose} />
       <Button
         label="Save"
         icon="sparkles"
-        loading={busy}
         disabled={!live || !draftReady(opened.draft, opened.mode)}
         onPress={onSave}
       />
@@ -261,37 +260,28 @@ function PanelBody({
   );
 }
 
-function useSave(close: () => void): {
-  readonly busy: boolean;
-  readonly save: (opened: Opened) => void;
-} {
-  const mutation = useMutationState();
+function useSave(close: () => void): (opened: Opened) => void {
   const router = useRouter();
-  return {
-    busy: mutation.busy,
-    save: (opened): void => {
-      const { folder, draft } = opened;
-      mutation.run(
-        () => (folder === null ? createSmartFolder(draft) : renameSmartFolder(folder, draft)),
-        {
-          failure: folder === null ? 'The smart folder was not saved' : 'The name was not changed',
-          label: folder === null ? 'drive.smart_folder_create' : 'drive.smart_folder_rename',
-          onDone: (saved) => {
-            close();
-            if (folder !== null) return;
-            notify({
-              message: `Saved ${saved.title} under Starred`,
-              action: {
-                label: 'Open',
-                onPress: () => {
-                  router.push(smartFolderHref(saved.id));
-                },
-              },
-            });
-          },
+  const store = useEntityStore();
+  const client = useQueryClient();
+  return (opened): void => {
+    const { folder, draft } = opened;
+    close();
+    if (folder !== null) {
+      renameSmartFolder(store, folder, draft).catch(notifyFailure('The name was not changed'));
+      return;
+    }
+    const started = startSmartFolder(store, client, draft);
+    started.saved.catch(notifyFailure('The smart folder was not saved'));
+    notify({
+      message: `Saved ${started.title} under Starred`,
+      action: {
+        label: 'Open',
+        onPress: () => {
+          router.push(smartFolderHref(started.id));
         },
-      );
-    },
+      },
+    });
   };
 }
 
@@ -308,12 +298,11 @@ export function useSaveSmartFolder(): SaveSmartFolder {
   const close = (): void => {
     setOpened(null);
   };
-  const { busy, save } = useSave(close);
+  const save = useSave(close);
   const footer =
     opened === null ? null : (
       <Footer
         opened={opened}
-        busy={busy}
         live={live}
         onClose={close}
         onSave={() => {

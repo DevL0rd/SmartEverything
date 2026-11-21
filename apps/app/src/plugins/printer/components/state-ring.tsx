@@ -67,6 +67,7 @@ export function StateRing({
           thickness={9}
           colour={RING_ROLE[tone]}
           trackColour="track"
+          ticking={false}
         />
         <View className="absolute inset-x-0 items-center px-4">
           <Text

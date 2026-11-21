@@ -79,6 +79,7 @@ function Usage({ disk }: { readonly disk: DiskFacts }): ReactNode {
         progress={share / 100}
         colour={severity.tone ?? 'primary'}
         label={`${diskTitle(disk)} used`}
+        ticking={false}
       />
       <Text variant="footnote" tone="variant" className="tabular">
         {`${usageLine(disk)} used`}

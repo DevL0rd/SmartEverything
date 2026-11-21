@@ -55,9 +55,13 @@ import {
   type PassRole,
   type PixelRect,
 } from './bake-bounds';
+import type { BakeStaging, BakeSurface } from './bake-staging';
 
 export interface BakeContext {
   readonly renderer: WebGLRenderer;
+  readonly source: BakeSurface;
+  readonly staging: BakeStaging;
+  readonly pause: () => Promise<void>;
   readonly environment: Texture;
   readonly view: ViewCamera;
   readonly dispose: () => void;
@@ -130,9 +134,14 @@ function passMaterial(role: PassRole): Material {
   return role === 'white' ? WHITE : SKIP;
 }
 
-export type PassRenderer = Pick<WebGLRenderer, 'render'>;
+export type PassRenderer = Pick<WebGLRenderer, 'render' | 'compileAsync'>;
 
-export function renderPass(renderer: PassRenderer, rig: BakeRig, camera: Camera, pass: Pass): void {
+export async function renderPass(
+  renderer: PassRenderer,
+  rig: BakeRig,
+  camera: Camera,
+  pass: Pass,
+): Promise<void> {
   const restore: (() => void)[] = [];
   for (const node of drawnNodes(rig.stage.scene)) {
     const role = pass(node);
@@ -152,17 +161,12 @@ export function renderPass(renderer: PassRenderer, rig: BakeRig, camera: Camera,
       node.visible = visible;
     });
   }
-  renderer.render(rig.stage.scene, camera);
-  for (const undo of restore) undo();
-}
-
-export function encodeRegion(source: HTMLCanvasElement, rect: PixelRect): string {
-  const crop = document.createElement('canvas');
-  crop.width = rect.width;
-  crop.height = rect.height;
-  const draw = crop.getContext('2d');
-  draw?.drawImage(source, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
-  return crop.toDataURL('image/png');
+  try {
+    await renderer.compileAsync(rig.stage.scene, camera);
+    renderer.render(rig.stage.scene, camera);
+  } finally {
+    for (const undo of restore) undo();
+  }
 }
 
 export function cssRect(rect: PixelRect, dpr: number): BakeRect {
@@ -170,7 +174,7 @@ export function cssRect(rect: PixelRect, dpr: number): BakeRect {
 }
 
 export function canvasPixels(context: BakeContext, dpr: number): CanvasSize {
-  const { width, height } = context.renderer.domElement;
+  const { width, height } = context.source;
   return { width, height, dpr };
 }
 
@@ -330,32 +334,44 @@ export function stillPose(rig: BakeRig, key: BakeKey): CameraPose {
   return framedShot(rig.built, rig.spec, frame);
 }
 
-export function bakeLayers(
+export async function bakeLayers(
   context: BakeContext,
   rig: BakeRig,
   key: BakeKey,
   signals: ChannelSignals,
-): Omit<LayersResult, 'id' | 'ms'> {
+): Promise<Omit<LayersResult, 'id' | 'ms'>> {
   rig.live.setSignals(signals, { reduced: true });
   rig.halos.sync();
   const size = { width: key.width, height: key.height, dpr: key.dpr };
   const camera = aimCamera(context, stillPose(rig, key), size);
   const groups = movingGroups(rig.spec, key.view, new Set(rig.built.parts.map((part) => part.id)));
   const canvas = canvasPixels(context, key.dpr);
-  const layers: BakeLayer[] = [];
+  const layers: Promise<BakeLayer>[] = [];
   for (const plan of layerPlans(rig, groups)) {
     const bounds = passBounds(rig.stage.scene, camera, plan.pass, canvas);
     if (bounds === null) continue;
-    renderPass(context.renderer, rig, camera, plan.pass);
-    layers.push({
-      id: plan.id,
-      role: plan.role,
-      uri: encodeRegion(context.renderer.domElement, bounds),
-      rect: cssRect(bounds, key.dpr),
-      pivot: plan.role === 'part' ? pivotOf(rig, plan.id, camera, size) : null,
-      channels: [...plan.channels],
-    });
+    await renderPass(context.renderer, rig, camera, plan.pass);
+    const shot = context.staging.snapshot(context.source, bounds);
+    const pivot = plan.role === 'part' ? pivotOf(rig, plan.id, camera, size) : null;
+    layers.push(
+      shot.then(async (image) => ({
+        id: plan.id,
+        role: plan.role,
+        uri: await context.staging.encode(image),
+        rect: cssRect(bounds, key.dpr),
+        pivot,
+        channels: [...plan.channels],
+      })),
+    );
+    await context.pause();
   }
   const anchors = projectAnchors(rig, camera, size);
-  return { kind: 'layers', width: key.width, height: key.height, dpr: key.dpr, layers, anchors };
+  return {
+    kind: 'layers',
+    width: key.width,
+    height: key.height,
+    dpr: key.dpr,
+    layers: await Promise.all(layers),
+    anchors,
+  };
 }

@@ -98,7 +98,12 @@ function AskAboutIt({ picked }: { readonly picked: readonly LocalMediaItem[] }):
   return <Button label="Ask about it" icon="sparkles" variant="outlined" onPress={ask} />;
 }
 
-export function DeviceSelection({ controls, tiles, items, compact }: DeviceSelectionProps): ReactNode {
+export function DeviceSelection({
+  controls,
+  tiles,
+  items,
+  compact,
+}: DeviceSelectionProps): ReactNode {
   useEscape(controls.selection.active, controls.clear);
   const { ids } = controls.selection;
   const picked = pickedLocalItems(ids, items);

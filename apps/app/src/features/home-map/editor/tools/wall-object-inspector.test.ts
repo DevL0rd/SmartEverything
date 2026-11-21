@@ -45,7 +45,8 @@ vi.mock('../../../../design/colour', () => ({ useColourResolver: () => (): strin
 vi.mock('../../../../api/transport', () => ({ api: (): object => ({}) }));
 vi.mock('../../../../store/selectors', () => ({
   useRooms: (): readonly object[] => [],
-  useDevices: (): readonly object[] => [],
+  useDeviceNames: (): ReadonlyMap<string, string> => new Map(),
+  useMatchingDevices: (): readonly object[] => [],
 }));
 vi.mock('../../../models', () => ({
   useModelSpecs: (hashes: readonly (string | null)[]): readonly object[] =>

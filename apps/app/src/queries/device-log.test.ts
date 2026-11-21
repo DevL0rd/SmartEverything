@@ -106,8 +106,9 @@ beforeEach(() => {
 
 describe('the device log read', () => {
   it('asks the hub for this device, with the page cursor only when given', async () => {
-    await readDeviceLog(OVEN, 20);
-    await readDeviceLog(OVEN, 20, NOW);
+    const { signal } = new AbortController();
+    await readDeviceLog(OVEN, 20, undefined, signal);
+    await readDeviceLog(OVEN, 20, NOW, signal);
     expect(calls.map((call) => call.path)).toEqual([E.readDeviceLog.path, E.readDeviceLog.path]);
     expect(calls[0]?.params).toEqual({ deviceId: OVEN });
     expect(calls[0]?.query).toEqual({ limit: 20 });

@@ -10,7 +10,8 @@ import { automation, gnode, note, start } from '../../../model/graph/graph-scene
 import { projectGraphScene } from '../../../model/graph/project-graph-scene';
 import type { GraphScene, GraphSceneNode } from '../../../model/graph/scene-contract';
 import { ERROR_EXIT_LABEL, latentErrorHandle } from '../../../model/graph/scene-exec';
-import { GraphEmitContext, GraphRunContext, GraphRunStore } from '../graph-context';
+import { GraphRunStore } from '../graph-context';
+import { GraphEmitContext, GraphRunContext } from '../graph-contexts';
 import { GRAPH_NODE_TYPES } from '../node-registry';
 import { cardHtml, handlesOf, renderScene } from '../render-support';
 import { buildGraphEdges, buildGraphNodes } from '../scene-to-flow';

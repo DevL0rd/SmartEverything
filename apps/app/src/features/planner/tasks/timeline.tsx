@@ -39,7 +39,7 @@ import {
   type TimelineRow,
   type TimelineWindow,
 } from './timeline-model';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 
 const HANDLE = 16;
 const NARROW_DAY = 48;
@@ -154,9 +154,9 @@ function Bar({
   readonly geometry: Geometry;
 }): ReactNode {
   const { offline } = usePlannerFrame();
+  const shift = useSharedValue(0);
   const { bar } = row;
   const layout = barLayoutOf(bar, geometry.width);
-  const shift = useSharedValue(0);
   const stretched = useAnimatedStyle(() => ({
     width: Math.max(BAR_SIZES.least, layout.span + shift.get()),
   }));

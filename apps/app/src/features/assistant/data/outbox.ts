@@ -10,6 +10,15 @@ import { ValueStore, useValue } from '../../../design/external-store';
 import { aiDrafts, patchAiDrafts, useAiDrafts, type PendingMessage } from './ai-drafts';
 import { clearUploads } from './uploads';
 import { compareText } from '../../../format/text';
+import {
+  dropOutgoing,
+  failOutgoing,
+  markOutgoing,
+  outgoingMessage,
+  pendingOf,
+  refusedByHub,
+  useOutgoingMessages,
+} from './outgoing';
 
 const log = new Logger('app.assistant');
 
@@ -37,12 +46,15 @@ function stopRetry(): void {
 
 const delivering = new ValueStore<ReadonlySet<string>>(new Set());
 
-function startDelivery(id: string): void {
-  delivering.update((all) => new Set([...all, id]));
+function startDelivery(message: PendingMessage): void {
+  markOutgoing(message, { phase: 'sending' });
+  delivering.update((all) => new Set([...all, message.id]));
+  sending.update((all) => new Set([...all, message.chatId]));
 }
 
-function endDelivery(id: string): void {
-  delivering.update((all) => new Set([...all].filter((entry) => entry !== id)));
+function endDelivery(message: PendingMessage): void {
+  delivering.update((all) => new Set([...all].filter((entry) => entry !== message.id)));
+  sending.update((all) => new Set([...all].filter((entry) => entry !== message.chatId)));
 }
 
 export function useDeliveringMessages(): ReadonlySet<string> {
@@ -55,7 +67,11 @@ export function useSendingMessage(chatId: string): boolean {
 
 export function usePendingMessages(chatId: string): readonly PendingMessage[] {
   const all = useAiDrafts((state) => state.outbox);
-  return useMemo(() => all.filter((message) => message.chatId === chatId), [all, chatId]);
+  const tracked = useOutgoingMessages(chatId);
+  return useMemo(() => {
+    const ids = new Set(tracked.map((message) => message.id));
+    return all.filter((message) => message.chatId === chatId && !ids.has(message.id));
+  }, [all, tracked, chatId]);
 }
 
 export function usePendingCount(): number {
@@ -89,13 +105,13 @@ interface SendInput {
   readonly quoteMessageId?: string | undefined;
 }
 
-function queue(
+function pendingMessage(
   chatId: string,
   text: string,
   attachments: readonly string[],
   input: SendInput,
-): void {
-  const message: PendingMessage = {
+): PendingMessage {
+  return {
     id: input.id,
     chatId,
     text,
@@ -104,10 +120,26 @@ function queue(
     references: input.references,
     ...(input.quoteMessageId === undefined ? {} : { quoteMessageId: input.quoteMessageId }),
   };
+}
+
+function queue(message: PendingMessage): void {
   patchAiDrafts('outbox', (all) =>
     all.some((row) => row.id === message.id) ? all : [...all, message],
   );
-  log.info('outbox.queued', { chatId, attachments: attachments.length });
+  log.info('outbox.queued', { chatId: message.chatId, attachments: message.attachments.length });
+}
+
+function deliveryOf(message: PendingMessage): Promise<unknown> {
+  return sendAiChatMessage(message.chatId, message.text, message.attachments, {
+    clientMessageId: message.id,
+    references: message.references,
+    ...(message.quoteMessageId === undefined ? {} : { quoteMessageId: message.quoteMessageId }),
+  });
+}
+
+function refused(message: PendingMessage, error: unknown): void {
+  failOutgoing(message, error);
+  notify({ message: 'Message not sent', error, tone: 'critical' });
 }
 
 async function deliver(message: PendingMessage): Promise<boolean> {
@@ -118,7 +150,7 @@ async function deliver(message: PendingMessage): Promise<boolean> {
     log.debug('outbox.delivery_skipped', { chatId: message.chatId, messageId: message.id });
     return true;
   }
-  startDelivery(message.id);
+  startDelivery(message);
   const startedAt = Date.now();
   log.debug('outbox.delivering', {
     chatId: message.chatId,
@@ -127,11 +159,8 @@ async function deliver(message: PendingMessage): Promise<boolean> {
     queuedAt: message.queuedAt,
   });
   try {
-    await sendAiChatMessage(message.chatId, message.text, message.attachments, {
-      clientMessageId: message.id,
-      references: message.references,
-      ...(message.quoteMessageId === undefined ? {} : { quoteMessageId: message.quoteMessageId }),
-    });
+    await deliveryOf(message);
+    markOutgoing(message, { phase: 'sent' });
     cancelPending(message.id);
     log.info('outbox.sent', {
       chatId: message.chatId,
@@ -145,9 +174,15 @@ async function deliver(message: PendingMessage): Promise<boolean> {
       messageId: message.id,
       durationMs: Date.now() - startedAt,
     });
-    return false;
+    if (!refusedByHub(error)) {
+      dropOutgoing(message.id);
+      return false;
+    }
+    cancelPending(message.id);
+    refused(message, error);
+    return true;
   } finally {
-    endDelivery(message.id);
+    endDelivery(message);
   }
 }
 
@@ -181,56 +216,53 @@ export async function flushOutbox(): Promise<void> {
   }
 }
 
-async function sendNow(
-  chatId: string,
-  text: string,
-  attachments: readonly string[],
-  input: SendInput,
-): Promise<boolean> {
-  const { references, id, quoteMessageId } = input;
-  sending.update((all) => new Set([...all, chatId]));
-  const operation = log.operation('chat_message.send', {
-    chatId,
-    clientMessageId: id,
-    length: text.length,
-    attachments: attachments.length,
-    references: references.length,
-  });
-  try {
-    await sendAiChatMessage(chatId, text, attachments, {
-      clientMessageId: id,
-      references,
-      ...(quoteMessageId === undefined ? {} : { quoteMessageId }),
-    });
-    clearUploads();
-    operation.succeeded();
-    return true;
-  } catch (error) {
-    operation.failed(error);
-    queue(chatId, text, attachments, input);
-    clearUploads();
-    scheduleRetry();
-    return true;
-  } finally {
-    sending.update((all) => new Set([...all].filter((id) => id !== chatId)));
+function sendNow(message: PendingMessage): void {
+  queue(message);
+  background(flushOutbox(), 'outbox.flush_failed');
+}
+
+export function deliverUnsent(message: PendingMessage, error: unknown): void {
+  if (refusedByHub(error)) {
+    refused(message, error);
+    return;
   }
+  log.info('outbox.unsent_queued', { chatId: message.chatId, messageId: message.id });
+  dropOutgoing(message.id);
+  sendNow(message);
+}
+
+export function retryOutgoing(id: string): void {
+  const message = outgoingMessage(id);
+  if (message?.phase !== 'failed') {
+    log.debug('outgoing.retry_skipped', { messageId: id });
+    return;
+  }
+  log.info('outgoing.retried', { chatId: message.chatId, messageId: id });
+  queue(pendingOf(message));
+  dropOutgoing(id);
+  background(flushOutbox(), 'outbox.flush_failed');
+}
+
+export function removeOutgoing(id: string): void {
+  log.info('outgoing.removed', { messageId: id });
+  dropOutgoing(id);
 }
 
 export function outboxSender(chatId: string, online: boolean): MessageSender {
   return (text, attachments, extras = {}) => {
     const { references = [], clientMessageId, quoteMessageId } = extras;
-    const message = trimmedReferences({ text, references });
-    const input: SendInput = {
-      references: message.references,
+    const trimmed = trimmedReferences({ text, references });
+    const message = pendingMessage(chatId, trimmed.text, attachments, {
+      references: trimmed.references,
       id: clientMessageId ?? randomUUID(),
       quoteMessageId,
-    };
-    if (online) {
-      return sendNow(chatId, message.text, attachments, input);
-    }
-    log.info('outbox.offline_queue', { chatId, clientMessageId: input.id });
-    queue(chatId, message.text, attachments, input);
+    });
     clearUploads();
+    if (online) sendNow(message);
+    else {
+      log.info('outbox.offline_queue', { chatId, clientMessageId: message.id });
+      queue(message);
+    }
     return Promise.resolve(true);
   };
 }

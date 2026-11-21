@@ -162,6 +162,7 @@ function RoomRowView({
               progress={row.share}
               colour="primary"
               label={`${row.name} share of the home`}
+              ticking={false}
             />
           </View>
           <Text variant="caption" tone="variant" className="tabular">

@@ -56,6 +56,7 @@ function Line({ line }: { readonly line: SupplyLine }): ReactNode {
             progress={line.level}
             colour={colour}
             label={`${line.device} ${line.label}`}
+            ticking={false}
           />
         )}
       </View>
@@ -87,6 +88,7 @@ function SupplyRing({
             startAngle={-135}
             sweep={270}
             tinted
+            ticking={false}
           />
         </View>
         <IconWell icon={ICON[line.kind]} colour={colourOf(line)} size="l" />
@@ -111,7 +113,8 @@ function SupplyRing({
 }
 
 function SupplyList({ lines }: { readonly lines: readonly SupplyLine[] }): ReactNode {
-  const fit = supplyListFit(useClimateBody().box, lines.length);
+  const climateBody = useClimateBody();
+  const fit = supplyListFit(climateBody.box, lines.length);
   return (
     <View className="flex-1 gap-3">
       {rowsOf(lines.slice(0, fit.shown), fit.columns).map((row) => (

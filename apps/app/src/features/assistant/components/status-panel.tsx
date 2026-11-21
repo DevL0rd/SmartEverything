@@ -206,6 +206,7 @@ function GoalSummary({ goal }: { readonly goal: GoalView }): ReactNode {
           progress={Math.min(1, goal.roundsStarted / goal.maxGoalRounds)}
           colour={GOAL_COLOUR[goal.phase]}
           label={rounds}
+          ticking={false}
         />
       </View>
       <View className="items-end">
@@ -232,7 +233,7 @@ function TasksSummary({ activity }: { readonly activity: BottomActivity }): Reac
           Tasks
         </Text>
         {count === 0 ? null : (
-          <ProgressBar progress={done / count} colour="positive" label={progress} />
+          <ProgressBar progress={done / count} colour="positive" label={progress} ticking={false} />
         )}
       </View>
       {count === 0 ? null : (

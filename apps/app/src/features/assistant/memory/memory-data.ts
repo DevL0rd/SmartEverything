@@ -1,5 +1,6 @@
 import { useQueryClient, type QueryClient, type UseQueryResult } from '@tanstack/react-query';
 import {
+  AI_MEMORY_LIST,
   API_ENDPOINTS as E,
   type AiMemory,
   type AiMemoryList,
@@ -10,6 +11,7 @@ import { Logger } from '@smarteverything/logging';
 import { connectionState } from '../../../api/connection/connection';
 import { api, useConnection } from '../../../api/transport';
 import { useScreenQuery } from '../../../queries/use-screen-query';
+import { writeShownQuery } from '../../../queries/shown-query';
 import { useEntityStore, useStoreSelector } from '../../../store/store-context';
 import type { StoreState } from '../../../store/state';
 
@@ -81,6 +83,35 @@ function refreshed(client: QueryClient, key: string): Promise<void> {
   return client.invalidateQueries({ queryKey: queryKeyOf(key), exact: true });
 }
 
+async function shownWrite(
+  client: QueryClient,
+  key: string,
+  change: (list: AiMemoryList) => AiMemoryList,
+  send: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await writeShownQuery(client, {
+      event: 'memory.change',
+      key: queryKeyOf(key),
+      schema: AI_MEMORY_LIST,
+      change,
+      send,
+    });
+  } finally {
+    await refreshed(client, key);
+  }
+}
+
+function withMemory(memory: AiMemory, next: AiMemory | null): (list: AiMemoryList) => AiMemoryList {
+  return (list) => ({
+    ...list,
+    memories: list.memories.flatMap((entry) => {
+      if (entry.id !== memory.id) return [entry];
+      return next === null ? [] : [next];
+    }),
+  });
+}
+
 export function useMemoryActions(): MemoryActions {
   const client = useQueryClient();
   const session = useMemorySession();
@@ -93,15 +124,18 @@ export function useMemoryActions(): MemoryActions {
     },
     change: async (memory, text): Promise<void> => {
       session.assertCurrent();
-      await api().call(E.changeAiMemory, { params: { memoryId: memory.id }, body: { text } });
+      const next = { ...memory, text, updated_at: new Date().toISOString() };
+      await shownWrite(client, session.key, withMemory(memory, next), () =>
+        api().call(E.changeAiMemory, { params: { memoryId: memory.id }, body: { text } }),
+      );
       log.info('memory.changed', { scope: memory.scope });
-      await refreshed(client, session.key);
     },
     remove: async (memory): Promise<void> => {
       session.assertCurrent();
-      await api().call(E.removeAiMemory, { params: { memoryId: memory.id } });
+      await shownWrite(client, session.key, withMemory(memory, null), () =>
+        api().call(E.removeAiMemory, { params: { memoryId: memory.id } }),
+      );
       log.info('memory.removed', { scope: memory.scope });
-      await refreshed(client, session.key);
     },
     forget: async (scope): Promise<number> => {
       session.assertCurrent();
@@ -112,8 +146,18 @@ export function useMemoryActions(): MemoryActions {
     },
     settings: async (change): Promise<void> => {
       session.assertCurrent();
-      await api().call(E.changeAiMemorySettings, { body: change });
-      await refreshed(client, session.key);
+      await shownWrite(
+        client,
+        session.key,
+        (list) => ({
+          ...list,
+          settings: {
+            enabled: change.enabled ?? list.settings.enabled,
+            prompt_chars: change.prompt_chars ?? list.settings.prompt_chars,
+          },
+        }),
+        () => api().call(E.changeAiMemorySettings, { body: change }),
+      );
     },
   };
 }

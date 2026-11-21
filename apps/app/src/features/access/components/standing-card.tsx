@@ -15,7 +15,7 @@ import {
   type Standing,
 } from '../model/standing';
 import { DayWindowBar } from './day-window-bar';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const MINUTES_PER_DAY = 1440;
 

@@ -20,13 +20,17 @@ export function useProjectList(
 ): UseQueryResult<readonly AiProjectFile[]> {
   return useScreenQuery({
     queryKey: ['window', 'ai-project', chatId, path],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const startedAt = Date.now();
       try {
-        const result = await api().call(E.readAiProjectFiles, {
-          params: { chatId },
-          body: { operation: 'list', path, limit: LIST_LIMIT },
-        });
+        const result = await api().call(
+          E.readAiProjectFiles,
+          {
+            params: { chatId },
+            body: { operation: 'list', path, limit: LIST_LIMIT },
+          },
+          { signal },
+        );
         log.debug('project_files.listed', () => ({
           chatId,
           pathLength: path.length,
@@ -49,13 +53,18 @@ export function readProjectText(
   chatId: string,
   path: string,
   offset: number,
+  signal: AbortSignal,
 ): Promise<AiProjectResult> {
   const operation = log.operation('project_file.read', { chatId, offset });
   return api()
-    .call(E.readAiProjectFiles, {
-      params: { chatId },
-      body: { operation: 'read', path, offset, encoding: 'utf8' },
-    })
+    .call(
+      E.readAiProjectFiles,
+      {
+        params: { chatId },
+        body: { operation: 'read', path, offset, encoding: 'utf8' },
+      },
+      { signal },
+    )
     .then(
       (result) => {
         operation.succeeded();

@@ -197,11 +197,12 @@ function useParts(device: Device): Parts {
   const job = valueOrNull(jobSummaryOf(values, rooms));
   const fault = useVacuumFault(device.id);
   useReadProblems(device.id, readProblems(values).join('; '));
+  const lastSeen = useLastSeen(device.id);
   const stripInput = {
     values,
     online,
     stationProgress: stop?.progress ?? null,
-    lastSeenMs: lastSeenMsOf(useLastSeen(device.id)?.at),
+    lastSeenMs: lastSeenMsOf(lastSeen?.at),
     roomName: rooms.find((room) => room.id === roomId)?.name ?? null,
     job,
   };

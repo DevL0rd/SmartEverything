@@ -58,6 +58,7 @@ function Tile({ status, stale }: SyncFaceProps): ReactNode {
         size="widget"
         label={spokenStatus(status, stale)}
         offline={stale !== null}
+        ticking={false}
       />
       <View className="gap-0.5">
         <Headline status={status} size="body-strong" />

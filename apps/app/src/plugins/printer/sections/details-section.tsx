@@ -31,6 +31,7 @@ function Speed({
           bands={[{ upTo: PPM_MAX, colour: 'primary' }]}
           size={112}
           label={`${String(ppm)} pages a minute`}
+          ticking={false}
         >
           <Text variant="title-3" className="tabular">
             {String(ppm)}

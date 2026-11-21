@@ -16,9 +16,9 @@ export interface ActivityListProps {
 export function ActivityList({ deviceId }: ActivityListProps): ReactNode {
   const all = useActivity(deviceId === undefined ? {} : { deviceId });
   const [limit, setLimit] = useState(PAGE_SIZE);
-  const items = all.slice(0, limit);
   const now = useMinute();
   const zone = useSettings().time_zone;
+  const items = all.slice(0, limit);
   if (all.length === 0) {
     return (
       <EmptyState

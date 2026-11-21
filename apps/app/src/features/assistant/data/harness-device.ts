@@ -22,6 +22,8 @@ import {
 } from '../model/harness-handoff';
 import { useOwnDeviceSelection } from './own-device-selection';
 import { changeChat } from '../chats/chat-actions';
+import type { EntityStore } from '../../../store/entity-store';
+import { useEntityStore } from '../../../store/store-context';
 import { background } from '@smarteverything/logging';
 
 export function useHarnessDevice(chat: AiChatRow): {
@@ -34,6 +36,7 @@ export function useHarnessDevice(chat: AiChatRow): {
     chat.engine.kind === 'dsh' && chat.engine.session_id !== null,
   );
   const mutation = useHarnessSwitch(chat.id);
+  const store = useEntityStore();
   const resolve = useOwnDeviceSelection(chat.engine);
   const connectionReason = useDeviceConnectionReason();
   const engine = chat.engine;
@@ -53,6 +56,7 @@ export function useHarnessDevice(chat: AiChatRow): {
           mutation,
           resolve,
           catalogue: catalogue.data,
+          store,
         });
       }
     },
@@ -109,12 +113,13 @@ function selectDevice(
     readonly mutation: ReturnType<typeof useHarnessSwitch>;
     readonly catalogue: AiHarnessCatalogue | undefined;
     readonly resolve: ReturnType<typeof useOwnDeviceSelection>;
+    readonly store: EntityStore;
   },
 ): void {
   const engine = context.resolve(host, true);
   if (engine === null || context.mutation.isPending) return;
   if (engine.session_id === null) {
-    background(changeChat(chat.id, { engine }), 'chat.change_failed');
+    background(changeChat(context.store, chat.id, { engine }), 'chat.change_failed');
     return;
   }
   const route = context.catalogue?.routes.find((row) => row.id === engine.model_route_id);

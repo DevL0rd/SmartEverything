@@ -40,7 +40,7 @@ import {
 } from './shell-types';
 import { ShellInsetContext } from './shell-inset';
 import { PageIconContext, activeSectionIcon } from './page-icon';
-import { RailHostContext } from './rail-host';
+import { RailHostContext } from './rail-host-context';
 import { RailPublisher, besideHostedRail, railSectionsOf, withoutSections } from './rail-publish';
 import { OverlayShell, PaneShell } from './shell-variants';
 import { WideFrame } from './wide-frame';

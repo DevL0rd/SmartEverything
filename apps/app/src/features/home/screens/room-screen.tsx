@@ -3,7 +3,9 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { usePinAction } from '../../../app-shell/pin-menu';
-import { renameRoom } from '../../../api/settings';
+import { renameRoomShown } from '../../../store/room-writes';
+import type { EntityStore } from '../../../store/entity-store';
+import { useEntityStore } from '../../../store/store-context';
 import { Button } from '../../../components/button';
 import { EmptyState } from '../../../components/empty-state';
 import type { MenuItem } from '../../../components/menu';
@@ -25,7 +27,7 @@ type Room = TableRow<'rooms'>;
 
 const ROOM_NAME_LENGTH = 60;
 
-function renameRequest(room: Room): TextEditRequest {
+function renameRequest(store: EntityStore, room: Room): TextEditRequest {
   return {
     title: 'Rename room',
     label: 'Room name',
@@ -33,7 +35,7 @@ function renameRequest(room: Room): TextEditRequest {
     placeholder: 'Room name',
     confirmLabel: 'Save',
     maxLength: ROOM_NAME_LENGTH,
-    save: (name) => renameRoom(room.id, name),
+    save: (name) => renameRoomShown(store, room, name),
   };
 }
 
@@ -105,8 +107,9 @@ function RoomOverview({
 function RoomBody({ room }: { readonly room: Room }): ReactNode {
   const devices = useDevices({ room: room.id });
   const [renaming, setRenaming] = useState<TextEditRequest | null>(null);
+  const store = useEntityStore();
   const overflow = useOverflow(room, () => {
-    setRenaming(renameRequest(room));
+    setRenaming(renameRequest(store, room));
   });
   const climate = useClimateLine(room.id);
   const pin = usePinAction(useMemo(() => ({ kind: 'room' as const, roomId: room.id }), [room.id]));

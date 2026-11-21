@@ -3,8 +3,7 @@ import { useRef, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { href } from '../../../app-shell/hrefs';
 import { Badge } from '../../../components/badge';
-import { ClockFigure } from '../../clock/format/clock-figure';
-import { useClockLabel, useInstantClock } from '../../clock/format/clock-format';
+import { useClockLabel, useInstantClock } from '../../../store/clock-format';
 import { IconButton } from '../../../components/icon-button';
 import { Skeleton } from '../../../components/skeleton';
 import { Switch } from '../../../components/switch';
@@ -27,6 +26,7 @@ import {
   timersSubtitleOf,
   type TimerView,
   TimerDial,
+  ClockFigure,
 } from '../../clock';
 import {
   alarmLabelOf,

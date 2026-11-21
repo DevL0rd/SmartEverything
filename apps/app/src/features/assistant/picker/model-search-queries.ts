@@ -63,15 +63,16 @@ function useSearchResult(
     string | null
   >({
     queryKey: aiModelsKeys.detailed(session.key, query),
-    queryFn: async ({ pageParam }) => {
+    queryFn: async ({ pageParam, signal }) => {
       if (!session.valid()) {
         log.debug('models.search_stale', { phase: 'before' });
         throw new ModelSearchSessionChangedError();
       }
       const startedAt = Date.now();
       let page: AiModelSearch;
+      const request = pageParam === null ? query : { ...query, cursor: pageParam };
       try {
-        page = await searchAiModels(pageParam === null ? query : { ...query, cursor: pageParam });
+        page = await searchAiModels(request, signal);
       } catch (error) {
         log.warn('models.search_failed', {
           paged: pageParam !== null,
@@ -169,9 +170,9 @@ export function useSearchMakers(
   return useScreenQuery({
     queryKey: [...aiModelsKeys.providers(kind), session.key],
     enabled: enabled && session.ready,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const startedAt = Date.now();
-      const rows = await listAiModelProviders(kind);
+      const rows = await listAiModelProviders(kind, signal);
       log.debug('models.makers_listed', () => ({
         kind,
         makers: rows.length,

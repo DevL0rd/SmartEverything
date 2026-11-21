@@ -34,13 +34,14 @@ function close(): void {
 
 function QuickAskDialog(): ReactNode {
   const profile = useActiveProfile();
-  const latest = latestChat(
-    useAiChats().filter((chat) => !appChatHistoryOnly(chat)),
-    profile?.id ?? null,
-  );
+  const aiChats = useAiChats();
   const [now] = useState(Date.now);
   const [picked, setPicked] = useState<QuickAskChoice | null>(null);
   const delivery = useQuickAskDelivery();
+  const latest = latestChat(
+    aiChats.filter((chat) => !appChatHistoryOnly(chat)),
+    profile?.id ?? null,
+  );
   const target = chosenTarget(picked, latest !== null);
   return (
     <QuickAskFrame onClose={close}>

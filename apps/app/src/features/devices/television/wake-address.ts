@@ -35,6 +35,15 @@ export function wakeAddressRow(
     : { value: address, subtitle: `Last woke the screen ${worked(moment)}`, tone: 'positive' };
 }
 
+export function withWakeAddress(
+  deviceId: string,
+  row: TelevisionSettingsRow | null,
+  address: string | null,
+): TelevisionSettingsRow {
+  const base = row ?? { device_id: deviceId, direct_host: null, direct_mac: null, input_names: {} };
+  return { ...base, wake_macs: address === null ? [] : [address], wake_worked_at: null };
+}
+
 export function wakeAddressRequest(
   row: TelevisionSettingsRow | null,
   save: (address: string | null) => Promise<void>,

@@ -10,7 +10,7 @@ import { notify } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { percentOf } from '../../../format/percent';
 import { dayBoundsOf, localDayKey } from '../../../format/time';
-import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
+import { useInstantClock, type InstantClock } from '../../../store/clock-format';
 import { usePlannerTools, usePlannerWrites, type PlannerPerson } from '../data';
 import { AttachmentChips, useAttachmentNames, withoutAttachment } from './attachment-chips';
 import { AttachmentPicker } from './attachment-picker';
@@ -221,8 +221,8 @@ function usePlanActions({ person, proposal, timeZone }: PlanInput): {
 export function PlanAroundCard(props: PlanInput & { readonly offline: boolean }): ReactNode {
   const { proposal, timeZone, offline } = props;
   const actions = usePlanActions(props);
-  const span = spanOf(proposal);
   const instant = useInstantClock();
+  const span = spanOf(proposal);
   const when =
     span === null
       ? 'fits later that day'

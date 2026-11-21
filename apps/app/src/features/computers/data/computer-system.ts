@@ -61,7 +61,8 @@ export function useStartup(
 ): ReturnType<typeof useScreenQuery<StartupState>> {
   return useScreenQuery({
     queryKey: startupKey(deviceId),
-    queryFn: () => api().call(E.readComputerStartup, { params: { deviceId } }),
+    queryFn: ({ signal }) =>
+      api().call(E.readComputerStartup, { params: { deviceId } }, { signal }),
     enabled,
     retry: false,
   });

@@ -37,7 +37,9 @@ function ServiceItem({
 export function ServicesSection(): ReactNode {
   const me = useSession().client.profile_id;
   const owner = useIsOwner();
-  const rows = serviceRows(useGooglePeople(), useGoogleAccounts(), me, owner);
+  const googlePeople = useGooglePeople();
+  const googleAccounts = useGoogleAccounts();
+  const rows = serviceRows(googlePeople, googleAccounts, me, owner);
   return (
     <List
       inset

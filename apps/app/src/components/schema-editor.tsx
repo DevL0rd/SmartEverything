@@ -295,9 +295,9 @@ function ArrayFieldEditor({
 }
 
 function ArrayNode({ schema, value, change }: NodeProps): ReactNode {
-  const items = arrayOf(value);
   const [chosen, choose] = useState<FieldTarget<number> | null>(null);
   const add = useRef<View>(null);
+  const items = arrayOf(value);
   const itemSchema = schemaOf(schema['items']);
   return (
     <View className="gap-3">

@@ -105,12 +105,12 @@ function Chart({
   readonly height: number;
 }): ReactNode {
   const { width, onLayout } = useMeasuredWidth();
+  const guide = useColour('outline');
   const fills = {
     best: useColour('positive'),
     slowest: useColour('critical'),
     other: useColour('surface-3'),
   };
-  const guide = useColour('outline');
   const average = averageSplitOf(laps) ?? 0;
   const peak = Math.max(...laps.map((lap) => lap.split_ms));
   const floor = lapFloorOf(laps);

@@ -17,10 +17,13 @@ export function useTranscriptSessions(
 ): UseQueryResult<TranscriptSession[]> {
   return useScreenQuery({
     queryKey: [...TRANSCRIPT_SESSIONS_PREFIX, source, pluginId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const startedAt = Date.now();
       try {
-        const sessions = await listTranscriptSessions({ source, pluginId, limit: SESSIONS_SHOWN });
+        const sessions = await listTranscriptSessions(
+          { source, pluginId, limit: SESSIONS_SHOWN },
+          signal,
+        );
         log.debug('transcript_sessions.listed', () => ({
           source,
           pluginId,

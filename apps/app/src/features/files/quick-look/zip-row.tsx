@@ -51,7 +51,12 @@ function Name({ node, share }: { readonly node: ZipNode; readonly share: number 
       </View>
       <View className="flex-row items-center gap-3">
         <View className="min-w-0 flex-1">
-          <ProgressBar progress={share} colour="primary" label={`Size of ${node.name}`} />
+          <ProgressBar
+            progress={share}
+            colour="primary"
+            label={`Size of ${node.name}`}
+            ticking={false}
+          />
         </View>
         <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
           {zipRowCaptionOf(node)}

@@ -18,7 +18,8 @@ const route = vi.hoisted(
     readonly setParams: ReturnType<typeof vi.fn<(params: RouteParams) => void>>;
   } => ({ params: {}, setParams: vi.fn<(params: RouteParams) => void>() }),
 );
-const { editor, changeChat } = vi.hoisted(() => ({
+const { store, editor, changeChat } = vi.hoisted(() => ({
+  store: { fixture: 'store' },
   editor: vi.fn<(props: EditProps) => void>(),
   changeChat: vi.fn(),
 }));
@@ -34,6 +35,7 @@ vi.mock('../../../settings/text-edit-sheet', () => ({
   },
 }));
 vi.mock('./chat-actions', () => ({ changeChat }));
+vi.mock('../../../store/store-context', () => ({ useEntityStore: (): typeof store => store }));
 
 const CHAT_ID = 'a1b2c3d4-0000-4000-8000-000000000001';
 const PROFILE_ID = 'a1b2c3d4-0000-4000-8000-000000000002';
@@ -120,17 +122,17 @@ it('opens the routed title editor and writes the selected chat title', async () 
   });
   changeChat.mockResolvedValue(CHAT);
   await props.request.save('Planters');
-  expect(changeChat).toHaveBeenCalledWith(CHAT_ID, { title: 'Planters' });
+  expect(changeChat).toHaveBeenCalledWith(store, CHAT_ID, { title: 'Planters' });
   props.onClose();
   expect(route.params['operation']).toBeUndefined();
 });
 
-it('rejects a failed rename so the title editor can keep the unsaved value', async () => {
+it('leaves the rollback and the error toast of a refused rename to the chat change', async () => {
   route.params = { operation: 'rename' };
   render();
   const request = editor.mock.lastCall?.[0].request;
   if (request === undefined) throw new Error('Expected the chat title editor.');
   changeChat.mockResolvedValue(null);
-  await expect(request.save('Planters')).rejects.toThrow('Couldn’t save the chat title.');
-  expect(route.params['operation']).toBe('rename');
+  await expect(request.save('Planters')).resolves.toBeUndefined();
+  expect(changeChat).toHaveBeenCalledExactlyOnceWith(store, CHAT_ID, { title: 'Planters' });
 });

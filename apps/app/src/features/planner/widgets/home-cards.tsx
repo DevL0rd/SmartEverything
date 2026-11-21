@@ -16,7 +16,7 @@ import { DeviceFace } from '../../devices';
 import { usePlannerDay, usePlannerItems, useVisibleMinute } from '../data';
 import { DayStrip } from '../today/day-strip';
 import { lensOf } from '../today/now-lens';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 import { NO_HIDDEN, useDayLines, useStripModel, type DayLine } from './day-lines';
 import {
   SECTION_GAP,
@@ -76,7 +76,13 @@ export function DayBadge({ day }: { readonly day: PlannerDay }): ReactNode {
           accessibilityRole="image"
           accessibilityLabel={`${plural(counts.done, 'thing')} of ${String(whole)} done today`}
         >
-          <Arc value={counts.share} size={RING.size} thickness={RING.thickness} colour="primary" />
+          <Arc
+            value={counts.share}
+            size={RING.size}
+            thickness={RING.thickness}
+            colour="primary"
+            ticking={false}
+          />
         </View>
       )}
     </View>
@@ -157,9 +163,9 @@ function Lead({
   readonly split: boolean;
   readonly report: boolean;
 }): ReactNode {
-  const devices = deviceIdsOf(occurrence);
   const item = itemOf(usePlannerItems(null), occurrence);
   const instant = useInstantClock();
+  const devices = deviceIdsOf(occurrence);
   return (
     <View className={cn('min-w-0 gap-1', split && 'flex-1')}>
       <Text variant="body-strong" numberOfLines={report ? 2 : 1}>

@@ -1,3 +1,4 @@
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 import type { DriveAlbum } from '@smarteverything/domain';
@@ -7,8 +8,10 @@ import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
-import { useMutationState, type MutationState } from '../../../store/mutation';
-import { createAlbum, saveAlbum } from './album-data';
+import { notifyFailure } from '../../../components/toast-store';
+import type { EntityStore } from '../../../store/entity-store';
+import { useEntityStore } from '../../../store/store-context';
+import { saveAlbum, startAlbum } from './album-data';
 import { useWhoSees } from '../sharing/album-who';
 import { visibilityOf, type Visibility } from './model';
 import { FieldGroup, SmartRuleEditor } from './rule-editor';
@@ -17,6 +20,7 @@ import { draftReady, withKind, type AlbumDraft } from './rule-draft';
 export interface AlbumSheetRequest {
   readonly draft: AlbumDraft;
   readonly album: DriveAlbum | null;
+  readonly itemIds: readonly string[];
 }
 
 const KINDS: readonly SegmentedOption<DriveAlbum['kind']>[] = [
@@ -118,28 +122,32 @@ interface Opened {
   readonly draft: AlbumDraft;
 }
 
-type OnSaved = (album: DriveAlbum, created: boolean) => void;
+export interface SavedAlbum {
+  readonly id: string;
+  readonly title: string;
+}
 
-function save(opened: Opened, mutation: MutationState, onSaved: OnSaved): void {
-  const { album } = opened.request;
+type OnSaved = (album: SavedAlbum, created: boolean) => void;
+
+function save(store: EntityStore, client: QueryClient, opened: Opened, onSaved: OnSaved): void {
+  const { album, itemIds } = opened.request;
   const { draft } = opened;
-  mutation.run(() => (album === null ? createAlbum(draft) : saveAlbum(album, draft)), {
-    failure: album === null ? 'The album was not made' : 'The album was not saved',
-    label: album === null ? 'photos.album_create' : 'photos.album_save',
-    onDone: (saved) => {
-      onSaved(saved, album === null);
-    },
-  });
+  if (album !== null) {
+    onSaved(album, false);
+    saveAlbum(store, album, draft).catch(notifyFailure('The album was not saved'));
+    return;
+  }
+  const started = startAlbum(store, client, draft, itemIds);
+  onSaved(started, true);
+  started.saved.catch(notifyFailure('The album was not made'));
 }
 
 function SheetFooter({
   opened,
-  busy,
   onClose,
   onSave,
 }: {
   readonly opened: Opened;
-  readonly busy: boolean;
   readonly onClose: () => void;
   readonly onSave: () => void;
 }): ReactNode {
@@ -149,7 +157,6 @@ function SheetFooter({
       <Button
         label={opened.request.album === null ? 'Create album' : 'Save'}
         onPress={onSave}
-        loading={busy}
         disabled={!draftReady(opened.draft)}
       />
     </View>
@@ -171,7 +178,8 @@ export function AlbumSheet({
 }): ReactNode {
   const [seen, setSeen] = useState(request);
   const [opened, setOpened] = useState(() => openedOf(request));
-  const mutation = useMutationState();
+  const client = useQueryClient();
+  const store = useEntityStore();
   if (seen !== request) {
     setSeen(request);
     if (request !== null) setOpened(openedOf(request));
@@ -187,10 +195,9 @@ export function AlbumSheet({
         opened === null ? null : (
           <SheetFooter
             opened={opened}
-            busy={mutation.busy}
             onClose={onClose}
             onSave={() => {
-              save(opened, mutation, onSaved);
+              save(store, client, opened, onSaved);
             }}
           />
         )

@@ -15,7 +15,8 @@ function Notices({
   readonly deviceId: string;
   readonly view: BrushStateView;
 }): ReactNode {
-  const notices = noticesOf(view, useMinute());
+  const minute = useMinute();
+  const notices = noticesOf(view, minute);
   if (notices.length === 0) {
     return null;
   }

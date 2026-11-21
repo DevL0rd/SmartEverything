@@ -168,6 +168,7 @@ function Uploading({
         progress={uploadShare(state.sentBytes, state.totalBytes)}
         colour="primary"
         label="Upload"
+        ticking={false}
       />
       <Text variant="footnote" tone="variant" align="center" accessibilityLiveRegion="polite">
         {uploadLine(state.sentBytes, state.totalBytes)}

@@ -23,7 +23,7 @@ import { decimal, percent } from '../../../format/number';
 import { MINUTE_MS, dayBoundsOf, dayLabel, hoursMinutes, playTime } from '../../../format/time';
 import { useMinute, useSecondOf } from '../../../store/clock';
 import { askAssistantWith } from '../../assistant';
-import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
+import { useInstantClock, type InstantClock } from '../../../store/clock-format';
 import { useWeather, conditionIcon, degrees } from '../../weather';
 import {
   usePlannerClockWrites,
@@ -358,10 +358,11 @@ export function TodaySideColumn({
 }): ReactNode {
   const { person } = usePlannerFrame();
   const rings = useTodayRings(day, move);
-  const timers = liveTimersOf(usePlannerTimers(person));
+  const plannerTimers = usePlannerTimers(person);
   const weather = useWeatherShown();
   const now = useMinute();
   const [planHidden, setPlanHidden] = useState(false);
+  const timers = liveTimersOf(plannerTimers);
   const prompt = planHidden ? null : planPromptOf(day, now);
   const counted = withRings && !isOpenDay(day);
   const grid = layout === 'grid';

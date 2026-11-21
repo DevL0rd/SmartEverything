@@ -7,8 +7,8 @@ import { Interactive } from '../../../components/interactive';
 import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
-import { ClockFigure } from '../../clock/format/clock-figure';
-import { useClockLabel } from '../../clock/format/clock-format';
+import { useClockLabel } from '../../../store/clock-format';
+import { ClockFigure } from '../../clock';
 import { useShownAlarm, useVisibleMinute, type PlannerPerson } from '../data';
 import {
   alarmLabelOf,

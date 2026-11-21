@@ -183,7 +183,7 @@ function applyDevice(
   );
 }
 
-function applyListChange<T extends ListTable>(
+export function applyListChange<T extends ListTable>(
   state: StoreState,
   name: T,
   change: Change<RowOf<T>>,

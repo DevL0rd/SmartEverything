@@ -83,6 +83,7 @@ export function KeepDialog({
           progress={left / DISPLAY_REVERT_SECONDS}
           colour="on-surface-variant"
           label="Time left to keep"
+          ticking
         />
       </View>
     </DialogFrame>

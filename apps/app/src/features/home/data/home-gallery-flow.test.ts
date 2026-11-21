@@ -1,6 +1,7 @@
 import { act, createElement, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { LIVE_CHANGE, SNAPSHOT, type DeviceGroupRow, type Snapshot } from '@smarteverything/domain';
+import { snapshotWire } from '../../../store/snapshot-fixture';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   galleryItems,
@@ -45,7 +46,10 @@ const OTHER_GROUP: DeviceGroupRow = {
 };
 
 function snapshotOf(seq: number, groups: readonly DeviceGroupRow[]): Snapshot {
+  const wire = snapshotWire(null);
+  const tables = SNAPSHOT.shape.tables.parse(wire['tables']);
   return SNAPSHOT.parse({
+    ...wire,
     seq,
     session: {
       client: {
@@ -59,38 +63,11 @@ function snapshotOf(seq: number, groups: readonly DeviceGroupRow[]): Snapshot {
       },
       hub: { version: '1.0.0', startedAt: STAMP, cameras: 'running' },
     },
-    firewall: null,
     owner: null,
     tables: {
-      settings: {
-        home_name: 'Home',
-        time_zone: 'UTC',
-        latitude: null,
-        longitude: null,
-        public_url: null,
-        public_url_checked_at: null,
-        public_url_verified_at: null,
-        public_url_error: null,
-        ice_servers: [],
-        webrtc_candidates: [],
-        push_project_id: null,
-        updated_at: STAMP,
-      },
-      rooms: [],
+      ...tables,
       device_groups: groups,
       devices: groups.includes(GROUP) ? [FIRST_DEVICE, SECOND_DEVICE] : [SECOND_DEVICE],
-      device_state: [],
-      cameras: [],
-      automations: [],
-      provider_links: [],
-      ir_remotes: [],
-      ir_codes: [],
-      layouts: [],
-      events: [],
-      commands: [],
-      recordings: [],
-      health_sources: [],
-      health_daily: [],
     },
   });
 }
@@ -170,37 +147,37 @@ async function mount(groups: readonly DeviceGroupRow[]): Promise<{
   const added: GalleryAdd[] = [];
   await act(() => {
     store.replace(snapshotOf(1, groups));
-    root.render(
-      createElement(StoreProvider, {
-        runtime: { store, ledger: new CommandLedger(store) },
-        children: createElement(
-          PickerSourceProvider,
-          null,
-          createElement(Reader, {
-            onAdd: (request) => {
-              added.push(request);
-            },
-            observe: (view) => {
-              views.push(view);
-            },
-          }),
-        ),
-      }),
-    );
+    const providers = {
+      runtime: { store, ledger: new CommandLedger(store) },
+      children: createElement(
+        PickerSourceProvider,
+        null,
+        createElement(Reader, {
+          onAdd: (request) => {
+            added.push(request);
+          },
+          observe: (view) => {
+            views.push(view);
+          },
+        }),
+      ),
+    };
+    root.render(createElement(StoreProvider, providers));
     return Promise.resolve();
   });
   return {
     store,
     added,
-    latest: () => {
+    latest: (): GalleryView => {
       const view = views.at(-1);
       if (view === undefined) throw new Error('Expected the gallery to render');
       return view;
     },
-    close: () =>
+    close: (): void => {
       act(() => {
         root.unmount();
-      }),
+      });
+    },
   };
 }
 

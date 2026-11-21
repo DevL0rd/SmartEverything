@@ -77,7 +77,8 @@ function LivePhase({
   readonly strong: boolean;
 }): ReactNode {
   const { scene } = facts;
-  const pose = valueOrNull(useVacuumPose(device.id)) ?? scene?.robot ?? null;
+  const vacuumPose = useVacuumPose(device.id);
+  const pose = valueOrNull(vacuumPose) ?? scene?.robot ?? null;
   const id = scene === null ? null : roomAt(scene.rooms, pose);
   const room = scene?.rooms.find((candidate) => candidate.id === id)?.name ?? null;
   return <PhaseView facts={facts} room={room} lastSeenMs={null} strong={strong} />;

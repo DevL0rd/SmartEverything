@@ -44,6 +44,7 @@ function Wear({ view }: { readonly view: BrushStateView }): ReactNode {
         progress={Math.min(1, percent / 100)}
         colour={WEAR_COLOUR[tone]}
         label={`Brush head ${String(Math.round(percent))} percent worn`}
+        ticking={false}
       />
       {left === null ? null : (
         <Text variant="caption" tone="variant" numberOfLines={1}>

@@ -8,7 +8,10 @@ import { NO_DRIVES, driveSettingsCardsOf } from './drive-card-model';
 import { DriveSettingsSection } from './page';
 
 export function DrivesSection(): ReactNode {
-  const cards = driveSettingsCardsOf(useDriveRoots(), useViewerId(), useIsOwner());
+  const driveRoots = useDriveRoots();
+  const viewerId = useViewerId();
+  const isOwner = useIsOwner();
+  const cards = driveSettingsCardsOf(driveRoots, viewerId, isOwner);
   return (
     <DriveSettingsSection>
       {cards.length === 0 ? (

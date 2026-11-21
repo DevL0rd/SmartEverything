@@ -18,7 +18,7 @@ import { goalRingsOf, heartCaption, type SyncControl } from './watch-card-model'
 import type { HeartView } from './watch-heart';
 import { useDayFacts, useHeartToday } from './watch-health-data';
 import { background } from '@smarteverything/logging';
-import { useInstantClock } from '../clock/format/clock-format';
+import { useInstantClock } from '../../store/clock-format';
 
 const EMPTY_LINE = 16;
 
@@ -80,6 +80,7 @@ export function StepsGraph({ glance }: { readonly glance: WatchGlance }): ReactN
       progress={steps === null ? 0 : steps.value / glance.stepsGoal}
       colour="stand"
       label="Steps today"
+      ticking={false}
     />
   );
 }
@@ -172,12 +173,13 @@ export function GoalRings({
 }): ReactNode {
   const profile = useActiveProfile();
   const targets = effectiveFitnessGoals(profile?.fitness_goals ?? UNSET_FITNESS_GOALS);
+  const dayFacts = useDayFacts(device);
   const goals = goalRingsOf({
     steps: glance.steps?.value ?? null,
     stepsGoal: glance.stepsGoal,
     energy: glance.energy,
     energyGoal: targets.move_kcal,
-    minutes: useDayFacts(device).activeMinutes,
+    minutes: dayFacts.activeMinutes,
     minutesGoal: targets.active_minutes,
   });
   return (

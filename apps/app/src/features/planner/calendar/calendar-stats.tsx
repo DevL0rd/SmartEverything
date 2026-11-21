@@ -12,7 +12,7 @@ import { Text } from '../../../components/text';
 import { CALENDAR_COLOUR } from '../../../design/data-colours';
 import { useIdiom } from '../../../design/platform';
 import { localDayKey, zonedStartOfDay } from '../../../format/time';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import { PLANNER_PREFIX } from '../../../queries/keys';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useMinuteOf } from '../../../store/clock';
@@ -279,7 +279,7 @@ function useGridSleep(
   const to = new Date(zonedStartOfDay(addDays(last, 1), timeZone)).toISOString();
   const query = useScreenQuery({
     queryKey: [...PLANNER_PREFIX, 'sleep', person, from, to],
-    queryFn: () => readPlannerSleep(apiPerson(person), from, to),
+    queryFn: ({ signal }) => readPlannerSleep(apiPerson(person), from, to, signal),
     enabled: shown,
   });
   const { error } = query;

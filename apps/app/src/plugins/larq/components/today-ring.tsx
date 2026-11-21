@@ -100,7 +100,14 @@ export function TodayRing({ today, minuteOfDay, size, label }: TodayRingProps): 
       style={frame}
       className="items-center justify-center"
     >
-      <Arc value={Math.min(1, progress)} size={size} thickness={thickness} colour={colour} tinted />
+      <Arc
+        value={Math.min(1, progress)}
+        size={size}
+        thickness={thickness}
+        colour={colour}
+        tinted
+        ticking={false}
+      />
       {progress > 1 ? (
         <View pointerEvents="none" className="absolute inset-0 opacity-70">
           <Arc
@@ -109,6 +116,7 @@ export function TodayRing({ today, minuteOfDay, size, label }: TodayRingProps): 
             thickness={thickness}
             colour={colour}
             trackColour={null}
+            ticking={false}
           />
         </View>
       ) : null}

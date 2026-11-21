@@ -10,7 +10,9 @@ import { Text } from '../../../components/text';
 import { VirtualList } from '../../../components/virtual-list';
 import { joinParts, plural } from '../../../format/text';
 import { SettingsFrame } from '../../../settings/settings-frame';
-import { changePlugin } from '../data/plugin-actions';
+import { useQueryClient } from '@tanstack/react-query';
+import { switchTool } from '../data/plugin-actions';
+import { useEntityStore } from '../../../store/store-context';
 import { usePluginTools } from '../data/plugin-queries';
 import { PluginListLoading } from './plugin-list-loading';
 import { MissingPlugin, usePluginParam } from './plugin-screen';
@@ -43,6 +45,8 @@ function ToolRow({
   readonly tool: PluginToolRow;
 }): ReactNode {
   const reach = reachOf(tool);
+  const store = useEntityStore();
+  const client = useQueryClient();
   return (
     <SwitchRow
       title={tool.title}
@@ -51,10 +55,7 @@ function ToolRow({
       subtitle={reach}
       value={tool.enabled}
       onChange={(on) => {
-        background(
-          changePlugin(row, { tool_switches: { [tool.name]: on } }, `${tool.title} wasn’t changed`),
-          'plugin.change_failed',
-        );
+        background(switchTool(store, client, row, { tool, on }), 'plugin.tool_switch_failed');
       }}
     />
   );

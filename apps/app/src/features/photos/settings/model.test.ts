@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BackupDeviceState, BackupState } from '@smarteverything/domain';
 import { INITIAL_BACKUP_STATUS, type BackupStatus } from '../backup/model/status';
-import { NO_PROGRESS } from '../backup/phones-model';
+import { NO_DEVICE_PROGRESS } from '../backup/phones-model';
 import { toggled } from './backup-albums';
 import {
   PERSON_FOLDER_TEMPLATE,
@@ -72,36 +72,40 @@ describe('the Backup link card', () => {
   const state = stateOf([deviceOf()]);
 
   it('leads with this device where it has a local source', () => {
-    expect(backupCardOf({ status: INITIAL_BACKUP_STATUS, state, live: NO_PROGRESS })).toEqual({
+    expect(
+      backupCardOf({ status: INITIAL_BACKUP_STATUS, state, progress: NO_DEVICE_PROGRESS }),
+    ).toEqual({
       headline: 'Backup is off',
       detail: '1 device backing up',
       progress: null,
       colour: 'primary',
     });
     const uploading = status({ phase: 'uploading', total: 200, done: 80 });
-    expect(backupCardOf({ status: uploading, state, live: NO_PROGRESS })).toMatchObject({
+    expect(backupCardOf({ status: uploading, state, progress: NO_DEVICE_PROGRESS })).toMatchObject({
       headline: 'This device: 120 left',
       progress: 0.4,
     });
     const idle = status({ phase: 'idle', total: 5, done: 5 });
-    expect(backupCardOf({ status: idle, state, live: NO_PROGRESS })).toMatchObject({
+    expect(backupCardOf({ status: idle, state, progress: NO_DEVICE_PROGRESS })).toMatchObject({
       headline: 'Up to date',
       colour: 'positive',
     });
     const waiting = status({ phase: 'paused', pauseReason: 'wifi', total: 5, done: 2 });
-    expect(backupCardOf({ status: waiting, state, live: NO_PROGRESS }).headline).toBe(
+    expect(backupCardOf({ status: waiting, state, progress: NO_DEVICE_PROGRESS }).headline).toBe(
       'Waiting for Wi-Fi · 3 left',
     );
   });
 
   it('shows only the devices backing up without a local source', () => {
-    expect(backupCardOf({ status: null, state, live: NO_PROGRESS })).toEqual({
+    expect(backupCardOf({ status: null, state, progress: NO_DEVICE_PROGRESS })).toEqual({
       headline: '1 device backing up',
       detail: '10 left to back up',
       progress: 0.9,
       colour: 'primary',
     });
-    expect(backupCardOf({ status: null, state: undefined, live: NO_PROGRESS }).headline).toBeNull();
+    expect(
+      backupCardOf({ status: null, state: undefined, progress: NO_DEVICE_PROGRESS }).headline,
+    ).toBeNull();
   });
 });
 

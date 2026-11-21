@@ -32,10 +32,16 @@ function auditKey(
 
 export function peopleAccessQuery(owner: boolean): {
   readonly queryKey: typeof PEOPLE_KEY;
-  readonly queryFn: typeof listPersonAccess;
+  readonly queryFn: (context: {
+    readonly signal: AbortSignal;
+  }) => ReturnType<typeof listPersonAccess>;
   readonly enabled: boolean;
 } {
-  return { queryKey: PEOPLE_KEY, queryFn: listPersonAccess, enabled: owner };
+  return {
+    queryKey: PEOPLE_KEY,
+    queryFn: ({ signal }) => listPersonAccess(signal),
+    enabled: owner,
+  };
 }
 
 export function accessAuditQuery(
@@ -44,12 +50,12 @@ export function accessAuditQuery(
   profileId: string | null,
 ): {
   readonly queryKey: ReturnType<typeof auditKey>;
-  readonly queryFn: () => Promise<AccessAuditRow[]>;
+  readonly queryFn: (context: { readonly signal: AbortSignal }) => Promise<AccessAuditRow[]>;
   readonly enabled: boolean;
 } {
   return {
     queryKey: auditKey(limit, profileId),
-    queryFn: () => listAccessAudit(limit, profileId),
+    queryFn: ({ signal }) => listAccessAudit(limit, profileId, signal),
     enabled: owner,
   };
 }
@@ -77,7 +83,7 @@ const REQUESTS_KEY = [...ACCESS_PREFIX, 'requests'] as const;
 export function useAccessRequests(): UseQueryResult<AccessRequestRow[]> {
   return useScreenQuery({
     queryKey: REQUESTS_KEY,
-    queryFn: () => listAccessRequests(null),
+    queryFn: ({ signal }) => listAccessRequests(null, signal),
   });
 }
 

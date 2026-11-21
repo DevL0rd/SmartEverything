@@ -38,6 +38,7 @@ export function StepsBlock({
         colour="stand"
         label="Steps goal"
         thick={size === 'xl'}
+        ticking={false}
       />
       <Text variant="footnote" tone="variant" numberOfLines={1}>
         {stepsLine(glance)}

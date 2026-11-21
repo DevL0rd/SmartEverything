@@ -5,8 +5,6 @@ import { useDOMImperativeHandle } from 'expo/dom';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { background } from '@smarteverything/logging';
 import { useStableCallback } from '../../../design/use-stable-callback';
-import { createGlowDecalFactory } from '../../models/three/glow-decal';
-import { createSceneModelSet } from '../../models/three/scene-model';
 import {
   SCENE_MESSAGE,
   type Map3dDomProps,
@@ -24,9 +22,8 @@ import {
   VIEW_INSETS,
 } from './map-3d-messages';
 import { Marks, sameMarks } from './map-3d-marks';
-import { Map3dSession } from './map-3d-session';
-import { RenderCore } from './render-core';
-import { WebglUnavailableError } from './render-core-renderer';
+import type { Map3dSession } from './map-3d-session';
+import { detailOf, useMounted, type Map3dMountCallbacks, type Mounted } from './map-3d-mount';
 import type { ScreenMarks } from './render-core-marks';
 import { SHOW_ALL_OBJECTS } from './render-core-objects';
 import { FULL_QUALITY } from '../live-visibility/quality-scaler';
@@ -42,26 +39,6 @@ import {
 import { EditOverlayLayer, type OverlayPainter } from './edit/overlay';
 import { NO_YIELD, sameYield, type YieldZones } from './edit/overlay-model';
 
-interface Mounted {
-  readonly core: RenderCore;
-  readonly session: Map3dSession;
-}
-
-function observeSize(canvas: HTMLCanvasElement, core: RenderCore): () => void {
-  const observer = new ResizeObserver(([entry]) => {
-    if (entry === undefined) return;
-    core.resize(entry.contentRect.width, entry.contentRect.height, window.devicePixelRatio);
-  });
-  observer.observe(canvas);
-  return () => {
-    observer.disconnect();
-  };
-}
-
-function detailOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 const NO_MARKS: ScreenMarks = { width: 0, height: 0, labels: [], chips: [], robot: null };
 
 function useMarks(): readonly [ScreenMarks, (next: ScreenMarks) => void] {
@@ -70,68 +47,6 @@ function useMarks(): readonly [ScreenMarks, (next: ScreenMarks) => void] {
     setMarks((current) => (sameMarks(current, next) ? current : next));
   }, []);
   return [marks, update];
-}
-
-interface MountCallbacks {
-  readonly onPick: (roomId: string | null) => void;
-  readonly onPickDevice: ((deviceId: string) => void) | undefined;
-  readonly onUnavailable: (detail: string) => void;
-  readonly onMarks: (marks: ScreenMarks) => void;
-  readonly onFrameTime: (frameMs: number) => void;
-  readonly onScanFailed: (detail: string) => void;
-  readonly onEdit: ((event: EditEvent) => void) | undefined;
-  readonly onYield: (zones: YieldZones) => void;
-}
-
-function useMounted(
-  callbacks: MountCallbacks,
-  sharedRenderer: boolean,
-): readonly [Mounted | null, (canvas: HTMLCanvasElement) => (() => void) | undefined] {
-  const [mounted, setMounted] = useState<Mounted | null>(null);
-  const { onPick, onPickDevice, onUnavailable, onMarks, onFrameTime, onScanFailed } = callbacks;
-  const { onEdit, onYield } = callbacks;
-  const attach = useCallback(
-    (canvas: HTMLCanvasElement): (() => void) | undefined => {
-      try {
-        const core = new RenderCore({
-          canvas,
-          sharedRenderer,
-          onPickRoom: onPick,
-          onPickDevice,
-          onMarks,
-          onFrameTime,
-          onScanFailed,
-          onEdit,
-          onYield,
-          createModelSet: createSceneModelSet,
-          createDecals: createGlowDecalFactory,
-        });
-        const unobserve = observeSize(canvas, core);
-        setMounted({ core, session: new Map3dSession(core) });
-        return () => {
-          unobserve();
-          core.dispose();
-          setMounted(null);
-        };
-      } catch (error) {
-        if (!(error instanceof WebglUnavailableError)) throw error;
-        onUnavailable(detailOf(error.cause));
-        return undefined;
-      }
-    },
-    [
-      onPick,
-      onPickDevice,
-      onUnavailable,
-      onMarks,
-      onFrameTime,
-      onScanFailed,
-      onEdit,
-      onYield,
-      sharedRenderer,
-    ],
-  );
-  return [mounted, attach];
 }
 
 function guarded(
@@ -271,7 +186,7 @@ function useInsets(
   }, [mounted, top, bottom, onUnavailable]);
 }
 
-function useEditCallback(props: Map3dDomProps): MountCallbacks['onEdit'] {
+function useEditCallback(props: Map3dDomProps): Map3dMountCallbacks['onEdit'] {
   const send = useStableCallback((event: EditEvent): void => {
     if (props.onEdit !== undefined) {
       background(
@@ -307,7 +222,12 @@ function useEditLayer(
 
 function useCoreCallbacks(
   props: Map3dDomProps,
-): Omit<MountCallbacks, 'onMarks' | 'onEdit' | 'onYield'> {
+): Omit<Map3dMountCallbacks, 'onMarks' | 'onEdit' | 'onYield'> {
+  const onPainted = useStableCallback((): void => {
+    if (props.onPainted !== undefined) {
+      background(props.onPainted(), 'house_map.map3d_painted_failed');
+    }
+  });
   const onPick = useStableCallback((roomId: string | null): void => {
     background(props.onPickRoom(roomId), 'vacuum.map3d_pick_failed');
   });
@@ -330,7 +250,7 @@ function useCoreCallbacks(
       background(props.onScanFailed(detail), 'house_map.map3d_scan_failed_report_failed');
     }
   });
-  return { onPick, onPickDevice, onUnavailable, onFrameTime, onScanFailed };
+  return { onPick, onPickDevice, onUnavailable, onFrameTime, onScanFailed, onPainted };
 }
 
 const NO_ROOMS: readonly string[] = [];
@@ -392,7 +312,7 @@ export default function Map3d(props: Map3dDomProps): ReactNode {
   }, [mounted, onReady]);
   return (
     <div className="vacuum-map3d-frame" data-theme={theme} role="img" aria-label={label}>
-      <canvas ref={attach} className="vacuum-map3d" />
+      <div ref={attach} className="vacuum-map3d-host" />
       <Marks
         marks={marks}
         selection={selection}

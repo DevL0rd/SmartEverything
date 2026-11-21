@@ -6,7 +6,7 @@ import {
   type HomeMapSceneLive,
 } from '../../../components/house-map/adapters/home-map-scene';
 import type { RenderScene } from '../../../components/house-map/render-scene';
-import { devicesIn, useDevices, useRooms, type DeviceFilter } from '../../../store/selectors';
+import { devicesIn, type DeviceFilter } from '../../../store/selectors';
 import { rowsOf, type Device, type StoreState } from '../../../store/state';
 import { useStoreSelector } from '../../../store/store-context';
 
@@ -68,12 +68,18 @@ export function useHomeMapSceneLive(filter: DeviceFilter): HomeMapSceneLive {
   return useMemo(() => homeMapSceneLive(names.rooms, names.devices), [names]);
 }
 
+const ALL_DEVICES: DeviceFilter = {};
+
+const allSceneNames = (state: StoreState): HomeMapSceneNames =>
+  homeMapSceneNamesOf(state, ALL_DEVICES);
+
 export function useHomeMapScene(map: HomeMap | null): RenderScene | null {
-  const rooms = useRooms();
-  const devices = useDevices();
+  const names = useStoreSelector(allSceneNames, sameHomeMapSceneNames);
   return useMemo(
     () =>
-      map === null ? null : homeMapRenderScene({ map, live: homeMapSceneLive(rooms, devices) }),
-    [map, rooms, devices],
+      map === null
+        ? null
+        : homeMapRenderScene({ map, live: homeMapSceneLive(names.rooms, names.devices) }),
+    [map, names],
   );
 }

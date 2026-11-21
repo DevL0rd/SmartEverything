@@ -10,10 +10,12 @@ interface Selection {
 
 const fixture = vi.hoisted(() => ({
   select: vi.fn<(_: Selection) => null>(() => null),
-  updateHome: vi.fn().mockResolvedValue(undefined),
+  writeHome: vi.fn().mockResolvedValue(undefined),
+  store: { fixture: 'store' },
 }));
 
-vi.mock('../../../api/settings', () => ({ updateHome: fixture.updateHome }));
+vi.mock('../../../store/home-writes', () => ({ writeHome: fixture.writeHome }));
+vi.mock('../../../store/store-context', () => ({ useEntityStore: (): object => fixture.store }));
 vi.mock('../../../components/list-row', () => ({ ListRow: (): null => null }));
 vi.mock('../../../components/rows', () => ({
   ActionRow: (): null => null,
@@ -37,8 +39,10 @@ describe('Home time zone picker', () => {
     const selection = fixture.select.mock.lastCall?.[0];
     expect(selection?.value).toBe('America/Catamarca');
     selection?.onChange('America/Catamarca');
-    expect(fixture.updateHome).not.toHaveBeenCalled();
+    expect(fixture.writeHome).not.toHaveBeenCalled();
     selection?.onChange('Europe/London');
-    expect(fixture.updateHome).toHaveBeenCalledExactlyOnceWith({ time_zone: 'Europe/London' });
+    expect(fixture.writeHome).toHaveBeenCalledExactlyOnceWith(fixture.store, {
+      time_zone: 'Europe/London',
+    });
   });
 });

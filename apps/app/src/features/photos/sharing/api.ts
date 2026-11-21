@@ -9,8 +9,8 @@ import { api } from '../../../api/transport';
 
 type Call<K extends keyof typeof P> = Promise<PhotosResult<K>>;
 
-export function readPhotoSharing(): Call<'readPhotoSharing'> {
-  return api().call(P.readPhotoSharing, {});
+export function readPhotoSharing(signal: AbortSignal): Call<'readPhotoSharing'> {
+  return api().call(P.readPhotoSharing, {}, { signal });
 }
 
 export function setAlbumMembers(
@@ -38,11 +38,16 @@ export function leaveAlbum(albumId: string): Call<'leavePhotoAlbum'> {
 export function listAlbumActivity(
   albumId: string,
   cursor: string | null,
+  signal: AbortSignal,
 ): Call<'listPhotoAlbumActivity'> {
-  return api().call(P.listPhotoAlbumActivity, {
-    params: { albumId },
-    query: cursor === null ? {} : { cursor },
-  });
+  return api().call(
+    P.listPhotoAlbumActivity,
+    {
+      params: { albumId },
+      query: cursor === null ? {} : { cursor },
+    },
+    { signal },
+  );
 }
 
 export function addAlbumActivity(

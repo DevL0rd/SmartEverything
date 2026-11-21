@@ -33,12 +33,17 @@ async function readMetric(
   deviceId: string,
   capability: ComputerMetric,
   range: MetricRange,
+  signal: AbortSignal,
 ): Promise<readonly ChartPoint[]> {
   return pointsOf(
-    await api().call(E.readComputerMetrics, {
-      params: { deviceId },
-      query: { capability, range },
-    }),
+    await api().call(
+      E.readComputerMetrics,
+      {
+        params: { deviceId },
+        query: { capability, range },
+      },
+      { signal },
+    ),
   );
 }
 
@@ -52,7 +57,7 @@ export function useMetricSeries(
   return useQueries({
     queries: metrics.map((capability) => ({
       queryKey: metricKey(deviceId, capability, range),
-      queryFn: () => readMetric(deviceId, capability, range),
+      queryFn: ({ signal }) => readMetric(deviceId, capability, range, signal),
       enabled,
       subscribed: !paused,
     })),
@@ -74,7 +79,7 @@ export function useMetricHistory(
 ): MetricHistory {
   const query = useScreenQuery({
     queryKey: metricKey(deviceId, metric, range),
-    queryFn: () => readMetric(deviceId, metric, range),
+    queryFn: ({ signal }) => readMetric(deviceId, metric, range, signal),
     enabled,
   });
   return {

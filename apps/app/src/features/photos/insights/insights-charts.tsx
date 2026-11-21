@@ -19,7 +19,7 @@ import {
   weekMatrix,
 } from './heat-model';
 import { growthSeries, growthTicks, kindSlices, photoShare, type GrowthSeries } from './model';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 function Caption({ text }: { readonly text: string | null }): ReactNode {
   return text === null ? null : (

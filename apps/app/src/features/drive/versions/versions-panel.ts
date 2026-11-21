@@ -53,7 +53,8 @@ export function useVersionsData(target: VersionsTarget): VersionsData {
     if (!hasNextPage || isFetchingNextPage) return;
     fetchNextPage().catch(notifyFailure('Earlier versions could not be read.'));
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-  const conflicts = flattenPages(useDriveConflicts(item.rootId).data, (page) => page.items);
+  const driveConflicts = useDriveConflicts(item.rootId);
+  const conflicts = flattenPages(driveConflicts.data, (page) => page.items);
   const versions = flattenPages(pages.data, (page) => page.items);
   return {
     item,

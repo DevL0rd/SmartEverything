@@ -12,7 +12,7 @@ const STATUS_KEY = ['window', 'deepseek', 'status'] as const;
 export function useDeepSeekStatus(): UseQueryResult<DeepSeekStatus> {
   return useScreenQuery({
     queryKey: STATUS_KEY,
-    queryFn: () => api().call(D.readDeepSeek, {}),
+    queryFn: ({ signal }) => api().call(D.readDeepSeek, {}, { signal }),
   });
 }
 

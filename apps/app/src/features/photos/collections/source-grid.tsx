@@ -4,9 +4,7 @@ import { FlashList, type ListRenderItem } from '@shopify/flash-list';
 import type { PhotoSource } from '@smarteverything/domain';
 import { dayText } from '../../../components/media-grid/day-text';
 import { rowHeight, TILE_GAP } from '../../../components/media-grid/justify';
-import {
-  type MediaSelection,
-} from '../../../components/media-grid/selection';
+import { type MediaSelection } from '../../../components/media-grid/selection';
 import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { DRAW_DISTANCE } from '../../../components/virtual-list';

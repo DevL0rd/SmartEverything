@@ -68,7 +68,7 @@ const LIVE: SaveDeps = {
     const handle = backupHandle.get();
     return handle === null ? null : handle.deviceId;
   },
-  read: readDriveItem,
+  read: (itemId) => readDriveItem(itemId),
   origins: liveOrigins,
   fileUrl: (item) => driveLinks.resolve(item.id, item.rev, 'file'),
   restore: restoreMediaFile,

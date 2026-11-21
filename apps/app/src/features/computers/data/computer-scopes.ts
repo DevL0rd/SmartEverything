@@ -35,7 +35,7 @@ export function useComputerScopes(
 ): ReturnType<typeof useScreenQuery<ComputerScopes>> {
   return useScreenQuery({
     queryKey: scopesKey(deviceId),
-    queryFn: () => api().call(E.readComputerScopes, { params: { deviceId } }),
+    queryFn: ({ signal }) => api().call(E.readComputerScopes, { params: { deviceId } }, { signal }),
     enabled,
   });
 }

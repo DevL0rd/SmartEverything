@@ -11,7 +11,7 @@ const STATUS_KEY = ['window', 'assistant-voice', 'status'] as const;
 export function useGeminiStatus(): UseQueryResult<AssistantVoiceStatus> {
   return useScreenQuery({
     queryKey: STATUS_KEY,
-    queryFn: () => api().call(E.readAssistantVoice, {}),
+    queryFn: ({ signal }) => api().call(E.readAssistantVoice, {}, { signal }),
   });
 }
 

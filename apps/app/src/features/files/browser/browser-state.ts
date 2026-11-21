@@ -163,10 +163,10 @@ export function useBrowserState(
   abilities: FileAbilities,
   start: BrowserStart = {},
 ): BrowserStateHandle {
-  const at = locationKeyOf(location);
   const [stored, dispatchAt] = useReducer(reduceBrowser, location, (first) =>
     initialStateOf(first, start),
   );
+  const at = locationKeyOf(location);
   const state = arrive(stored, at);
   return {
     state,

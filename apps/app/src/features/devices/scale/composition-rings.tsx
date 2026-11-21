@@ -23,6 +23,7 @@ export function MiniRings({ composition }: { readonly composition: BodyCompositi
             thickness={MINI_THICKNESS}
             colour={ring.colour}
             trackColour="outline-variant"
+            ticking={false}
           />
           <View className="min-w-0 shrink">
             <Text variant="caption" tone="variant" numberOfLines={1}>
@@ -59,6 +60,7 @@ function PageRing({
           thickness={PAGE_THICKNESS}
           colour={ring.colour}
           trackColour="outline-variant"
+          ticking={false}
         />
         <View className="absolute inset-0 items-center justify-center">
           <Text variant="footnote" className="tabular">

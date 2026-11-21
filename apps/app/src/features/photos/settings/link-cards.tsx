@@ -8,7 +8,7 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { count } from '../../../format/number';
 import { useBackupStatus } from '../backup/model/status';
-import { useLiveProgress } from '../backup/live';
+import { useDeviceProgress } from '../backup/live';
 import { usePhotoBackupState, usePhotoDuplicateStats } from '../data';
 import { sourceSegmentsOf } from '../duplicates/model';
 import { useDriveLabels } from '../duplicates/use-drive-labels';
@@ -70,13 +70,18 @@ function BackupLinkBody({
   readonly local: ReturnType<typeof useBackupStatus> | null;
 }): ReactNode {
   const state = usePhotoBackupState().data;
-  const view = backupCardOf({ status: local, state, live: useLiveProgress() });
+  const view = backupCardOf({ status: local, state, progress: useDeviceProgress() });
   return (
     <Card href={href.settings.page(PHOTOS_BACKUP_PAGE)} label="Backup" className="min-w-0 flex-1">
       <CardHead icon="upload" title="Backup" />
       <Lines headline={view.headline} detail={view.headline === null ? null : view.detail} />
       {view.progress === null ? null : (
-        <ProgressBar progress={view.progress} colour={view.colour} label="Backed up so far" />
+        <ProgressBar
+          progress={view.progress}
+          colour={view.colour}
+          label="Backed up so far"
+          ticking={false}
+        />
       )}
     </Card>
   );

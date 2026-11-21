@@ -43,14 +43,17 @@ vi.mock('react-native', async (importOriginal) => ({
   View: (props: { readonly children?: ReactNode }): ReactNode =>
     createElement('div', null, props.children ?? null),
 }));
-vi.mock('../../devices', () => ({
+vi.mock('../../devices', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   DeviceFace: (props: { readonly deviceId: string; readonly face: string }): ReactNode =>
     createElement('i', { 'data-device': props.deviceId, 'data-face': props.face }),
 }));
-vi.mock('../../device-visuals', () => ({
+vi.mock('../../device-visuals', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   familyIcon: (family: DeviceFamily): string => `icon-${family}`,
 }));
-vi.mock('../../models', () => ({
+vi.mock('../../models', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   modelSubjectOf: (): null => null,
   resolvedModelOf: (): null => null,
   useModelCatalog: (): null => null,

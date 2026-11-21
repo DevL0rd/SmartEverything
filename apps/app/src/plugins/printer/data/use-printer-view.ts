@@ -47,7 +47,7 @@ export function usePrinterView<K extends ViewName>(
   const revision = usePrinterRevision(device?.id ?? '');
   return useScreenQuery({
     queryKey: [...printerPrefix(device?.id ?? 'none'), view, query, revision],
-    queryFn: () => readPrinterView(device?.external_id ?? null, view, query),
+    queryFn: ({ signal }) => readPrinterView(device?.external_id ?? null, view, query, signal),
     enabled: enabled && device !== null,
     staleTime: Infinity,
   });

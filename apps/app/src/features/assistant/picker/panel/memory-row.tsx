@@ -3,6 +3,7 @@ import type { AiChatRow } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { SwitchRow } from '../../../../components/rows';
 import { changeChat } from '../../chats/chat-actions';
+import { useEntityStore } from '../../../../store/store-context';
 import { chatMemoryRow, type ChatMemoryRow } from '../../details/memory-model';
 import { useMemoryList, useMemorySession } from '../../memory/memory-data';
 import { KeyedRow } from './panel-chrome';
@@ -17,10 +18,11 @@ export function useMemoryControl(chat: AiChatRow): MemoryControl {
   const session = useMemorySession();
   const person = useMemoryList(session).data?.settings.enabled ?? null;
   const row = chatMemoryRow(chat.memory, person);
+  const store = useEntityStore();
   return {
     ...row,
     change: (memory): void => {
-      if (!row.disabled) background(changeChat(chat.id, { memory }), 'chat.change_failed');
+      if (!row.disabled) background(changeChat(store, chat.id, { memory }), 'chat.change_failed');
     },
   };
 }

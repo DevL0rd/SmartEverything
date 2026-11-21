@@ -20,7 +20,7 @@ export const LISTENING_KEY = ['window', 'listening'] as const;
 export function useListeningView(): UseQueryResult<ListeningView> {
   const query = useScreenQuery({
     queryKey: LISTENING_KEY,
-    queryFn: () => api().call(E.readListening, {}),
+    queryFn: ({ signal }) => api().call(E.readListening, {}, { signal }),
   });
   const live = useSyncStatus().status === 'live';
   const refetch = query.refetch;

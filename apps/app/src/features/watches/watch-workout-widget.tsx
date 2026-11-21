@@ -92,7 +92,8 @@ function WorkoutFrame({
 function WorkoutContent({ watch }: { readonly watch: Device }): ReactNode {
   const view = useWatchWorkout(watch);
   const command = useWatchCommand(watch);
-  const tile = isTile(useWidgetFace().cls);
+  const widgetFace = useWidgetFace();
+  const tile = isTile(widgetFace.cls);
   const { body, actions } = shownOf(view, command, tile);
   return (
     <WorkoutFrame watch={watch} actions={actions}>

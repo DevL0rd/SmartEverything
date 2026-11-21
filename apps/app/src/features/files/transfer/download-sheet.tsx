@@ -35,7 +35,7 @@ function Working({ flow, view }: { readonly flow: DownloadFlow; readonly view: R
   if (view.working === null) return null;
   return (
     <View className="gap-2">
-      <ProgressBar progress={null} colour="primary" label={view.working} />
+      <ProgressBar progress={null} colour="primary" label={view.working} ticking={false} />
       <View className="flex-row items-center justify-between gap-2">
         <Text variant="footnote" tone="variant" className="min-w-0 shrink">
           {view.working}
@@ -111,7 +111,7 @@ function Body({
     case 'preparing':
       return (
         <View className="gap-2">
-          <ProgressBar progress={null} colour="primary" label="Getting ready" />
+          <ProgressBar progress={null} colour="primary" label="Getting ready" ticking={false} />
           <Text variant="footnote" tone="variant">
             {view.line}
           </Text>

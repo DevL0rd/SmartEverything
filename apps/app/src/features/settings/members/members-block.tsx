@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { ROLES, type ClientRow } from '@smarteverything/domain';
-import { changeClientRole, removeClient } from '../../../api/settings';
 import { Button } from '../../../components/button';
 import { confirm } from '../../../components/confirm-store';
 import { EmptyState } from '../../../components/empty-state';
@@ -13,62 +12,41 @@ import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { useMinute } from '../../../store/clock';
+import type { EntityStore } from '../../../store/entity-store';
+import { unpairClient, writeClientRole } from '../../../store/home-writes';
 import { useRows, useSession } from '../../../store/selectors';
+import { useEntityStore } from '../../../store/store-context';
 import { ClientProfile } from './client-profile';
-import {
-  ROLE_HELP,
-  ROLE_LABEL,
-  clientViews,
-  livePending,
-  platformIcon,
-  shownRole,
-  type ClientView,
-  type PendingRole,
-} from './clients';
+import { ROLE_HELP, ROLE_LABEL, clientViews, platformIcon, type ClientView } from './clients';
 
-import { trackSetting } from '../settings-log';
 const ROLE_OPTIONS = ROLES.map((role) => ({ value: role, label: ROLE_LABEL[role] }));
 
-async function unpair(client: ClientRow, close: () => void): Promise<void> {
+async function unpair(store: EntityStore, client: ClientRow, close: () => void): Promise<void> {
   const accepted = await confirm({
     title: `Unpair ${client.name}?`,
     body: 'It loses access right away. You can pair it again later.',
     confirmLabel: 'Unpair',
     tone: 'destructive',
   });
-  if (accepted) {
-    await trackSetting('client.unpair', { clientId: client.id }, () => removeClient(client.id));
-    close();
-  }
+  if (!accepted) return;
+  close();
+  await unpairClient(store, client);
 }
 
 function RoleChoice({ client }: { readonly client: ClientRow }): ReactNode {
-  const [pending, setPending] = useState<PendingRole | null>(null);
-  const live = livePending(client.role, pending);
-  if (live !== pending) {
-    setPending(live);
-  }
-  const role = shownRole(client.role, live);
+  const store = useEntityStore();
   return (
     <View className="gap-2">
       <Segmented
         label="Role"
         options={ROLE_OPTIONS}
-        value={role}
+        value={client.role}
         onChange={(next) => {
-          setPending({ from: client.role, to: next });
-          trackSetting(
-            'client.role_change',
-            { clientId: client.id, from: client.role, to: next },
-            () => changeClientRole(client.id, next),
-          ).catch((error: unknown) => {
-            setPending(null);
-            notifyFailure('The role was not changed')(error);
-          });
+          writeClientRole(store, client, next).catch(notifyFailure('The role was not changed'));
         }}
       />
       <Text variant="footnote" tone="variant">
-        {ROLE_HELP[role]}
+        {ROLE_HELP[client.role]}
       </Text>
     </View>
   );
@@ -81,6 +59,7 @@ export function ClientSheet({
   readonly view: ClientView;
   readonly onClose: () => void;
 }): ReactNode {
+  const store = useEntityStore();
   return (
     <Sheet
       open
@@ -93,7 +72,7 @@ export function ClientSheet({
           icon="trash"
           variant="destructive"
           onPress={() => {
-            unpair(view.client, onClose).catch(
+            unpair(store, view.client, onClose).catch(
               notifyFailure(`${view.client.name} was not unpaired`),
             );
           }}

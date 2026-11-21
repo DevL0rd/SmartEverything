@@ -7,8 +7,12 @@ import {
 } from '@smarteverything/domain';
 import { api } from './transport';
 
-export async function readWatchDays(from: string, to: string): Promise<readonly WatchDayRow[]> {
-  return (await api().call(E.readWatchDays, { query: { from, to } })).days;
+export async function readWatchDays(
+  from: string,
+  to: string,
+  signal: AbortSignal,
+): Promise<readonly WatchDayRow[]> {
+  return (await api().call(E.readWatchDays, { query: { from, to } }, { signal })).days;
 }
 
 export async function runWatchAction(

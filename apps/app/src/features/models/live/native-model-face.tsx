@@ -8,6 +8,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { EASING } from '../../../design/motion';
 import { FADE_IN_MS } from '../visual/model-visual';
+import { StillCoveredContext } from '../visual/still-covered';
 
 interface FaceProps {
   readonly frame: RefObject<View | null>;
@@ -48,7 +49,7 @@ export function NativeModelFace({
         className="absolute inset-0"
         style={stillStyle}
       >
-        {still}
+        <StillCoveredContext value={drawn}>{still}</StillCoveredContext>
       </Animated.View>
     </View>
   );

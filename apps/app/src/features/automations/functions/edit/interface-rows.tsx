@@ -32,9 +32,7 @@ function Row({ line, side, editable, onEdit, onRemove }: RowProps): ReactNode {
   return (
     <View className="min-h-touch-min flex-row items-center gap-2 border-b border-outline-variant py-1.5">
       <View className="min-w-0 flex-1 gap-0.5">
-        <Text variant="body-strong">
-          {line.title}
-        </Text>
+        <Text variant="body-strong">{line.title}</Text>
         <View className="flex-row flex-wrap items-center gap-1.5">
           {side === 'exits' ? null : <Badge label={line.typeText} tone="neutral" />}
           {side === 'exits' ? null : <Badge label={line.requirement} tone="primary" />}

@@ -2,17 +2,19 @@ import { describe, expect, it } from 'vitest';
 import type { BackupDeviceState, BackupState, PhotosProgressNotice } from '@smarteverything/domain';
 import { INITIAL_BACKUP_STATUS, type BackupStatus } from './model/status';
 import {
-  NO_PROGRESS,
+  NO_DEVICE_PROGRESS,
+  NO_KIND_PROGRESS,
   backupSubtitleOf,
   badgeOf,
   conditionChipsOf,
   countsOf,
   currentFirst,
+  deviceProgressAfter,
   hubChipOf,
+  kindProgressAfter,
   phoneChipOf,
   phoneConditions,
   phoneViewOf,
-  progressAfter,
 } from './phones-model';
 
 function stateOf(patch: Partial<BackupDeviceState> = {}, enabled = true): BackupDeviceState {
@@ -48,17 +50,28 @@ function status(patch: Partial<BackupStatus>): BackupStatus {
 }
 
 describe('live backup progress', () => {
-  it('keeps the newest backup count per phone and ignores per-item processing notices', () => {
-    const one = progressAfter(NO_PROGRESS, notice({ deviceId: 'pixel', done: 3, total: 10 }));
-    const two = progressAfter(
-      one,
-      notice({ kind: 'preview', itemId: crypto.randomUUID(), done: 1, total: 1 }),
+  it('keeps the newest backup count per phone and leaves the devices untouched by processing notices', () => {
+    const one = deviceProgressAfter(
+      NO_DEVICE_PROGRESS,
+      notice({ deviceId: 'pixel', done: 3, total: 10 }),
     );
-    const three = progressAfter(two, notice({ kind: 'preview', done: 5, total: 9 }));
-    expect(one.devices.get('pixel')).toEqual({ done: 3, total: 10 });
-    expect(two).toBe(one);
-    expect(three.kinds.get('preview')).toEqual({ done: 5, total: 9 });
-    expect(progressAfter(three, notice({ done: 1, total: 2 }))).toBe(three);
+    expect(one.get('pixel')).toEqual({ done: 3, total: 10 });
+    expect(deviceProgressAfter(one, notice({ kind: 'preview', done: 5, total: 9 }))).toBe(one);
+    expect(deviceProgressAfter(one, notice({ deviceId: 'pixel', done: 3, total: 10 }))).toBe(one);
+    expect(deviceProgressAfter(one, notice({ done: 1, total: 2 }))).toBe(one);
+  });
+
+  it('keeps the newest processing count per kind and ignores per-item and backup notices', () => {
+    const one = kindProgressAfter(NO_KIND_PROGRESS, notice({ kind: 'preview', done: 5, total: 9 }));
+    expect(one.get('preview')).toEqual({ done: 5, total: 9 });
+    expect(
+      kindProgressAfter(
+        one,
+        notice({ kind: 'preview', itemId: crypto.randomUUID(), done: 1, total: 1 }),
+      ),
+    ).toBe(one);
+    expect(kindProgressAfter(one, notice({ deviceId: 'pixel', done: 1, total: 2 }))).toBe(one);
+    expect(kindProgressAfter(one, notice({ kind: 'preview', done: 5, total: 9 }))).toBe(one);
   });
 
   it('lets a live notice win over the stored counts', () => {
@@ -110,10 +123,10 @@ describe('phone rows', () => {
   });
 
   it('writes the page subtitle from every phone', () => {
-    expect(backupSubtitleOf(undefined, NO_PROGRESS)).toBe(
+    expect(backupSubtitleOf(undefined, NO_DEVICE_PROGRESS)).toBe(
       'Devices back up here · originals kept as they are',
     );
-    expect(backupSubtitleOf(hubOf([stateOf(), stateOf()]), NO_PROGRESS)).toBe(
+    expect(backupSubtitleOf(hubOf([stateOf(), stateOf()]), NO_DEVICE_PROGRESS)).toBe(
       '2 phones back up here · 68 items left · originals kept as they are',
     );
   });
@@ -144,13 +157,13 @@ describe('phone rows', () => {
 
 describe('the backup chip', () => {
   it('shows nothing on the hub without phones and a ring, check or pause otherwise', () => {
-    expect(hubChipOf(hubOf([]), NO_PROGRESS)).toBeNull();
-    expect(hubChipOf(hubOf([stateOf({}, false)]), NO_PROGRESS)).toBeNull();
-    expect(hubChipOf(hubOf([stateOf()]), NO_PROGRESS)?.label).toBe('Backing up 34');
-    expect(hubChipOf(hubOf([stateOf({ pending: 0, uploading: 0 })]), NO_PROGRESS)?.mark).toBe(
-      'check',
-    );
-    expect(hubChipOf(hubOf([stateOf({ uploading: 0 })]), NO_PROGRESS)).toMatchObject({
+    expect(hubChipOf(hubOf([]), NO_DEVICE_PROGRESS)).toBeNull();
+    expect(hubChipOf(hubOf([stateOf({}, false)]), NO_DEVICE_PROGRESS)).toBeNull();
+    expect(hubChipOf(hubOf([stateOf()]), NO_DEVICE_PROGRESS)?.label).toBe('Backing up 34');
+    expect(
+      hubChipOf(hubOf([stateOf({ pending: 0, uploading: 0 })]), NO_DEVICE_PROGRESS)?.mark,
+    ).toBe('check');
+    expect(hubChipOf(hubOf([stateOf({ uploading: 0 })]), NO_DEVICE_PROGRESS)).toMatchObject({
       mark: 'pause',
       label: '30 waiting',
     });

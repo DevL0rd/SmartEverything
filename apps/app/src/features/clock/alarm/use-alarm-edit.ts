@@ -1,5 +1,6 @@
 import type { PlannerAlarmRow } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
+import { randomUUID } from 'expo-crypto';
 import { useState } from 'react';
 import { confirm } from '../../../components/confirm-store';
 import { notifyFailure } from '../../../components/toast-store';
@@ -19,7 +20,7 @@ import {
   type AlarmDraft,
   type AlarmEdit,
 } from './alarm-draft';
-import { useClockLabel } from '../format/clock-format';
+import { useClockLabel } from '../../../store/clock-format';
 
 export interface AlarmEditing {
   readonly draft: AlarmDraft;
@@ -36,7 +37,7 @@ export interface AlarmEditTarget {
   readonly person: PlannerPerson;
   readonly alarm: PlannerAlarmRow | null;
   readonly fresh: AlarmDraft;
-  readonly onCreated: (alarm: PlannerAlarmRow) => void;
+  readonly onCreated: (alarmId: string) => void;
   readonly onDeleted: () => void;
 }
 
@@ -103,7 +104,9 @@ export function useAlarmEdit(target: AlarmEditTarget): AlarmEditing {
     busy,
     change,
     create: (): void => {
-      run('Couldn’t add that alarm', () => writes.createAlarm(createBodyOf(draft)).then(onCreated));
+      const id = randomUUID();
+      run('Couldn’t add that alarm', () => writes.createAlarm({ ...createBodyOf(draft), id }));
+      onCreated(id);
     },
     skipNext: (): void => {
       if (alarm !== null) run('Couldn’t skip that alarm', () => clock.skipNextAlarm(alarm.id));

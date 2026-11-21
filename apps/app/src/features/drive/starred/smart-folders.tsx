@@ -11,6 +11,8 @@ import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import { count } from '../../../format/number';
+import type { EntityStore } from '../../../store/entity-store';
+import { useEntityStore } from '../../../store/store-context';
 import { RuleBadges } from './rule-chip-view';
 import { SectionHead } from './section-head';
 import { removeSmartFolder, useSmartStats } from './smart-data';
@@ -31,6 +33,7 @@ const NO_MENU: readonly MenuItem[] = [];
 export type RenameSmartFolder = (folder: SmartFolder, anchorRef: RefObject<View | null>) => void;
 
 export function smartFolderMenu(
+  store: EntityStore,
   folder: SmartFolder,
   rename: () => void,
   onRemoved: () => void,
@@ -49,11 +52,9 @@ export function smartFolderMenu(
       destructive: true,
       onPress: (): void => {
         background(
-          removeSmartFolder(folder)
-            .then((removed) => {
-              if (removed) onRemoved();
-            })
-            .catch(notifyFailure(`${folder.title} was not removed.`)),
+          removeSmartFolder(store, folder, onRemoved).catch(
+            notifyFailure(`${folder.title} was not removed.`),
+          ),
           'drive.smart_folder_remove_failed',
         );
       },
@@ -103,6 +104,38 @@ function MatchBars({
 
 const NOTHING = (): void => undefined;
 
+function SmartFolderHead({
+  folder,
+  caption,
+  onMore,
+}: {
+  readonly folder: SmartFolder;
+  readonly caption: string;
+  readonly onMore: () => readonly MenuItem[];
+}): ReactNode {
+  return (
+    <View className="flex-row items-center gap-3">
+      <Interactive
+        href={smartFolderHref(folder.id)}
+        label={`Open ${folder.title}, ${caption}`}
+        className="min-h-touch-min min-w-0 flex-1 flex-row items-center gap-3 rounded-md"
+        layerClassName="rounded-md"
+      >
+        <IconWell icon="sparkles" colour="primary" size="s" />
+        <View className="min-w-0 flex-1">
+          <Text variant="callout" numberOfLines={1} className="font-sans-medium">
+            {folder.title}
+          </Text>
+          <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
+            {caption}
+          </Text>
+        </View>
+      </Interactive>
+      <OverflowButton items={NO_MENU} late={onMore} label={`More for ${folder.title}`} />
+    </View>
+  );
+}
+
 export const SmartFolderCard = memo(function SmartFolderCard({
   folder,
   onRename,
@@ -113,6 +146,7 @@ export const SmartFolderCard = memo(function SmartFolderCard({
   readonly compact: boolean;
 }): ReactNode {
   const stats = useSmartStats(folder);
+  const store = useEntityStore();
   const anchor = useRef<View>(null);
   const caption = smartCaptionOf(folder, stats);
   return (
@@ -124,37 +158,20 @@ export const SmartFolderCard = memo(function SmartFolderCard({
         compact ? 'w-72' : 'flex-1',
       )}
     >
-      <View className="flex-row items-center gap-3">
-        <Interactive
-          href={smartFolderHref(folder.id)}
-          label={`Open ${folder.title}, ${caption}`}
-          className="min-h-touch-min min-w-0 flex-1 flex-row items-center gap-3 rounded-md"
-          layerClassName="rounded-md"
-        >
-          <IconWell icon="sparkles" colour="primary" size="s" />
-          <View className="min-w-0 flex-1">
-            <Text variant="callout" numberOfLines={1} className="font-sans-medium">
-              {folder.title}
-            </Text>
-            <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
-              {caption}
-            </Text>
-          </View>
-        </Interactive>
-        <OverflowButton
-          items={NO_MENU}
-          late={() =>
-            smartFolderMenu(
-              folder,
-              () => {
-                onRename(folder, anchor);
-              },
-              NOTHING,
-            )
-          }
-          label={`More for ${folder.title}`}
-        />
-      </View>
+      <SmartFolderHead
+        folder={folder}
+        caption={caption}
+        onMore={() =>
+          smartFolderMenu(
+            store,
+            folder,
+            () => {
+              onRename(folder, anchor);
+            },
+            NOTHING,
+          )
+        }
+      />
       <RuleBadges rule={folder.rule} />
       {compact ? null : <MatchBars folder={folder} stats={stats} />}
     </View>

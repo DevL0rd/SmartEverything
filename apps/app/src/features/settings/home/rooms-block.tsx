@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { TableRow } from '@smarteverything/domain';
-import { removeRoom } from '../../../api/settings';
 import { confirm } from '../../../components/confirm-store';
 import { EmptyState } from '../../../components/empty-state';
 import { ListRow } from '../../../components/list-row';
@@ -16,8 +15,10 @@ import { useDevices, useRooms } from '../../../store/selectors';
 import { TextEditSheet } from '../../../settings/text-edit-sheet';
 import { orderedRooms } from '../../../store/table-rules';
 import { moveRoom, openRenameRoom, reorderRooms, roomEditor } from './rooms';
+import { removeRoomShown } from '../../../store/room-writes';
+import type { EntityStore } from '../../../store/entity-store';
+import { useEntityStore } from '../../../store/store-context';
 
-import { trackSetting } from '../settings-log';
 type Room = TableRow<'rooms'>;
 
 function deviceCounts(
@@ -32,7 +33,7 @@ function deviceCounts(
   return counts;
 }
 
-async function deleteRoom(room: Room, devices: number): Promise<void> {
+async function deleteRoom(store: EntityStore, room: Room, devices: number): Promise<void> {
   const accepted = await confirm({
     title: `Delete ${room.name}?`,
     body:
@@ -43,22 +44,27 @@ async function deleteRoom(room: Room, devices: number): Promise<void> {
     tone: 'destructive',
   });
   if (accepted) {
-    await trackSetting('room.delete', { roomId: room.id, devices }, () => removeRoom(room.id));
+    await removeRoomShown(store, room, devices);
   }
 }
 
+interface RoomPlace {
+  readonly room: Room;
+  readonly rooms: readonly Room[];
+  readonly index: number;
+  readonly devices: number;
+}
+
 function itemsFor(
-  room: Room,
-  rooms: readonly Room[],
-  index: number,
-  devices: number,
+  store: EntityStore,
+  { room, rooms, index, devices }: RoomPlace,
 ): readonly MenuItem[] {
   return [
     {
       label: 'Rename',
       icon: 'pencil',
       onPress: (): void => {
-        openRenameRoom(room);
+        openRenameRoom(store, room);
       },
     },
     {
@@ -66,7 +72,7 @@ function itemsFor(
       icon: 'chevronUp',
       disabled: index === 0,
       onPress: (): void => {
-        moveRoom(rooms, room.id, -1).catch(notifyFailure('The room was not moved'));
+        moveRoom(store, rooms, room.id, -1).catch(notifyFailure('The room was not moved'));
       },
     },
     {
@@ -74,7 +80,7 @@ function itemsFor(
       icon: 'chevronDown',
       disabled: index === rooms.length - 1,
       onPress: (): void => {
-        moveRoom(rooms, room.id, 1).catch(notifyFailure('The room was not moved'));
+        moveRoom(store, rooms, room.id, 1).catch(notifyFailure('The room was not moved'));
       },
     },
     {
@@ -82,7 +88,7 @@ function itemsFor(
       icon: 'trash',
       destructive: true,
       onPress: (): void => {
-        deleteRoom(room, devices).catch(notifyFailure('The room was not deleted'));
+        deleteRoom(store, room, devices).catch(notifyFailure('The room was not deleted'));
       },
     },
   ];
@@ -99,6 +105,7 @@ function RoomRow({
   readonly index: number;
   readonly devices: number;
 }): ReactNode {
+  const store = useEntityStore();
   return (
     <ListRow
       title={room.name}
@@ -109,7 +116,7 @@ function RoomRow({
         <View className="flex-row items-center">
           <Icon name="grip" tone="faint" />
           <OverflowButton
-            items={itemsFor(room, rooms, index, devices)}
+            items={itemsFor(store, { room, rooms, index, devices })}
             label={`${room.name} actions`}
           />
         </View>
@@ -118,13 +125,9 @@ function RoomRow({
   );
 }
 
-export function RoomsBlock(): ReactNode {
-  const rooms = orderedRooms(useRooms());
-  const devices = useDevices({ includeHidden: true });
-  const counts = deviceCounts(devices);
-  const indexes = new Map(rooms.map((room, index) => [room.id, index]));
+function RoomEditorSheet(): ReactNode {
   const request = useValue(roomEditor);
-  const sheet = (
+  return (
     <TextEditSheet
       request={request}
       onClose={() => {
@@ -132,6 +135,16 @@ export function RoomsBlock(): ReactNode {
       }}
     />
   );
+}
+
+export function RoomsBlock(): ReactNode {
+  const devices = useDevices({ includeHidden: true });
+  const roomRows = useRooms();
+  const rooms = orderedRooms(roomRows);
+  const counts = deviceCounts(devices);
+  const indexes = new Map(rooms.map((room, index) => [room.id, index]));
+  const store = useEntityStore();
+  const sheet = <RoomEditorSheet />;
   if (rooms.length === 0) {
     return (
       <>
@@ -160,7 +173,7 @@ export function RoomsBlock(): ReactNode {
             />
           )}
           onReorder={(keys) => {
-            reorderRooms(rooms, keys).catch(notifyFailure('The rooms were not reordered'));
+            reorderRooms(store, rooms, keys).catch(notifyFailure('The rooms were not reordered'));
           }}
         />
       </Section>

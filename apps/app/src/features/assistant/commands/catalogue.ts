@@ -11,14 +11,14 @@ export interface CommandCatalogue extends CommandBinding {
   readonly commands: readonly CommandDescriptor[];
   readonly error: boolean;
 }
-async function discover(binding: CommandBinding): Promise<DiscoveredCommands> {
+async function discover(binding: CommandBinding, signal: AbortSignal): Promise<DiscoveredCommands> {
   if (binding.target === null)
     throw new CommandBindingError(
       'Commands require an exact runtime binding.',
       'bound runtime',
       'unbound',
     );
-  return commandAdapter(binding.target.kind).discover(binding);
+  return commandAdapter(binding.target.kind).discover(binding, signal);
 }
 export function useCommands(chat: AiChatRow | undefined, opened: boolean): CommandCatalogue {
   const binding = useCommandBinding(chat, opened);
@@ -28,7 +28,7 @@ export function useCommands(chat: AiChatRow | undefined, opened: boolean): Comma
     retry: false,
     staleTime: 0,
     refetchOnMount: 'always',
-    queryFn: () => discover(binding),
+    queryFn: ({ signal }) => discover(binding, signal),
   });
   return {
     ...binding,

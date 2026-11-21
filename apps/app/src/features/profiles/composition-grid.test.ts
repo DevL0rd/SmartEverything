@@ -4,6 +4,10 @@ import { bodyComposition } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
 import { CompositionGrid } from './composition-grid';
 
+vi.mock('../../design/colour', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useColour: (role: string): string => role,
+}));
 vi.mock('../../components/grid', () => ({
   Grid: ({ children }: { readonly children: ReactNode }): ReactNode =>
     createElement('div', { 'data-cells': Children.count(children) }, children),

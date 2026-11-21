@@ -81,11 +81,13 @@ function StatsCard({
   readonly place: PhotoPlace;
   readonly buckets: readonly LibraryBucket[];
 }): ReactNode {
+  const videoBuckets = usePhotoBuckets({ filter: 'videos', placeId: place.id });
+  const favouriteBuckets = usePhotoBuckets({ filter: 'favourites', placeId: place.id });
   const months = monthsOf(buckets);
   const first = months[0]?.month;
   const latest = months.at(-1)?.month;
-  const videos = totalOf(usePhotoBuckets({ filter: 'videos', placeId: place.id }).data);
-  const favourites = totalOf(usePhotoBuckets({ filter: 'favourites', placeId: place.id }).data);
+  const videos = totalOf(videoBuckets.data);
+  const favourites = totalOf(favouriteBuckets.data);
   return (
     <View className="overflow-hidden rounded-lg border-hairline border-outline-variant bg-surface-1 medium:flex-row">
       <MiniMap

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import type { DriveCommentThread } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { addDriveComment } from '../../../api/drive';
+import { useQueryClient } from '@tanstack/react-query';
 import { Disclosure } from '../../../components/disclosure';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
@@ -16,6 +16,7 @@ import type { DetailsSubject } from '../details/details-model';
 import { ThreadCard } from './comment-card';
 import { Composer } from './comment-composer';
 import { useCommentContext, type CommentContext } from './comment-context';
+import { addComment } from './comment-writes';
 import { openLabelOf, resolvedLabelOf, threadGroupsOf } from './comments-model';
 
 type CommentPages = ReturnType<typeof useDriveComments>;
@@ -102,6 +103,7 @@ function Unloaded({ pages }: { readonly pages: CommentPages }): ReactNode {
 }
 
 function NewThread({ context }: { readonly context: CommentContext }): ReactNode {
+  const client = useQueryClient();
   if (!context.writable) return null;
   return (
     <Composer
@@ -112,7 +114,11 @@ function NewThread({ context }: { readonly context: CommentContext }): ReactNode
       initial=""
       focus={false}
       send={(body, mentions) =>
-        addDriveComment(context.subject.item.id, { body, parentId: null, mentions })
+        addComment(client, context.viewerId, context.subject.item.id, {
+          body,
+          parentId: null,
+          mentions,
+        })
       }
       onCancel={null}
       onDone={() => undefined}

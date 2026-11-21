@@ -57,7 +57,8 @@ function AppRow({ app }: { readonly app: TopApp }): ReactNode {
 }
 
 function TopApps({ deviceId }: { readonly deviceId: string }): ReactNode {
-  const apps = topAppsOf(usePhoneSection(deviceId, 'apps'));
+  const phoneSection = usePhoneSection(deviceId, 'apps');
+  const apps = topAppsOf(phoneSection);
   if (apps.length === 0) return null;
   return (
     <View className="gap-0.5">

@@ -44,6 +44,7 @@ export function relayStateOf(
 export function useRelay(): RelayState {
   const query = useScreenQuery({
     queryKey: RELAY_KEY,
+    // eslint-disable-next-line local/query-fn-signal -- the native module reads on the device, which cannot be aborted
     queryFn: watchRelayStatus,
     enabled: isHealthConnectLinked,
     staleTime: 0,
@@ -59,6 +60,7 @@ export function usePhoneApps(): {
 } {
   const query = useScreenQuery({
     queryKey: APPS_KEY,
+    // eslint-disable-next-line local/query-fn-signal -- the native module reads on the device, which cannot be aborted
     queryFn: phoneApps,
     enabled: isHealthConnectLinked,
     retry: false,

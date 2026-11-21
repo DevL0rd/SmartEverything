@@ -59,7 +59,8 @@ function AppRow({ app }: { readonly app: TopApp }): ReactNode {
 }
 
 function OwnApps({ device }: { readonly device: Device }): ReactNode {
-  const apps = topAppsOf(usePhoneSection(device.id, 'apps'));
+  const phoneSection = usePhoneSection(device.id, 'apps');
+  const apps = topAppsOf(phoneSection);
   return (
     <Card
       title="Top apps today"

@@ -20,9 +20,10 @@ export { PrinterCallError } from './printer-call-error';
 async function callPrinter(
   tool: string,
   args: Readonly<Record<string, unknown>>,
+  request: { readonly signal?: AbortSignal },
 ): Promise<Readonly<Record<string, unknown>>> {
   try {
-    return await readPluginTool(PRINTER_PLUGIN, tool, args);
+    return await readPluginTool(PRINTER_PLUGIN, tool, args, request);
   } catch (error) {
     const failure = printerCallErrorOf(error);
     if (failure !== null) throw failure;
@@ -73,18 +74,19 @@ export type ViewQuery = Omit<PrinterReadInput, 'view' | 'printer'>;
 export async function readPrinterView<K extends ViewName>(
   printer: string | null,
   view: K,
-  query: ViewQuery = {},
+  query: ViewQuery,
+  signal: AbortSignal,
 ): Promise<ViewOf<K>> {
-  const result = await callPrinter('printer', {
-    view,
-    ...(printer === null ? {} : { printer }),
-    ...query,
-  });
+  const result = await callPrinter(
+    'printer',
+    { view, ...(printer === null ? {} : { printer }), ...query },
+    { signal },
+  );
   return READERS[view](result);
 }
 
 export async function actOnPrinter(
   input: PrinterActionInput,
 ): Promise<Readonly<Record<string, unknown>>> {
-  return callPrinter('printer_action', input);
+  return callPrinter('printer_action', input, {});
 }

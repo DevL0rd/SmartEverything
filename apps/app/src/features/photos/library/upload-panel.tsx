@@ -52,7 +52,12 @@ function EntryRow({ entry }: { readonly entry: UploadEntry }): ReactNode {
           {entry.name}
         </Text>
         {status.kind === 'progress' ? (
-          <ProgressBar progress={status.share} colour="primary" label={`${entry.name} upload`} />
+          <ProgressBar
+            progress={status.share}
+            colour="primary"
+            label={`${entry.name} upload`}
+            ticking={false}
+          />
         ) : null}
       </View>
       <StatusText status={status} />

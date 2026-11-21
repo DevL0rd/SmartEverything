@@ -110,6 +110,7 @@ function Item({
         progress={progressOf(item)}
         colour={item.state === 'failed' ? 'critical' : 'primary'}
         label={`${item.name} upload`}
+        ticking={false}
       />
       <Choices item={item} queue={queue} folder={folder} />
     </View>
@@ -152,7 +153,8 @@ export interface UploadSheetProps {
 
 export function UploadSheet(props: UploadSheetProps): ReactNode {
   const { queue, folder, onPick } = props;
-  const items = itemsIn(useValue(queue.items), props.folderKey);
+  const value = useValue(queue.items);
+  const items = itemsIn(value, props.folderKey);
   const rows = shownRowsOf(items);
   const from = isNative() ? 'this phone' : 'this device';
   const live = liveCountOf(items);

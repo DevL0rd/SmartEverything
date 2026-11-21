@@ -16,7 +16,7 @@ const BUDGET_KEY = [...AI_USAGE_PREFIX, 'budget'] as const;
 export function useBudgetStatus(): UseQueryResult<AiBudgetStatus> {
   return useScreenQuery({
     queryKey: BUDGET_KEY,
-    queryFn: () => api().call(B.readAiBudget, {}),
+    queryFn: ({ signal }) => api().call(B.readAiBudget, {}, { signal }),
   });
 }
 

@@ -15,7 +15,7 @@ import type { Device } from '../../../store/state';
 import type { ViewOf } from '../data/printer-api';
 import { usePrinterView } from '../data/use-printer-view';
 import { streakLine } from '../model/stats-view';
-import { useClockFormat } from '../../../features/clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const STRIP_DAYS = 28;
 const STRIP_STEP = 10;
@@ -51,10 +51,10 @@ function Strip({
   readonly days: readonly HeatDay[];
   readonly height: number;
 }): ReactNode {
-  const recent = days.slice(-STRIP_DAYS);
-  const top = Math.max(1, ...recent.map((day) => day.pages));
   const primary = useColour('primary');
   const quiet = useColour('surface-3');
+  const recent = days.slice(-STRIP_DAYS);
+  const top = Math.max(1, ...recent.map((day) => day.pages));
   return (
     <View
       accessible

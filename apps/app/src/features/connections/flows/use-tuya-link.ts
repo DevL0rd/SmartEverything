@@ -53,10 +53,10 @@ export function useTuyaLink(): TuyaLink {
   const row = useProviderLink('tuya');
   const [code, setCode] = useState('');
   const [different, setDifferent] = useState(false);
-  const scanOnly = startOf(row, different) === 'scan';
-  const typed = code.trim() === '' ? undefined : code;
   const send = useSend(flow);
+  const scanOnly = startOf(row, different) === 'scan';
   useAutoScan(scanOnly && row?.status === 'needs_attention', flow, send);
+  const typed = code.trim() === '' ? undefined : code;
   const act = (action: TuyaFailureAction): void => {
     if (action === 'enter_code') {
       setDifferent(true);

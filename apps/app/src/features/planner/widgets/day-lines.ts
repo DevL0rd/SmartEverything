@@ -1,10 +1,6 @@
 import type { PlannerColourKey, PlannerDay, PlannerOccurrenceView } from '@smarteverything/domain';
 import { useRows, useSettings } from '../../../store/selectors';
-import {
-  useClockFormat,
-  useInstantClock,
-  type InstantClock,
-} from '../../clock/format/clock-format';
+import { useClockFormat, useInstantClock, type InstantClock } from '../../../store/clock-format';
 import { usePlannerProfile } from '../data/assignment';
 import { usePlannerCollections, usePlannerItems, usePlannerPreferences } from '../data';
 import { LIST_DOT } from '../item/composer-tokens';

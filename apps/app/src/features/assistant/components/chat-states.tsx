@@ -86,7 +86,8 @@ function MainEmpty({
   readonly live: boolean;
 }): ReactNode {
   const motion = useMotion();
-  const suggestions = introSuggestionsOf(useAvailability());
+  const availability = useAvailability();
+  const suggestions = introSuggestionsOf(availability);
   return (
     <Animated.View
       {...entering(motion, FadeInUp.duration(300))}

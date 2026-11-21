@@ -82,10 +82,10 @@ export function Donut({
   legend = true,
   children,
 }: DonutProps): ReactNode {
+  const track = useColour('outline-variant');
   const arcs = donutArcs(slices);
   const centre = size / 2;
   const radius = centre - thickness / 2;
-  const track = useColour('outline-variant');
   const box = { width: size, height: size };
   return (
     <View className="flex-row items-center gap-4">

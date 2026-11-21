@@ -13,7 +13,8 @@ import { FoundScreens } from './found-screens';
 import { useDirectLink, type DirectLinking } from './use-direct-link';
 
 function Linked({ deviceId }: { readonly deviceId: string }): ReactNode {
-  const address = directAddressOf(useRow('television_settings', deviceId));
+  const row = useRow('television_settings', deviceId);
+  const address = directAddressOf(row);
   return <List>{directLinkRows(address)}</List>;
 }
 

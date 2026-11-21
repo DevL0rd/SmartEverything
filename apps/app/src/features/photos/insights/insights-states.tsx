@@ -110,6 +110,7 @@ export function YoungCard({
           progress={young.share}
           colour="primary"
           label={`${spanText(young.days)} of two months`}
+          ticking={false}
         />
       )}
     </Card>

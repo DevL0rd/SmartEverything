@@ -8,7 +8,7 @@ import { SwitchRow } from '../../../components/rows';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { useRows } from '../../../store/selectors';
-import { useClockFormat } from '../format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import type { AlarmDraft, AlarmEdit } from './alarm-draft';
 import { minutesText } from './alarm-options';
 import {

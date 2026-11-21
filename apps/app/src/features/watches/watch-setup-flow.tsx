@@ -132,7 +132,7 @@ function Picking({
   const profiles = useProfiles();
   const candidates = useScreenQuery({
     queryKey: WATCH_CANDIDATES_KEY,
-    queryFn: listWatchCandidates,
+    queryFn: ({ signal }) => listWatchCandidates(signal),
     retry: false,
   });
   if (candidates.isPending) {

@@ -30,8 +30,8 @@ function useRunPages(
     string | undefined
   >({
     queryKey: [...agentRunKey(chatId), 'list'],
-    queryFn: ({ pageParam }) =>
-      readRuns(chatId, typeof pageParam === 'string' ? pageParam : undefined),
+    queryFn: ({ pageParam, signal }) =>
+      readRuns(chatId, typeof pageParam === 'string' ? pageParam : undefined, signal),
     initialPageParam: undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled,
@@ -41,12 +41,11 @@ function useRunPages(
 function readRuns(
   chatId: string,
   cursor: string | undefined,
+  signal: AbortSignal,
 ): Promise<z.output<typeof E.listAiAgentRuns.response>> {
-  return api().call(E.listAiAgentRuns, {
-    params: { chatId },
-    query: {
-      limit: 50,
-      ...(cursor === undefined ? {} : { cursor }),
-    },
-  });
+  return api().call(
+    E.listAiAgentRuns,
+    { params: { chatId }, query: { limit: 50, ...(cursor === undefined ? {} : { cursor }) } },
+    { signal },
+  );
 }

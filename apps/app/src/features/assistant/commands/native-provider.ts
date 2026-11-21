@@ -19,15 +19,16 @@ export function useNativeProvider(
   const claude = useScreenQuery<AiChatRuntimeProvider>({
     queryKey: nativeRuntimeAdapter('claude').key(chatId),
     enabled: enabled && runtime === 'claude',
-    queryFn: () => readNativeClaude(chatId),
+    queryFn: ({ signal }) => readNativeClaude(chatId, signal),
   });
   return runtime === 'codex' ? codex : claude;
 }
 
 async function readNativeClaude(
   chatId: string,
+  signal: AbortSignal,
 ): Promise<Extract<AiChatRuntimeProvider, { readonly runtime: 'claude' }>> {
-  const state = await api().call(E.readAiChatProvider, { params: { chatId } });
+  const state = await api().call(E.readAiChatProvider, { params: { chatId } }, { signal });
   if (!('runtime' in state) || state.runtime !== 'claude')
     throw new Error('Expected an owned Claude runtime provider binding from this hub.');
   return state;

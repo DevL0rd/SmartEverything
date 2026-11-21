@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Figure, type FigureSize } from '../../../components/figure';
 import type { Tone } from '../../../components/tone';
-import { useClockParts } from './clock-format';
+import { useClockParts } from '../../../store/clock-format';
 
 export function ClockFigure({
   time,

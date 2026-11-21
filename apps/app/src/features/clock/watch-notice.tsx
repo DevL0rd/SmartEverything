@@ -12,7 +12,7 @@ import { Text } from '../../components/text';
 import { ValueStore, useValue } from '../../design/external-store';
 import { jsonText } from '../../format/json-text';
 import { usePlannerAlarms } from '../planner';
-import { useClockLabel } from './format/clock-format';
+import { useClockLabel } from '../../store/clock-format';
 
 const log = new Logger('app.clock');
 

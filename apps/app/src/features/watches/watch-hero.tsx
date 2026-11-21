@@ -50,8 +50,8 @@ export function WatchHero({ device }: { readonly device: Device }): ReactNode {
   const { glance, live, phone } = useWatchGlance(device);
   const { heart, lastSeen } = useWatchPulse(device, phone);
   const state = useWatchVisualState(device, { ...live, heartRate: beatingBpm(heart) });
-  const facts = factsOf(glance, now, true);
   const own = useOwnWatch(device);
+  const facts = factsOf(glance, now, true);
   return (
     <Card>
       <View className="gap-5">

@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { HomeMap, HomeMapFloor, HomeMapOp, HomeMapPlacement } from '@smarteverything/domain';
 import type { EditEvent } from '../../../../components/house-map/3d/map-3d-edit-protocol';
 import { selectionTick } from '../../../../platform/haptics';
-import { useDevices, useRooms } from '../../../../store/selectors';
+import { useRooms } from '../../../../store/selectors';
 import type { Device } from '../../../../store/state';
 import {
   modelSubjectOf,
@@ -15,6 +15,7 @@ import { placementOp } from '../list-editor/objects-devices-model';
 import type { EditCommit } from '../mount-edit';
 import type { MoveEdit } from '../tool-state';
 import { placeableIds, type PickerRoom } from './device-picker-model';
+import { usePlacingDevices } from './placing-devices';
 import type { DeviceRoomFlow, RoomFlowRow } from './device-room-flow';
 import {
   CALM,
@@ -115,7 +116,7 @@ function onDevicesEdit(context: EditContext, event: EditEvent): void {
 }
 
 export function useDevicesTool(input: DevicesToolInput, flow: DeviceRoomFlow): DevicesTool {
-  const devices = useDevices();
+  const devices = usePlacingDevices();
   const rooms = useRooms();
   const catalog = useModelCatalog();
   const overrides = useModelOverrides();

@@ -13,7 +13,7 @@ import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { useDriveItem } from '../../drive';
 import { usePhotoProcessing } from '../data';
-import type { LiveProgress } from './phones-model';
+import { useKindProgress } from './live';
 import {
   failedBadgeText,
   jobsLeftText,
@@ -37,6 +37,7 @@ function KindLine({ row }: { readonly row: ProcessingRow }): ReactNode {
           progress={row.progress}
           colour={row.done ? 'positive' : 'primary'}
           label={`${row.label}: ${row.note}`}
+          ticking={false}
         />
       </View>
       <Text variant="caption" tone="variant" align="end" className="w-28 tabular-nums">
@@ -167,10 +168,11 @@ function Missing({ query }: { readonly query: ReturnType<typeof usePhotoProcessi
   );
 }
 
-export function ProcessingCard({ live }: { readonly live: LiveProgress }): ReactNode {
+export function ProcessingCard(): ReactNode {
+  const kinds = useKindProgress();
   const query = usePhotoProcessing();
   const processing = query.data;
-  const view = processing === undefined ? undefined : processingOf(processing, live.kinds);
+  const view = processing === undefined ? undefined : processingOf(processing, kinds);
   return (
     <Card title="Processing" action={view === undefined ? null : <StateBadge view={view} />}>
       {view === undefined ? <Missing query={query} /> : <ProcessingBody view={view} />}

@@ -4,6 +4,7 @@ import {
   type PlannerFeedCreate,
   type PlannerHolidayRegion,
 } from '@smarteverything/domain';
+import { background } from '@smarteverything/logging';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { View, type TextInput } from 'react-native';
 import { Button } from '../../../components/button';
@@ -51,14 +52,18 @@ function NewCalendarBody({ onClose, field }: BodyProps): ReactNode {
   const writes = usePlannerWrites(usePlannerFrame().person);
   const [name, setName] = useState('');
   const [colour, setColour] = useState<PlannerColourKey>('personal');
-  const { saving, save } = useSaving(onClose);
   const ready = name.trim() !== '';
   const create = (): void => {
     if (!ready) return;
-    save(
-      () =>
-        writes.createCollection({ kind: 'calendar', name: name.trim(), colour, icon: 'calendar' }),
-      `${name.trim()} was not added`,
+    const title = name.trim();
+    onClose();
+    background(
+      writes
+        .createCollection({ kind: 'calendar', name: title, colour, icon: 'calendar' })
+        .catch((error: unknown) => {
+          notify({ message: `${title} was not added`, error, tone: 'critical' });
+        }),
+      'planner.calendar_add_failed',
     );
   };
   return (
@@ -72,13 +77,7 @@ function NewCalendarBody({ onClose, field }: BodyProps): ReactNode {
         focusOnMount
       />
       <ColourSwatches label="Colour" value={colour} options={COLOUR_OPTIONS} onChange={setColour} />
-      <Button
-        label="Add calendar"
-        icon="plus"
-        disabled={!ready}
-        loading={saving}
-        onPress={create}
-      />
+      <Button label="Add calendar" icon="plus" disabled={!ready} onPress={create} />
     </View>
   );
 }
@@ -183,11 +182,11 @@ function RegionPicker({
 
 function HolidaysBody({ onClose }: { readonly onClose: () => void }): ReactNode {
   const feeds = usePlannerFeeds(usePlannerFrame().person);
-  const regions = useHolidayRegions(true).data ?? [];
   const home = useHomeCountry();
   const [picked, setPicked] = useState<string | null>(null);
   const [state, setState] = useState(WHOLE_COUNTRY);
   const { saving, save } = useSaving(onClose);
+  const regions = useHolidayRegions(true).data ?? [];
   const country = picked ?? defaultCountryOf(regions, home);
   const region = regions.find((entry) => entry.country === country);
   const add = (): void => {

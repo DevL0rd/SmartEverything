@@ -243,9 +243,9 @@ function BleedCaptions({ children }: { readonly children: ReactNode }): ReactNod
 }
 
 export function CallStage(props: CallStageProps): ReactNode {
+  const tiles = useTileState();
   const { call, layout, level, stoppable, actions, captions } = props;
   const kind = stageOf(call);
-  const tiles = useTileState();
   const media = isMediaStage(kind);
   const bleed = layout.kind === 'column' && !layout.roomy && media;
   const tileColumn = media || kind === 'screen-panel';

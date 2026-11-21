@@ -97,8 +97,11 @@ export async function removeProgram(automationId: string): Promise<void> {
   await api().call(P.removeAutomationProgram, { params: { automationId } });
 }
 
-export function getDraft(automationId: string): Promise<AutomationProgramDraftView> {
-  return api().call(P.getAutomationProgramDraft, { params: { automationId } });
+export function getDraft(
+  automationId: string,
+  signal: AbortSignal,
+): Promise<AutomationProgramDraftView> {
+  return api().call(P.getAutomationProgramDraft, { params: { automationId } }, { signal });
 }
 
 export function saveDraft(
@@ -128,19 +131,25 @@ export function publishDraft(
   });
 }
 
-export function listRevisions(automationId: string): Promise<AutomationProgramRevisionSummary[]> {
-  return api().call(P.listAutomationProgramRevisions, { params: { automationId } });
+export function listRevisions(
+  automationId: string,
+  request: { readonly signal?: AbortSignal } = {},
+): Promise<AutomationProgramRevisionSummary[]> {
+  return api().call(P.listAutomationProgramRevisions, { params: { automationId } }, request);
 }
 
 export async function getRevision(
   automationId: string,
   revision: number,
   kinds: NodeKindLookup,
+  request: { readonly signal?: AbortSignal } = {},
 ): Promise<RevisionRow> {
   return adaptRevision(
-    await api().call(P.getAutomationProgramRevision, {
-      params: { automationId, revision: String(revision) },
-    }),
+    await api().call(
+      P.getAutomationProgramRevision,
+      { params: { automationId, revision: String(revision) } },
+      request,
+    ),
     kinds,
   );
 }
@@ -149,23 +158,26 @@ export function compareRevisions(
   automationId: string,
   from: number,
   to: number | 'draft',
+  request: { readonly signal?: AbortSignal } = {},
 ): Promise<AutomationProgramComparison> {
-  return api().call(P.compareAutomationProgramRevisions, {
-    params: { automationId },
-    query: { from, to },
-  });
+  return api().call(
+    P.compareAutomationProgramRevisions,
+    { params: { automationId }, query: { from, to } },
+    request,
+  );
 }
 
-export function listFunctions(): Promise<AutomationFunctionSummary[]> {
-  return api().call(F.listAutomationFunctions, {});
+export function listFunctions(signal: AbortSignal): Promise<AutomationFunctionSummary[]> {
+  return api().call(F.listAutomationFunctions, {}, { signal });
 }
 
 export async function getFunction(
   functionId: string,
   kinds: NodeKindLookup,
+  signal: AbortSignal,
 ): Promise<FunctionDetail> {
   return adaptFunction(
-    await api().call(F.getAutomationFunction, { params: { functionId } }),
+    await api().call(F.getAutomationFunction, { params: { functionId } }, { signal }),
     kinds,
   );
 }
@@ -204,22 +216,31 @@ export function startRun(body: RunStartBody): Promise<AutomationRunStartReply> {
 
 export function listRuns(
   automationId: string | undefined,
-  limit?: number,
+  limit: number | undefined,
+  signal: AbortSignal,
 ): Promise<AutomationRunSummary[]> {
-  return api().call(R.listProgramRuns, {
-    query: {
-      ...(automationId === undefined ? {} : { automationId }),
-      ...(limit === undefined ? {} : { limit }),
+  return api().call(
+    R.listProgramRuns,
+    {
+      query: {
+        ...(automationId === undefined ? {} : { automationId }),
+        ...(limit === undefined ? {} : { limit }),
+      },
     },
-  });
+    { signal },
+  );
 }
 
-export function readRun(runId: string): Promise<AutomationRunView> {
-  return api().call(R.readProgramRun, { params: { runId } });
+export function readRun(runId: string, signal: AbortSignal): Promise<AutomationRunView> {
+  return api().call(R.readProgramRun, { params: { runId } }, { signal });
 }
 
-export function readRunNodes(runId: string, query: RunNodesQuery): Promise<AutomationRunNodesPage> {
-  return api().call(R.readProgramRunNodes, { params: { runId }, query });
+export function readRunNodes(
+  runId: string,
+  query: RunNodesQuery,
+  signal: AbortSignal,
+): Promise<AutomationRunNodesPage> {
+  return api().call(R.readProgramRunNodes, { params: { runId }, query }, { signal });
 }
 
 export function stopRun(runId: string): Promise<AutomationRunSummary> {
@@ -233,20 +254,23 @@ export async function stopRuns(automationId: string, key?: string): Promise<numb
   return reply.stopped;
 }
 
-export function listQuestions(): Promise<AutomationQuestion[]> {
-  return api().call(Q.listAutomationQuestions, {});
+export function listQuestions(signal: AbortSignal): Promise<AutomationQuestion[]> {
+  return api().call(Q.listAutomationQuestions, {}, { signal });
 }
 
 export function answerQuestion(questionId: string, answer: string): Promise<AutomationQuestion> {
   return api().call(Q.answerAutomationQuestion, { params: { questionId }, body: { answer } });
 }
 
-export function listDecisions(automationId: string): Promise<AutomationDecision[]> {
-  return api().call(R.listProgramDecisions, { params: { automationId }, query: {} });
+export function listDecisions(
+  automationId: string,
+  signal: AbortSignal,
+): Promise<AutomationDecision[]> {
+  return api().call(R.listProgramDecisions, { params: { automationId }, query: {} }, { signal });
 }
 
-export function listTests(automationId: string): Promise<StoredTest[]> {
-  return api().call(R.listProgramTests, { params: { automationId } });
+export function listTests(automationId: string, signal: AbortSignal): Promise<StoredTest[]> {
+  return api().call(R.listProgramTests, { params: { automationId } }, { signal });
 }
 
 export function createTest(automationId: string, body: TestBody): Promise<StoredTest> {
@@ -269,8 +293,8 @@ export function runTests(automationId: string): Promise<AutomationTestsRunReply>
   return api().call(R.runProgramTests, { params: { automationId } });
 }
 
-export function listSecrets(): Promise<AutomationSecretEntry[]> {
-  return api().call(S.listAutomationSecrets, {});
+export function listSecrets(signal: AbortSignal): Promise<AutomationSecretEntry[]> {
+  return api().call(S.listAutomationSecrets, {}, { signal });
 }
 
 export function setSecret(body: SecretBody): Promise<AutomationSecretEntry> {

@@ -38,7 +38,12 @@ function Usage({
       <Text variant="caption" tone="variant" className="tabular">
         {`${label} ${String(used)} of ${String(limit)}`}
       </Text>
-      <ProgressBar progress={used / limit} colour={colour} label={`${label} used`} />
+      <ProgressBar
+        progress={used / limit}
+        colour={colour}
+        label={`${label} used`}
+        ticking={false}
+      />
     </View>
   );
 }

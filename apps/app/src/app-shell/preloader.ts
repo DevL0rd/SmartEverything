@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { Logger, background } from '@smarteverything/logging';
 import { errorFields } from '../design/log-tally';
 import { touchQuietIn } from '../design/touch-activity';
+import type { StoreState } from '../store/state';
 import type { RouteDefinition, TabKey } from './route-types';
 
 const log = new Logger('app.preloader');
@@ -17,12 +18,14 @@ class Preloader {
   private queue: RouteDefinition[] = [];
   private readonly done = new Set<string>();
   private client: QueryClient | null = null;
+  private state: (() => StoreState) | null = null;
   private running: string | null = null;
   private scheduled = false;
   private paused = 0;
 
-  start(routes: readonly RouteDefinition[], client: QueryClient): void {
+  start(routes: readonly RouteDefinition[], client: QueryClient, state: () => StoreState): void {
     this.client = client;
+    this.state = state;
     this.queue = routes.filter(
       (route) =>
         route.preload !== undefined && !this.done.has(route.key) && route.key !== this.running,
@@ -98,14 +101,15 @@ class Preloader {
     if (this.running !== null || this.paused > 0) return;
     const route = this.queue.shift();
     const client = this.client;
-    if (route === undefined || client === null) {
+    const state = this.state;
+    if (route === undefined || client === null || state === null) {
       return;
     }
     this.running = route.key;
     const begun = Date.now();
     log.debug('preload.route_started', { route: route.key, remaining: this.queue.length });
     try {
-      await route.preload?.({ queryClient: client });
+      await route.preload?.({ queryClient: client, state });
       log.debug('preload.route_finished', () => ({
         route: route.key,
         durationMs: Date.now() - begun,

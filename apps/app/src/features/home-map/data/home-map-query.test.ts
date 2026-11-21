@@ -79,13 +79,15 @@ beforeEach(() => {
 describe('reading the map', () => {
   it('asks for the full map and returns it', async () => {
     served.answer = mapAt(5);
-    expect((await fetchHomeMap()).revision).toBe(5);
+    expect((await fetchHomeMap(undefined, new AbortController().signal)).revision).toBe(5);
     expect(calls).toStrictEqual([{ endpoint: E.getHomeMap, request: { query: { view: 'full' } } }]);
   });
 
   it('refuses a compact answer, which has no outlines to draw', async () => {
     served.answer = compact;
-    await expect(fetchHomeMap()).rejects.toBeInstanceOf(HomeMapNotFullError);
+    await expect(fetchHomeMap(undefined, new AbortController().signal)).rejects.toBeInstanceOf(
+      HomeMapNotFullError,
+    );
   });
 
   it('refetches into the cache even when the app thinks it is offline', async () => {
@@ -106,12 +108,12 @@ describe('reading the map', () => {
 describe('reading one map of several', () => {
   it('asks for the map it names and for the default map when it names none', async () => {
     served.answer = mapAt(3, 'cabin');
-    expect((await fetchHomeMap(CABIN)).id).toBe('cabin');
+    expect((await fetchHomeMap(CABIN, new AbortController().signal)).id).toBe('cabin');
     expect(calls).toStrictEqual([
       { endpoint: E.getHomeMap, request: { query: { view: 'full', mapId: 'cabin' } } },
     ]);
     calls.length = 0;
-    await fetchHomeMap();
+    await fetchHomeMap(undefined, new AbortController().signal);
     expect(calls).toStrictEqual([{ endpoint: E.getHomeMap, request: { query: { view: 'full' } } }]);
   });
 

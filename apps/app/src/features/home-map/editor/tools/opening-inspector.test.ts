@@ -54,7 +54,7 @@ vi.mock('../../../../components/number-stepper', () => ({ NumberStepper: stub('S
 vi.mock('../../../../components/segmented', () => ({ Segmented: stub('Segmented') }));
 vi.mock('../../../../components/text', () => ({ Text: stub('Text') }));
 vi.mock('../../../../store/selectors', () => ({
-  useDevices: (): readonly object[] => [
+  useMatchingDevices: (): readonly object[] => [
     { id: LOCK, label: 'Front lock', online: true, capabilities: [{ key: 'lock' }] },
     {
       id: CONTACT,

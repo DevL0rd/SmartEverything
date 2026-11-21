@@ -1,7 +1,7 @@
-import { useSyncExternalStore } from 'react';
 import { QueryObserver, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { HomeMap } from '@smarteverything/domain';
 import { homeMapRenderScene } from '../../components/house-map/adapters/home-map-scene';
+import { usePausable } from '../../design/external-store';
 import { homeMapQueryOptions } from '../../features/home-map/data/home-map-query';
 import { mapHasContent } from '../../features/home/model/hero';
 import { faceShown, nextFace, presenceFaces, type PresenceFace } from './presence-face-model';
@@ -105,7 +105,7 @@ function choicesOf(client: QueryClient): PresenceFaceChoices {
 
 export function usePresenceFaceChoice(deviceId: string): PresenceFaceChoice {
   const choices = choicesOf(useQueryClient());
-  const choice = useSyncExternalStore(choices.subscribe, () => choices.choiceOf(deviceId));
+  const choice = usePausable(choices.subscribe, () => choices.choiceOf(deviceId));
   return {
     ...choice,
     pick: (face): void => {

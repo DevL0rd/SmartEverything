@@ -2,8 +2,10 @@ import type { ReactNode } from 'react';
 import { useRef, useState } from 'react';
 import { View } from 'react-native';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { z } from 'zod';
 import {
   API_ENDPOINTS,
+  DRIVE_QUOTA,
   type DriveBackupStatus,
   type DriveHealth,
   type DriveQuota,
@@ -22,6 +24,7 @@ import { bytes } from '../../../format/number';
 import { sentenceCase } from '../../../format/text';
 import { moment } from '../../../format/time';
 import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
+import { writeShownQuery } from '../../../queries/shown-query';
 import { useIsPhone } from '../../../design/size-class';
 import { useMinute } from '../../../store/clock';
 import { useMutationState } from '../../../store/mutation';
@@ -80,14 +83,32 @@ export function quotaLineOf(
   };
 }
 
+const QUOTAS = z.array(DRIVE_QUOTA).readonly();
+
+export function quotasAfter(
+  quotas: readonly DriveQuota[],
+  profileId: string,
+  quota: number | null,
+): readonly DriveQuota[] {
+  const others = quotas.filter((entry) => entry.profileId !== profileId);
+  return quota === null ? others : [...others, { profileId, bytes: quota }];
+}
+
 export async function saveQuota(
   client: QueryClient,
   profileId: string,
   quota: number | null,
 ): Promise<void> {
-  await trackSetting('drive_quota.save', { profileId, limited: quota !== null }, () =>
-    setDriveQuota({ profileId, bytes: quota }),
-  );
+  await writeShownQuery(client, {
+    event: 'drive_quota.shown',
+    key: QUOTAS_KEY,
+    schema: QUOTAS,
+    change: (quotas) => quotasAfter(quotas, profileId, quota),
+    send: () =>
+      trackSetting('drive_quota.save', { profileId, limited: quota !== null }, () =>
+        setDriveQuota({ profileId, bytes: quota }),
+      ),
+  });
   await client.invalidateQueries({ queryKey: QUOTAS_KEY });
 }
 
@@ -182,6 +203,7 @@ function QuotaBar({
       progress={share}
       colour={line.tone === 'critical' ? 'critical' : 'primary'}
       label={line.subtitle}
+      ticking={false}
     />
   );
 }

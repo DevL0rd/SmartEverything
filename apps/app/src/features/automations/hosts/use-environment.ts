@@ -226,7 +226,9 @@ export function useOptionSource(source: OptionSourceId, context: OptionContext):
   const query = useScreenQuery({
     queryKey: ['automations', 'option-source', fetch],
     queryFn:
-      fetch === null ? skipToken : (): Promise<readonly OptionRow[]> => loadOptionRows(fetch),
+      fetch === null
+        ? skipToken
+        : ({ signal }): Promise<readonly OptionRow[]> => loadOptionRows(fetch, signal),
   });
   const remote = remoteStateOf(query, fetch !== null);
   return useMemo(
@@ -263,7 +265,7 @@ export function useFunctionDetails(): Details {
   return useQueries({
     queries: summaries.map((summary) => ({
       queryKey: automationKeys.function(summary.id),
-      queryFn: () => api.getFunction(summary.id, kinds),
+      queryFn: ({ signal }) => api.getFunction(summary.id, kinds, signal),
     })),
     combine: combined,
   });

@@ -291,8 +291,8 @@ export function PartnerCard({
   readonly onChange: (share: PartnerShare) => void;
 }): ReactNode {
   const me = useActiveProfile()?.id ?? null;
-  const sides = partnerSidesOf(partners, me);
   const live = useLive();
+  const sides = partnerSidesOf(partners, me);
   return (
     <View className="gap-3">
       <SectionTitle

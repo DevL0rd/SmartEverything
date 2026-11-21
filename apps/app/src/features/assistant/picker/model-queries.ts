@@ -21,7 +21,7 @@ export function useSuggestedModels(
   const choice = parsed?.success === true ? parsed.data : null;
   return useScreenQuery({
     queryKey: aiModelsKeys.suggested(kind, choice),
-    queryFn: () => suggestedAiModels(kind, choice),
+    queryFn: ({ signal }) => suggestedAiModels(kind, choice, signal),
     enabled,
   });
 }
@@ -55,8 +55,8 @@ export function useModelPages(
     string | null
   >({
     queryKey: key,
-    queryFn: ({ pageParam }) =>
-      listAiModels(pageParam === null ? query : { ...query, cursor: pageParam }),
+    queryFn: ({ pageParam, signal }) =>
+      listAiModels(pageParam === null ? query : { ...query, cursor: pageParam }, signal),
     initialPageParam: null,
     getNextPageParam: (last) => last.next_cursor ?? null,
     enabled,
@@ -88,7 +88,7 @@ export function useModelPages(
 export function useModelRow(id: string | null): UseQueryResult<ModelChoice> {
   return useScreenQuery({
     queryKey: aiModelsKeys.one(id ?? ''),
-    queryFn: async () => choiceOf(await readAiModel(id ?? '')),
+    queryFn: async ({ signal }) => choiceOf(await readAiModel(id ?? '', signal)),
     enabled: id !== null,
     staleTime: Number.POSITIVE_INFINITY,
   });

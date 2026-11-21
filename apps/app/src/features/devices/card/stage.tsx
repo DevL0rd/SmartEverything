@@ -53,8 +53,9 @@ function HostedIllustration(props: IllustrationProps): ReactNode {
 
 function PlainIllustration(props: IllustrationProps): ReactNode {
   const { device } = props;
-  const tone = familyDefinition(useDeviceModel(device).family).glow;
+  const deviceModel = useDeviceModel(device);
   const state = useDeviceVisualState(device);
+  const tone = familyDefinition(deviceModel.family).glow;
   const role = glowRoleOf(tone, state);
   return (
     <>

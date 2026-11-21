@@ -9,16 +9,20 @@ import type { PhotosResult } from '../../../api/photos';
 
 type Call<K extends keyof typeof P> = Promise<PhotosResult<K>>;
 
-export function readPhotoEdit(itemId: string): Call<'readPhotoEdit'> {
-  return api().call(P.readPhotoEdit, { params: { itemId } });
+export function readPhotoEdit(itemId: string, signal: AbortSignal): Call<'readPhotoEdit'> {
+  return api().call(P.readPhotoEdit, { params: { itemId } }, { signal });
 }
 
-export function readPhotoEditBase(itemId: string): Call<'readPhotoEditBase'> {
-  return api().call(P.readPhotoEditBase, { params: { itemId } });
+export function readPhotoEditBase(itemId: string, signal: AbortSignal): Call<'readPhotoEditBase'> {
+  return api().call(P.readPhotoEditBase, { params: { itemId } }, { signal });
 }
 
-export function readPhotoEditPatch(itemId: string, patchId: string): Call<'readPhotoEditPatch'> {
-  return api().call(P.readPhotoEditPatch, { params: { itemId, patchId } });
+export function readPhotoEditPatch(
+  itemId: string,
+  patchId: string,
+  signal: AbortSignal,
+): Call<'readPhotoEditPatch'> {
+  return api().call(P.readPhotoEditPatch, { params: { itemId, patchId } }, { signal });
 }
 
 export function savePhotoEdit(itemId: string, body: PhotoEditSave): Call<'savePhotoEdit'> {
@@ -37,10 +41,10 @@ export function editPhotoVideo(itemId: string, body: VideoEdit): Call<'editPhoto
   return api().call(P.editPhotoVideo, { params: { itemId }, body });
 }
 
-export function readPhotoEditJob(jobId: string): Call<'readPhotoEditJob'> {
-  return api().call(P.readPhotoEditJob, { params: { jobId } });
+export function readPhotoEditJob(jobId: string, signal: AbortSignal): Call<'readPhotoEditJob'> {
+  return api().call(P.readPhotoEditJob, { params: { jobId } }, { signal });
 }
 
-export function readPhotoAiStatus(): Call<'readPhotoAiStatus'> {
-  return api().call(P.readPhotoAiStatus, {});
+export function readPhotoAiStatus(signal: AbortSignal): Call<'readPhotoAiStatus'> {
+  return api().call(P.readPhotoAiStatus, {}, { signal });
 }

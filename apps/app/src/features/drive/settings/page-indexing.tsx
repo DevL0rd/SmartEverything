@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type {
-  DriveProgressNotice,
-  DriveSettings,
-  DriveSettingsUpdate,
-  DriveWatcherState,
+import {
+  DRIVE_SETTINGS,
+  type DriveProgressNotice,
+  type DriveSettings,
+  type DriveSettingsUpdate,
+  type DriveWatcherState,
 } from '@smarteverything/domain';
 import { updateDriveSettings } from '../../../api/drive';
 import { Button } from '../../../components/button';
@@ -17,6 +18,7 @@ import { usePausable } from '../../../design/external-store';
 import { useIsPhone } from '../../../design/size-class';
 import { count, percent } from '../../../format/number';
 import { driveKey } from '../../../queries/keys';
+import { writeShownQuery } from '../../../queries/shown-query';
 import { useMutationState } from '../../../store/mutation';
 import type { RowOf } from '../../../store/state';
 import { trackSetting } from '../../settings';
@@ -52,15 +54,28 @@ export interface ProgressLine {
   readonly share: number;
 }
 
-export async function saveDriveSettings(
+export function settingsAfter(current: DriveSettings, update: DriveSettingsUpdate): DriveSettings {
+  const changed = Object.entries(update).filter(([, value]) => value !== undefined);
+  return DRIVE_SETTINGS.parse({ ...current, ...Object.fromEntries(changed) });
+}
+
+export function saveDriveSettings(
   client: QueryClient,
   update: DriveSettingsUpdate,
 ): Promise<DriveSettings> {
-  const saved = await trackSetting('drive_settings.save', { fields: Object.keys(update) }, () =>
-    updateDriveSettings(update),
-  );
-  client.setQueryData(DRIVE_SETTINGS_KEY, saved);
-  return saved;
+  return writeShownQuery(client, {
+    event: 'drive_settings.shown',
+    key: DRIVE_SETTINGS_KEY,
+    schema: DRIVE_SETTINGS,
+    change: (current) => settingsAfter(current, update),
+    send: async () => {
+      const saved = await trackSetting('drive_settings.save', { fields: Object.keys(update) }, () =>
+        updateDriveSettings(update),
+      );
+      client.setQueryData(DRIVE_SETTINGS_KEY, saved);
+      return saved;
+    },
+  });
 }
 
 function isPhase(value: string): value is Phase {
@@ -208,7 +223,9 @@ function WatcherRow({ state }: { readonly state: DriveWatcherState }): ReactNode
 
 function ProgressRow({ line }: { readonly line: ProgressLine }): ReactNode {
   const phone = useIsPhone();
-  const bar = <ProgressBar progress={line.share} colour="info" label={line.subtitle} />;
+  const bar = (
+    <ProgressBar progress={line.share} colour="info" label={line.subtitle} ticking={false} />
+  );
   return (
     <ListRow
       title={line.title}
@@ -221,9 +238,12 @@ function ProgressRow({ line }: { readonly line: ProgressLine }): ReactNode {
 }
 
 function IndexingBody({ settings }: { readonly settings: DriveSettings }): ReactNode {
-  const lines = progressLinesOf(useProgress(), useDriveRoots(), useViewerId());
-  const working = new Set(lines.map((line) => line.rootId)).size;
+  const progress = useProgress();
+  const driveRoots = useDriveRoots();
+  const viewerId = useViewerId();
   const health = useDriveHealth().data;
+  const lines = progressLinesOf(progress, driveRoots, viewerId);
+  const working = new Set(lines.map((line) => line.rootId)).size;
   return (
     <View className="gap-3">
       <List inset>

@@ -36,6 +36,7 @@ export function BulkProgressLine({
         progress={done / total}
         colour={onContainer ? 'on-primary-container' : 'primary'}
         label={text}
+        ticking={false}
       />
     </View>
   );

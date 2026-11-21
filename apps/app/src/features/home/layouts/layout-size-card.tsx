@@ -105,6 +105,7 @@ function Summary({
         progress={widest === 0 ? 0 : row.count / widest}
         colour="primary"
         label={`${plural(row.count, 'widget')}, compared with the fullest size`}
+        ticking={false}
       />
     </>
   );

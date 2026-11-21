@@ -78,12 +78,12 @@ function DayStrip({ entry, items, today, hours }: DayStripProps): ReactNode {
 export function TimelineSection({ entry }: { readonly entry: CameraEntry }): ReactNode {
   const timeZone = useSettings().time_zone;
   const now = useMinute();
-  const today = calendarOf(new Date(now));
   const [chosen, setChosen] = useState<CalendarDate | null>(null);
-  const day = chosen ?? today;
   const [filter, setFilter] = useState<TimelineFilter>(NO_FILTER);
-  const read = useCameraDay([entry.device.id], day, timeZone, filter);
   const [hours, setHours] = useState<ZoomHours>(WHOLE_DAY);
+  const today = calendarOf(new Date(now));
+  const day = chosen ?? today;
+  const read = useCameraDay([entry.device.id], day, timeZone, filter);
   const hasTimeline = read.status === 'ready' && read.items.length > 0;
   if (!hasTimeline && hours !== WHOLE_DAY) {
     setHours(WHOLE_DAY);

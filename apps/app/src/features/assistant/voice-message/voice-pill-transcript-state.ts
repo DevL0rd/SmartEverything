@@ -1,6 +1,5 @@
-import { useSyncExternalStore } from 'react';
 import { noteKindOf, type AssistantAttachment } from '@smarteverything/domain';
-import { ValueStore } from '../../../design/external-store';
+import { ValueStore, usePausable } from '../../../design/external-store';
 
 export interface MetaTranscript {
   readonly open: boolean;
@@ -27,10 +26,9 @@ export function voiceClipOf(attachments: readonly AssistantAttachment[]): string
 }
 
 export function useVoiceTranscriptOpen(attachmentId: string | null): boolean {
-  return useSyncExternalStore(
+  return usePausable(
     opened.subscribe,
     () => attachmentId !== null && voiceTranscriptOpen(attachmentId),
-    () => false,
   );
 }
 

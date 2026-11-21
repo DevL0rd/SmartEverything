@@ -88,7 +88,8 @@ export function GoogleStatusCard({
   readonly calendars: number;
   readonly lists: number;
 }): ReactNode {
-  const week = weekSummary(entries, useMinute());
+  const minute = useMinute();
+  const week = weekSummary(entries, minute);
   return (
     <Card>
       <Heading account={account} />

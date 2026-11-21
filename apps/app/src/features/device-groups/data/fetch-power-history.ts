@@ -27,20 +27,25 @@ function iso(moment: number): string {
 export async function fetchPowerHistory(
   keys: ReadonlyMap<string, string>,
   window: Window,
+  signal: AbortSignal,
 ): Promise<PowerHistory> {
   const at = Date.now();
   const { from } = windowAt(window, at);
   const keyOf = (deviceId: string): string | undefined => keys.get(deviceId);
   const series = { capabilities: [...new Set(keys.values())], deviceIds: [...keys.keys()] };
   if (window === 'week') {
-    const buckets = await api().call(E.readHistoryBuckets, {
-      query: {
-        ...series,
-        from: iso(from - LOOKBACK_MS),
-        to: iso(at),
-        bucketSeconds: HOUR_MS / SECOND_MS,
+    const buckets = await api().call(
+      E.readHistoryBuckets,
+      {
+        query: {
+          ...series,
+          from: iso(from - LOOKBACK_MS),
+          to: iso(at),
+          bucketSeconds: HOUR_MS / SECOND_MS,
+        },
       },
-    });
+      { signal },
+    );
     return {
       changes: bucketChanges(buckets, keyOf, from),
       before: stateBefore(buckets, keyOf, from),
@@ -48,15 +53,23 @@ export async function fetchPowerHistory(
     };
   }
   const [rows, lookback] = await Promise.all([
-    api().call(E.readHistory, { query: { ...series, from: iso(from), limit: ROW_LIMIT } }),
-    api().call(E.readHistoryBuckets, {
-      query: {
-        ...series,
-        from: iso(from - LOOKBACK_MS),
-        to: iso(from),
-        bucketSeconds: LOOKBACK_MS / SECOND_MS,
+    api().call(
+      E.readHistory,
+      { query: { ...series, from: iso(from), limit: ROW_LIMIT } },
+      { signal },
+    ),
+    api().call(
+      E.readHistoryBuckets,
+      {
+        query: {
+          ...series,
+          from: iso(from - LOOKBACK_MS),
+          to: iso(from),
+          bucketSeconds: LOOKBACK_MS / SECOND_MS,
+        },
       },
-    }),
+      { signal },
+    ),
   ]);
   return { changes: changesByDevice(rows, keyOf), before: stateBefore(lookback, keyOf, from), at };
 }

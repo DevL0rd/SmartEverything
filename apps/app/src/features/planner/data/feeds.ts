@@ -1,4 +1,5 @@
 import {
+  PLANNER_EXPORT_LINK,
   resolveRegion,
   type API_ENDPOINTS as E,
   type PlannerCollectionRow,
@@ -23,6 +24,7 @@ import {
 } from '../../../api/planner-feeds';
 import { deviceRegionSource } from '../../../platform/device-region';
 import { PLANNER_PREFIX } from '../../../queries/keys';
+import { writeShownQuery } from '../../../queries/shown-query';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { useRegionPref } from '../../region';
 import { apiPerson, type PlannerPerson } from './person';
@@ -38,7 +40,7 @@ function exportLinkKey(person: PlannerPerson, collectionId: string): readonly un
 export function useHolidayRegions(enabled: boolean): UseQueryResult<PlannerHolidayRegion[]> {
   return useScreenQuery({
     queryKey: REGIONS_KEY,
-    queryFn: readPlannerHolidayRegions,
+    queryFn: ({ signal }) => readPlannerHolidayRegions(signal),
     staleTime: Infinity,
     enabled,
   });
@@ -51,7 +53,7 @@ export function useExportLink(
 ): UseQueryResult<PlannerExportLink | null> {
   return useScreenQuery({
     queryKey: exportLinkKey(person, collectionId),
-    queryFn: () => readPlannerExportLink(apiPerson(person), collectionId),
+    queryFn: ({ signal }) => readPlannerExportLink(apiPerson(person), collectionId, signal),
     enabled,
   });
 }
@@ -85,10 +87,14 @@ function linkWrites(
       client.setQueryData(exportLinkKey(person, collectionId), link);
       return link;
     },
-    unpublish: async (collectionId): Promise<void> => {
-      await deletePlannerExportLink(who, collectionId);
-      client.setQueryData(exportLinkKey(person, collectionId), null);
-    },
+    unpublish: (collectionId): Promise<void> =>
+      writeShownQuery(client, {
+        event: 'planner_export_link.remove',
+        key: exportLinkKey(person, collectionId),
+        schema: PLANNER_EXPORT_LINK.nullable(),
+        change: () => null,
+        send: () => deletePlannerExportLink(who, collectionId),
+      }),
   };
 }
 

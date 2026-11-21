@@ -126,11 +126,11 @@ export const ActivityRow = memo(function ActivityRow({
 }: ActivityRowProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const zone = useSettings().time_zone;
+  const roots = useDriveRoots();
   const time = clock(entry.row.at, zone);
   const sentence = itemless ? itemSentenceOf(entry, me) : sentenceOf(entry, me);
   const badge = badgeOf(entry);
   const target = targetOf(entry);
-  const roots = useDriveRoots();
   return (
     <Interactive
       href={driveLocationHref(roots, target)}

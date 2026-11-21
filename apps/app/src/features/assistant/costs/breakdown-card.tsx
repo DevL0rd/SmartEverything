@@ -67,7 +67,12 @@ function PartRow({ dimension, part, share, onFilter }: RowProps): ReactNode {
               {cost}
             </Text>
           </View>
-          <ProgressBar progress={share} colour={DIMENSION_INFO[dimension].colour} label={title} />
+          <ProgressBar
+            progress={share}
+            colour={DIMENSION_INFO[dimension].colour}
+            label={title}
+            ticking={false}
+          />
           <Text variant="caption" tone="faint">
             {plural(part.count, 'request')}
           </Text>

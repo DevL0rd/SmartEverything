@@ -18,7 +18,7 @@ const FIVE_MINUTES = 300_000;
 export function useImageCatalog(): UseQueryResult<ImageProviderCatalog> {
   return useScreenQuery({
     queryKey: ['assistant', 'image-endpoints'],
-    queryFn: () => api().call(E.listImageEndpoints, { query: {} }),
+    queryFn: ({ signal }) => api().call(E.listImageEndpoints, { query: {} }, { signal }),
     staleTime: FIVE_MINUTES,
   });
 }

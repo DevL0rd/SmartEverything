@@ -13,7 +13,7 @@ import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
 import { compareText, plural } from '../../../format/text';
 import type { MomentText } from '../../../format/clock-text';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 import { useRow } from '../../../store/selectors';
 import { deviceIcon } from '../../device-visuals';
 import { HappenedChip, MarkChip } from './happened-chip';
@@ -168,8 +168,8 @@ function Marks({
 }
 
 export function DoneRibbon({ day }: { readonly day: PlannerDay }): ReactNode {
-  const marks = ribbonMarksOf(day);
   const instant = useInstantClock();
+  const marks = ribbonMarksOf(day);
   if (marks.length === 0) return null;
   const { done, also } = ribbonLabelOf(marks, day.time_zone, instant);
   return (

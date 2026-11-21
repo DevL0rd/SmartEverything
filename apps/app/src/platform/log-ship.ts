@@ -89,12 +89,13 @@ interface RecentEvent {
 
 function detailOf(payload: LogPayload): string | undefined {
   const text = JSON.stringify(payload);
-  if (text === undefined || text === '{}') return undefined;
+  if (text === '{}') return undefined;
   return clip(text, RECENT_DETAIL);
 }
 
 export class LogShip {
   private recent: RecentEvent[] = [];
+  private trailFrom: string | null = null;
   private queue: QueuedRecord[] = [];
   private queueBytes = 0;
   private inFlight: readonly QueuedRecord[] = [];
@@ -146,22 +147,35 @@ export class LogShip {
 
   record(logged: LogRecord): void {
     if (feedbackOfShipment(logged)) return;
-    if (wantsShipped(logged.level, this.level)) this.ship(logged);
+    if (wantsShipped(logged.level, this.level) && this.ship(logged)) return;
     this.remember(logged);
   }
 
-  private ship(logged: LogRecord): void {
+  private ship(logged: LogRecord): boolean {
+    const trailed = wantsShipped(logged.level, 'warn');
     try {
-      const payload = wantsShipped(logged.level, 'warn')
-        ? { ...logged.payload, screen, recent: this.recent }
-        : logged.payload;
+      const payload = trailed ? this.trailedPayload(logged.payload) : logged.payload;
       this.enqueue(LOG_RECORD.parse(shippedRecord({ ...logged, payload })));
     } catch (cause) {
       log.warn('logs.not_queued', { reason: String(cause) });
-      return;
+      return false;
+    }
+    if (trailed) {
+      this.recent = [];
+      this.trailFrom = logged.timestamp;
     }
     this.save();
     this.arm(DRAIN_AFTER_MS);
+    return true;
+  }
+
+  private trailedPayload(payload: LogPayload): LogPayload {
+    return {
+      ...payload,
+      screen,
+      recent: this.recent,
+      ...(this.trailFrom === null ? {} : { recentSince: this.trailFrom }),
+    };
   }
 
   private remember(record: LogRecord): void {

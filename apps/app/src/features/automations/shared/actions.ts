@@ -1,6 +1,8 @@
 import { Logger, background } from '@smarteverything/logging';
 import { setAutomationEnabled } from '../../../api/automations';
 import { notify } from '../../../components/toast-store';
+import type { EntityStore } from '../../../store/entity-store';
+import { hubSource } from '../data/source';
 
 const log = new Logger('app.automations');
 
@@ -21,13 +23,19 @@ export async function attempt(
   }
 }
 
-export function toggleAutomation(automationId: string, enabled: boolean): void {
+export function toggleAutomation(store: EntityStore, automationId: string, enabled: boolean): void {
   background(
-    attempt('The automation didn’t change', () => setAutomationEnabled(automationId, enabled), {
-      action: 'toggle',
-      automationId,
-      enabled,
-    }),
+    attempt(
+      'The automation didn’t change',
+      () =>
+        hubSource(store).write({
+          event: 'automation.enable',
+          automationId,
+          change: (row) => ({ ...row, enabled }),
+          send: () => setAutomationEnabled(automationId, enabled),
+        }),
+      { action: 'toggle', automationId, enabled },
+    ),
     'actions.attempt_failed',
   );
 }

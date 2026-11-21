@@ -32,10 +32,14 @@ export function useCostSummary(
       window.bucket,
       filterKey(filters),
     ],
-    queryFn: () =>
-      api().call(U.readUsageSummary, {
-        query: { from: window.from, to: window.to, bucket: window.bucket, ...queryOf(filters) },
-      }),
+    queryFn: ({ signal }) =>
+      api().call(
+        U.readUsageSummary,
+        {
+          query: { from: window.from, to: window.to, bucket: window.bucket, ...queryOf(filters) },
+        },
+        { signal },
+      ),
   });
 }
 
@@ -45,17 +49,22 @@ export function useCostTotals(
 ): UseQueryResult<UsageTotals> {
   return useScreenQuery({
     queryKey: [...AI_USAGE_PREFIX, 'totals', window.from, window.to, filterKey(filters)],
-    queryFn: () =>
-      api().call(U.readUsageTotals, {
-        query: { from: window.from, to: window.to, ...queryOf(filters) },
-      }),
+    queryFn: ({ signal }) =>
+      api().call(
+        U.readUsageTotals,
+        {
+          query: { from: window.from, to: window.to, ...queryOf(filters) },
+        },
+        { signal },
+      ),
   });
 }
 
 export function useCostChoices(window: CostWindow): UseQueryResult<UsageChoices> {
   return useScreenQuery({
     queryKey: [...AI_USAGE_PREFIX, 'choices', window.from, window.to],
-    queryFn: () => api().call(U.readUsageChoices, { query: { from: window.from, to: window.to } }),
+    queryFn: ({ signal }) =>
+      api().call(U.readUsageChoices, { query: { from: window.from, to: window.to } }, { signal }),
     placeholderData: keepPreviousData,
   });
 }
@@ -73,16 +82,20 @@ export function useCostLedger(
   >({
     queryKey: [...AI_USAGE_PREFIX, 'ledger', window.from, window.to, filterKey(filters)],
     initialPageParam: null,
-    queryFn: ({ pageParam }) =>
-      api().call(U.listUsageLedger, {
-        query: {
-          from: window.from,
-          to: window.to,
-          limit: LEDGER_PAGE,
-          ...queryOf(filters),
-          ...(pageParam === null ? {} : { cursor: pageParam }),
+    queryFn: ({ pageParam, signal }) =>
+      api().call(
+        U.listUsageLedger,
+        {
+          query: {
+            from: window.from,
+            to: window.to,
+            limit: LEDGER_PAGE,
+            ...queryOf(filters),
+            ...(pageParam === null ? {} : { cursor: pageParam }),
+          },
         },
-      }),
+        { signal },
+      ),
     getNextPageParam: (page) => page.next_cursor,
   });
 }
@@ -93,7 +106,8 @@ export function useTrackedOpenRouterToday(enabled: boolean): UseQueryResult<Usag
   const to = new Date(Date.parse(from) + 86_400_000).toISOString();
   return useScreenQuery({
     queryKey: [...AI_USAGE_PREFIX, 'openrouter-utc-day', from],
-    queryFn: () => api().call(U.readUsageTotals, { query: { from, to, sources: ['openrouter'] } }),
+    queryFn: ({ signal }) =>
+      api().call(U.readUsageTotals, { query: { from, to, sources: ['openrouter'] } }, { signal }),
     enabled,
   });
 }

@@ -38,6 +38,9 @@ function useGestures(
 } {
   const x = useSharedValue(0);
   const y = useSharedValue(0);
+  const moved = useAnimatedStyle<ViewStyle>(() => ({
+    transform: [{ translateX: x.get() }, { translateY: y.get() }],
+  }));
   const commitPan = (dx: number, dy: number): void => {
     x.set(0);
     y.set(0);
@@ -65,9 +68,6 @@ function useGestures(
   const pinch = Gesture.Pinch().onEnd((event) => {
     scheduleOnRN(commitPinch, event.scale);
   });
-  const moved = useAnimatedStyle<ViewStyle>(() => ({
-    transform: [{ translateX: x.get() }, { translateY: y.get() }],
-  }));
   return { gesture: Gesture.Exclusive(pan, Gesture.Simultaneous(tap, pinch)), moved };
 }
 

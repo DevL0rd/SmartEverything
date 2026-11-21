@@ -119,7 +119,8 @@ export function TasksMetrics({
 }): ReactNode {
   const { person } = usePlannerFrame();
   const stats = usePlannerStats(person, 'week').data;
-  const layout = shellLayoutOf(useAreaWidth());
+  const areaWidth = useAreaWidth();
+  const layout = shellLayoutOf(areaWidth);
   const facts = openFactsOf(entries, today);
   if (entries.length === 0 && stats !== undefined && !hasHistory(stats)) return null;
   return (

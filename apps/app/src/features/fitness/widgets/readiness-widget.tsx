@@ -31,6 +31,7 @@ function Dial({ score, size }: { readonly score: Score; readonly size: number })
       bands={BANDS}
       size={size}
       label={`Readiness ${String(score.value)}, ${readinessWord(score.value)}`}
+      ticking={false}
     >
       <Text variant="title-2" className="tabular">
         {String(score.value)}

@@ -132,6 +132,7 @@ function PartRow({
           progress={percent === null ? null : percent / 100}
           colour={TONE_COLOUR[view.tone]}
           label={`${view.label} life`}
+          ticking={false}
         />
         <View className="flex-row items-baseline gap-2">
           <Text variant="footnote" tone="variant" numberOfLines={1} className="shrink">

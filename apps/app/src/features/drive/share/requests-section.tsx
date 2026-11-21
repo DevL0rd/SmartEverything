@@ -94,7 +94,8 @@ export function RequestCard({
 export function RequestsSection({ itemId }: { readonly itemId: string }): ReactNode {
   const rows = useDriveAccessRequestRows();
   const profiles = useProfiles();
-  const pending = pendingRequestsFor(rows, itemId, useViewerId());
+  const viewerId = useViewerId();
+  const pending = pendingRequestsFor(rows, itemId, viewerId);
   if (pending.length === 0) return null;
   return (
     <View className="gap-2">

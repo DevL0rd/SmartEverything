@@ -27,7 +27,7 @@ function TodayRow({ app, trend }: { readonly app: TodayApp; readonly trend: bool
         <Text variant="callout" ellipsize="middle">
           {app.label}
         </Text>
-        <ProgressBar progress={app.share} colour="viz-1" label={app.label} />
+        <ProgressBar progress={app.share} colour="viz-1" label={app.label} ticking={false} />
       </View>
       {trend ? (
         <View aria-hidden className="w-16">

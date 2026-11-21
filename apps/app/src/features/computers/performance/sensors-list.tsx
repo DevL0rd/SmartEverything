@@ -89,7 +89,8 @@ export function SensorsList({
   readonly offline: boolean;
 }): ReactNode {
   const sensors = useComputerSelect(deviceId, (parts) => parts.sensors?.sensors, sameJson);
-  const columns = gridColumnsOf(useFrameBodyWidth());
+  const frameBodyWidth = useFrameBodyWidth();
+  const columns = gridColumnsOf(frameBodyWidth);
   return (
     <DemandRegion deviceId={deviceId} topics={TOPICS}>
       {sensors === undefined || sensors.length === 0 ? null : (

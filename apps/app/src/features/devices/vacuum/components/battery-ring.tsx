@@ -38,6 +38,7 @@ export function BatteryRing({
         size={look.px}
         thickness={look.thickness}
         colour={ringColour(percent)}
+        ticking={false}
       />
       <View className="absolute">
         <Text variant="caption" className="tabular">{`${shown}%`}</Text>

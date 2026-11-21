@@ -7,14 +7,14 @@ const { options, listActivity } = vi.hoisted(() => ({
   options: vi.fn(
     (value: {
       readonly queryKey: readonly unknown[];
-      readonly read: (cursor: string | null) => Promise<unknown>;
+      readonly read: (cursor: string | null, signal: AbortSignal) => Promise<unknown>;
     }) => value,
   ),
   listActivity: vi.fn(() => Promise.resolve({ items: [], next: null })),
 }));
 
 vi.mock('./pages', () => ({ useDrivePages: options }));
-vi.mock('../../../api/drive', () => ({ listDriveActivity: listActivity }));
+vi.mock('../../../api/drive-pages', () => ({ listDriveActivity: listActivity }));
 
 const { useDriveActivity } = await import('./queries');
 
@@ -26,8 +26,9 @@ describe('global Drive activity windows', () => {
     if (supplied === undefined)
       throw new Error('The activity query did not provide its page reader.');
     expect(supplied).toMatchObject({ queryKey: driveKey('activity', DRIVE_EVERYWHERE, from) });
-    await supplied.read('42');
-    expect(listActivity).toHaveBeenCalledWith(from, '42');
+    const { signal } = new AbortController();
+    await supplied.read('42', signal);
+    expect(listActivity).toHaveBeenCalledWith(from, '42', signal);
     useDriveActivity('2026-02-01T00:00:00Z');
     expect(options.mock.calls[1]?.[0]).toMatchObject({
       queryKey: driveKey('activity', DRIVE_EVERYWHERE, '2026-02-01T00:00:00Z'),

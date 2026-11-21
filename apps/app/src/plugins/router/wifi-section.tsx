@@ -17,7 +17,8 @@ import { usePluginDevice } from '../shared/use-plugin-device';
 import { bandCounts } from './client-model';
 import { airtimeOf } from './clients/airtime';
 import { routerSectionHref } from './overview/links';
-import { routerNotice, useRouterSnapshot } from './router-data';
+import { routerNotice, useWatchedRouterSnapshot } from './router-data';
+import type { Device } from '../../store/state';
 
 type Radio = RouterSnapshot['radios'][number];
 
@@ -66,7 +67,12 @@ function Airtime({ busyPercent }: { readonly busyPercent: number }): ReactNode {
           {`${percent(busyPercent / 100)} · ${word}`}
         </Text>
       </View>
-      <ProgressBar progress={busyPercent / 100} colour={tone} label={`Airtime busy, ${word}`} />
+      <ProgressBar
+        progress={busyPercent / 100}
+        colour={tone}
+        label={`Airtime busy, ${word}`}
+        ticking
+      />
     </View>
   );
 }
@@ -142,10 +148,11 @@ function Radios({ snapshot }: { readonly snapshot: RouterSnapshot }): ReactNode 
   );
 }
 
-export function WifiSection(): ReactNode {
+export function WifiSection({ device }: { readonly device: Device }): ReactNode {
   usePluginScreen('router', 'WifiSection');
+  const stream = useWatchedRouterSnapshot(device);
   return (
-    <PluginStreamSection stream={useRouterSnapshot()} pluginId="router" notice={routerNotice}>
+    <PluginStreamSection stream={stream} pluginId="router" notice={routerNotice}>
       {(snapshot) =>
         snapshot.radios.length === 0 ? (
           <EmptyState

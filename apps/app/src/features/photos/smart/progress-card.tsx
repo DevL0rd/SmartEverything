@@ -42,6 +42,7 @@ function RingTile({ ring }: { readonly ring: StageRing }): ReactNode {
             colour={ring.colour}
             tinted
             ticks={failedTicksOf(ring)}
+            ticking={false}
           />
         </View>
         <Text variant="footnote" className="tabular-nums font-sans-medium">
@@ -83,6 +84,7 @@ function Spend({ status }: { readonly status: PhotoAiStatus }): ReactNode {
         progress={spend.progress}
         colour="viz-3"
         label={`Spent ${money.cost(spend.spent)} of about ${money.cost(spend.planned)}`}
+        ticking={false}
       />
     </View>
   );

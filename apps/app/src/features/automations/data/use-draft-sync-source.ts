@@ -25,7 +25,7 @@ export function useDraftSyncSource(automationId: string): DraftSyncSource {
   const client = useQueryClient();
   const draft = useScreenQuery({
     queryKey: automationKeys.draft(automationId),
-    queryFn: () => api.getDraft(automationId),
+    queryFn: ({ signal }) => api.getDraft(automationId, signal),
     staleTime: Infinity,
     refetchOnMount: false,
   });
@@ -48,7 +48,7 @@ export function useDraftSyncSource(automationId: string): DraftSyncSource {
       revision: (revision: number) =>
         client.query({
           queryKey: automationKeys.revision(automationId, revision),
-          queryFn: () => api.getRevision(automationId, revision, kinds),
+          queryFn: ({ signal }) => api.getRevision(automationId, revision, kinds, { signal }),
           staleTime: Infinity,
         }),
       compare: (from: number, to: number | 'draft') => api.compareRevisions(automationId, from, to),

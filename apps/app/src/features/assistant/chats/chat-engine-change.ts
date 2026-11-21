@@ -16,6 +16,7 @@ import { isComputerEngine } from '../provider/computer-engine';
 import { useEngineCatalogue } from '../provider/provider-data';
 import { continueInBranch } from './branch';
 import { changeChat } from './chat-actions';
+import { useEntityStore } from '../../../store/store-context';
 
 const log = new Logger('app.chat');
 
@@ -112,6 +113,7 @@ export function useChatHandoff(
 export function useChatEngineChange(chat: AiChatRow): (engine: Engine) => void {
   const engines = useEngineCatalogue();
   const handoff = useChatHandoff(chat);
+  const store = useEntityStore();
   return (engine): void => {
     const kind = engineChangeOf(chat.engine, engine);
     log.info('engine.change_requested', {
@@ -128,7 +130,7 @@ export function useChatEngineChange(chat: AiChatRow): (engine: Engine) => void {
       return;
     }
     if (kind === 'direct' || engine.kind !== 'dsh') {
-      background(changeChat(chat.id, { engine }), 'chat.change_failed');
+      background(changeChat(store, chat.id, { engine }), 'chat.change_failed');
       return;
     }
     handoff(engine);

@@ -1,10 +1,11 @@
-import type {
+import {
   API_ENDPOINTS as E,
-  PlannerAlarmRow,
-  PlannerCollectionRow,
-  PlannerItemRow,
-  PlannerOccurrenceRow,
+  type PlannerAlarmRow,
+  type PlannerCollectionRow,
+  type PlannerItemRow,
+  type PlannerOccurrenceRow,
 } from '@smarteverything/domain';
+import { randomUUID } from 'expo-crypto';
 import { useMemo } from 'react';
 import type { z } from 'zod';
 import {
@@ -25,13 +26,10 @@ import {
 } from '../../../api/planner';
 import type { EntityStore } from '../../../store/entity-store';
 import { useEntityStore } from '../../../store/store-context';
-import {
-  alarmEdit,
-  collectionEdit,
-  itemEdit,
-  occurrenceEdit,
-  writeOptimistically,
-} from './optimistic';
+import { liveRowEdit, writeOptimistically } from '../../../store/optimistic';
+import { predictedAlarm, predictedCollection } from './create-rows';
+import { predictedItem } from './item-create';
+import { alarmEdit, collectionEdit, itemEdit, occurrenceEdit } from './optimistic';
 import { apiPerson, type PlannerPerson } from './person';
 
 type Body<K extends keyof typeof E> = z.input<(typeof E)[K]['body']>;
@@ -45,6 +43,7 @@ export type ItemChange = Omit<Body<'updatePlannerItem'>, 'changes'> & {
 export type CollectionChange = DefinedChanges<Body<'updatePlannerCollection'>>;
 export type AlarmChange = DefinedChanges<Body<'updatePlannerAlarm'>>;
 export type CompleteBody = Body<'completePlannerItem'>;
+export type AlarmCreate = Body<'createPlannerAlarm'> & { readonly id: string };
 
 export interface ItemWrites {
   readonly createItem: (body: Body<'createPlannerItem'>) => Promise<Output<'createPlannerItem'>>;
@@ -71,7 +70,7 @@ export interface CollectionWrites {
 }
 
 export interface AlarmWrites {
-  readonly createAlarm: (body: Body<'createPlannerAlarm'>) => Promise<PlannerAlarmRow>;
+  readonly createAlarm: (body: AlarmCreate) => Promise<PlannerAlarmRow>;
   readonly updateAlarm: (row: PlannerAlarmRow, change: AlarmChange) => Promise<PlannerAlarmRow>;
   readonly deleteAlarm: (row: PlannerAlarmRow) => Promise<void>;
 }
@@ -112,77 +111,124 @@ export function itemWith(item: PlannerItemRow, change: ItemChange): PlannerItemR
 
 function reopenWrite(store: EntityStore, who: string | undefined): ItemWrites['reopenItem'] {
   return (item, key) =>
-    writeOptimistically(
-      store,
-      'planner_item.reopen',
-      [
+    writeOptimistically(store, {
+      event: 'planner_item.reopen',
+      edits: [
         occurrenceEdit(store.get(), item.id, key, null),
         ...(item.rrule === null && item.status === 'done'
           ? [itemEdit(item, { ...item, status: 'open' })]
           : []),
       ],
-      () => reopenPlannerItem(who, item.id, key),
-    );
+      send: () => reopenPlannerItem(who, item.id, key),
+    });
+}
+
+function createWrite(store: EntityStore, who: string | undefined): ItemWrites['createItem'] {
+  return (body) => {
+    const request = E.createPlannerItem.body.parse({ ...body, id: randomUUID() });
+    const next = predictedItem(store.get(), request, new Date());
+    return writeOptimistically(store, {
+      event: 'planner_item.create',
+      edits: next === null ? [] : [liveRowEdit('planner_items', next.id, null, next)],
+      send: () => createPlannerItem(who, request),
+      fields: { itemId: request.id, kind: request.kind },
+    });
+  };
+}
+
+function moveWrite(store: EntityStore, who: string | undefined): ItemWrites['moveItem'] {
+  return (itemId, body) => {
+    const key = body.occurrence_key ?? 'single';
+    const next: PlannerOccurrenceRow = {
+      item_id: itemId,
+      occurrence_key: key,
+      status: 'missed',
+      completed_at: null,
+      completed_by: null,
+      evidence: null,
+      moved_start: body.start,
+      moved_end: body.end ?? null,
+    };
+    return writeOptimistically(store, {
+      event: 'planner_item.move',
+      edits: [occurrenceEdit(store.get(), itemId, key, next)],
+      send: () => movePlannerItem(who, itemId, body),
+    });
+  };
 }
 
 function itemWrites(store: EntityStore, who: string | undefined): ItemWrites {
   return {
-    createItem: (body) => createPlannerItem(who, body),
+    createItem: createWrite(store, who),
     updateItem: (item, change) =>
-      writeOptimistically(
-        store,
-        'planner_item.update',
-        wholeSeries(change.scope) ? [itemEdit(item, itemWith(item, change))] : [],
-        () => updatePlannerItem(who, item.id, change),
-      ),
+      writeOptimistically(store, {
+        event: 'planner_item.update',
+        edits: wholeSeries(change.scope) ? [itemEdit(item, itemWith(item, change))] : [],
+        send: () => updatePlannerItem(who, item.id, change),
+      }),
     deleteItem: (item, scope = {}) =>
-      writeOptimistically(
-        store,
-        'planner_item.delete',
-        wholeSeries(scope.scope) ? [itemEdit(item, null)] : [],
-        () => deletePlannerItem(who, item.id, scope),
-      ),
+      writeOptimistically(store, {
+        event: 'planner_item.delete',
+        edits: wholeSeries(scope.scope) ? [itemEdit(item, null)] : [],
+        send: () => deletePlannerItem(who, item.id, scope),
+      }),
     completeItem: (itemId, body = {}): Promise<PlannerOccurrenceRow> => {
       const key = body.occurrence_key ?? 'single';
       const next = occurrenceOf(
         { itemId, key, status: 'done', evidence: body.evidence ?? null },
         new Date(),
       );
-      return writeOptimistically(
-        store,
-        'planner_item.complete',
-        [occurrenceEdit(store.get(), itemId, key, next)],
-        () => completePlannerItem(who, itemId, body),
-      );
+      return writeOptimistically(store, {
+        event: 'planner_item.complete',
+        edits: [occurrenceEdit(store.get(), itemId, key, next)],
+        send: () => completePlannerItem(who, itemId, body),
+      });
     },
     skipItem: (itemId, key = 'single'): Promise<PlannerOccurrenceRow> => {
       const next = occurrenceOf({ itemId, key, status: 'skipped', evidence: null }, new Date());
-      return writeOptimistically(
-        store,
-        'planner_item.skip',
-        [occurrenceEdit(store.get(), itemId, key, next)],
-        () => skipPlannerItem(who, itemId, key),
-      );
+      return writeOptimistically(store, {
+        event: 'planner_item.skip',
+        edits: [occurrenceEdit(store.get(), itemId, key, next)],
+        send: () => skipPlannerItem(who, itemId, key),
+      });
     },
     reopenItem: reopenWrite(store, who),
-    moveItem: (itemId, body) => movePlannerItem(who, itemId, body),
+    moveItem: moveWrite(store, who),
   };
 }
 
-function collectionWrites(store: EntityStore, who: string | undefined): CollectionWrites {
+function createCollectionWrite(
+  store: EntityStore,
+  person: PlannerPerson,
+): CollectionWrites['createCollection'] {
+  return (body) => {
+    const request = E.createPlannerCollection.body.parse({ ...body, id: randomUUID() });
+    const next = predictedCollection(store.get(), person, request, new Date());
+    return writeOptimistically(store, {
+      event: 'planner_collection.create',
+      edits: next === null ? [] : [liveRowEdit('planner_collections', next.id, null, next)],
+      send: () => createPlannerCollection(apiPerson(person), request),
+      fields: { collectionId: request.id, kind: request.kind },
+    });
+  };
+}
+
+function collectionWrites(store: EntityStore, person: PlannerPerson): CollectionWrites {
+  const who = apiPerson(person);
   return {
-    createCollection: (body) => createPlannerCollection(who, body),
+    createCollection: createCollectionWrite(store, person),
     updateCollection: (row, change) =>
-      writeOptimistically(
-        store,
-        'planner_collection.update',
-        [collectionEdit(row, { ...row, ...change })],
-        () => updatePlannerCollection(who, row.id, change),
-      ),
+      writeOptimistically(store, {
+        event: 'planner_collection.update',
+        edits: [collectionEdit(row, { ...row, ...change })],
+        send: () => updatePlannerCollection(who, row.id, change),
+      }),
     deleteCollection: (row) =>
-      writeOptimistically(store, 'planner_collection.delete', [collectionEdit(row, null)], () =>
-        deletePlannerCollection(who, row.id),
-      ),
+      writeOptimistically(store, {
+        event: 'planner_collection.delete',
+        edits: [collectionEdit(row, null)],
+        send: () => deletePlannerCollection(who, row.id),
+      }),
   };
 }
 
@@ -193,21 +239,36 @@ export function keptAlarm(store: EntityStore): (row: PlannerAlarmRow) => Planner
   };
 }
 
-function alarmWrites(store: EntityStore, who: string | undefined): AlarmWrites {
+function createAlarmWrite(store: EntityStore, person: PlannerPerson): AlarmWrites['createAlarm'] {
+  return (body) => {
+    const request = E.createPlannerAlarm.body.parse(body);
+    const next = predictedAlarm(store.get(), person, request, new Date());
+    return writeOptimistically(store, {
+      event: 'planner_alarm.create',
+      edits: next === null ? [] : [liveRowEdit('planner_alarms', next.id, null, next)],
+      send: () => createPlannerAlarm(apiPerson(person), request),
+      fields: { alarmId: request.id },
+    }).then(keptAlarm(store));
+  };
+}
+
+function alarmWrites(store: EntityStore, person: PlannerPerson): AlarmWrites {
+  const who = apiPerson(person);
   const keep = keptAlarm(store);
   return {
-    createAlarm: (body) => createPlannerAlarm(who, body).then(keep),
+    createAlarm: createAlarmWrite(store, person),
     updateAlarm: (row, change) =>
-      writeOptimistically(
-        store,
-        'planner_alarm.update',
-        [alarmEdit(row, { ...row, ...change })],
-        () => updatePlannerAlarm(who, row.id, change),
-      ).then(keep),
+      writeOptimistically(store, {
+        event: 'planner_alarm.update',
+        edits: [alarmEdit(row, { ...row, ...change })],
+        send: () => updatePlannerAlarm(who, row.id, change),
+      }).then(keep),
     deleteAlarm: (row) =>
-      writeOptimistically(store, 'planner_alarm.delete', [alarmEdit(row, null)], () =>
-        deletePlannerAlarm(who, row.id),
-      ),
+      writeOptimistically(store, {
+        event: 'planner_alarm.delete',
+        edits: [alarmEdit(row, null)],
+        send: () => deletePlannerAlarm(who, row.id),
+      }),
   };
 }
 
@@ -215,8 +276,8 @@ export function plannerWrites(store: EntityStore, person: PlannerPerson): Planne
   const who = apiPerson(person);
   return {
     ...itemWrites(store, who),
-    ...collectionWrites(store, who),
-    ...alarmWrites(store, who),
+    ...collectionWrites(store, person),
+    ...alarmWrites(store, person),
   };
 }
 

@@ -8,7 +8,6 @@ import { PAGE_SIZE, ShowMore } from '../../../components/show-more';
 import { TabsBar } from '../../../components/tabs-bar';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { useMinute } from '../../../store/clock';
-import { useAutomations } from '../data/use-automations';
 import { useDecisions, useRuns } from '../data/use-runs';
 import { DecisionsTab } from './decisions-tab';
 import { RunFilters } from './run-filters';
@@ -47,7 +46,6 @@ function toggled(chosen: ReadonlySet<RunFilter>, filter: RunFilter): ReadonlySet
 }
 
 interface RunListModel {
-  readonly summary: ChartSummary;
   readonly counts: Readonly<Record<RunFilter, number>>;
   readonly days: readonly RunDay[];
   readonly remaining: number;
@@ -58,21 +56,28 @@ function modelOf(
   runs: readonly AutomationRunSummary[],
   chosen: ReadonlySet<RunFilter>,
   limit: number,
-  { now, timeZone }: { readonly now: number; readonly timeZone: string | null },
+  timeZone: string | null,
 ): RunListModel {
   const shown = newestFirst(filterRuns(runs, chosen));
   return {
-    summary: chartSummary(
-      runs.filter((run) => run.mode === 'live'),
-      now,
-      timeZone,
-      CHART_DAYS,
-    ),
     counts: filterCounts(runs),
     days: runDays(shown.slice(0, limit), timeZone),
     remaining: shown.length - limit,
     mostSteps: Math.max(0, ...shown.map((run) => run.steps)),
   };
+}
+
+function summaryOf(
+  runs: readonly AutomationRunSummary[],
+  now: number,
+  timeZone: string | null,
+): ChartSummary {
+  return chartSummary(
+    runs.filter((run) => run.mode === 'live'),
+    now,
+    timeZone,
+    CHART_DAYS,
+  );
 }
 
 function Empty({ any }: { readonly any: boolean }): ReactNode {
@@ -94,7 +99,11 @@ function Empty({ any }: { readonly any: boolean }): ReactNode {
 function RunDays({
   any,
   days,
-  ...props
+  now,
+  zone,
+  mostSteps,
+  named,
+  onOpen,
 }: Omit<RunDayGroupProps, 'day' | 'width'> & {
   readonly any: boolean;
   readonly days: readonly RunDay[];
@@ -104,7 +113,16 @@ function RunDays({
   return (
     <View className="gap-section-gap" onLayout={onLayout}>
       {days.map((day) => (
-        <RunDayGroup key={day.key} day={day} width={width} {...props} />
+        <RunDayGroup
+          key={day.key}
+          day={day}
+          width={width}
+          now={now}
+          zone={zone}
+          mostSteps={mostSteps}
+          named={named}
+          onOpen={onOpen}
+        />
       ))}
     </View>
   );
@@ -115,22 +133,20 @@ function RunList(
 ): ReactNode {
   const { runs, automationId, timeZone, onOpenRun } = props;
   const now = useMinute();
-  const { byId } = useAutomations();
   const [chosen, setChosen] = useState<ReadonlySet<RunFilter>>(new Set());
   const [limit, setLimit] = useState(PAGE_SIZE);
   const model = useMemo(
-    () => modelOf(runs, chosen, limit, { now, timeZone }),
-    [runs, chosen, limit, now, timeZone],
+    () => modelOf(runs, chosen, limit, timeZone),
+    [runs, chosen, limit, timeZone],
   );
-  const nameOf = (run: AutomationRunSummary): string | null =>
-    automationId === null ? (byId.get(run.automation_id)?.name ?? 'A removed automation') : null;
+  const summary = useMemo(() => summaryOf(runs, now, timeZone), [runs, now, timeZone]);
   const showMore = (): void => {
     setLimit(limit + PAGE_SIZE);
   };
   return (
     <View className="gap-section-gap">
       <View className="w-full">
-        <RunsChart summary={model.summary} />
+        <RunsChart summary={summary} />
       </View>
       <View className="w-full">
         <RunFilters
@@ -148,7 +164,7 @@ function RunList(
         now={now}
         zone={timeZone}
         mostSteps={model.mostSteps}
-        nameOf={nameOf}
+        named={automationId === null}
         onOpen={onOpenRun}
       />
       {model.remaining > 0 ? (

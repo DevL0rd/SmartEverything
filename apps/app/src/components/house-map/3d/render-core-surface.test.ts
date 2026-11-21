@@ -3,6 +3,8 @@ import { canvasPixelRatio } from './render-core-renderer';
 import {
   sharedPool,
   sharedSurface,
+  stagePool,
+  type StageRenderer,
   type SurfacePaint,
   type SurfaceRenderer,
   type SurfaceTarget,
@@ -148,5 +150,68 @@ describe('shared small-stage renderer', () => {
     expect(stage.setPixelRatio(2, 1)).toBe(canvasPixelRatio(2, 1) !== 1);
     expect(stage.setPixelRatio(2, 1)).toBe(false);
     expect(stage.setPixelRatio(2, 0.5)).toBe(true);
+  });
+});
+
+interface FakeStage extends StageRenderer {
+  readonly domElement: FakeSource & { readonly remove: ReturnType<typeof vi.fn<() => void>> };
+  readonly dispose: ReturnType<typeof vi.fn<() => void>>;
+}
+
+function fakeStage(): FakeStage {
+  const base = fakeRenderer();
+  const domElement = Object.assign(base.domElement, { remove: vi.fn<() => void>() });
+  return { ...base, domElement, dispose: vi.fn<() => void>() };
+}
+
+function loseContext(renderer: FakeStage): void {
+  renderer.domElement.lost.forEach((listener) => {
+    listener();
+  });
+}
+
+describe('full-size stage pool', () => {
+  it('keeps the renderer and its canvas through a hidden screen and gives them back on return', () => {
+    const create = vi.fn(fakeStage);
+    const rest = vi.fn();
+    const pool = stagePool<FakeStage>(create, rest);
+    const shown = pool.acquire();
+    pool.release(shown);
+    expect(shown.domElement.remove).toHaveBeenCalledOnce();
+    expect(rest).toHaveBeenCalledWith(shown);
+    expect(shown.dispose).not.toHaveBeenCalled();
+    expect(pool.idle).toBe(1);
+    for (let visit = 0; visit < 6; visit += 1) {
+      const again = pool.acquire();
+      expect(again).toBe(shown);
+      pool.release(again);
+    }
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives two stages shown at once a renderer each and keeps both', () => {
+    const pool = stagePool<FakeStage>(fakeStage, vi.fn());
+    const home = pool.acquire();
+    const devices = pool.acquire();
+    expect(home).not.toBe(devices);
+    pool.release(home);
+    pool.release(devices);
+    expect(pool.idle).toBe(2);
+  });
+
+  it('disposes a renderer whose context was lost, idle or in use, and never hands it out', () => {
+    const create = vi.fn(fakeStage);
+    const pool = stagePool<FakeStage>(create, vi.fn());
+    const idle = pool.acquire();
+    pool.release(idle);
+    loseContext(idle);
+    expect(idle.dispose).toHaveBeenCalledOnce();
+    expect(pool.idle).toBe(0);
+    const used = pool.acquire();
+    expect(used).not.toBe(idle);
+    loseContext(used);
+    pool.release(used);
+    expect(used.dispose).toHaveBeenCalledOnce();
+    expect(pool.idle).toBe(0);
   });
 });

@@ -32,7 +32,7 @@ import {
   type TimerPreset,
   type TimerView,
 } from './lap-model';
-import { useInstantClock } from './format/clock-format';
+import { useInstantClock } from '../../store/clock-format';
 import { TimerCard, TimerDial, timerEndOf, useTimerActions } from './timer-card';
 import { TimerUseCard } from './timer-use';
 

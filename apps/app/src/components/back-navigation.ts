@@ -1,5 +1,6 @@
-import { useCallback, useContext, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useContext, useEffect, useRef } from 'react';
 import { router, useFocusEffect, usePathname, useNavigation, useRoute } from 'expo-router';
+import { usePausable } from '../design/external-store';
 import type { AppHref } from './app-href';
 import { BackRulesContext } from './back-rules-context';
 
@@ -92,7 +93,7 @@ export function useBackAction(enabled: boolean): (() => BackOutcome | null) | nu
   const navigation = useNavigation();
   const pathname = usePathname();
   const { key } = useRoute();
-  const opener = useSyncExternalStore(rules.subscribe, () => rules.callerOf(key, pathname));
+  const opener = usePausable(rules.subscribe, () => rules.callerOf(key, pathname));
   const step = enabled ? rules.stepFor(pathname, opener) : null;
   const action =
     step === null ? null : (): BackOutcome | null => leave(step, navigation, key, rules);

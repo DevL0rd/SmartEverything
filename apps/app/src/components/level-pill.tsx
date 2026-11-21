@@ -28,11 +28,11 @@ const FILL: Readonly<Record<LevelTone, ColourRole>> = {
 };
 
 export function LevelPill({ percent, label, tone }: LevelPillProps): ReactNode {
+  const unlit = useColour('outline');
   const look = levelLook(percent);
   const shown = tone ?? look.tone;
-  const text = label ?? look.word;
   const lit = useColour(FILL[shown]);
-  const unlit = useColour('outline');
+  const text = label ?? look.word;
   return (
     <View
       accessible

@@ -3,8 +3,7 @@ import { View } from 'react-native';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import type { ClockFormat } from '../../../format/clock-text';
-import { useHour24 } from '../../../store/clock-format';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useHour24, useClockFormat } from '../../../store/clock-format';
 import { AllDayChip } from './event-block';
 import { topStyle, yOf, type GridDay } from './time-grid-layout';
 

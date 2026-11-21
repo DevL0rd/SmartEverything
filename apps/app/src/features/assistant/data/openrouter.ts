@@ -19,7 +19,7 @@ export function useOpenRouterStatus(enabled = true): UseQueryResult<OpenRouterSt
   return useScreenQuery({
     queryKey: STATUS_KEY,
     enabled,
-    queryFn: () => api().call(M.readOpenRouter, {}),
+    queryFn: ({ signal }) => api().call(M.readOpenRouter, {}, { signal }),
   });
 }
 
@@ -27,7 +27,7 @@ export function useOpenRouterAccount(keySet: boolean): UseQueryResult<OpenRouter
   const owner = useIsOwner();
   return useScreenQuery({
     queryKey: OPENROUTER_ACCOUNT_KEY,
-    queryFn: () => api().call(M.readOpenRouterAccount, {}),
+    queryFn: ({ signal }) => api().call(M.readOpenRouterAccount, {}, { signal }),
     enabled: owner && keySet,
   });
 }

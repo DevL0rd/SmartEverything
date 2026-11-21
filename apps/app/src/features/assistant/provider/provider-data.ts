@@ -29,7 +29,8 @@ export const ENGINE_CATALOGUE_KEY = ['window', 'ai-engines'] as const;
 export function useEngineCatalogue(): UseQueryResult<EngineCatalogue> {
   return useScreenQuery({
     queryKey: ENGINE_CATALOGUE_KEY,
-    queryFn: async () => engineCatalogue(await api().call(E.readAiEngineCatalogue, {})),
+    queryFn: async ({ signal }) =>
+      engineCatalogue(await api().call(E.readAiEngineCatalogue, {}, { signal })),
   });
 }
 
@@ -89,13 +90,13 @@ export function useModelMachineChange(): UseMutationResult<
 export function useChatProvider(chatId: string, enabled = true): UseQueryResult<AiChatProvider> {
   return useScreenQuery({
     queryKey: [...providerKey(chatId), 'state'],
-    queryFn: () => readClaudeProvider(chatId),
+    queryFn: ({ signal }) => readClaudeProvider(chatId, signal),
     enabled,
   });
 }
 
-async function readClaudeProvider(chatId: string): Promise<AiChatProvider> {
-  const state = await api().call(E.readAiChatProvider, { params: { chatId } });
+async function readClaudeProvider(chatId: string, signal: AbortSignal): Promise<AiChatProvider> {
+  const state = await api().call(E.readAiChatProvider, { params: { chatId } }, { signal });
   if ('runtime' in state && state.runtime === 'codex')
     throw new Error('Expected Claude provider state, received Codex.');
   return state;
@@ -108,7 +109,8 @@ export function useProviderRead(
 ): UseQueryResult<JsonValue> {
   return useScreenQuery({
     queryKey: [...providerKey(chatId), 'read', body],
-    queryFn: () => api().call(E.readAiChatProviderState, { params: { chatId }, body }),
+    queryFn: ({ signal }) =>
+      api().call(E.readAiChatProviderState, { params: { chatId }, body }, { signal }),
     enabled,
   });
 }

@@ -1,18 +1,9 @@
-import type { DriveItemLink } from '@smarteverything/domain';
-import { LINK_RENEW_LEAD_MS } from '../../drive/data/links';
+import { LINK_RENEW_LEAD_MS, type ResolvedDriveLink } from '../../drive';
 
-export interface CoverLink {
-  readonly url: string;
-  readonly expiresAt: number;
+export function coverKey(itemId: string | null, generation: number): readonly unknown[] {
+  return ['drive-link', 'photo-cover', generation, itemId];
 }
 
-export function coverLinkOf(links: readonly DriveItemLink[], itemId: string): CoverLink | null {
-  const thumb = links.find((entry) => entry.itemId === itemId)?.thumb;
-  return thumb === undefined || thumb === null
-    ? null
-    : { url: thumb.url, expiresAt: Date.parse(thumb.expiresAt) };
-}
-
-export function coverStaleMs(link: CoverLink | null, now: number): number {
+export function coverStaleMs(link: ResolvedDriveLink | null, now: number): number {
   return link === null ? 0 : Math.max(0, link.expiresAt - now - LINK_RENEW_LEAD_MS);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DriveTrashLink } from '@smarteverything/domain';
-import { LINK_RENEW_LEAD_MS } from '../../drive/data/links';
+import { LINK_RENEW_LEAD_MS } from '../../drive';
 import { trashThumbOf, trashThumbStaleMs } from './trash-thumb';
 
 const FIRST = '00000000-0000-4000-8000-000000000011';

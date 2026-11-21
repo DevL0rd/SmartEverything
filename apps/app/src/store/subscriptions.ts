@@ -105,8 +105,12 @@ function keyedSlice(prefix: string, key: string): Slice {
   return name;
 }
 
+export function deviceValuesSlice(deviceId: string): Slice {
+  return keyedSlice('deviceValues', deviceId);
+}
+
 export function deviceValuesRecord(state: StoreState, deviceId: string): DeviceValues | undefined {
-  recordRead(keyedSlice('deviceValues', deviceId));
+  recordRead(deviceValuesSlice(deviceId));
   return rawState(state).deviceValues.get(deviceId);
 }
 

@@ -117,8 +117,9 @@ function ChipControl({
   const switching = useMachineSwitchPending(accessory?.chat);
   const needsMachine = accessory !== null && accessory.pending !== null;
   const thinking = useEngineThinking(engine);
-  const facts = routeFacts(useEngineRouteInfo(engine).data);
+  const engineRouteInfo = useEngineRouteInfo(engine);
   if (useModelLoading(model)) return <ChipSkeleton />;
+  const facts = routeFacts(engineRouteInfo.data);
   const icon = switching && !machineInHeader ? 'loader' : needsMachine ? 'monitor' : 'brain';
   return (
     <CompactPickerControl

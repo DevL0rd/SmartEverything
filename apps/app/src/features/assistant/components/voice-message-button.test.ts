@@ -1,23 +1,42 @@
-import { act, createElement } from 'react';
+import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const sheets = vi.hoisted((): { atOnce: boolean }[] => []);
+const sessions = vi.hoisted((): string[] => []);
 const notify = vi.hoisted(() => vi.fn());
 
+vi.mock('react-native', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  View: ({ children }: { readonly children?: ReactNode }): ReactNode => children,
+}));
+vi.mock('react-native-gesture-handler', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  GestureDetector: ({ children }: { readonly children?: ReactNode }): ReactNode => children,
+}));
 vi.mock('../../../components/icon-button', () => ({ IconButton: (): null => null }));
 vi.mock('../../../components/menu', () => ({ useAnchoredMenu: vi.fn() }));
 vi.mock('../../../components/icon', () => ({ Icon: (): null => null }));
 vi.mock('../../../components/text', () => ({ Text: (): null => null }));
 vi.mock('../../../components/tooltip', () => ({ Tooltip: (): null => null }));
-vi.mock('../../../components/toast-store', () => ({ notify }));
-vi.mock('../../../design/platform', () => ({ useIdiom: (): string => 'touch' }));
+vi.mock('../../../components/toast-store', () => ({
+  notify,
+  notifyFailure:
+    (message: string) =>
+    (error: unknown): void => {
+      notify({ message, error, tone: 'critical' });
+    },
+}));
+vi.mock('../../../design/platform', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useIdiom: (): string => 'touch',
+  idiomNow: (): string => 'touch',
+}));
 vi.mock('../../../platform/pick-files', () => ({ pickFiles: vi.fn() }));
 vi.mock('../data/uploads', () => ({ attachFiles: vi.fn() }));
 vi.mock('./composer-chip', () => ({ ComposerChip: (): null => null }));
-vi.mock('../voice-message/voice-message-sheet', () => ({
-  VoiceMessageSheet: ({ atOnce }: { readonly atOnce: boolean }): null => {
-    sheets.push({ atOnce });
+vi.mock('../voice-message/recorder-session', () => ({
+  VoiceSession: ({ mode }: { readonly mode: string }): null => {
+    sessions.push(mode);
     return null;
   },
 }));
@@ -47,7 +66,7 @@ beforeEach(() => {
     document: { activeElement: null, body: null },
     HTMLIFrameElement: Date,
   });
-  sheets.length = 0;
+  sessions.length = 0;
   notify.mockClear();
   hide = showChatOnScreen('chat-a');
 });
@@ -63,11 +82,11 @@ afterEach(() => {
 describe('the voice message button', () => {
   it('starts recording at once when the power button asks for its chat', () => {
     mount('chat-a', false);
-    expect(sheets).toEqual([]);
+    expect(sessions).toEqual([]);
     act(() => {
       requestVoiceMessage('chat-a');
     });
-    expect(sheets.at(-1)).toEqual({ atOnce: true });
+    expect(sessions.at(-1)).toBe('sheet');
   });
 
   it('picks up a request made before the chat opened', () => {
@@ -75,7 +94,7 @@ describe('the voice message button', () => {
       requestVoiceMessage('chat-a');
     });
     mount('chat-a', false);
-    expect(sheets.at(-1)).toEqual({ atOnce: true });
+    expect(sessions.at(-1)).toBe('sheet');
   });
 
   it('leaves requests for other chats alone', () => {
@@ -83,7 +102,7 @@ describe('the voice message button', () => {
     act(() => {
       requestVoiceMessage('chat-b');
     });
-    expect(sheets).toEqual([]);
+    expect(sessions).toEqual([]);
   });
 
   it('says so instead of recording in a chat that cannot take messages', () => {
@@ -91,7 +110,7 @@ describe('the voice message button', () => {
     act(() => {
       requestVoiceMessage('chat-a');
     });
-    expect(sheets).toEqual([]);
+    expect(sessions).toEqual([]);
     expect(notify).toHaveBeenCalledOnce();
   });
 });

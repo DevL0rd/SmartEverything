@@ -294,9 +294,7 @@ export function Overview({
     />
   );
   const next = <TimelineBand events={list.events} links={links} timeZone={list.timeZone} />;
-  const attention = (
-    <AttentionCard entries={list.entries} failedThisWeek={failedThisWeek} />
-  );
+  const attention = <AttentionCard entries={list.entries} failedThisWeek={failedThisWeek} />;
   return (
     <View onLayout={onLayout} className="gap-grid-gap">
       {layout === 'three' ? (

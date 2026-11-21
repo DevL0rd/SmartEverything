@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useQueryClient, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import { background } from '@smarteverything/logging';
 import { href } from '../../../app-shell/hrefs';
 import { confirm } from '../../../components/confirm-store';
@@ -6,6 +7,7 @@ import type { MenuItem } from '../../../components/menu';
 import { notify } from '../../../components/toast-store';
 import { count } from '../../../format/number';
 import { BULK_BATCH, keptLine, runBulk, useBulkRunning } from '../../../store/bulk-run';
+import { hiddenEdit, writeDriveShown } from '../../drive';
 import { archivePhotos, moveIntoLockedFolder, readLockedState, unarchivePhotos } from './api';
 import { openMetaEdit, type MetaCurrent } from './meta/meta-request';
 
@@ -83,13 +85,40 @@ async function runCounted(work: Counted): Promise<number | null> {
   }
 }
 
-async function archiveNow(itemIds: readonly string[], onDone?: () => void): Promise<void> {
+type Move = (batch: readonly string[]) => Promise<{ readonly count: number }>;
+
+function kindIn(key: QueryKey, prefix: string): boolean {
+  const kind = key[2];
+  return typeof kind === 'string' && kind.startsWith(prefix);
+}
+
+const LEAVES: Readonly<Record<'archive' | 'unarchive' | 'lock', (key: QueryKey) => boolean>> = {
+  archive: (key) => !kindIn(key, 'photo-archive') && !kindIn(key, 'photo-locked'),
+  unarchive: (key) => kindIn(key, 'photo-archive'),
+  lock: (key) => !kindIn(key, 'photo-locked'),
+};
+
+function shownMove(client: QueryClient, kind: keyof typeof LEAVES, move: Move): Move {
+  return (batch) =>
+    writeDriveShown(client, {
+      event: `photos.organise.${kind}`,
+      edit: hiddenEdit(batch, LEAVES[kind]),
+      send: () => move(batch),
+      incomplete: (answer) => answer.count < batch.length,
+    });
+}
+
+async function archiveNow(
+  client: QueryClient,
+  itemIds: readonly string[],
+  onDone?: () => void,
+): Promise<void> {
   const changed = await runCounted({
     label: 'photos.organise.archive',
     verb: 'Archiving',
     failure: 'Not everything was archived',
     ids: itemIds,
-    call: archivePhotos,
+    call: shownMove(client, 'archive', archivePhotos),
   });
   if (changed === null) return;
   notify({
@@ -101,27 +130,35 @@ async function archiveNow(itemIds: readonly string[], onDone?: () => void): Prom
   onDone?.();
 }
 
-async function unarchiveNow(itemIds: readonly string[], onDone?: () => void): Promise<void> {
+async function unarchiveNow(
+  client: QueryClient,
+  itemIds: readonly string[],
+  onDone?: () => void,
+): Promise<void> {
   const changed = await runCounted({
     label: 'photos.organise.unarchive',
     verb: 'Moving back to the library',
     failure: 'Not everything left Archive',
     ids: itemIds,
-    call: unarchivePhotos,
+    call: shownMove(client, 'unarchive', unarchivePhotos),
   });
   if (changed === null) return;
   notify({ message: `${itemsText(changed)} back in the library` });
   onDone?.();
 }
 
-async function lockNow(itemIds: readonly string[], onDone?: () => void): Promise<void> {
+async function lockNow(
+  client: QueryClient,
+  itemIds: readonly string[],
+  onDone?: () => void,
+): Promise<void> {
   if (!(await lockable()) || !(await confirm(lockConfirmOf(itemIds.length)))) return;
   const changed = await runCounted({
     label: 'photos.organise.lock',
     verb: 'Moving to the Locked folder',
     failure: 'Not everything moved to the Locked folder',
     ids: itemIds,
-    call: moveIntoLockedFolder,
+    call: shownMove(client, 'lock', moveIntoLockedFolder),
   });
   if (changed === null) return;
   notify({ message: `${itemsText(changed)} moved to the Locked folder` });
@@ -129,16 +166,17 @@ async function lockNow(itemIds: readonly string[], onDone?: () => void): Promise
 }
 
 export function useOrganiseActions(): OrganiseActions {
+  const client = useQueryClient();
   return {
     busy: useBulkRunning(),
     archive: (itemIds, onDone): void => {
-      background(archiveNow(itemIds, onDone), 'photos.organise.archive_failed');
+      background(archiveNow(client, itemIds, onDone), 'photos.organise.archive_failed');
     },
     unarchive: (itemIds, onDone): void => {
-      background(unarchiveNow(itemIds, onDone), 'photos.organise.unarchive_failed');
+      background(unarchiveNow(client, itemIds, onDone), 'photos.organise.unarchive_failed');
     },
     lock: (itemIds, onDone): void => {
-      background(lockNow(itemIds, onDone), 'photos.organise.lock_failed');
+      background(lockNow(client, itemIds, onDone), 'photos.organise.lock_failed');
     },
   };
 }

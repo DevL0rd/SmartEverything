@@ -12,6 +12,7 @@ import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { VirtualList } from '../../../components/virtual-list';
 import { joinParts } from '../../../format/text';
 import { useSyncStatus } from '../../../store/selectors';
+import { useEntityStore } from '../../../store/store-context';
 import { useDriveAlbumItems, useDriveChips } from '../data';
 import { DriveFrame } from '../components/drive-frame';
 import { DriveColumnHead } from '../components/drive-columns';
@@ -143,6 +144,7 @@ function Opened({ folder }: { readonly folder: SmartFolder }): ReactNode {
   const placeOf = usePlaceOf(NO_PLACES);
   const saver = useSaveSmartFolder();
   const router = useRouter();
+  const store = useEntityStore();
   return (
     <DriveFrame
       section="starred"
@@ -151,6 +153,7 @@ function Opened({ folder }: { readonly folder: SmartFolder }): ReactNode {
       breadcrumbs={[{ label: 'Starred', href: href.drivePage('starred') }, { label: folder.title }]}
       back
       overflow={smartFolderMenu(
+        store,
         folder,
         () => {
           saver.rename(folder);

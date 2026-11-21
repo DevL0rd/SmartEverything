@@ -21,7 +21,7 @@ import { Anchored } from './anchored';
 import { ClockStepper } from './clock-stepper';
 import { ReminderSwatches } from './reminder-swatches';
 import { WindowDial, type DialWindow } from './window-dial';
-import { useClockFormat } from '../../../features/clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const DIAL = 232;
 

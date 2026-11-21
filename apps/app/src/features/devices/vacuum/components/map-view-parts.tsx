@@ -243,7 +243,8 @@ export interface VacuumStillProps {
 }
 
 export function VacuumStill({ deviceId, scene, unified }: VacuumStillProps): ReactNode {
-  const pose = valueOrNull(useVacuumPose(deviceId)) ?? scene.robot;
+  const vacuumPose = useVacuumPose(deviceId);
+  const pose = valueOrNull(vacuumPose) ?? scene.robot;
   if (unified !== null) {
     return (
       <StageStillView

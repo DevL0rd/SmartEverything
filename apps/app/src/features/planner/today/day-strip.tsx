@@ -8,10 +8,9 @@ import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
 import { useColour } from '../../../design/colour';
 import { hoursMinutes } from '../../../format/time';
-import { useHour24 } from '../../../store/clock-format';
+import { useHour24, useClockFormat, useInstantClock } from '../../../store/clock-format';
 import { useSettings } from '../../../store/selectors';
 import { usePlannerCollections, usePlannerPreferences, useVisibleMinute } from '../data';
-import { useClockFormat, useInstantClock } from '../../clock/format/clock-format';
 import { usePlannerFrame } from '../frame/frame-context';
 import {
   STRIP_COLOURS,

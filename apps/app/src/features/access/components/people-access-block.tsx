@@ -20,7 +20,7 @@ import {
   standingText,
   standingTone,
 } from '../model/standing';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 function PersonRow({
   access,
@@ -31,8 +31,9 @@ function PersonRow({
 }): ReactNode {
   const profile = useProfiles().find((entry) => entry.id === access.profile_id);
   const now = useMinute();
-  const standing = standingOf(access, now, useSettings().time_zone);
   const format = useClockFormat();
+  const timeZone = useSettings().time_zone;
+  const standing = standingOf(access, now, timeZone);
   if (profile === undefined) {
     return null;
   }

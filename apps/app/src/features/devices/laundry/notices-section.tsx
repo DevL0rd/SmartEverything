@@ -51,8 +51,9 @@ function useNoticeSetting(deviceId: string): LaundryNoticeSetting {
 }
 
 export function LaundryNoticesSection({ device }: { readonly device: Device }): ReactNode {
-  const kinds = noticeKindsOf(useDeviceModel(device).presentation);
+  const deviceModel = useDeviceModel(device);
   const setting = useNoticeSetting(device.id);
+  const kinds = noticeKindsOf(deviceModel.presentation);
   if (kinds.length === 0) {
     return null;
   }
@@ -118,8 +119,8 @@ function CardRow({
 
 export function NotifyCard({ laundry }: { readonly laundry: Laundry }): ReactNode {
   const { device } = laundry;
-  const kinds = noticeKindsOf(laundry.presentation);
   const setting = useNoticeSetting(device.id);
+  const kinds = noticeKindsOf(laundry.presentation);
   if (kinds.length === 0) {
     return null;
   }

@@ -22,7 +22,7 @@ const OUTREACH_SHOWN = 10;
 export function useReachSettings(): UseQueryResult<ReachSettings> {
   return useScreenQuery({
     queryKey: SETTINGS_KEY,
-    queryFn: () => api().call(R.readReachSettings, {}),
+    queryFn: ({ signal }) => api().call(R.readReachSettings, {}, { signal }),
   });
 }
 
@@ -39,7 +39,8 @@ export function useReachUpdate(): (change: ReachSettingsChange) => Promise<Reach
 export function useOutreach(): UseQueryResult<AiOutreachRow[]> {
   return useScreenQuery({
     queryKey: OUTREACH_KEY,
-    queryFn: () => api().call(R.listOutreach, { query: { limit: OUTREACH_SHOWN } }),
+    queryFn: ({ signal }) =>
+      api().call(R.listOutreach, { query: { limit: OUTREACH_SHOWN } }, { signal }),
   });
 }
 

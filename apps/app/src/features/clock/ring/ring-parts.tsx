@@ -8,7 +8,7 @@ import { cn } from '../../../design/cn';
 import { useMinute } from '../../../store/clock';
 import { LIST_DOT } from '../../planner';
 import { useWeather } from '../../weather';
-import { useInstantClock } from '../format/clock-format';
+import { useInstantClock, useHour24 } from '../../../store/clock-format';
 import type { SoundLine } from './ring-lines';
 import {
   briefingLinesOf,
@@ -19,7 +19,6 @@ import {
   weatherLineOf,
   type TodayRow,
 } from './ring-model';
-import { useHour24 } from '../../../store/clock-format';
 
 const RING_TIME = 'font-mono-medium tracking-tighter tabular';
 
@@ -162,7 +161,8 @@ export function TodayList({
   readonly day: PlannerDay;
   readonly colours: ReadonlyMap<string, PlannerColourKey>;
 }): ReactNode {
-  const rows = todayRowsOf(day, colours, useInstantClock());
+  const instantClock = useInstantClock();
+  const rows = todayRowsOf(day, colours, instantClock);
   if (rows.length === 0) return null;
   return (
     <View className="gap-2">

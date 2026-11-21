@@ -179,9 +179,9 @@ function Arranged(
   const known = useKnownWidgets(editor, board, catalogue);
   const visible = known.filter((widget) => isShown(widget, availability));
   useArrangedLog({ editor, board, width, known: known.length, visible: visible.length });
+  const reveal = useBoardReveal(visible, props.reveal);
   const columns = boardColumnsOf(board, width);
   const cell = cellOf(width, columns, idiom, density);
-  const reveal = useBoardReveal(visible, props.reveal);
   const shared = { editor, board, cell, catalogue, reveal };
   if (!editor.editing) {
     return (

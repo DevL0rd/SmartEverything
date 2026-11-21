@@ -56,17 +56,17 @@ vi.mock('../../../../api/transport', () => ({ api: (): object => ({ call }) }));
 vi.mock('../tools/openings-panel', () => ({
   centimetres: (value: number): number => Math.round(value * 100),
 }));
-vi.mock('../../../../store/selectors', async () => {
+vi.mock('../../../../store/selectors', () => ({
+  useRooms: (): readonly object[] => [{ id: HUB, name: 'Kitchen', position: 0 }],
+}));
+vi.mock('../tools/placing-devices', async () => {
   const { deviceFixture } = await import('../../../../store/device-fixture');
   const devices = [
     deviceFixture(1, { id: SPEAKER, name: 'Speaker', room_id: HUB }),
     deviceFixture(2, { id: LAMP, name: 'Lamp', room_id: HUB }),
     deviceFixture(3, { id: FAN, name: 'Fan', room_id: null }),
   ];
-  return {
-    useRooms: (): readonly object[] => [{ id: HUB, name: 'Kitchen', position: 0 }],
-    useDevices: (): typeof devices => devices,
-  };
+  return { usePlacingDevices: (): typeof devices => devices };
 });
 
 import { deviceFixture } from '../../../../store/device-fixture';

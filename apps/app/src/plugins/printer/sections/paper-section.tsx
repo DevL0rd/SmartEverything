@@ -33,6 +33,7 @@ function TrayCard({ tray }: { readonly tray: Tray }): ReactNode {
         progress={tray.level === null ? null : tray.level / 100}
         colour={tray.ok ? 'primary' : 'critical'}
         label={`${tray.name} paper level`}
+        ticking={false}
       />
       {media.length === 0 ? null : (
         <Text variant="caption" tone="variant">

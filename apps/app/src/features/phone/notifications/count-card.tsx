@@ -21,7 +21,7 @@ function CountRow({ entry }: { readonly entry: CountEntry }): ReactNode {
           {count(entry.count)}
         </Text>
       </View>
-      <ProgressBar progress={entry.share} colour="viz-1" label={entry.label} />
+      <ProgressBar progress={entry.share} colour="viz-1" label={entry.label} ticking={false} />
     </View>
   );
 }

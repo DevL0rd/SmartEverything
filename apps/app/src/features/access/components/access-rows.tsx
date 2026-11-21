@@ -10,7 +10,7 @@ import { useMinute } from '../../../store/clock';
 import type { AccessActions } from '../data/access-data';
 import { END_PRESETS, endAfter, endsText, windowText } from '../model/standing';
 import { PausedWindowSheet } from './paused-window-sheet';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const NEVER = 'never';
 

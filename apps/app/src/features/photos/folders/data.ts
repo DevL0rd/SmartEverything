@@ -44,11 +44,17 @@ export function useFolderScope(scope: LibraryScope): LibraryScope {
 }
 
 export function usePhotoFolders(): UseQueryResult<PhotosResult<'listPhotoFolders'>> {
-  return useScreenQuery({ queryKey: folderKeys.folders(), queryFn: listPhotoFolders });
+  return useScreenQuery({
+    queryKey: folderKeys.folders(),
+    queryFn: ({ signal }) => listPhotoFolders(signal),
+  });
 }
 
 export function useHiddenFolders(): UseQueryResult<PhotosResult<'listHiddenPhotoFolders'>> {
-  return useScreenQuery({ queryKey: folderKeys.hidden(), queryFn: listHiddenPhotoFolders });
+  return useScreenQuery({
+    queryKey: folderKeys.hidden(),
+    queryFn: ({ signal }) => listHiddenPhotoFolders(signal),
+  });
 }
 
 const NO_KEYS: ReadonlySet<string> = new Set();

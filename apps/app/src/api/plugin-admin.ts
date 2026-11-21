@@ -49,24 +49,25 @@ export async function removePlugin(pluginId: PluginId): Promise<void> {
   log.info('plugin.removed', { pluginId });
 }
 
-export function readPluginTools(pluginId: PluginId): Promise<PluginToolRow[]> {
-  return api().call(E.readPluginTools, { params: { pluginId } });
+export function readPluginTools(pluginId: PluginId, signal: AbortSignal): Promise<PluginToolRow[]> {
+  return api().call(E.readPluginTools, { params: { pluginId } }, { signal });
 }
 
-export function readPluginLog(pluginId: PluginId): Promise<PluginLogLine[]> {
-  return api().call(E.readPluginLog, { params: { pluginId } });
+export function readPluginLog(pluginId: PluginId, signal: AbortSignal): Promise<PluginLogLine[]> {
+  return api().call(E.readPluginLog, { params: { pluginId } }, { signal });
 }
 
 export function readPluginOptions(
   pluginId: PluginId,
   source: string,
   query: PluginOptionQuery,
+  signal: AbortSignal,
 ): Promise<PluginOptionPage> {
-  return api().call(E.readPluginOptions, { params: { pluginId, source }, query });
+  return api().call(E.readPluginOptions, { params: { pluginId, source }, query }, { signal });
 }
 
-export function readPluginPeople(pluginId: PluginId): Promise<PluginPerson[]> {
-  return api().call(E.listPluginPeople, { params: { pluginId } });
+export function readPluginPeople(pluginId: PluginId, signal: AbortSignal): Promise<PluginPerson[]> {
+  return api().call(E.listPluginPeople, { params: { pluginId } }, { signal });
 }
 
 export async function savePluginPerson(

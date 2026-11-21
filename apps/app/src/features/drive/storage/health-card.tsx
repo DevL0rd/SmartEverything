@@ -154,6 +154,7 @@ function RingDial({ view }: { readonly view: ScrubView }): ReactNode {
         thickness={RING_THICKNESS}
         colour={view.colour}
         trackColour="surface-3"
+        ticking={false}
       />
       <View className="absolute">
         <Text variant="caption" className="tabular">

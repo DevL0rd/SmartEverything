@@ -1,22 +1,12 @@
 import { Logger, background } from '@smarteverything/logging';
-import {
-  type AiChatChange,
-  type AiChatNew,
-  type AiChatRow,
-  type Engine,
-} from '@smarteverything/domain';
-import {
-  compactAiChat,
-  createAiChat,
-  interruptAiChat,
-  removeAiChat,
-  updateAiChat,
-} from '../../../api/ai';
+import type { AiChatChange, AiChatRow } from '@smarteverything/domain';
+import { compactAiChat, interruptAiChat, removeAiChat, updateAiChat } from '../../../api/ai';
 import { deferAction } from '../../../components/deferred-action';
 import { notify } from '../../../components/toast-store';
-import type { MessageSender } from '../components/composer';
-import { outboxSender } from '../data/outbox';
 import { forgetBrowserChat } from '../browser/browser-runtime';
+import type { EntityStore } from '../../../store/entity-store';
+import { liveRowEdit, writeOptimistically } from '../../../store/optimistic';
+import { chatAfter } from './chat-prediction';
 
 const log = new Logger('app.chat');
 
@@ -38,35 +28,48 @@ async function attempt<T>(
   }
 }
 
-function newChat(chat: AiChatNew): Promise<AiChatRow | null> {
-  return attempt(
-    'chat.create',
-    { engineKind: chat.engine?.kind ?? null },
-    () => createAiChat(chat),
-    'Chat not created',
-  );
+export async function changeChat(
+  store: EntityStore,
+  chatId: string,
+  change: AiChatChange,
+): Promise<AiChatRow | null> {
+  const previous = store.get().tables.ai_chats.byId[chatId] ?? null;
+  const edits =
+    previous === null
+      ? []
+      : [liveRowEdit('ai_chats', chatId, previous, chatAfter(previous, change, new Date()))];
+  try {
+    return await writeOptimistically(store, {
+      event: 'chat.update',
+      edits: edits,
+      send: () => updateAiChat(chatId, change),
+      fields: { chatId, fields: Object.keys(change).join(',') },
+    });
+  } catch (error) {
+    notify({ message: 'Chat not changed', error, tone: 'critical' });
+    return null;
+  }
 }
 
-export function changeChat(chatId: string, change: AiChatChange): Promise<AiChatRow | null> {
-  return attempt(
-    'chat.update',
-    { chatId, fields: Object.keys(change).join(',') },
-    () => updateAiChat(chatId, change),
-    'Chat not changed',
-  );
+export async function setChatPinned(
+  store: EntityStore,
+  chatId: string,
+  pinned: boolean,
+): Promise<void> {
+  await changeChat(store, chatId, { pinned });
 }
 
-export async function setChatPinned(chatId: string, pinned: boolean): Promise<void> {
-  await changeChat(chatId, { pinned });
+export async function setChatRead(
+  store: EntityStore,
+  chatId: string,
+  read: boolean,
+): Promise<void> {
+  await changeChat(store, chatId, { read });
 }
 
-export async function setChatRead(chatId: string, read: boolean): Promise<void> {
-  await changeChat(chatId, { read });
-}
-
-export function setChatArchived(chatId: string, archived: boolean): void {
+export function setChatArchived(store: EntityStore, chatId: string, archived: boolean): void {
   if (!archived) {
-    background(changeChat(chatId, { archived: false }), 'chat.change_failed');
+    background(changeChat(store, chatId, { archived: false }), 'chat.change_failed');
     return;
   }
   log.info('chat.archive_deferred', { chatId });
@@ -109,32 +112,6 @@ export function deleteChat(chat: Pick<AiChatRow, 'id'>): void {
 
 export async function stopChat(chatId: string): Promise<void> {
   await attempt('chat.stop', { chatId }, () => interruptAiChat(chatId), 'Couldn’t stop it');
-}
-
-export function chatStarter(
-  engine: Engine,
-  opened: (chatId: string) => void,
-  resolve?: () => Engine | null,
-): MessageSender {
-  return async (text, attachments, extras) => {
-    const selected = resolve === undefined ? engine : resolve();
-    if (selected === null) {
-      log.warn('chat.start_blocked', { reason: 'machine-offline', requested: engine.kind });
-      notify({
-        message: 'That machine is offline. Switch machine to send.',
-        tone: 'critical',
-      });
-      return false;
-    }
-    const chat = await newChat({ engine: selected });
-    if (chat === null) {
-      return false;
-    }
-    log.info('chat.started', { chatId: chat.id, engineKind: selected.kind });
-    const sent = await outboxSender(chat.id, true)(text, attachments, extras);
-    opened(chat.id);
-    return sent;
-  };
 }
 
 export async function compactChat(chatId: string): Promise<void> {

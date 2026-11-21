@@ -11,7 +11,8 @@ import { Icon } from '../../../components/icon';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
 import { usePhotoBackupState } from '../data';
-import { currentFirst, phoneViewOf, type LiveProgress, type PhoneView } from './phones-model';
+import { useDeviceProgress } from './live';
+import { currentFirst, phoneViewOf, type DeviceProgress, type PhoneView } from './phones-model';
 
 function DeviceLine({ view }: { readonly view: PhoneView }): ReactNode {
   const label = `${view.title} ${view.share} backed up`;
@@ -38,7 +39,7 @@ function DeviceLine({ view }: { readonly view: PhoneView }): ReactNode {
             <Badge label={view.badge.label} tone={view.badge.tone} />
           </View>
         </View>
-        <ProgressBar progress={view.coverage} colour={view.colour} label={label} />
+        <ProgressBar progress={view.coverage} colour={view.colour} label={label} ticking={false} />
         <View className="flex-row items-center gap-2">
           <Text
             variant="caption"
@@ -59,13 +60,13 @@ function DeviceLine({ view }: { readonly view: PhoneView }): ReactNode {
 
 export function deviceViewsOf(
   states: readonly BackupDeviceState[],
-  live: LiveProgress,
+  devices: DeviceProgress,
   currentDeviceId: string | null,
 ): readonly PhoneView[] {
   return currentFirst(
     states.map((state) =>
       phoneViewOf(state, {
-        live: live.devices.get(state.device.deviceId),
+        live: devices.get(state.device.deviceId),
         current: state.device.deviceId === currentDeviceId,
       }),
     ),
@@ -86,24 +87,23 @@ function NoDevices(): ReactNode {
 }
 
 interface DevicesProps {
-  readonly live: LiveProgress;
   readonly currentDeviceId: string | null;
 }
 
 function DeviceList({
   states,
-  live,
   currentDeviceId,
 }: DevicesProps & { readonly states: readonly BackupDeviceState[] }): ReactNode {
-  const views = deviceViewsOf(states, live, currentDeviceId);
+  const deviceProgress = useDeviceProgress();
+  const views = deviceViewsOf(states, deviceProgress, currentDeviceId);
   if (views.length === 0) return <NoDevices />;
   return views.map((view) => <DeviceLine key={view.key} view={view} />);
 }
 
-function DevicesBody({ live, currentDeviceId }: DevicesProps): ReactNode {
+function DevicesBody({ currentDeviceId }: DevicesProps): ReactNode {
   const query = usePhotoBackupState();
   if (query.data !== undefined) {
-    return <DeviceList states={query.data.devices} live={live} currentDeviceId={currentDeviceId} />;
+    return <DeviceList states={query.data.devices} currentDeviceId={currentDeviceId} />;
   }
   if (query.isError) {
     return (
@@ -125,7 +125,7 @@ function DevicesBody({ live, currentDeviceId }: DevicesProps): ReactNode {
   );
 }
 
-export function DevicesCard({ live, currentDeviceId }: DevicesProps): ReactNode {
+export function DevicesCard({ currentDeviceId }: DevicesProps): ReactNode {
   return (
     <Card
       title="All devices"
@@ -137,7 +137,7 @@ export function DevicesCard({ live, currentDeviceId }: DevicesProps): ReactNode 
         </Text>
       }
     >
-      <DevicesBody live={live} currentDeviceId={currentDeviceId} />
+      <DevicesBody currentDeviceId={currentDeviceId} />
     </Card>
   );
 }

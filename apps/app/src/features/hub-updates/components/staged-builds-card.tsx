@@ -32,6 +32,7 @@ function UploadRow({ upload }: { readonly upload: ReleaseUpload }): ReactNode {
         progress={uploadProgress(upload)}
         colour={upload.state === 'staged' ? 'positive' : 'primary'}
         label={`${look.name} upload`}
+        ticking={false}
       />
       <Text variant="footnote" tone="variant" selectable className="web:wrap-anywhere">
         {`${uploadLine(upload)} · ${relative(upload.createdAt, now)}`}

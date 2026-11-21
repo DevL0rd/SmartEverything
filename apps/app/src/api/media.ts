@@ -64,9 +64,17 @@ export async function cameraRelayUrl(deviceId: string, client: ApiClient = api()
   return media.urlOf(link.url).replace(/^http/, 'ws');
 }
 
-export async function cameraSnapshotLink(deviceId: string, size: MediaSize): Promise<SignedLink> {
+export async function cameraSnapshotLink(
+  deviceId: string,
+  size: MediaSize,
+  request: { readonly signal?: AbortSignal } = {},
+): Promise<SignedLink> {
   const client = api().forMedia();
-  const link = await client.call(E.cameraSnapshot, { params: { deviceId }, query: { size } });
+  const link = await client.call(
+    E.cameraSnapshot,
+    { params: { deviceId }, query: { size } },
+    request,
+  );
   return {
     url: await client.resourceUrl(link.url, link.expiresAt, 'image'),
     expiresAt: link.expiresAt,
@@ -76,12 +84,13 @@ export async function cameraSnapshotLink(deviceId: string, size: MediaSize): Pro
 export async function recordingLinks(
   ids: readonly string[],
   size: MediaSize,
+  request: { readonly signal?: AbortSignal } = {},
 ): Promise<Readonly<Record<string, SignedLink>>> {
   if (ids.length === 0) {
     return {};
   }
   const client = api().forMedia();
-  const links = await client.call(E.recordingLinks, { body: { ids: [...ids], size } });
+  const links = await client.call(E.recordingLinks, { body: { ids: [...ids], size } }, request);
   return Object.fromEntries(
     await Promise.all(
       links.map(
@@ -136,6 +145,7 @@ export async function recordClip(deviceId: string, seconds: number): Promise<voi
 export async function readCameraDay(
   deviceIds: readonly string[],
   window: DayWindow,
+  signal: AbortSignal,
 ): Promise<CameraDay> {
   if (deviceIds.length === 0) {
     return { events: [], recordings: [] };
@@ -147,8 +157,8 @@ export async function readCameraDay(
     limit: DAY_ROWS_KEPT,
   };
   const [events, recordings] = await Promise.all([
-    api().call(E.listEvents, { query }),
-    api().call(E.listRecordings, { query }),
+    api().call(E.listEvents, { query }, { signal }),
+    api().call(E.listRecordings, { query }, { signal }),
   ]);
   return { events, recordings };
 }

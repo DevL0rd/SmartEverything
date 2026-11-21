@@ -20,7 +20,8 @@ export function SpeedChart({
   readonly deviceId: string;
   readonly view: TreadmillStateView;
 }): ReactNode {
-  const points = seriesOf(useLivePoints(deviceId, view.recentSpeed), (point) => point.speed);
+  const livePoints = useLivePoints(deviceId, view.recentSpeed);
+  const points = seriesOf(livePoints, (point) => point.speed);
   const last = points[points.length - 1];
   if (last === undefined || points.length < MIN_POINTS) {
     return (

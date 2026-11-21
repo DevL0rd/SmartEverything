@@ -39,7 +39,8 @@ function Cell({ device, frame }: CellProps): ReactNode {
 }
 
 function FilledCell({ device, frame }: CellProps): ReactNode {
-  const board = boardClassOf(useSizeClass().width);
+  const sizeClass = useSizeClass();
+  const board = boardClassOf(sizeClass.width);
   const definition = isCamera(device) && CAMERA !== undefined ? CAMERA : SPOTLIGHT_WIDGET;
   return faceOf(device, frame, fillSizeOf(definition, board));
 }

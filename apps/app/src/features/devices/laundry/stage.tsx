@@ -136,7 +136,8 @@ function UpNext({
   readonly strip: Strip;
   readonly remaining: number | null;
 }): ReactNode {
-  const next = upNextOf(strip, remaining, useMinute());
+  const minute = useMinute();
+  const next = upNextOf(strip, remaining, minute);
   return next === null ? null : (
     <Text variant="caption" tone="variant" align="center" className="tabular">
       {`Up next · ${next.label} about ${clock(next.atMs)}`}

@@ -136,7 +136,7 @@ function useModelActions(deviceId: string): ModelActions {
   const params = { deviceId };
   const query = useScreenQuery({
     queryKey,
-    queryFn: () => api().call(E.readDeviceModels, { params }),
+    queryFn: ({ signal }) => api().call(E.readDeviceModels, { params }, { signal }),
   });
   const refresh = (): Promise<void> => client.invalidateQueries({ queryKey });
   return {

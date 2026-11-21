@@ -1,9 +1,8 @@
-import { createContext, use, type ReactNode } from 'react';
+import { use, type ReactNode } from 'react';
 import { ScopedTheme } from 'uniwind';
 import { ColourPalette } from './colour-palette';
+import { ScopedThemeName } from './theme-scope-context';
 import type { ThemeName } from './tokens';
-
-const ScopedThemeName = createContext<ThemeName | null>(null);
 
 export function useScopedTheme(): ThemeName | null {
   return use(ScopedThemeName);

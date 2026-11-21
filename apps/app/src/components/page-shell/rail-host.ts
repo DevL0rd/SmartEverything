@@ -1,4 +1,3 @@
-import { createContext } from 'react';
 import { ValueStore } from '../../design/external-store';
 import type { ShellSections } from './shell-sections';
 
@@ -27,5 +26,3 @@ export class RailHost {
     this.shown.update((shown) => (shown !== null && shown.owner === owner ? null : shown));
   };
 }
-
-export const RailHostContext = createContext<RailHost | null>(null);

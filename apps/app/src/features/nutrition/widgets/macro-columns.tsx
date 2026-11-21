@@ -39,6 +39,7 @@ function MacroColumn({
           colour={value > goal * 1.1 ? 'warning' : macro.colour}
           label={macro.label}
           thick
+          ticking={false}
         />
       )}
     </View>

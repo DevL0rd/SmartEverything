@@ -18,7 +18,7 @@ import {
 import { reported } from '../item/item-actions';
 import { PersonBadge } from '../item/person-badge';
 import { useItemOpen } from '../item/selection';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 
 const ANSWER_LABEL: Readonly<Record<PlannerRsvpAnswer, string>> = {
   yes: 'Yes',
@@ -88,7 +88,8 @@ export function InvitationsCard(): ReactNode {
   const now = useMinute();
   const timeZone = useSettings().time_zone;
   const instant = useInstantClock();
-  const shown = openInvitationsOf(useMyInvitations(person), now);
+  const myInvitations = useMyInvitations(person);
+  const shown = openInvitationsOf(myInvitations, now);
   if (shown.length === 0) return null;
   return (
     <Card title={invitationsTitleOf(shown.length)} icon="users">

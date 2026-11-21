@@ -33,12 +33,15 @@ export function useArchivedChats(enabled: boolean): ArchivedChats {
     string | undefined
   >({
     queryKey: ARCHIVED_CHATS_KEY,
-    queryFn: ({ pageParam }) =>
-      listAiChats({
-        archived: true,
-        limit: ARCHIVED_PAGE_SIZE,
-        ...(pageParam === undefined ? {} : { before: pageParam }),
-      }),
+    queryFn: ({ pageParam, signal }) =>
+      listAiChats(
+        {
+          archived: true,
+          limit: ARCHIVED_PAGE_SIZE,
+          ...(pageParam === undefined ? {} : { before: pageParam }),
+        },
+        signal,
+      ),
     initialPageParam: undefined,
     getNextPageParam: nextArchivedCursor,
     enabled,

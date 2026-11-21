@@ -17,7 +17,7 @@ export function useBrushView<K extends BrushReadQuery['view']>(
 ): UseQueryResult<BrushViewOf<K>> {
   return useScreenQuery({
     queryKey: brushKey(deviceId, { ...query, view: kind }),
-    queryFn: () => readBrushView(deviceId, kind, query),
+    queryFn: ({ signal }) => readBrushView(deviceId, kind, query, { signal }),
     enabled,
     staleTime: Infinity,
   });

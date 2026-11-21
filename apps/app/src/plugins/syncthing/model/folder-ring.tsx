@@ -33,6 +33,7 @@ export function FolderRing({
         thickness={THICKNESS}
         colour={state.tone}
         trackColour="surface-3"
+        ticking={false}
       />
       {state.glyph === null || size < GLYPH_FROM ? null : (
         <View aria-hidden className="absolute inset-0 items-center justify-center">

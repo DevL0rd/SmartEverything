@@ -47,7 +47,13 @@ function ZoneRow({
           {hoursMinutes(minutes)}
         </Text>
       </View>
-      <ProgressBar progress={share} colour={ZONE_COLOUR[zone]} label={label} thick />
+      <ProgressBar
+        progress={share}
+        colour={ZONE_COLOUR[zone]}
+        label={label}
+        thick
+        ticking={false}
+      />
     </View>
   );
 }
@@ -55,11 +61,12 @@ function ZoneRow({
 export function ZonesCard({ window }: { readonly window: Window }): ReactNode {
   const records = useRecords(['HeartRate'], window.start, window.end);
   const highest = useBestDay('heart_rate_maximum', false);
+  const maxHeartRateSetting = useMaxHeartRateSetting();
   const samples = heartSamplesOf(records.data ?? []);
   const observed = [highest.data?.value, max(samples, (sample) => sample.bpm)].flatMap(
     (bpm) => bpm ?? [],
   );
-  const maximum = maximumHeartRate(useMaxHeartRateSetting(), observed);
+  const maximum = maximumHeartRate(maxHeartRateSetting, observed);
   if (records.data === undefined) {
     return <Skeleton shape="block" className="h-56 w-full" />;
   }

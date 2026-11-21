@@ -9,8 +9,7 @@ import { TimeField, type TimeOfDay } from '../../../components/time-field';
 import type { Control } from '../../../store/control';
 import { clockLabel, clockTextOf, parseClockText } from '../model/clock-text';
 import { background } from '@smarteverything/logging';
-import { useHour24 } from '../../../store/clock-format';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useHour24, useClockFormat } from '../../../store/clock-format';
 
 const MIDNIGHT: TimeOfDay = { hour: 0, minute: 0 };
 

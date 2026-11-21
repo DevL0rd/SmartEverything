@@ -10,7 +10,7 @@ import { Switch } from '../../../components/switch';
 import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { DayDots } from '../../planner';
-import { useClockLabel, useInstantClock } from '../format/clock-format';
+import { useClockLabel, useInstantClock } from '../../../store/clock-format';
 import { BedtimeDial } from './bedtime-dial';
 import { dialTimesOf, sleepLengthText, sleepMinutesOf, type DialTimes } from './dial-model';
 import { NightSheet, type NightDraft } from './night-sheet';

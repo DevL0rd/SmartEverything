@@ -19,7 +19,7 @@ function useUpdateSettings(): ReturnType<typeof useScreenQuery<HarnessSkillUpdat
   return useScreenQuery({
     queryKey: SKILL_UPDATES_KEY,
     enabled: sync.status === 'live',
-    queryFn: () => api().call(E.readAiHarnessSkillUpdates, {}),
+    queryFn: ({ signal }) => api().call(E.readAiHarnessSkillUpdates, {}, { signal }),
   });
 }
 export function SkillUpdatesScreen(): ReactNode {

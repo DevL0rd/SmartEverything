@@ -154,7 +154,7 @@ export function usePhoneBattery(
   const points = useDeviceSeries(deviceId, 'battery', hours, enabled);
   const charging = useScreenQuery({
     queryKey: deviceHistoryKey(deviceId, 'charging', hours),
-    queryFn: () => readDeviceRows(deviceId, 'charging', hours),
+    queryFn: ({ signal }) => readDeviceRows(deviceId, 'charging', hours, signal),
     select: (rows) => chargingSpansOf(rows, now),
     enabled,
   });
@@ -178,7 +178,7 @@ export interface PhoneDoing {
 export function usePhoneDoing(deviceId: string, now: number, enabled = true): PhoneDoing {
   const query = useScreenQuery({
     queryKey: deviceHistoryKey(deviceId, 'phone_context', DOING_HOURS),
-    queryFn: () => readDeviceRows(deviceId, 'phone_context', DOING_HOURS),
+    queryFn: ({ signal }) => readDeviceRows(deviceId, 'phone_context', DOING_HOURS, signal),
     select: (rows) => doingSegmentsOf(rows, now),
     enabled,
   });

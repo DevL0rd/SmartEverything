@@ -10,8 +10,16 @@ const HOUR_SECONDS = 3_600;
 const RAW_MAX_HOURS = 24;
 const CHART_POINTS = 180;
 
-export function readHistory(capabilities: readonly string[], since: string): Promise<HistoryRow[]> {
-  return api().call(E.readHistory, { query: { capabilities: [...capabilities], from: since } });
+export function readHistory(
+  capabilities: readonly string[],
+  since: string,
+  signal: AbortSignal,
+): Promise<HistoryRow[]> {
+  return api().call(
+    E.readHistory,
+    { query: { capabilities: [...capabilities], from: since } },
+    { signal },
+  );
 }
 
 export function useHistory(
@@ -20,8 +28,8 @@ export function useHistory(
 ): UseQueryResult<HistoryRow[]> {
   return useScreenQuery({
     queryKey: historyKey(capabilities, sinceHours),
-    queryFn: () =>
-      readHistory(capabilities, new Date(Date.now() - sinceHours * HOUR_MS).toISOString()),
+    queryFn: ({ signal }) =>
+      readHistory(capabilities, new Date(Date.now() - sinceHours * HOUR_MS).toISOString(), signal),
   });
 }
 
@@ -33,15 +41,20 @@ export async function readDeviceRows(
   deviceId: string,
   capability: string,
   hours: number,
+  signal: AbortSignal,
 ): Promise<HistoryRow[]> {
-  const rows = await api().call(E.readHistory, {
-    query: {
-      capabilities: [capability],
-      deviceIds: [deviceId],
-      from: new Date(Date.now() - hours * HOUR_MS).toISOString(),
-      order: 'desc',
+  const rows = await api().call(
+    E.readHistory,
+    {
+      query: {
+        capabilities: [capability],
+        deviceIds: [deviceId],
+        from: new Date(Date.now() - hours * HOUR_MS).toISOString(),
+        order: 'desc',
+      },
     },
-  });
+    { signal },
+  );
   return rows.reverse();
 }
 
@@ -49,17 +62,22 @@ export function readDeviceBuckets(
   deviceId: string,
   capability: string,
   hours: number,
+  signal: AbortSignal,
 ): Promise<HistoryBucket[]> {
   const now = Date.now();
-  return api().call(E.readHistoryBuckets, {
-    query: {
-      capabilities: [capability],
-      deviceIds: [deviceId],
-      from: new Date(now - hours * HOUR_MS).toISOString(),
-      to: new Date(now).toISOString(),
-      bucketSeconds: bucketSecondsFor(hours),
+  return api().call(
+    E.readHistoryBuckets,
+    {
+      query: {
+        capabilities: [capability],
+        deviceIds: [deviceId],
+        from: new Date(now - hours * HOUR_MS).toISOString(),
+        to: new Date(now).toISOString(),
+        bucketSeconds: bucketSecondsFor(hours),
+      },
     },
-  });
+    { signal },
+  );
 }
 
 export function pointsOfRows(rows: readonly HistoryRow[]): ChartPoint[] {
@@ -83,13 +101,13 @@ export function useDeviceSeries(
   const bucketed = hours > RAW_MAX_HOURS;
   const rows = useScreenQuery({
     queryKey: deviceHistoryKey(deviceId, capability, hours),
-    queryFn: () => readDeviceRows(deviceId, capability, hours),
+    queryFn: ({ signal }) => readDeviceRows(deviceId, capability, hours, signal),
     select: pointsOfRows,
     enabled: enabled && !bucketed,
   });
   const buckets = useScreenQuery({
     queryKey: deviceHistoryBucketsKey(deviceId, capability, hours),
-    queryFn: () => readDeviceBuckets(deviceId, capability, hours),
+    queryFn: ({ signal }) => readDeviceBuckets(deviceId, capability, hours, signal),
     select: pointsOfBuckets,
     enabled: enabled && bucketed,
   });

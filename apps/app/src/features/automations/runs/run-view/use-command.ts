@@ -15,7 +15,7 @@ export function useCommand(id: string): CommandView {
   const live = useRow('commands', id);
   const query = useScreenQuery({
     queryKey: ['automations-v3', 'command', id],
-    queryFn: () => api().call(E.readCommand, { params: { commandId: id } }),
+    queryFn: ({ signal }) => api().call(E.readCommand, { params: { commandId: id } }, { signal }),
     retry: false,
   });
   return { row: live ?? query.data ?? null, query };

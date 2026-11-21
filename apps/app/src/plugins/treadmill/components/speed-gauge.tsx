@@ -78,6 +78,7 @@ export function SpeedGauge({
         size={Math.max(size, MIN_GAUGE_PX)}
         ticks={{ step: 1, majorEvery: 3 }}
         {...(capKmh === null || capKmh >= maxKmh ? {} : { marker: capKmh })}
+        ticking
         label={
           zone === null
             ? 'Speed 0 kilometres per hour, the belt is not moving'

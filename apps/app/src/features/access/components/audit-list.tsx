@@ -21,11 +21,12 @@ function AuditRows({
 }): ReactNode {
   const profiles = useProfiles();
   const clients = useRows('clients');
+  const minute = useMinute();
   const views = auditViews(
     rows,
     new Map(profiles.map((profile) => [profile.id, profile.name])),
     new Map(clients.map((client) => [client.id, client.name])),
-    useMinute(),
+    minute,
   );
   return (
     <List title={title} inset>

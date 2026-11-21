@@ -56,7 +56,8 @@ function Step({
   const now = useDayNow(zone);
   const profiles = useProfiles();
   const mutation = useMutationState();
-  const choices = choicesOf(target, profiles, useActiveProfileId());
+  const activeProfileId = useActiveProfileId();
+  const choices = choicesOf(target, profiles, activeProfileId);
   const when = `${dayLabel(target.iso, now, zone)} ${clock(target.iso, zone)}`;
   const place = total > 1 ? ` · ${String(position)} of ${String(total)}` : '';
   return (

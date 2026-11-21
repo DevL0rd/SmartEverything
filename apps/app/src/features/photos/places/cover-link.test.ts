@@ -1,34 +1,26 @@
+import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
-import type { DriveItemLink } from '@smarteverything/domain';
-import { LINK_RENEW_LEAD_MS } from '../../drive/data/links';
-import { coverLinkOf, coverStaleMs } from './cover-link';
+import { LINK_RENEW_LEAD_MS, invalidateDriveChanged } from '../../drive';
+import { coverKey, coverStaleMs } from './cover-link';
 
-function linkOf(itemId: string, thumbUrl: string | null): DriveItemLink {
-  const file = { url: `/file/${itemId}`, expiresAt: '2026-11-15T12:10:00.000Z' };
-  return {
-    itemId,
-    rev: 5,
-    file,
-    download: null,
-    icon: null,
-    thumb: thumbUrl === null ? null : { url: thumbUrl, expiresAt: '2026-11-15T12:10:00.000Z' },
-    preview: null,
-    playable: null,
-  };
-}
-
-describe('coverLinkOf', () => {
-  it('returns the thumb link of the requested item with its expiry in milliseconds', () => {
-    const links = [linkOf('a', '/thumb/a'), linkOf('b', '/thumb/b')];
-    expect(coverLinkOf(links, 'b')).toEqual({
-      url: '/thumb/b',
-      expiresAt: Date.parse('2026-11-15T12:10:00.000Z'),
+describe('coverKey', () => {
+  it('is never reached by a drive change notice, however wide', () => {
+    const client = new QueryClient();
+    const key = coverKey('item-1', 1);
+    client.setQueryData(key, { url: '/thumb/item-1', expiresAt: 0 });
+    invalidateDriveChanged(client, {
+      type: 'drive_changed',
+      rootIds: [],
+      folderIds: [],
+      albumIds: [],
+      months: [],
+      cursor: 1,
     });
+    expect(client.getQueryState(key)?.isInvalidated).toBe(false);
   });
 
-  it('returns null when the item has no thumb or is missing', () => {
-    expect(coverLinkOf([linkOf('a', null)], 'a')).toBeNull();
-    expect(coverLinkOf([linkOf('a', '/thumb/a')], 'z')).toBeNull();
+  it('changes with the route generation so a new route gets new links', () => {
+    expect(coverKey('item-1', 1)).not.toEqual(coverKey('item-1', 2));
   });
 });
 

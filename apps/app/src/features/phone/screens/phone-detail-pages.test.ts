@@ -222,6 +222,7 @@ function text(page: Page, scene: Scene = {}): string {
     ),
   );
   return markup
+    .replace(/(aria-hidden="true"[^>]*>[^<]*)<\/div><div [^>]*aria-hidden="true"[^>]*>/g, '$1')
     .replace(/<[^>]*>/g, ' ')
     .replace(/&#x27;/g, "'")
     .replace(/\s+/g, ' ');

@@ -3,7 +3,7 @@ import { memoOnInputs } from '../../../store/memo-selector';
 import { useStoreSelector } from '../../../store/store-context';
 import { workingTurns } from '../../../store/subscriptions';
 import { useAgentActivity } from '../data/agent-runs';
-import { useAiDrafts } from '../data/ai-drafts';
+import { usePendingMessages } from '../data/outbox';
 import type { ChatEntry, ChatLine } from './chat-entry';
 
 export type RowLine =
@@ -41,9 +41,7 @@ export function rowLineOf(entry: ChatEntry, waiting: number, queued: number): Ro
 
 export function useRowLine(entry: ChatEntry, agent: boolean): RowLine {
   const activity = useAgentActivity(agent ? entry.parentId : null, entry.id);
-  const waiting = useAiDrafts(
-    (state) => state.outbox.filter((message) => message.chatId === entry.id).length,
-  );
+  const waiting = usePendingMessages(entry.id).length;
   const queued = useStoreSelector((state) => queuedByChat(state).get(entry.id) ?? 0);
   const line = rowLineOf(entry, waiting, queued);
   return activity === null || line.kind === 'needs' || line.kind === 'failed'

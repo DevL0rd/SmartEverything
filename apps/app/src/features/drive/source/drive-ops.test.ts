@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import { describe, expect, it, vi } from 'vitest';
 import type { DriveChange, DriveChangeResult, DriveShortcut } from '@smarteverything/domain';
 import { AT, ROOT_ID } from '../data/fixtures';
 import { entriesOf, shortcutNodeOf, type DriveNode } from './drive-node';
@@ -6,6 +7,8 @@ import { NOT_ALLOWED, NO_SHORTCUT_BACK, NO_TOP_MOVE, driveChangeOf, runDriveOp }
 import { DRIVE_PLACES } from './drive-places';
 import { locationKeyOf } from '../../files';
 import { MINE, VIEWER_ID, createFakeDrive, idOf, worldContext } from './drive-fixture';
+
+vi.mock('expo-crypto', () => ({ randomUUID: (): string => randomUUID() }));
 
 const MY_TOP = { place: DRIVE_PLACES.myDrive, folder: null };
 
@@ -29,6 +32,7 @@ describe('change bodies', () => {
       action: 'copy',
       itemIds: [plan.key],
       toFolderId: docs.key,
+      copyIds: [expect.any(String)],
     });
   });
 
@@ -43,17 +47,19 @@ describe('change bodies', () => {
   });
 
   it('creates a folder at the top of a drive or inside a folder', () => {
-    expect(driveChangeOf({ kind: 'new_folder', in: MY_TOP, name: 'New' }, fake.env)).toEqual({
+    const top = driveChangeOf({ kind: 'new_folder', in: MY_TOP, name: 'New' }, fake.env);
+    expect(top).toMatchObject({
       action: 'new_folder',
       parent: { kind: 'drive', rootId: MINE.id },
       name: 'New',
     });
+    expect(top).toHaveProperty('id');
     expect(
       driveChangeOf(
         { kind: 'new_folder', in: { place: DRIVE_PLACES.myDrive, folder: docs.key }, name: 'Sub' },
         fake.env,
       ),
-    ).toEqual({
+    ).toMatchObject({
       action: 'new_folder',
       parent: { kind: 'folder', folderId: docs.key },
       name: 'Sub',

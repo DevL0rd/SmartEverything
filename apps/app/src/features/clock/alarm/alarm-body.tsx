@@ -32,7 +32,7 @@ import { useAlarmEdit, type AlarmEditing } from './use-alarm-edit';
 export interface AlarmBodyTarget {
   readonly person: PlannerPerson;
   readonly alarm: PlannerAlarmRow | null;
-  readonly onCreated: (alarm: PlannerAlarmRow) => void;
+  readonly onCreated: (alarmId: string) => void;
   readonly onClose: () => void;
 }
 

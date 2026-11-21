@@ -40,9 +40,9 @@ export function rowGapOf(row: ThreadRow, older: ThreadRow | undefined): RowGap {
 export function entryOf(row: ThreadRow): { readonly identity: string; readonly at: string } {
   switch (row.type) {
     case 'message':
-      return { identity: row.row.id, at: row.row.created_at };
+      return { identity: row.row.client_message_id ?? row.row.id, at: row.row.created_at };
     case 'outbox':
-      return { identity: row.key, at: row.message.queuedAt };
+      return { identity: row.message.id, at: row.message.queuedAt };
     case 'image-operation':
       return { identity: row.key, at: row.receipt.created_at };
   }

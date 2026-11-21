@@ -19,9 +19,10 @@ import { DraftEnginePicker } from './draft-engine-picker';
 import { DraftKeyCard } from './draft-key-card';
 
 function GreetingTitle(): ReactNode {
-  const now = new Date(useMinute());
+  const minute = useMinute();
   const zone = useSettings().time_zone;
   const profile = useActiveProfile();
+  const now = new Date(minute);
   return (
     <Text variant="title-2" align="center">
       {draftGreeting(hourOf(now, zone), profile?.name ?? null)}

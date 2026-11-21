@@ -99,6 +99,7 @@ function Ready({ snapshot }: { readonly snapshot: AdGuardSnapshot }): ReactNode 
             size="hero"
             label={hero.spoken}
             offline={hero.stale}
+            ticking={false}
           />
         }
         state={{ title: hero.title, tone: hero.tone }}

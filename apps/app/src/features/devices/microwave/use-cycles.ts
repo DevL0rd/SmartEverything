@@ -8,7 +8,7 @@ export function useCycles(deviceId: string, enabled: boolean): readonly DeviceLo
   return cyclesOf(
     useScreenQuery({
       queryKey: deviceLogKey(deviceId, CYCLE_WINDOW),
-      queryFn: () => readDeviceLog(deviceId, CYCLE_WINDOW),
+      queryFn: ({ signal }) => readDeviceLog(deviceId, CYCLE_WINDOW, undefined, signal),
       enabled,
     }).data ?? [],
   );

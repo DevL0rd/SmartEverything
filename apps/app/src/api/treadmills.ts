@@ -29,11 +29,13 @@ export async function readTreadmillView<K extends ViewName>(
   deviceId: string,
   kind: K,
   query: Omit<TreadmillReadQuery, 'view'> = {},
+  request: { readonly signal?: AbortSignal } = {},
 ): Promise<TreadmillViewOf<K>> {
-  const view = await api().call(E.readTreadmill, {
-    params: { deviceId },
-    query: { ...query, view: kind },
-  });
+  const view = await api().call(
+    E.readTreadmill,
+    { params: { deviceId }, query: { ...query, view: kind } },
+    request,
+  );
   if (!isView(kind, view)) {
     throw new UnexpectedTreadmillViewError(kind, view.view);
   }

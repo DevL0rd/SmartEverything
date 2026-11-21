@@ -76,6 +76,7 @@ export function usePhoneNode(): PhoneNodeState {
   const client = useQueryClient();
   const query = useScreenQuery({
     queryKey: PHONE_NODE_KEY,
+    // eslint-disable-next-line local/query-fn-signal -- the native module reads on the device, which cannot be aborted
     queryFn: phoneNodeStatus,
     enabled: phoneNodeLinked,
     staleTime: 0,

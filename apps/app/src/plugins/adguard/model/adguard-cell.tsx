@@ -224,6 +224,7 @@ function Medallion({
       size={cellMedallionSize(cls)}
       label={cell.spoken}
       offline={cell.kind === 'stale'}
+      ticking={false}
     />
   );
 }

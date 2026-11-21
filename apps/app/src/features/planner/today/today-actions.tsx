@@ -1,9 +1,9 @@
 import type { PlannerDay, PlannerItemRow, PlannerOccurrenceView } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { createContext, use, useState, type ReactNode } from 'react';
+import { use, useState, type ReactNode } from 'react';
 import { notify } from '../../../components/toast-store';
 import { dayBoundsOf } from '../../../format/time';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 import {
   usePlannerItems,
   usePlannerTools,
@@ -12,6 +12,7 @@ import {
   type PlannerWrites,
 } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
+import { TodayActionsContext } from './today-actions-context';
 
 const MINUTE_MS = 60_000;
 const ANY_LENGTH_MINUTES = 1;
@@ -26,8 +27,6 @@ export interface TodayActionsValue {
   readonly hidden: ReadonlySet<string>;
   readonly actions: OccurrenceActions;
 }
-
-const TodayActionsContext = createContext<TodayActionsValue | null>(null);
 
 class OutsideTodayActions extends Error {
   constructor() {

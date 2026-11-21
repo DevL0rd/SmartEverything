@@ -19,7 +19,7 @@ export class AutomationRefusedError extends Error {
   }
 }
 
-function accepted(reply: AutomationProgramReply): AutomationProgramReply {
+export function acceptedProgram(reply: AutomationProgramReply): AutomationProgramReply {
   if (!reply.ok) {
     throw new AutomationRefusedError(reply.problems, reply.summary);
   }
@@ -27,7 +27,7 @@ function accepted(reply: AutomationProgramReply): AutomationProgramReply {
 }
 
 export async function setAutomationEnabled(automationId: string, enabled: boolean): Promise<void> {
-  accepted(await setProgramEnabled(automationId, enabled));
+  acceptedProgram(await setProgramEnabled(automationId, enabled));
   log.info('automation.toggled', { automationId, enabled });
 }
 
@@ -38,7 +38,7 @@ export interface AutomationCreate {
 }
 
 export async function createAutomation(create: AutomationCreate): Promise<AutomationProgramReply> {
-  const reply = accepted(await createProgram(create));
+  const reply = acceptedProgram(await createProgram(create));
   log.info('automation.created', { automationId: reply.id });
   return reply;
 }

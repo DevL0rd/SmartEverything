@@ -1,4 +1,6 @@
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { DriveChangeResult } from '@smarteverything/domain';
+import { changeDrive } from '../../../api/drive';
 import { background } from '@smarteverything/logging';
 import { confirm, type ConfirmRequest } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
@@ -11,6 +13,7 @@ import {
   type DeleteScope,
   type TrashVerb,
 } from './trash-copy';
+import { shownDriveChange } from '../data/shown';
 import { totalsOf, type TrashItem } from './trash-model';
 
 export interface TrashActions {
@@ -30,6 +33,7 @@ function idsOf(items: readonly TrashItem[]): readonly string[] {
 }
 
 async function removeNow(
+  client: QueryClient,
   items: readonly TrashItem[],
   request: ConfirmRequest,
   onDone: () => void,
@@ -37,12 +41,15 @@ async function removeNow(
   if (!(await confirm(request))) return;
   const failure = 'Not everything was deleted';
   try {
-    const { result, outcome } = await changeDriveInBatches({
-      label: 'drive.trash.delete_now',
-      verb: 'Deleting',
-      ids: idsOf(items),
-      body: (batch) => ({ action: 'delete_now', itemIds: batch }),
-    });
+    const { result, outcome } = await changeDriveInBatches(
+      {
+        label: 'drive.trash.delete_now',
+        verb: 'Deleting',
+        ids: idsOf(items),
+        body: (batch) => ({ action: 'delete_now', itemIds: batch }),
+      },
+      shownDriveChange(client, changeDrive),
+    );
     reportSkipped(result, 'deleted');
     if (outcome.reason !== null && outcome.kept.length > result.failed.length) {
       notify({ message: failure, detail: keptLine(outcome, outcome.reason), tone: 'critical' });
@@ -54,12 +61,13 @@ async function removeNow(
 }
 
 export function useTrashActions(onDone: () => void): TrashActions {
+  const client = useQueryClient();
   return {
     busy: useBulkRunning(),
     deleteAll: (items, scope): void => {
       if (items.length === 0) return;
       background(
-        removeNow(items, deleteConfirmOf(scope, totalsOf(items)), onDone),
+        removeNow(client, items, deleteConfirmOf(scope, totalsOf(items)), onDone),
         'drive_trash.delete_failed',
       );
     },

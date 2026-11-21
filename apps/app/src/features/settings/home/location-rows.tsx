@@ -1,17 +1,19 @@
 import type { ReactNode } from 'react';
 import { deviceTimeZone } from '../../../platform/time-zone';
 import { useState } from 'react';
-import { updateHome } from '../../../api/settings';
 import { ListRow } from '../../../components/list-row';
 import { ActionRow, SelectRow, ValueRow } from '../../../components/rows';
 import { notifyFailure } from '../../../components/toast-store';
+import { writeHome } from '../../../store/home-writes';
 import { useIsOwner, useSettings } from '../../../store/selectors';
+import { useEntityStore } from '../../../store/store-context';
 import { zoneLabel } from '../../../format/time';
 import { TextEditSheet } from '../../../settings/text-edit-sheet';
 import { matchingTimeZone, timeZoneOptions } from './place';
 
 import { trackSetting } from '../settings-log';
 function TypedTimeZone({ zone }: { readonly zone: string }): ReactNode {
+  const store = useEntityStore();
   const [editing, setEditing] = useState(false);
   return (
     <>
@@ -34,7 +36,7 @@ function TypedTimeZone({ zone }: { readonly zone: string }): ReactNode {
                 placeholder: 'Region/City',
                 confirmLabel: 'Save',
                 maxLength: 64,
-                save: (time_zone) => updateHome({ time_zone }),
+                save: (time_zone) => writeHome(store, { time_zone }),
               }
             : null
         }
@@ -47,6 +49,7 @@ function TypedTimeZone({ zone }: { readonly zone: string }): ReactNode {
 }
 
 export function TimeZoneRow(): ReactNode {
+  const store = useEntityStore();
   const zone = useSettings().time_zone;
   const owner = useIsOwner();
   const options = timeZoneOptions();
@@ -66,7 +69,7 @@ export function TimeZoneRow(): ReactNode {
       searchable
       onChange={(time_zone) => {
         if (time_zone === selected) return;
-        trackSetting('home_time_zone.set', {}, () => updateHome({ time_zone })).catch(
+        trackSetting('home_time_zone.set', {}, () => writeHome(store, { time_zone })).catch(
           notifyFailure('The time zone was not changed'),
         );
       }}
@@ -75,6 +78,7 @@ export function TimeZoneRow(): ReactNode {
 }
 
 export function DeviceTimeZoneRow(): ReactNode {
+  const store = useEntityStore();
   const device = deviceTimeZone();
   return (
     <ActionRow
@@ -83,7 +87,7 @@ export function DeviceTimeZoneRow(): ReactNode {
       icon="globe"
       onPress={() => {
         trackSetting('home_time_zone.set_device', {}, () =>
-          updateHome({ time_zone: device }),
+          writeHome(store, { time_zone: device }),
         ).catch(notifyFailure('The time zone was not changed'));
       }}
     />

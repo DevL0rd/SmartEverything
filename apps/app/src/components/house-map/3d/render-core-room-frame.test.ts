@@ -4,7 +4,7 @@ import { scrubbedScene, vacuumInput } from './scene-input-fixture';
 import { buildSceneGeometry } from './vacuum-geometry';
 import { fitToCorners } from './render-core-fit';
 import { NO_INSETS, buildCamera, frameRoom, presetOrbit } from './render-core-orbit';
-import { releaseRenderer } from './render-core-renderer';
+import { restRenderer } from './render-core-renderer';
 
 const geometry = buildSceneGeometry(vacuumInput(scrubbedScene));
 
@@ -93,11 +93,18 @@ describe('frameRoom', () => {
   });
 });
 
-describe('releaseRenderer', () => {
-  it('frees the WebGL context when a stage unmounts', () => {
-    const renderer = { dispose: vi.fn(), forceContextLoss: vi.fn() };
-    releaseRenderer(renderer);
-    expect(renderer.dispose).toHaveBeenCalledOnce();
-    expect(renderer.forceContextLoss).toHaveBeenCalledOnce();
+describe('restRenderer', () => {
+  it('returns a pooled renderer to the state of a fresh one at the smallest size', () => {
+    const renderer = {
+      setRenderTarget: vi.fn(),
+      setClearColor: vi.fn(),
+      setSize: vi.fn(),
+      shadowMap: { enabled: true },
+    };
+    restRenderer(renderer);
+    expect(renderer.setRenderTarget).toHaveBeenCalledWith(null);
+    expect(renderer.setClearColor).toHaveBeenCalledWith(0x000000, 0);
+    expect(renderer.setSize).toHaveBeenCalledWith(1, 1, false);
+    expect(renderer.shadowMap.enabled).toBe(false);
   });
 });

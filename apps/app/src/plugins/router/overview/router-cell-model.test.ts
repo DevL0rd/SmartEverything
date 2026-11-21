@@ -123,6 +123,42 @@ describe('routerCellOf', () => {
   });
 });
 
+describe('routerCellOf across live frames', () => {
+  const faster = snapshot(
+    { state: 'online' },
+    { ...NETWORK_FIXTURE, downloadMbps: 41.5, uploadMbps: 7.25 },
+  );
+
+  it('keeps the online chip and line between frames where only the rates move', () => {
+    const first = routerCellOf(snapshot(), IDLE, LAST, NOW);
+    const next = routerCellOf(faster, IDLE, LAST, NOW);
+    expect(next.chip).toBe(first.chip);
+    expect(next.line).toBe(first.line);
+    expect(next.tone).toBe(first.tone);
+    expect(next.figures).not.toEqual(first.figures);
+  });
+
+  it('keeps the testing chip while the figure so far climbs', () => {
+    const run: SpeedTestRun = { ...IDLE, running: true, phase: 'download', mbps: 120 };
+    const first = routerCellOf(snapshot(), run, LAST, NOW);
+    const next = routerCellOf(faster, { ...run, mbps: 240 }, LAST, NOW);
+    expect(next.chip).toBe(first.chip);
+    expect(next.line).toBe(first.line);
+  });
+
+  it('keeps the no internet chip between frames', () => {
+    const down = { ...NETWORK_FIXTURE, wanUp: false };
+    const first = routerCellOf(snapshot({ state: 'online' }, down), IDLE, LAST, NOW);
+    const next = routerCellOf(
+      snapshot({ state: 'online' }, { ...down, downloadMbps: 0.5 }),
+      IDLE,
+      LAST,
+      NOW,
+    );
+    expect(next.chip).toBe(first.chip);
+  });
+});
+
 describe('systemReadingsOf', () => {
   const SYSTEM = SYSTEM_FIXTURE;
 

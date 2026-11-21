@@ -8,7 +8,7 @@ import { cn } from '../../../design/cn';
 import { percentOf } from '../../../format/percent';
 import type { ClockFormat } from '../../../format/clock-text';
 import { HOUR_MS, shiftDay, startOfDayKey, weekdayShort } from '../../../format/time';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import { useItemPress } from '../item/item-menu-host';
 import type { EventLook } from './calendars-model';
 import { Hatch, LookMark, eventFill, lookWords } from './event-look';

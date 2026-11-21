@@ -9,7 +9,6 @@ import { cn } from '../../design/cn';
 import { useIdiom } from '../../design/platform';
 import type { ColourRole } from '../../design/tokens';
 import {
-  boxStyle,
   medallionGeometry,
   ringValue,
   type MedallionGeometry,
@@ -27,19 +26,7 @@ export interface ServiceMedallionProps {
   readonly size: MedallionSize;
   readonly label: string;
   readonly offline?: boolean;
-}
-
-function squareStyle(
-  left: number,
-  top: number,
-  span: number,
-): {
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
-  readonly height: number;
-} {
-  return { left, top, width: span, height: span };
+  readonly ticking: boolean;
 }
 
 function toneRole(tone: MedallionTone): ColourRole {
@@ -55,11 +42,10 @@ function Disc({
   readonly glyph: IconName;
   readonly offline: boolean;
 }): ReactNode {
-  const span = geometry.px - 2 * geometry.discInset;
   return (
     <View
       aria-hidden
-      style={squareStyle(geometry.discInset, geometry.discInset, span)}
+      style={geometry.discStyle}
       className={cn(
         'absolute items-center justify-center rounded-full border-hairline border-outline-variant bg-surface-1 elevation-1',
         offline && 'opacity-60',
@@ -80,7 +66,7 @@ function StatusMark({
   return (
     <View
       aria-hidden
-      style={squareStyle(geometry.dotLeft, geometry.dotTop, geometry.dot)}
+      style={geometry.dotStyle}
       className={cn(
         'absolute rounded-full border-2 border-surface-1',
         tone === 'neutral' ? 'bg-on-surface-faint' : STATUS_FILL[tone],
@@ -97,23 +83,22 @@ export function ServiceMedallion({
   size,
   label,
   offline = false,
+  ticking,
 }: ServiceMedallionProps): ReactNode {
-  const geometry = medallionGeometry(size, useIdiom() === 'pointer');
+  const pointer = useIdiom() === 'pointer';
+  const theme = useUniwind().theme;
+  const geometry = medallionGeometry(size, pointer);
   const shown: MedallionTone = offline ? 'neutral' : tone;
-  const strength = GLOW_STRENGTH[useUniwind().theme === 'light' ? 'light' : 'dark'];
+  const strength = GLOW_STRENGTH[theme === 'light' ? 'light' : 'dark'];
   return (
     <View
       accessibilityRole="image"
       accessibilityLabel={label}
-      style={boxStyle(geometry.px)}
+      style={geometry.boxStyle}
       className="shrink-0"
     >
       {shown === 'neutral' ? null : (
-        <View
-          pointerEvents="none"
-          style={squareStyle(geometry.glowInset, geometry.glowInset, geometry.glowSpan)}
-          className="absolute"
-        >
+        <View pointerEvents="none" style={geometry.glowStyle} className="absolute">
           <Glow colour={toneRole(shown)} strength={strength} breathing={live} />
         </View>
       )}
@@ -125,6 +110,7 @@ export function ServiceMedallion({
           thickness={geometry.thickness}
           colour={toneRole(shown)}
           trackColour="outline-variant"
+          ticking={ticking}
         />
       </View>
       <StatusMark geometry={geometry} tone={shown} />

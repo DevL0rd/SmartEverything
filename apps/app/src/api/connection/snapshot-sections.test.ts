@@ -156,11 +156,11 @@ describe('reading the snapshot section by section', () => {
     const wire = snapshotWire();
     const tables = wire['tables'];
     if (typeof tables !== 'object' || tables === null) throw new Error('the fixture has no tables');
-    const answer = await read({ ...wire, scenes_v2: {}, tables: { ...tables, scenes: [] } });
+    const answer = await read({ ...wire, gadgets_v2: {}, tables: { ...tables, gadgets: [] } });
     expect(answer.data.tables.rooms).toHaveLength(1);
     expect(answer.failed).toEqual([
-      { section: 'scenes_v2', reason: 'this app does not know this section' },
-      { section: 'tables.scenes', reason: 'this app does not know this table' },
+      { section: 'gadgets_v2', reason: 'this app does not know this section' },
+      { section: 'tables.gadgets', reason: 'this app does not know this table' },
     ]);
   });
 

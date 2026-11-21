@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useIsOwner } from '../../../store/selectors';
 import { useMutationState } from '../../../store/mutation';
 import { changeChat } from '../chats/chat-actions';
+import { useEntityStore } from '../../../store/store-context';
 import { allowedOf, stored } from './tools-model';
 import { isComputerEngine } from '../provider/computer-engine';
 import type { ToolsAccess } from './access-model';
@@ -26,6 +27,7 @@ export interface ToolPermissions {
 export function useToolPermissions(chat: ToolsAccess | null): ToolPermissions | null {
   const owner = useIsOwner();
   const mutation = useMutationState();
+  const store = useEntityStore();
   const [saved, setSaved] = useState<SavedTools | null>(null);
   const current = saved !== null && appliesTo(saved, chat) ? saved : null;
   if (saved !== current) setSaved(current);
@@ -34,7 +36,7 @@ export function useToolPermissions(chat: ToolsAccess | null): ToolPermissions | 
   const allowed = current?.allowed ?? allowedOf(chat);
   const save = (next: readonly string[]): void => {
     if (readOnly) return;
-    mutation.run(() => changeChat(chat.id, { tools: stored(next) }), {
+    mutation.run(() => changeChat(store, chat.id, { tools: stored(next) }), {
       failure: 'Couldn’t change tools',
       onDone: (row) => {
         if (row !== null)

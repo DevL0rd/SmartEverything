@@ -3,7 +3,7 @@ import { API_ENDPOINTS as E, type DriveTrashLink } from '@smarteverything/domain
 import { api } from '../../../api/transport';
 import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
 import { useScreenQuery } from '../../../queries/use-screen-query';
-import { LINK_RENEW_LEAD_MS } from '../../drive/data/links';
+import { LINK_RENEW_LEAD_MS } from '../../drive';
 
 export interface TrashThumb {
   readonly url: string;
@@ -25,9 +25,9 @@ export function trashThumbOf(
   return links.find((entry) => entry.itemId === itemId)?.thumb ?? null;
 }
 
-async function readTrashThumb(itemId: string): Promise<TrashThumb | null> {
+async function readTrashThumb(itemId: string, signal: AbortSignal): Promise<TrashThumb | null> {
   const client = api().forMedia();
-  const links = await client.call(E.trashLinks, { body: { itemIds: [itemId] } });
+  const links = await client.call(E.trashLinks, { body: { itemIds: [itemId] } }, { signal });
   const thumb = trashThumbOf(links, itemId);
   if (thumb === null) return null;
   return {
@@ -42,7 +42,7 @@ export function useTrashThumb(itemId: string | null, wanted: boolean): string | 
     queryFn:
       itemId === null || !wanted
         ? skipToken
-        : (): Promise<TrashThumb | null> => readTrashThumb(itemId),
+        : ({ signal }): Promise<TrashThumb | null> => readTrashThumb(itemId, signal),
     staleTime: (entry) => trashThumbStaleMs(entry.state.data ?? null, Date.now()),
     retry: false,
   });

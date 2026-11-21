@@ -7,7 +7,7 @@ import { WATER_COLOUR } from '../model/bottle-colours';
 import { rhythmRows, rhythmSummary } from '../model/stats-model';
 import { ChartBox } from './chart-box';
 import { ChartLabel } from './chart-label';
-import { useClockFormat } from '../../../features/clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const LEFT = 32;
 const TOP = 16;

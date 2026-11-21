@@ -5,7 +5,10 @@ import { Button } from '../components/button';
 import { Sheet } from '../components/sheet';
 import { TextField, type FieldKind } from '../components/text-field';
 import { useIdiom } from '../design/platform';
-import { useMutationState, type MutationState } from '../store/mutation';
+import { Logger } from '@smarteverything/logging';
+import { notify } from '../components/toast-store';
+
+const log = new Logger('app.settings');
 
 export interface TextEditRequest {
   readonly id?: string;
@@ -33,7 +36,6 @@ export interface TextEditReset {
 
 function Footer({
   label,
-  busy,
   ready,
   reset,
   onSubmit,
@@ -41,7 +43,6 @@ function Footer({
   onClose,
 }: {
   readonly label: string;
-  readonly busy: boolean;
   readonly ready: boolean;
   readonly reset: TextEditReset | undefined;
   readonly onSubmit: () => void;
@@ -53,17 +54,11 @@ function Footer({
     <>
       {reset === undefined ? null : (
         <View className="mr-auto">
-          <Button
-            label={reset.label}
-            spoken={reset.spoken}
-            variant="text"
-            disabled={busy}
-            onPress={onReset}
-          />
+          <Button label={reset.label} spoken={reset.spoken} variant="text" onPress={onReset} />
         </View>
       )}
       {touch ? <Button label="Cancel" variant="text" onPress={onClose} /> : null}
-      <Button label={label} loading={busy} disabled={!ready} onPress={onSubmit} />
+      <Button label={label} disabled={!ready} onPress={onSubmit} />
     </>
   );
 }
@@ -82,12 +77,23 @@ interface EditorState {
   readonly ready: boolean;
   readonly submit: () => void;
   readonly resetNow: () => void;
-  readonly mutation: MutationState;
+}
+
+function saveAfterClosing(request: TextEditRequest, work: () => Promise<unknown>): void {
+  const operation = log.operation('text_edit.save', { title: request.title });
+  work().then(
+    () => {
+      operation.succeeded();
+    },
+    (error: unknown) => {
+      operation.failed(error);
+      notify({ message: `${request.title}: not saved`, error, tone: 'critical' });
+    },
+  );
 }
 
 function useEditor(request: TextEditRequest, onClose: () => void): EditorState {
   const [value, setValue] = useState(request.initial);
-  const mutation = useMutationState();
   const trimmed = value.trim();
   const invalid = problemOf(request, trimmed);
   const ready =
@@ -95,21 +101,17 @@ function useEditor(request: TextEditRequest, onClose: () => void): EditorState {
     trimmed !== request.initial &&
     invalid === null;
   const submit = (): void => {
-    if (ready) {
-      mutation.run(() => request.save(trimmed), {
-        failure: request.title,
-        inline: true,
-        onDone: onClose,
-      });
-    }
+    if (!ready) return;
+    onClose();
+    saveAfterClosing(request, () => request.save(trimmed));
   };
   const resetNow = (): void => {
     const reset = request.reset;
-    if (reset !== undefined) {
-      mutation.run(reset.run, { failure: request.title, inline: true, onDone: onClose });
-    }
+    if (reset === undefined) return;
+    onClose();
+    saveAfterClosing(request, reset.run);
   };
-  return { value, setValue, invalid, ready, submit, resetNow, mutation };
+  return { value, setValue, invalid, ready, submit, resetNow };
 }
 
 function Editor({
@@ -119,10 +121,7 @@ function Editor({
   readonly request: TextEditRequest;
   readonly onClose: () => void;
 }): ReactNode {
-  const { value, setValue, invalid, ready, submit, resetNow, mutation } = useEditor(
-    request,
-    onClose,
-  );
+  const { value, setValue, invalid, ready, submit, resetNow } = useEditor(request, onClose);
   return (
     <Sheet
       subpage={request.opener === undefined ? true : { opener: request.opener }}
@@ -133,7 +132,6 @@ function Editor({
       footer={
         <Footer
           label={request.confirmLabel}
-          busy={mutation.busy}
           ready={ready}
           reset={request.reset}
           onSubmit={submit}
@@ -148,7 +146,7 @@ function Editor({
         onChange={setValue}
         onSubmit={submit}
         placeholder={request.placeholder}
-        error={invalid ?? mutation.problem}
+        error={invalid}
         kind={request.kind ?? 'text'}
         multiline={request.multiline === true}
         {...(request.helper === undefined ? {} : { helper: request.helper })}

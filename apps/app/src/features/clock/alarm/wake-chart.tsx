@@ -11,7 +11,7 @@ import { Text } from '../../../components/text';
 import { useMeasuredWidth } from '../../../components/use-measured-width';
 import { cn } from '../../../design/cn';
 import { useColour } from '../../../design/colour';
-import { useClockFormat } from '../format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import {
   usePlannerRings,
   usePlannerStats,

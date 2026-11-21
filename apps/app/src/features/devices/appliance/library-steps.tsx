@@ -58,7 +58,7 @@ export function CategoryStep({
 }): ReactNode {
   const categories = useScreenQuery({
     queryKey: irLibraryKey(),
-    queryFn: listIrLibraryCategories,
+    queryFn: ({ signal }) => listIrLibraryCategories(signal),
     staleTime: Infinity,
   });
   return (
@@ -99,7 +99,7 @@ export function BrandStep({
 }): ReactNode {
   const brands = useScreenQuery({
     queryKey: irLibraryKey(category),
-    queryFn: () => listIrLibraryBrands(category),
+    queryFn: ({ signal }) => listIrLibraryBrands(category, signal),
     staleTime: Infinity,
   });
   return (
@@ -141,7 +141,7 @@ export function ModelStep({
 }): ReactNode {
   const models = useScreenQuery({
     queryKey: irLibraryKey(category, brand),
-    queryFn: () => listIrLibraryModels(category, brand),
+    queryFn: ({ signal }) => listIrLibraryModels(category, brand, signal),
     staleTime: Infinity,
   });
   return (

@@ -63,7 +63,7 @@ export function useTargetHistory(
   const ids = useMemo(() => [...keys.keys()], [keys]);
   const query = useScreenQuery({
     queryKey: targetHistoryKey(ids, window),
-    queryFn: () => fetchPowerHistory(keys, window),
+    queryFn: ({ signal }) => fetchPowerHistory(keys, window, signal),
     enabled: ids.length > 0,
   });
   const { refetch: refetchQuery } = query;

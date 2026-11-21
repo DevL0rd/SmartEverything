@@ -123,6 +123,7 @@ function CoverageLine({ row }: { readonly row: CoverageRow }): ReactNode {
         progress={row.progress}
         colour={row.progress >= 1 ? 'positive' : 'primary'}
         label={`${row.name} backed up ${row.value}, ${row.note}`}
+        ticking={false}
       />
     </View>
   );

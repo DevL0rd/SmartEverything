@@ -184,7 +184,12 @@ function SpaceLine({ meter }: { readonly meter: SpaceMeter }): ReactNode {
         <DetailText text={meter.text} />
       </View>
       {meter.share === null ? null : (
-        <ProgressBar progress={meter.share} colour={meter.colour} label="Your drive" />
+        <ProgressBar
+          progress={meter.share}
+          colour={meter.colour}
+          label="Your drive"
+          ticking={false}
+        />
       )}
     </View>
   );
@@ -236,11 +241,15 @@ function useSpace(myDrive: DriveRoot | null, stats: DriveStats | undefined): Spa
 
 function useRailGroups(): readonly RailGroup[] {
   const viewerId = useViewerId();
+  const driveGrantRows = useDriveGrantRows();
+  const unreadDriveNotifications = useUnreadDriveNotifications();
+  const trashCount = useTrashCount();
+  const computerProblems = useComputerProblems();
   const rail = driveRailOf({
-    sharedWithMe: useDriveGrantRows().filter((grant) => grant.profileId === viewerId).length,
-    unread: useUnreadDriveNotifications(),
-    computerProblems: useComputerProblems(),
-    trash: useTrashCount(),
+    sharedWithMe: driveGrantRows.filter((grant) => grant.profileId === viewerId).length,
+    unread: unreadDriveNotifications,
+    computerProblems,
+    trash: trashCount,
   });
   return driveSectionGroupsOf(rail);
 }

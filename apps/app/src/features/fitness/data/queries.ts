@@ -25,7 +25,7 @@ import { useScreenQuery } from '../../../queries/use-screen-query';
 
 export interface QueryOptions<T> {
   readonly queryKey: readonly unknown[];
-  readonly queryFn: () => Promise<T>;
+  readonly queryFn: (context: { readonly signal: AbortSignal }) => Promise<T>;
 }
 
 export const PRESENCE_DAYS = 90;
@@ -52,7 +52,7 @@ export function dailyQuery(
 ): QueryOptions<DailyFigure[]> {
   return {
     queryKey: healthKeys.daily(first, last, metrics),
-    queryFn: () => readDailyFigures(first, last, metrics),
+    queryFn: ({ signal }) => readDailyFigures(first, last, metrics, signal),
   };
 }
 
@@ -63,14 +63,14 @@ export function recordsQuery(
 ): QueryOptions<HealthRecord[]> {
   return {
     queryKey: healthKeys.records(types, from, to),
-    queryFn: () => readRecords(types, from, to),
+    queryFn: ({ signal }) => readRecords(types, from, to, signal),
   };
 }
 
 export function bestDayQuery(metric: HealthMetric, lowest: boolean): QueryOptions<BestDay | null> {
   return {
     queryKey: healthKeys.best(metric, lowest),
-    queryFn: () => readBestDay(metric, lowest),
+    queryFn: ({ signal }) => readBestDay(metric, lowest, signal),
   };
 }
 
@@ -78,7 +78,7 @@ export function sightingsQuery(today: string): QueryOptions<SourceSighting[]> {
   const since = sightingsSince(today);
   return {
     queryKey: healthKeys.sightings(since),
-    queryFn: () => readSightings(since),
+    queryFn: ({ signal }) => readSightings(since, signal),
   };
 }
 
@@ -157,6 +157,6 @@ export function useSightings(today: string): UseQueryResult<SourceSighting[]> {
 export function useRecord(recordId: string): UseQueryResult<HealthRecord | null> {
   return useScreenQuery({
     queryKey: healthKeys.record(recordId),
-    queryFn: () => readRecord(recordId),
+    queryFn: ({ signal }) => readRecord(recordId, signal),
   });
 }

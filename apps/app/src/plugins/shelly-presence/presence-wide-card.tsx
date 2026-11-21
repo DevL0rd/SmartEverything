@@ -322,8 +322,8 @@ export function PresenceWideCard({
   readonly frame: WidgetFrameBox;
   readonly showRoom: boolean;
 }): ReactNode {
-  const cls = frameClassOf(frame);
   const stream = usePresence(device);
+  const cls = frameClassOf(frame);
   if (!isWideClass(cls)) {
     return <PresenceTile device={device} showRoom={showRoom} layout="row" />;
   }

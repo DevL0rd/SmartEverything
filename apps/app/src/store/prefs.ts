@@ -12,7 +12,7 @@ import { Logger } from '@smarteverything/logging';
 import { api } from '../api/transport';
 import { notify } from '../components/toast-store';
 import type { EntityStore } from './entity-store';
-import { applyChange } from './live-reducers';
+import { liveRowEdit, writeOptimistically } from './optimistic';
 import type { StoreState } from './state';
 import { useEntityStore, useStoreSelector } from './store-context';
 
@@ -62,20 +62,6 @@ function layoutRow(
   };
 }
 
-function showLayout(store: EntityStore, page: string, record: LayoutRow | null): void {
-  store.update((state) => {
-    const current = state.tables.layouts.byId[page] ?? null;
-    if (record === null && current === null) return state;
-    return applyChange(state, {
-      type: 'change',
-      table: 'layouts',
-      operation: record === null ? 'DELETE' : 'UPDATE',
-      record,
-      oldRecord: current,
-    });
-  });
-}
-
 export function saveStoredLayout(
   store: EntityStore,
   page: string,
@@ -86,24 +72,15 @@ export function saveStoredLayout(
   if (session === null) return;
   const previous = store.get().tables.layouts.byId[page] ?? null;
   const record = layoutRow(session, page, layout);
-  const startedAt = Date.now();
   log.debug('layout.save_requested', () => ({ page, keys: Object.keys(layout).length }));
-  showLayout(store, page, record);
-  api()
-    .call(E.saveLayout, { params: { page }, body: { layout: { ...layout } } })
-    .then(() => {
-      log.info('layout.saved', { page, latencyMs: Date.now() - startedAt });
-    })
-    .catch((error: unknown) => {
-      const rolledBack = store.get().tables.layouts.byId[page] === record;
-      log.error('layout.save_failed', error, {
-        page,
-        rolledBack,
-        latencyMs: Date.now() - startedAt,
-      });
-      if (rolledBack) showLayout(store, page, previous);
-      notify({ message: failure, error, tone: 'critical' });
-    });
+  writeOptimistically(store, {
+    event: 'layout.save',
+    edits: [liveRowEdit('layouts', page, previous, record)],
+    send: () => api().call(E.saveLayout, { params: { page }, body: { layout: { ...layout } } }),
+    fields: { page },
+  }).catch((error: unknown) => {
+    notify({ message: failure, error, tone: 'critical' });
+  });
 }
 
 export function savePref<T>(store: EntityStore, pref: Pref<T>, value: T): void {

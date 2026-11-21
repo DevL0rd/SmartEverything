@@ -25,6 +25,7 @@ function PmGauge({
       bands={PM25_BANDS}
       size={size}
       label={pm25 === null ? 'No PM2.5 reading' : `PM2.5 ${String(Math.round(pm25))}`}
+      ticking={false}
     >
       <Text variant="body-strong">{pm25 === null ? '–' : String(Math.round(pm25))}</Text>
     </Gauge>

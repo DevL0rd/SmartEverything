@@ -115,7 +115,8 @@ export function AlbumTile({
   readonly album: DriveAlbum;
   readonly look: AlbumLook;
 }): ReactNode {
-  const loaded = loadedItems(usePhotoAlbumItems(album.id));
+  const photoAlbumItems = usePhotoAlbumItems(album.id);
+  const loaded = loadedItems(photoAlbumItems);
   const ids = mosaicOf(album.coverItemId, loaded?.items ?? []);
   const span = loaded?.complete === true ? spanOf(loaded.items) : null;
   const card = look === 'card';

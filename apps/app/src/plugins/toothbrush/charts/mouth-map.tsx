@@ -122,9 +122,9 @@ export function MouthMap({
   readonly label: string;
   readonly numbers?: boolean;
 }): ReactNode {
-  const zones = mouthZones(profile.zones, size);
   const warning = useColour('warning');
   const track = useColour('surface-2');
+  const zones = mouthZones(profile.zones, size);
   return (
     <View
       accessible

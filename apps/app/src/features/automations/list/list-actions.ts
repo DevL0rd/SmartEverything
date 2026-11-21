@@ -43,7 +43,7 @@ function duplicateOf(services: Services, automationId: string): void {
   if (source === undefined) return;
   background(
     attempt('The automation wasn’t duplicated', () =>
-      services.programs.create({
+      services.programs.duplicate(automationId, {
         name: copyName(source.name, services.current().names),
         enabled: false,
         definition: source.graph,
@@ -66,11 +66,10 @@ export async function removeAutomation(
     tone: 'destructive',
   });
   if (!accepted) return;
-  const removed = await attempt(
-    `${name} wasn’t deleted. Another automation may still call it.`,
-    () => remove(automationId),
+  onRemoved?.();
+  await attempt(`${name} wasn’t deleted. Another automation may still call it.`, () =>
+    remove(automationId),
   );
-  if (removed) onRemoved?.();
 }
 
 function runOf(services: Services, automationId: string, mode: 'live' | 'dry'): void {

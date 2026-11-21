@@ -20,14 +20,19 @@ function readRecords(
   types: readonly HealthRecordType[],
   from: number,
   to: number,
+  signal: AbortSignal,
 ): Promise<HealthRecord[]> {
-  return api().call(E.readHealthRecords, {
-    query: {
-      types: [...types],
-      from: new Date(from).toISOString(),
-      to: new Date(to).toISOString(),
+  return api().call(
+    E.readHealthRecords,
+    {
+      query: {
+        types: [...types],
+        from: new Date(from).toISOString(),
+        to: new Date(to).toISOString(),
+      },
     },
-  });
+    { signal },
+  );
 }
 
 export function useHeartToday(enabled: boolean): readonly ChartPoint[] | undefined {
@@ -36,7 +41,7 @@ export function useHeartToday(enabled: boolean): readonly ChartPoint[] | undefin
   const to = from + DAY_MS;
   return useScreenQuery({
     queryKey: [...HEALTH_PREFIX, 'watch-heart', from, to],
-    queryFn: () => readRecords(['HeartRate'], from, to),
+    queryFn: ({ signal }) => readRecords(['HeartRate'], from, to, signal),
     select: heartPointsOf,
     enabled,
   }).data;
@@ -48,7 +53,8 @@ export function useWatchNight(): LastNight | null {
   const to = startOfDayKey(day) + DAY_MS;
   const records = useScreenQuery({
     queryKey: [...HEALTH_PREFIX, 'watch-sleep', to],
-    queryFn: () => readRecords(['SleepSession'], to - DAY_MS - NIGHT_WINDOW_MS, to),
+    queryFn: ({ signal }) =>
+      readRecords(['SleepSession'], to - DAY_MS - NIGHT_WINDOW_MS, to, signal),
   }).data;
   return records === undefined ? null : lastNightOf(records, now);
 }

@@ -43,6 +43,7 @@ const {
   REPORT_ADDRESS,
   backupLineOf,
   quotaLineOf,
+  quotasAfter,
   saveQuota,
   scrubLineOf,
   scrubNow,
@@ -105,6 +106,15 @@ describe('quota writes', () => {
     expect(gigabytesInitialOf(null)).toBe('');
     expect(gigabytesInitialOf(250 * GIB)).toBe('250');
     expect(gigabytesInitialOf(1.5 * GIB)).toBe('1.5');
+  });
+
+  it('shows a quota change in the list before the hub answers', () => {
+    const other = { profileId: BEN, bytes: 5 * GIB };
+    expect(quotasAfter([other, { profileId: ANA, bytes: GIB }], ANA, 30 * GIB)).toEqual([
+      other,
+      { profileId: ANA, bytes: 30 * GIB },
+    ]);
+    expect(quotasAfter([other, { profileId: ANA, bytes: GIB }], ANA, null)).toEqual([other]);
   });
 
   it('sets and clears a quota, then refreshes the quota list', async () => {

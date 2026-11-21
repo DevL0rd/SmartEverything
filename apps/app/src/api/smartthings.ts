@@ -14,7 +14,7 @@ const log = new Logger('app.smartthings');
 export function useSmartThingsApp(): UseQueryResult<SmartThingsAppStatus> {
   return useScreenQuery({
     queryKey: SMARTTHINGS_APP_KEY,
-    queryFn: () => api().call(E.readSmartThingsApp, {}),
+    queryFn: ({ signal }) => api().call(E.readSmartThingsApp, {}, { signal }),
   });
 }
 

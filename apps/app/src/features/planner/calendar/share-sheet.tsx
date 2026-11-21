@@ -77,8 +77,8 @@ export interface ShareSheetProps {
 
 export function ShareSheet({ calendarId, onClose }: ShareSheetProps): ReactNode {
   const { person } = usePlannerFrame();
-  const calendar = useViewerCalendars(person).find((entry) => entry.row.id === calendarId);
   const people = useRows('profiles');
+  const calendar = useViewerCalendars(person).find((entry) => entry.row.id === calendarId);
   const candidates = calendar === undefined ? [] : shareCandidatesOf(calendar, people);
   return (
     <Sheet

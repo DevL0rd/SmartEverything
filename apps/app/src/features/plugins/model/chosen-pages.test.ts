@@ -26,6 +26,7 @@ describe('chosen option lookup', () => {
     const page = await readChosen(
       (query) => Promise.resolve(option(String(query.ids?.split(',')[0]))),
       ids,
+      new AbortController().signal,
     );
     expect(page.state === 'ready' ? page.options.map((entry) => entry.id) : []).toEqual([
       '0',
@@ -43,6 +44,7 @@ describe('chosen option lookup', () => {
             : option('0'),
         ),
       ids,
+      new AbortController().signal,
     );
     expect(page.state).toBe('unavailable');
   });

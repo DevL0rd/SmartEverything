@@ -66,6 +66,7 @@ export function HeadRing({ countdown }: { readonly countdown: Countdown | null }
         thickness={10}
         colour={TONE_ROLE[tone]}
         tinted
+        ticking={false}
       />
       <View aria-hidden className="absolute items-center gap-0.5">
         <HeadGlyph tone={tone} size={40} />

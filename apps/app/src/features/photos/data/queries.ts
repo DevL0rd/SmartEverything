@@ -38,7 +38,7 @@ export function usePhotoBuckets(
   const scope = useFolderScope(requested);
   return useScreenQuery({
     queryKey: photoKeys.buckets(scope),
-    queryFn: () => readLibraryBuckets(scope),
+    queryFn: ({ signal }) => readLibraryBuckets(scope, signal),
     placeholderData: keepPreviousData,
     retry: false,
   });
@@ -52,7 +52,7 @@ export function usePhotoMonth(
   const scope = useFolderScope(requested);
   return useDrivePages({
     queryKey: photoKeys.month(month, scope),
-    read: (cursor) => readLibraryPage(month, scope, cursor),
+    read: (cursor, signal) => readLibraryPage(month, scope, cursor, signal),
     enabled,
   });
 }
@@ -63,7 +63,9 @@ export function usePhotoMedia(
   return useScreenQuery({
     queryKey: photoKeys.media(itemId),
     queryFn:
-      itemId === null ? skipToken : (): ReturnType<typeof readMediaInfo> => readMediaInfo(itemId),
+      itemId === null
+        ? skipToken
+        : ({ signal }): ReturnType<typeof readMediaInfo> => readMediaInfo(itemId, signal),
     retry: false,
   });
 }
@@ -71,7 +73,7 @@ export function usePhotoMedia(
 export function usePhotoRailCounts(): UseQueryResult<PhotosResult<'readPhotoRailCounts'>> {
   return useScreenQuery({
     queryKey: photoKeys.railCounts(),
-    queryFn: readPhotoRailCounts,
+    queryFn: ({ signal }) => readPhotoRailCounts(signal),
     retry: false,
   });
 }
@@ -79,23 +81,34 @@ export function usePhotoRailCounts(): UseQueryResult<PhotosResult<'readPhotoRail
 export function usePhotoProcessing(): UseQueryResult<PhotosResult<'readMediaProcessing'>> {
   return useScreenQuery({
     queryKey: photoKeys.processing(),
-    queryFn: readMediaProcessing,
+    queryFn: ({ signal }) => readMediaProcessing(signal),
     retry: false,
   });
 }
 
 export function usePhotoTrips(): UseQueryResult<PhotosResult<'listTrips'>> {
-  return useScreenQuery({ queryKey: photoKeys.trips(), queryFn: listTrips, retry: false });
+  return useScreenQuery({
+    queryKey: photoKeys.trips(),
+    queryFn: ({ signal }) => listTrips(signal),
+    retry: false,
+  });
 }
 
 export function usePhotoPlaces(): UseQueryResult<PhotosResult<'listPlaces'>> {
-  return useScreenQuery({ queryKey: photoKeys.places(), queryFn: listPlaces, retry: false });
+  return useScreenQuery({
+    queryKey: photoKeys.places(),
+    queryFn: ({ signal }) => listPlaces(signal),
+    retry: false,
+  });
 }
 
 export function usePhotoPlace(placeId: number | null): UseQueryResult<PhotosResult<'readPlace'>> {
   return useScreenQuery({
     queryKey: photoKeys.place(placeId),
-    queryFn: placeId === null ? skipToken : (): ReturnType<typeof readPlace> => readPlace(placeId),
+    queryFn:
+      placeId === null
+        ? skipToken
+        : ({ signal }): ReturnType<typeof readPlace> => readPlace(placeId, signal),
     retry: false,
   });
 }
@@ -106,7 +119,7 @@ export function usePhotoClusters(
 ): UseQueryResult<PhotosResult<'listPlaceClusters'>> {
   return useScreenQuery({
     queryKey: photoKeys.clusters(query),
-    queryFn: () => listPlaceClusters(query),
+    queryFn: ({ signal }) => listPlaceClusters(query, signal),
     enabled,
     placeholderData: keepPreviousData,
     retry: false,
@@ -118,7 +131,7 @@ export function usePhotoInsights(
 ): UseQueryResult<PhotosResult<'readPhotoInsights'>> {
   return useScreenQuery({
     queryKey: photoKeys.insights(range),
-    queryFn: () => readPhotoInsights(range),
+    queryFn: ({ signal }) => readPhotoInsights(range, signal),
     placeholderData: keepPreviousData,
     retry: false,
   });
@@ -129,7 +142,7 @@ export function usePhotoLargestVideos(
 ): DrivePages<PhotosResult<'listPhotoLargestVideos'>> {
   return useDrivePages({
     queryKey: photoKeys.largestVideos(range),
-    read: (cursor) => listPhotoLargestVideos(range, cursor),
+    read: (cursor, signal) => listPhotoLargestVideos(range, cursor, signal),
   });
 }
 
@@ -138,7 +151,7 @@ export function usePhotoBusiestDays(
 ): DrivePages<PhotosResult<'listPhotoBusiestDays'>> {
   return useDrivePages({
     queryKey: photoKeys.busiestDays(range),
-    read: (cursor) => listPhotoBusiestDays(range, cursor),
+    read: (cursor, signal) => listPhotoBusiestDays(range, cursor, signal),
   });
 }
 
@@ -149,7 +162,10 @@ export function usePhotoStacks(): DrivePages<PhotosResult<'listStacks'>> {
 export function usePhotoStack(stackId: string | null): UseQueryResult<PhotosResult<'readStack'>> {
   return useScreenQuery({
     queryKey: photoKeys.stack(stackId),
-    queryFn: stackId === null ? skipToken : (): ReturnType<typeof readStack> => readStack(stackId),
+    queryFn:
+      stackId === null
+        ? skipToken
+        : ({ signal }): ReturnType<typeof readStack> => readStack(stackId, signal),
     retry: false,
   });
 }
@@ -161,14 +177,14 @@ export function usePhotoSource(
 ): DrivePages<PhotosResult<'listPhotoSource'>> {
   return useDrivePages({
     queryKey: photoKeys.source(source, chipId, search),
-    read: (cursor) => listPhotoSource(source, chipId, search, cursor),
+    read: (cursor, signal) => listPhotoSource(source, chipId, search, { cursor, signal }),
   });
 }
 
 export function usePhotoBackupState(): UseQueryResult<PhotosResult<'readBackupState'>> {
   return useScreenQuery({
     queryKey: photoKeys.backup(),
-    queryFn: readBackupState,
+    queryFn: ({ signal }) => readBackupState(signal),
     retry: false,
   });
 }
@@ -180,7 +196,7 @@ export function usePhotoDuplicates(): DrivePages<PhotosResult<'listPhotoDuplicat
 export function usePhotoDuplicateStats(): UseQueryResult<PhotosResult<'readPhotoDuplicateStats'>> {
   return useScreenQuery({
     queryKey: photoKeys.duplicateStats(),
-    queryFn: readPhotoDuplicateStats,
+    queryFn: ({ signal }) => readPhotoDuplicateStats(signal),
     placeholderData: keepPreviousData,
     retry: false,
   });

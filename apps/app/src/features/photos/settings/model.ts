@@ -4,7 +4,7 @@ import { joinParts } from '../../../format/text';
 import type { ColourRole } from '../../../design/tokens';
 import type { BackupStatus } from '../backup/model/status';
 import { PAUSE_LABELS } from '../backup/model/conditions';
-import { hubProgressOf, phoneProgressOf, type LiveProgress } from '../backup/phones-model';
+import { hubProgressOf, phoneProgressOf, type DeviceProgress } from '../backup/phones-model';
 import { phoneLeftOf } from '../components/photos-frame';
 
 export const PERSON_FOLDER_TEMPLATE = 'Photos';
@@ -84,10 +84,10 @@ function localColourOf(status: BackupStatus): ColourRole {
 export interface BackupCardInput {
   readonly status: BackupStatus | null;
   readonly state: BackupState | undefined;
-  readonly live: LiveProgress;
+  readonly progress: DeviceProgress;
 }
 
-export function backupCardOf({ status, state, live }: BackupCardInput): BackupCardView {
+export function backupCardOf({ status, state, progress }: BackupCardInput): BackupCardView {
   const devices = devicesLineOf(state);
   if (status !== null) {
     const off = phoneLeftOf(status) === null;
@@ -98,7 +98,7 @@ export function backupCardOf({ status, state, live }: BackupCardInput): BackupCa
       colour: localColourOf(status),
     };
   }
-  const hub = hubProgressOf(state, live);
+  const hub = hubProgressOf(state, progress);
   return {
     headline: devices,
     detail:

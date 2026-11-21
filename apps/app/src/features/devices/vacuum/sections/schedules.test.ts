@@ -70,6 +70,7 @@ vi.mock('../../../../store/store-context', () => ({
         automation_plugin_kinds: makeTable({}, [], 1),
       },
     }),
+  useEntityStore: (): object => ({}),
 }));
 vi.mock('../../model/display-name', () => ({ useDisplayName: (): string => 'Robot Vacuum' }));
 vi.mock('../data/use-vacuum', () => ({
@@ -98,7 +99,7 @@ vi.mock('../../../automations', async () => {
     automationRowsOf: rows.automationRowsOf,
     kindsOfState: lookups.kindsOfState,
     links: { edit: (id: string): string => `/automations/${id}/edit` },
-    toggleAutomation: (id: string, on: boolean): void => {
+    toggleAutomation: (_store: unknown, id: string, on: boolean): void => {
       seen.toggles.push([id, on]);
     },
   };

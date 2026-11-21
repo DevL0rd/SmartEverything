@@ -62,6 +62,7 @@ vi.mock('./routes', () => ({ ROUTES: [] }));
 vi.mock('../store/selectors', () => ({
   useSyncStatus: (): { readonly status: string } => ({ status: 'connecting' }),
 }));
+vi.mock('../store/store-context', () => ({ useEntityStore: (): object => ({}) }));
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: (): object => ({}) }));
 vi.mock('../design/platform', async (importOriginal) => ({
   ...(await importOriginal<typeof Platform>()),

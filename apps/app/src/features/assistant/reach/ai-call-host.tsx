@@ -29,8 +29,8 @@ const log = new Logger('app.reach-ring');
 const selectClientId = (state: StoreState): string | null => state.session?.client.id ?? null;
 
 function useRinging(): AiOutreachRow | null {
-  const rows = useOutreach().data ?? [];
   const own = useStoreSelector(selectClientId);
+  const rows = useOutreach().data ?? [];
   return (
     rows.find((row) => row.state === 'ringing' && own !== null && row.clients.includes(own)) ?? null
   );

@@ -1,5 +1,6 @@
 import type { PluginRow } from '@smarteverything/domain';
 import type { MenuItem } from '../../../components/menu';
+import type { EntityStore } from '../../../store/entity-store';
 import { remove, restart, switchPlugin } from './plugin-actions';
 import { background } from '@smarteverything/logging';
 
@@ -19,13 +20,13 @@ function removeItems(row: PluginRow): MenuItem[] {
   ];
 }
 
-export function pluginMenu(row: PluginRow): MenuItem[] {
+export function pluginMenu(store: EntityStore, row: PluginRow): MenuItem[] {
   return [
     {
       label: row.enabled ? 'Switch off' : 'Switch on',
       icon: 'power',
       onPress: (): void => {
-        background(switchPlugin(row, !row.enabled), 'plugin.switch_failed');
+        background(switchPlugin(store, row, !row.enabled), 'plugin.switch_failed');
       },
     },
     {

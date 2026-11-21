@@ -5,10 +5,10 @@ import {
   type StateRow,
 } from '@smarteverything/domain';
 import Constants from 'expo-constants';
-import { emptyState, type ListTable, type StoreState } from './state';
+import { emptyState, type DeviceValues, type ListTable, type StoreState } from './state';
 
 export const CACHE_VERSION = Constants.expoConfig?.version ?? null;
-export const CACHE_LAYOUT = 'rows';
+export const CACHE_LAYOUT = 'device-rows';
 export const LIST_DEBOUNCE_MS = 3000;
 const DEVICE_VALUES_EVERY_MS = 20_000;
 
@@ -66,14 +66,12 @@ export function unsureMemo(ids: Iterable<string>): SlotMemo {
   return { order: null, rows: new Map([...ids].map((id) => [id, UNWRITTEN])) };
 }
 
-function stateRows(deviceValues: StoreState['deviceValues']): StateRow[] {
+function stateRows(device_id: string, values: DeviceValues): StateRow[] {
   const rows: StateRow[] = [];
-  for (const [device_id, values] of deviceValues.entries()) {
-    for (const capability in values) {
-      const reading = values[capability];
-      if (reading !== undefined)
-        rows.push({ device_id, capability, value: reading.value, observed_at: reading.observedAt });
-    }
+  for (const capability in values) {
+    const reading = values[capability];
+    if (reading !== undefined)
+      rows.push({ device_id, capability, value: reading.value, observed_at: reading.observedAt });
   }
   return rows;
 }
@@ -95,6 +93,27 @@ function whole(key: string, text: string): SlotWrite {
   return { set: [[key, text]], del: [], memo: { order: null, rows: NO_ROWS } };
 }
 
+function rowsWrite<Row>(
+  key: string,
+  entries: Iterable<readonly [string, Row]>,
+  before: SlotMemo | undefined,
+  text: (id: string, row: Row) => string,
+): SlotWrite {
+  const rows = new Map<string, unknown>();
+  const set: (readonly [string, string])[] = [];
+  for (const [id, row] of entries) {
+    rows.set(id, row);
+    if (before?.rows.get(id) !== row) set.push([rowKey(key, id), text(id, row)]);
+  }
+  const order = JSON.stringify([...rows.keys()]);
+  if (before?.order !== order) set.push([key, order]);
+  const del =
+    before === undefined
+      ? []
+      : [...before.rows.keys()].filter((id) => !rows.has(id)).map((id) => rowKey(key, id));
+  return { set, del, memo: { order, rows } };
+}
+
 function listSlot(base: string, prefix: 't' | 'o', name: ListTable): Slot {
   const key = `${base}.${prefix}.${name}`;
   return {
@@ -105,24 +124,32 @@ function listSlot(base: string, prefix: 't' | 'o', name: ListTable): Slot {
     refs: (state) => [state.tables[name]],
     write: (state, _seq, before): SlotWrite => {
       const byId: Readonly<Record<string, unknown>> = state.tables[name].byId;
-      const ids = listIds(state, name);
-      const rows = new Map<string, unknown>();
-      const set: (readonly [string, string])[] = [];
-      for (const id of ids) {
+      const rows = listIds(state, name).map((id): readonly [string, unknown] => {
         const row = byId[id];
         if (row === undefined) throw new MissingCachedRowError(name, id);
-        rows.set(id, row);
-        if (before?.rows.get(id) !== row)
-          set.push([rowKey(key, id), rowText(state, name, id, row)]);
-      }
-      const order = JSON.stringify(ids);
-      if (before?.order !== order) set.push([key, order]);
-      const del =
-        before === undefined
-          ? []
-          : [...before.rows.keys()].filter((id) => !rows.has(id)).map((id) => rowKey(key, id));
-      return { set, del, memo: { order, rows } };
+        return [id, row];
+      });
+      return rowsWrite(key, rows, before, (id, row) => rowText(state, name, id, row));
     },
+  };
+}
+
+export function deviceStateKey(base: string): string {
+  return `${base}.device_state`;
+}
+
+function deviceStateSlot(base: string): Slot {
+  const key = deviceStateKey(base);
+  return {
+    key,
+    list: true,
+    intervalMs: DEVICE_VALUES_EVERY_MS,
+    active: () => true,
+    refs: (state) => [state.deviceValues],
+    write: (state, _seq, before): SlotWrite =>
+      rowsWrite(key, state.deviceValues.entries(), before, (id, values) =>
+        JSON.stringify(stateRows(id, values)),
+      ),
   };
 }
 
@@ -166,15 +193,7 @@ export function slotsOf(base: string): readonly Slot[] {
         );
       },
     },
-    {
-      key: `${base}.device_state`,
-      list: false,
-      intervalMs: DEVICE_VALUES_EVERY_MS,
-      active: () => true,
-      refs: (state) => [state.deviceValues],
-      write: (state) =>
-        whole(`${base}.device_state`, JSON.stringify(stateRows(state.deviceValues))),
-    },
+    deviceStateSlot(base),
     ...CACHED_SHARED_LISTS.map((name) => listSlot(base, 't', name)),
     ...OWNER_LISTS.map((name) => listSlot(base, 'o', name)),
   ];

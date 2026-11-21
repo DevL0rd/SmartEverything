@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { DriveRecentEntry, DriveRecentFilter } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import { useMinute } from '../../../store/clock';
@@ -40,8 +40,10 @@ function useWeekLoaded(
 export function useRecentFeed(filter: DriveRecentFilter): RecentFeed {
   const pages = useDriveRecent(filter);
   const zone = useSettings().time_zone;
-  const days = recentDaysOf(useMinute(), zone);
-  const entries = flattenPages(pages.data, (page) => page.entries);
+  const minute = useMinute();
+  const days = useMemo(() => recentDaysOf(minute, zone), [minute, zone]);
+  const entries = useMemo(() => flattenPages(pages.data, (page) => page.entries), [pages.data]);
   useWeekLoaded(pages, entries, days);
-  return { pages, lines: linesOf(entries, days), days };
+  const lines = useMemo(() => linesOf(entries, days), [entries, days]);
+  return { pages, lines, days };
 }

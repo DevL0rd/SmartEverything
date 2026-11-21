@@ -232,7 +232,7 @@ describe('the Oral-B diagnostics', () => {
     };
     const markup = render(OralbDiagnostics, { deviceId: view.deviceId, mayConfigure: true });
     expect(markup).toContain('Handle tests: 1 of 9 run');
-    expect(markup.split('Not run').length - 1).toBe(8);
+    expect(markup.split('>Not run<').length - 1).toBe(8);
     expect(markup).toContain('Passed');
     expect(markup).toContain('Run again');
     expect(markup).toContain('Copy the raw records');

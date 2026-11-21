@@ -25,8 +25,11 @@ function mergeChosenPages(pages: readonly PluginOptionPage[]): PluginOptionPage 
 }
 
 export async function readChosen(
-  read: (query: PluginOptionQuery) => Promise<PluginOptionPage>,
+  read: (query: PluginOptionQuery, signal: AbortSignal) => Promise<PluginOptionPage>,
   ids: readonly string[],
+  signal: AbortSignal,
 ): Promise<PluginOptionPage> {
-  return mergeChosenPages(await Promise.all(idChunks(ids).map((chunk) => read({ ids: chunk }))));
+  return mergeChosenPages(
+    await Promise.all(idChunks(ids).map((chunk) => read({ ids: chunk }, signal))),
+  );
 }

@@ -97,9 +97,9 @@ function useSources(spec: SeriesSpec, window: Window, withRecords: boolean): Sou
 }
 
 export function useSeries(spec: SeriesSpec, window: Window, withRecords: boolean): SeriesView {
-  const before = previousWindow(window);
   const sources = useSources(spec, window, withRecords);
   const today = useToday();
+  const before = previousWindow(window);
   const until = startOfDayKey(today) + DAY_MS;
   const summary = summarise(spec, window, sources.points, until);
   const previous = summarise(spec, before, sources.points, until);

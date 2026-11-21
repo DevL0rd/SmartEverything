@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { background } from '@smarteverything/logging';
-import { useMutation, useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { useMutation, type UseQueryResult } from '@tanstack/react-query';
+import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
   API_ENDPOINTS as E,
   HTTPS_URL,
@@ -155,9 +156,9 @@ function useHubAddresses(): {
   readonly addresses: PairingAddresses | null;
 } {
   const connection = useConnection();
-  const query = useQuery({
+  const query = useScreenQuery({
     queryKey: HUB_CONNECTION_KEY,
-    queryFn: () => api().call(E.hubConnection, {}),
+    queryFn: ({ signal }) => api().call(E.hubConnection, {}, { signal }),
   });
   const current = connection.status === 'paired' ? connection.connection.url : null;
   return {

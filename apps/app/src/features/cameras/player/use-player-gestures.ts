@@ -120,6 +120,8 @@ export function usePlayerGestures({
   ptz,
   onSwipe,
 }: GestureHandlers): ComposedGesture {
+  const digital = useZoomGestures(zoom);
+  const optical = useCameraPinch(camera);
   const zoomed = zoom.view.zoom > 1;
   const taps = Gesture.Exclusive(
     Gesture.Tap()
@@ -128,8 +130,6 @@ export function usePlayerGestures({
       .onEnd(camera.supported ? camera.toggle : zoom.toggle),
     Gesture.Tap().runOnJS(true).onEnd(onTap),
   );
-  const digital = useZoomGestures(zoom);
-  const optical = useCameraPinch(camera);
   return Gesture.Race(
     camera.supported ? optical : digital,
     usePtzGesture(ptz, zoomed),

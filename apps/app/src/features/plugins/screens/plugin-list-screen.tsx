@@ -13,6 +13,7 @@ import { SettingsFrame } from '../../../settings/settings-frame';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 import { chosenLabels, pluginOptionFeed, useChosenOptions } from '../data/option-queries';
 import { savePlugin } from '../data/plugin-actions';
+import { useEntityStore } from '../../../store/store-context';
 import { useListEdit, type ListEdit } from '../data/use-list-edit';
 import { withToggled, without } from '../model/list-edits';
 import { OptionPickerSheet } from '../picker/option-picker-sheet';
@@ -21,10 +22,9 @@ import { itemsProblem, listItems, typedItems } from '../model/setting-values';
 import { MissingPlugin, usePluginParam } from './plugin-screen';
 
 function addRequest(
-  row: PluginRow,
-  name: string,
   setting: PluginListSetting,
   items: readonly string[],
+  save: (next: readonly string[]) => Promise<void>,
 ): TextEditRequest {
   return {
     title: `Add to ${setting.title}`,
@@ -35,7 +35,7 @@ function addRequest(
     maxLength: setting.item.maxLength * 20,
     helper: 'Separate several with commas or new lines.',
     problemOf: (text) => itemsProblem(setting, items, text),
-    save: (text) => savePlugin(row, { settings: { [name]: [...items, ...typedItems(text)] } }),
+    save: (text) => save([...items, ...typedItems(text)]),
   };
 }
 
@@ -150,10 +150,12 @@ function Items({
   readonly query: string;
 }): ReactNode {
   const { items } = list;
-  const known = chosenLabels(
-    useChosenOptions(setting.picker === null ? null : pluginOptionFeed(row, setting.picker), items),
+  const chosenOptions = useChosenOptions(
+    setting.picker === null ? null : pluginOptionFeed(row, setting.picker),
+    items,
   );
   const deferred = useDeferredValue(query).trim().toLowerCase();
+  const known = chosenLabels(chosenOptions);
   const shown = shownItems(items, known, deferred);
   if (items.length === 0) {
     return <EmptyList setting={setting} />;
@@ -190,9 +192,14 @@ function useAdder(
 ): { readonly add: () => void; readonly sheets: ReactNode } {
   const [request, setRequest] = useState<TextEditRequest | null>(null);
   const [picking, setPicking] = useState(false);
+  const store = useEntityStore();
   const add = (): void => {
     if (setting.picker === null) {
-      setRequest(addRequest(row, name, setting, list.items));
+      setRequest(
+        addRequest(setting, list.items, (next) =>
+          savePlugin(store, row, { settings: { [name]: next } }),
+        ),
+      );
     } else {
       setPicking(true);
     }
@@ -229,9 +236,10 @@ function PluginListPage({
   readonly name: string;
   readonly setting: PluginListSetting;
 }): ReactNode {
+  const store = useEntityStore();
   const list = useListEdit(
     listItems(row, name, setting),
-    (next) => savePlugin(row, { settings: { [name]: next } }),
+    (next) => savePlugin(store, row, { settings: { [name]: next } }),
     `${setting.title} wasn’t saved`,
   );
   const { add, sheets } = useAdder(row, name, setting, list);

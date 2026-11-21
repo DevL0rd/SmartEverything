@@ -9,7 +9,7 @@ import { twoFrameColumnsAt } from '../../../components/page-shell/layout';
 import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { Section } from '../../../components/section';
 import { dayKeyOf, shiftDay, weekdayShort } from '../../../format/time';
-import { useMinute } from '../../../store/clock';
+import { useDayKey, useMinute } from '../../../store/clock';
 import { weekOrderOf } from '../clock/alarm-text';
 import {
   useBookingGuests,
@@ -70,8 +70,9 @@ function WeekSection({
   readonly wide: boolean;
 }): ReactNode {
   const items = usePlannerItems(person);
-  const days = nextDaysOf(dayKeyOf(useMinute()), shiftDay);
+  const today = useDayKey();
   const calendars = usePlannerCollections(person);
+  const days = nextDaysOf(today, shiftDay);
   return (
     <View className={wide ? 'flex-row items-start gap-4' : 'gap-section-gap'}>
       <View className={wide ? 'min-w-0 flex-1 pt-9' : ''}>
@@ -95,7 +96,8 @@ function PageCards({
   const base = useBookingLinkBase();
   const calendars = usePlannerCollections(person);
   const items = usePlannerItems(person);
-  const days = nextDaysOf(dayKeyOf(useMinute()), shiftDay);
+  const today = useDayKey();
+  const days = nextDaysOf(today, shiftDay);
   const order = weekOrderOf(prefs.general.week_start);
   return (
     <Section title="Pages">

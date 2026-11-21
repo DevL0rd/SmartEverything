@@ -13,8 +13,8 @@ import { api } from './transport';
 
 const log = new Logger('app.access');
 
-export async function listPersonAccess(): Promise<PersonAccess[]> {
-  return api().call(E.listPersonAccess, {});
+export async function listPersonAccess(signal: AbortSignal): Promise<PersonAccess[]> {
+  return api().call(E.listPersonAccess, {}, { signal });
 }
 
 export async function changePersonAccess(
@@ -34,18 +34,28 @@ export async function revokePerson(profileId: string): Promise<void> {
 export async function listAccessAudit(
   limit: number,
   profileId: string | null,
+  signal: AbortSignal,
 ): Promise<AccessAuditRow[]> {
-  return api().call(E.listAccessAudit, {
-    query: { limit, ...(profileId === null ? {} : { profileId }) },
-  });
+  return api().call(
+    E.listAccessAudit,
+    {
+      query: { limit, ...(profileId === null ? {} : { profileId }) },
+    },
+    { signal },
+  );
 }
 
 export async function listAccessRequests(
   status: AccessRequestStatus | null,
+  signal: AbortSignal,
 ): Promise<AccessRequestRow[]> {
-  return api().call(E.listAccessRequests, {
-    query: status === null ? {} : { status },
-  });
+  return api().call(
+    E.listAccessRequests,
+    {
+      query: status === null ? {} : { status },
+    },
+    { signal },
+  );
 }
 
 export async function createAccessRequest(request: NewAccessRequest): Promise<AccessRequestRow> {

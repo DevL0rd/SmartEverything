@@ -124,6 +124,7 @@ export function Progress({ run }: { readonly run: SpeedTestRun }): ReactNode {
       progress={phaseShare(run.phase)}
       colour="info"
       label={run.line ?? 'Speed test running'}
+      ticking={false}
     />
   );
 }

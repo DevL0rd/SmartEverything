@@ -125,12 +125,11 @@ function useSuggestions(person: PlannerPerson, item: PlannerItemRow): readonly P
   const tools = usePlannerTools(person);
   const query = useScreenQuery({
     queryKey: ['planner', 'suggest-completion', person, item.title, item.notes, item.attachments],
-    queryFn: () =>
-      tools.suggestCompletion({
-        title: item.title,
-        notes: item.notes,
-        attachments: [...item.attachments],
-      }),
+    queryFn: ({ signal }) =>
+      tools.suggestCompletion(
+        { title: item.title, notes: item.notes, attachments: [...item.attachments] },
+        signal,
+      ),
     placeholderData: keepPreviousData,
     retry: false,
   });
@@ -306,7 +305,8 @@ function PickerBody(props: CompletionRulePickerProps): ReactNode {
   const current = item.completion;
   const devices = useRuleDevices();
   const chooser = useDeviceChooser({ devices, current, disabled, onChange: props.onChange });
-  const choices = ruleChoicesOf(current, useSuggestions(props.person, item), {
+  const suggestions = useSuggestions(props.person, item);
+  const choices = ruleChoicesOf(current, suggestions, {
     devices,
     personName: props.personName,
   });

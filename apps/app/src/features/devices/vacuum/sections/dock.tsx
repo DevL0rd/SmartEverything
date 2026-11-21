@@ -169,7 +169,9 @@ function StationStatus({
           </Text>
         )}
       </View>
-      {progress === null ? null : <ProgressBar progress={progress} colour="primary" label={word} />}
+      {progress === null ? null : (
+        <ProgressBar progress={progress} colour="primary" label={word} ticking={false} />
+      )}
     </View>
   );
 }

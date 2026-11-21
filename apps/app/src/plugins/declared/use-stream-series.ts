@@ -33,9 +33,9 @@ export function useStreamSeries(
   const row = useStoreSelector((state) => pluginStreamRow(state, key), Object.is, [key]);
   const history = useScreenQuery({
     queryKey: [...PLUGIN_PREFIX, pluginId, 'series', ref.stream, ref.field],
-    queryFn: async () =>
+    queryFn: async ({ signal }) =>
       chartPointsOf(
-        await readPluginStreamHistory(pluginId, ref.stream, SERIES_KEPT),
+        await readPluginStreamHistory(pluginId, ref.stream, SERIES_KEPT, signal),
         pluginId,
         ref,
       ),

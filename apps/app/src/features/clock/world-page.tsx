@@ -13,7 +13,7 @@ import { shellLayoutOf } from '../../components/page-shell/layout';
 import { AddCityPicker } from './world/add-city';
 import { CityCard, CityRow, cityViewOf } from './world/city-card';
 import { FindATimeCard, FindATimePhone } from './world/find-a-time-card';
-import { useClockFormat, useInstantClock } from './format/clock-format';
+import { useClockFormat, useInstantClock } from '../../store/clock-format';
 import { eventTextAt } from './world/find-a-time';
 import type { PlannerPreferences } from '@smarteverything/domain';
 import { useHourPick, useWorld, type WorldModel } from './world/use-world';

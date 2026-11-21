@@ -79,10 +79,10 @@ function RuntimeRow({
   setPage,
   select,
 }: RowsProps & { readonly runtime: ComputerAiRuntime }): ReactNode {
+  const [expanded, setExpanded] = useState(false);
   const options = state.options.filter((option) => option.target.runtime === runtime);
   const configured = options.filter((option) => option.configured !== false);
   const preferred = configured.length === 1 ? configured[0] : undefined;
-  const [expanded, setExpanded] = useState(false);
   const detail = state.reason ?? runtimeDetail(options.length);
   const blocked = state.reason !== null || options.length === 0;
   const showReason = blocked && expanded;

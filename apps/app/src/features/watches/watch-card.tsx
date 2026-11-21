@@ -37,7 +37,7 @@ import { FindWatchButton } from './watch-find';
 import { useWatchGlance, type WatchGlance } from './watch-glance';
 import { beatingBpm, type HeartView } from './watch-heart';
 import { useRinging } from './watch-ringing';
-import { useInstantClock } from '../clock/format/clock-format';
+import { useInstantClock } from '../../store/clock-format';
 
 const HEART_HEIGHT: Readonly<Record<WideClass, number>> = { m: 34, w: 52, l: 120, xl: 120 };
 

@@ -32,6 +32,7 @@ function FaceMedallion({ hero }: { readonly hero: SyncHero }): ReactNode {
       size="widget"
       label={hero.spoken}
       offline={hero.stale}
+      ticking={false}
     />
   );
 }

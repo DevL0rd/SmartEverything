@@ -22,7 +22,7 @@ import { ResponseBadge } from '../item/guest-row';
 import { LIST_DOT } from '../item/composer-tokens';
 import { useItemPress } from '../item/item-menu-host';
 import { bookedMinutesOf } from './day-strip-model';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 import { lensOf } from './now-lens';
 import {
   fadeStepsOf,

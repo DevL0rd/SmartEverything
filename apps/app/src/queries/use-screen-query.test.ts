@@ -13,7 +13,16 @@ const RAW_STORE_HOOK = /\buseSyncExternalStore\(/;
 
 const SCREEN_DATA_ROOTS = ['features', 'components', 'plugins'];
 
-const GLOBAL_STORE_HOOKS = ['features/assistant/data/area-status.ts'];
+const GLOBAL_STORE_HOOKS = [
+  'components/toast-store.ts',
+  'components/toast-layers.ts',
+  'components/house-map/live-visibility/stage-host.tsx',
+  'features/devices/vacuum/components/map-view-parts.tsx',
+  'features/models/live/live-view.tsx',
+  'features/models/live/scroll-model-layer.tsx',
+  'features/models/live/use-live-view.ts',
+  'plugins/shelly-presence/presence-page.tsx',
+];
 
 function sources(directory: string): string[] {
   return readdirSync(directory).flatMap((entry) => {

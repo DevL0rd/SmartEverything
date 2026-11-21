@@ -38,8 +38,9 @@ export function photosCrashPlaceOf(pathname: string): PhotosCrashPlace {
 }
 
 export function PhotosErrorBoundary(props: ErrorBoundaryProps): ReactNode {
-  const place = photosCrashPlaceOf(usePathname());
+  const pathname = usePathname();
   const counts = usePhotoRailCounts().data;
+  const place = photosCrashPlaceOf(pathname);
   return (
     <AreaRouteErrorBoundary
       title={photosTitleOf(place.active)}

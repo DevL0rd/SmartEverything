@@ -1,6 +1,6 @@
 import { deviceTimeZone } from '../../../platform/time-zone';
 import { createElement } from 'react';
-import { updateHome } from '../../../api/settings';
+import { writeHome } from '../../../store/home-writes';
 import type { SettingDefinition } from '../../../settings/types';
 import { LocationCard } from './location-card';
 import { DeviceTimeZoneRow, TimeZoneRow } from './location-rows';
@@ -21,7 +21,7 @@ export const HOME_SETTINGS: readonly SettingDefinition[] = [
     maxLength: 80,
     visible: owner,
     read: (state) => state.settings?.home_name ?? '',
-    write: (home_name) => updateHome({ home_name }),
+    write: (home_name, { store }) => writeHome(store, { home_name }),
   },
   {
     id: 'home.location',

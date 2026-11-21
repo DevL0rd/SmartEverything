@@ -1,6 +1,6 @@
 import type { TelevisionSettingsRow } from '@smarteverything/domain';
 import { describe, expect, it, vi } from 'vitest';
-import { wakeAddressOf, wakeAddressRequest, wakeAddressRow } from './wake-address';
+import { wakeAddressOf, wakeAddressRequest, wakeAddressRow, withWakeAddress } from './wake-address';
 
 const SET: TelevisionSettingsRow = {
   device_id: 'tv-1',
@@ -61,5 +61,24 @@ describe('editing the wake address', () => {
     await request.save('A1-B2-C3-D4-E5-F6');
     await request.save('');
     expect(save.mock.calls).toStrictEqual([['a1:b2:c3:d4:e5:f6'], [null]]);
+  });
+});
+
+describe('the wake address shown before the hub answers', () => {
+  it('replaces the saved addresses and forgets the last wake, as the hub does', () => {
+    const woke = { ...SET, wake_worked_at: '2026-11-01T00:00:00.000Z' };
+    expect(withWakeAddress('tv-1', woke, 'aa:bb:cc:dd:ee:ff')).toStrictEqual({
+      ...SET,
+      wake_macs: ['aa:bb:cc:dd:ee:ff'],
+    });
+    expect(withWakeAddress('tv-1', woke, null).wake_macs).toStrictEqual([]);
+  });
+
+  it('makes the settings row of a television that had none', () => {
+    expect(withWakeAddress('tv-2', null, 'aa:bb:cc:dd:ee:ff')).toStrictEqual({
+      ...SET,
+      device_id: 'tv-2',
+      wake_macs: ['aa:bb:cc:dd:ee:ff'],
+    });
   });
 });

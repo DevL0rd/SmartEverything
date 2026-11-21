@@ -41,7 +41,8 @@ vi.mock('expo-router', () => ({
     },
   }),
 }));
-vi.mock('../../../../components/confirm-store', () => ({
+vi.mock('../../../../components/confirm-store', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   confirm: (): Promise<boolean> => Promise.resolve(probe.accepted),
 }));
 vi.mock('../../../../store/store-context', () => ({

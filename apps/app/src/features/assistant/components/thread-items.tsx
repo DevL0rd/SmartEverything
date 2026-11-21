@@ -18,6 +18,7 @@ import { sameMessage, startsMessage, type MessageItem } from '../data/thread';
 import { isAssistantParticipant, isAssistantReply } from '../model/speaker';
 import { initialRowCount, type RowShape } from '../model/initial-rows';
 import type { ThreadRow } from './thread-rows';
+import type { UnsentMessage } from '../data/outgoing';
 import { ImageOperationBubble } from '../images/components/image-receipts';
 import { useFocusedMessage } from './use-focused-message';
 import { entryLedger, RowEntry, type EntryLedger } from './rise';
@@ -84,12 +85,23 @@ function sameOptionalMessage(left: MessageItem | null, right: MessageItem | null
   return left === null || right === null ? left === right : sameMessage(left, right);
 }
 
+function sameUnsent(left: UnsentMessage, right: UnsentMessage): boolean {
+  return (
+    left.id === right.id &&
+    left.phase === right.phase &&
+    left.text === right.text &&
+    left.attachments === right.attachments &&
+    (left.phase === 'failed' ? left.error : null) ===
+      (right.phase === 'failed' ? right.error : null)
+  );
+}
+
 function sameRow(left: ThreadRow, right: ThreadRow): boolean {
   switch (left.type) {
     case 'message':
       return right.type === 'message' && sameMessage(left, right);
     case 'outbox':
-      return right.type === 'outbox' && left.message === right.message;
+      return right.type === 'outbox' && sameUnsent(left.message, right.message);
     case 'image-operation':
       return (
         right.type === 'image-operation' &&

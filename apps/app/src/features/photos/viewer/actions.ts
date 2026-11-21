@@ -5,6 +5,7 @@ import { makeStackCover } from '../../../api/photos';
 import { copyText } from '../../../components/copy-button';
 import { notify } from '../../../components/toast-store';
 import { useMutationState, type MutationState } from '../../../store/mutation';
+import { shownDriveChange } from '../../drive';
 import { dropPhotoItems } from '../data';
 import { moveToTrash } from '../library/actions';
 import type { MediaItem } from './info-model';
@@ -23,9 +24,13 @@ export function trashFromViewer(
   client: QueryClient,
   trash: typeof moveToTrash = moveToTrash,
 ): Promise<boolean> {
-  return trash([itemId], (landed) => {
-    dropPhotoItems(client, landed);
-  });
+  return trash(
+    [itemId],
+    (landed) => {
+      dropPhotoItems(client, landed);
+    },
+    shownDriveChange(client, changeDrive),
+  );
 }
 
 function shareLinkOf(mutation: MutationState, itemId: string): void {
@@ -44,8 +49,9 @@ function shareLinkOf(mutation: MutationState, itemId: string): void {
 export function useViewerActions(item: MediaItem, onTrashed: () => void): ViewerActions {
   const mutation = useMutationState();
   const client = useQueryClient();
+  const shown = shownDriveChange(client, changeDrive);
   const change = (body: DriveChange, failure: string, onDone?: () => void): void => {
-    mutation.run(() => changeDrive(body), {
+    mutation.run(() => shown(body), {
       failure,
       label: body.action,
       ...(onDone === undefined ? {} : { onDone }),
@@ -60,16 +66,13 @@ export function useViewerActions(item: MediaItem, onTrashed: () => void): Viewer
       );
     },
     trash: (): void => {
-      mutation.run(
-        () => trashFromViewer(item.id, client),
-        {
-          failure: 'The photo was not moved to trash',
-          label: 'trash',
-          onDone: (moved) => {
-            if (moved) onTrashed();
-          },
+      mutation.run(() => trashFromViewer(item.id, client), {
+        failure: 'The photo was not moved to trash',
+        label: 'trash',
+        onDone: (moved) => {
+          if (moved) onTrashed();
         },
-      );
+      });
     },
     addToAlbum: (albumId, title): void => {
       change({ action: 'album_add', albumId, itemIds: [item.id] }, 'The photo was not added', () =>

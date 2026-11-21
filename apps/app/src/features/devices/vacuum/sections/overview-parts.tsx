@@ -33,7 +33,12 @@ export function Strip({
       {strip.progress === null ? null : (
         <View className="flex-row items-center gap-3">
           <View className="flex-1">
-            <ProgressBar progress={strip.progress} colour="primary" label="Progress" />
+            <ProgressBar
+              progress={strip.progress}
+              colour="primary"
+              label="Progress"
+              ticking={false}
+            />
           </View>
           <Text variant="caption" tone="variant" className="tabular">
             {`${String(Math.round(strip.progress * 100))}%`}

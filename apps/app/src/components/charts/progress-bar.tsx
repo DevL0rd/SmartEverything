@@ -18,6 +18,7 @@ export interface ProgressBarProps {
   readonly thick?: boolean;
   readonly from?: number;
   readonly marker?: number | null;
+  readonly ticking: boolean;
 }
 
 interface LayersProps {
@@ -26,12 +27,13 @@ interface LayersProps {
   readonly from: number | undefined;
   readonly thick: boolean;
   readonly width: number;
+  readonly ticking: boolean;
 }
 
-function Layers({ progress, colour, from, thick, width }: LayersProps): ReactNode {
+function Layers({ progress, colour, from, thick, width, ticking }: LayersProps): ReactNode {
   const fill = useColour(colour);
   const { start, end } = spanOf(progress ?? 0, from);
-  const drawn = useDraw(end, !useMotion().reduced);
+  const drawn = useDraw(end, !useMotion().reduced, ticking);
   const track = { backgroundColor: fill, opacity: 0.18 };
   const bar = { backgroundColor: fill };
   const grown = useAnimatedStyle<ViewStyle>(
@@ -66,6 +68,7 @@ export function ProgressBar({
   thick = false,
   from,
   marker = null,
+  ticking,
 }: ProgressBarProps): ReactNode {
   const { width, onLayout } = useMeasuredWidth();
   const plain = from === undefined && marker === null;
@@ -77,7 +80,14 @@ export function ProgressBar({
       className={frameOf(thick, marker !== null)}
       onLayout={onLayout}
     >
-      <Layers progress={progress} colour={colour} from={from} thick={thick} width={width} />
+      <Layers
+        progress={progress}
+        colour={colour}
+        from={from}
+        thick={thick}
+        width={width}
+        ticking={ticking}
+      />
       {marker === null ? null : (
         <BarMarker share={marker} width={width} size={thick ? 'size-4' : 'size-3'} />
       )}

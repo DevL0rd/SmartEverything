@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useAreaWidth } from '../../../design/size-class';
 import { useSettings } from '../../../store/selectors';
 import { useDriveItem } from '../../drive';
-import { usePlannerAlarms, useVisibleMinute, QueryBody } from '../../planner';
+import { alarmDefaultsOf, usePlannerAlarms, useVisibleMinute, QueryBody } from '../../planner';
 import { ClockFrame } from '../frame/clock-frame';
 import { useHubOffline } from '../frame/hub-status';
 import { shellLayoutOf } from '../../../components/page-shell/layout';
@@ -16,7 +16,7 @@ import {
   useSleepSoundLive,
   type BedtimeSaves,
 } from './bedtime-data';
-import { useClockLabel } from '../format/clock-format';
+import { useClockLabel } from '../../../store/clock-format';
 import { nextNightOf, startedBedtime, tonightLineOf } from './schedule-model';
 import { SleepChartCard } from './sleep-chart';
 import { driveItemIdOf } from './sleep-sound-model';
@@ -100,6 +100,7 @@ function WakeCard({ view }: { readonly view: BedtimeView }): ReactNode {
       now={view.now}
       zone={view.zone}
       offline={view.offline}
+      defaults={alarmDefaultsOf(view.prefs.clock)}
     />
   );
 }

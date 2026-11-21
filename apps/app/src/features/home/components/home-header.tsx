@@ -61,7 +61,8 @@ function greetingOf(hour: number): string {
 }
 
 export function useGreeting(): string {
-  const now = new Date(useMinute());
+  const minute = useMinute();
   const zone = useSettings().time_zone;
+  const now = new Date(minute);
   return `${greetingOf(hourOf(now, zone))} · ${longDate(now, zone)}`;
 }

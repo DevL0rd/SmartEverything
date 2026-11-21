@@ -97,6 +97,11 @@ export async function readPlannerInviteLink(
 export async function suggestPlannerGuests(
   personId: PlannerPersonId,
   text: string,
+  signal: AbortSignal,
 ): Promise<PlannerGuestSuggestion[]> {
-  return api().call(E.suggestPlannerGuests, { query: { ...plannerPersonQuery(personId), text } });
+  return api().call(
+    E.suggestPlannerGuests,
+    { query: { ...plannerPersonQuery(personId), text } },
+    { signal },
+  );
 }

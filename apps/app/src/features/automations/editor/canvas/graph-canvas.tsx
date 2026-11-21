@@ -34,7 +34,8 @@ import type {
   GraphIdiom,
   GraphIntentFeedback,
 } from './graph-canvas-types';
-import { GraphEmitContext, GraphRunContext, GraphRunStore } from './graph-context';
+import { GraphRunStore } from './graph-context';
+import { GraphEmitContext, GraphRunContext } from './graph-contexts';
 import { LiveRegion, problemsMessage } from './keyboard/live-region';
 import { withNames } from './keyboard/node-names';
 import { useGraphKeys } from './keyboard/use-graph-keys';

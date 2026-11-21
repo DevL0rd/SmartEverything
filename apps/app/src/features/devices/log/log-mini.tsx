@@ -17,7 +17,7 @@ export function LogMini({
 }): ReactNode {
   const entries = useScreenQuery({
     queryKey: deviceLogKey(deviceId, MINI_ROWS),
-    queryFn: () => readDeviceLog(deviceId, MINI_ROWS),
+    queryFn: ({ signal }) => readDeviceLog(deviceId, MINI_ROWS, undefined, signal),
     enabled: live,
   }).data;
   if (entries === undefined || entries.length === 0) {

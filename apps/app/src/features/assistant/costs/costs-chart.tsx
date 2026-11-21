@@ -33,8 +33,8 @@ export function CostChart({
   readonly series: UsageSeries;
   readonly window: CostWindow;
 }): ReactNode {
-  const points = series.points.filter((point) => inRange(point, window));
   const money = useMoney();
+  const points = series.points.filter((point) => inRange(point, window));
   const total = points.reduce((sum, point) => sum + point.cost_micros, 0);
   const incomplete = points.some((point) => (point.unknown_count ?? 0) > 0);
   const hourly = window.bucket === 'hour';

@@ -98,11 +98,12 @@ function actionsOf({ deviceId, scope, run }: Runner): Actions {
 
 export function useModelPage(deviceId: string): ModelPage {
   const client = useQueryClient();
-  const fingerprint = overridesFingerprint(useRows('model_overrides'));
+  const rows = useRows('model_overrides');
+  const fingerprint = overridesFingerprint(rows);
   const queryKey = deviceModelsQueryKey(deviceId, fingerprint);
   const query = useScreenQuery({
     queryKey,
-    queryFn: () => api().call(E.readDeviceModels, { params: { deviceId } }),
+    queryFn: ({ signal }) => api().call(E.readDeviceModels, { params: { deviceId } }, { signal }),
   });
   const [scope, setScope] = useScopeState(query);
   const [busy, setBusy] = useState(false);

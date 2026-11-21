@@ -9,6 +9,8 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { EntityStore } from '../store/entity-store';
+import { settingsEdit } from '../store/home-writes';
+import { writeOptimistically } from '../store/optimistic';
 import { api } from './transport';
 
 const log = new Logger('app.access');
@@ -58,9 +60,23 @@ export async function decideMcpConsent(
 }
 
 export async function setPublicUrl(store: EntityStore, url: string | null): Promise<void> {
-  const settings = await api().call(E.setPublicUrl, { body: { url } });
+  const previous = store.get().settings;
+  const next =
+    previous === null
+      ? null
+      : {
+          ...previous,
+          public_url: url,
+          public_url_checked_at: null,
+          public_url_verified_at: null,
+          public_url_error: null,
+        };
+  const settings = await writeOptimistically(store, {
+    event: 'public_url.save',
+    edits: previous === null || next === null ? [] : [settingsEdit(previous, next)],
+    send: () => api().call(E.setPublicUrl, { body: { url } }),
+  });
   store.update((state) => ({ ...state, settings }));
-  log.info('public_url.saved');
 }
 
 export async function verifyPublicUrl(store: EntityStore): Promise<PublicUrlCheck> {

@@ -16,6 +16,7 @@ export interface TranscriptPageRequest {
 export function readTranscriptPage(
   selection: TranscriptSelection,
   request: TranscriptPageRequest,
+  signal: AbortSignal,
 ): Promise<TranscriptPage> {
   const query = {
     ...selection,
@@ -24,14 +25,23 @@ export function readTranscriptPage(
     ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
   };
   return request.words === ''
-    ? api().call(E.readCameraTranscriptFeed, { query })
-    : api().call(E.searchCameraTranscriptFeed, { query: { ...query, q: request.words } });
+    ? api().call(E.readCameraTranscriptFeed, { query }, { signal })
+    : api().call(
+        E.searchCameraTranscriptFeed,
+        { query: { ...query, q: request.words } },
+        { signal },
+      );
 }
 
 export function readTranscriptRange(
   selection: TranscriptSelection,
   anchor: number,
   limit: number,
+  signal: AbortSignal,
 ): Promise<TranscriptRange> {
-  return api().call(E.readCameraTranscriptRange, { query: { ...selection, anchor, limit } });
+  return api().call(
+    E.readCameraTranscriptRange,
+    { query: { ...selection, anchor, limit } },
+    { signal },
+  );
 }

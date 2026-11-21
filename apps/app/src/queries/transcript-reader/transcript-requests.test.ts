@@ -8,6 +8,8 @@ const { readTranscriptPage, readTranscriptRange } = await import('./transcript-r
 const { deleteTranscript, deleteTranscriptLine } = await import('../../api/transcripts');
 const { transcriptReaderKey } = await import('./selection');
 
+const signal = new AbortController().signal;
+
 beforeEach(() => {
   call.mockReset();
   call.mockResolvedValue({});
@@ -18,24 +20,32 @@ describe('reading a transcript feed', () => {
     await readTranscriptPage(
       { source: 'camera', sourceId: 'cam-1' },
       { words: '', limit: 50, direction: 'before' },
+      signal,
     );
-    expect(call).toHaveBeenLastCalledWith(E.readCameraTranscriptFeed, {
-      query: { source: 'camera', sourceId: 'cam-1', limit: 50, direction: 'before' },
-    });
+    expect(call).toHaveBeenLastCalledWith(
+      E.readCameraTranscriptFeed,
+      { query: { source: 'camera', sourceId: 'cam-1', limit: 50, direction: 'before' } },
+      { signal },
+    );
     await readTranscriptPage(
       { sessionId: 'session-1' },
       { words: 'door', limit: 50, direction: 'after', cursor: 'c1' },
+      signal,
     );
-    expect(call).toHaveBeenLastCalledWith(E.searchCameraTranscriptFeed, {
-      query: { sessionId: 'session-1', limit: 50, direction: 'after', cursor: 'c1', q: 'door' },
-    });
+    expect(call).toHaveBeenLastCalledWith(
+      E.searchCameraTranscriptFeed,
+      { query: { sessionId: 'session-1', limit: 50, direction: 'after', cursor: 'c1', q: 'door' } },
+      { signal },
+    );
   });
 
   it('loads context around a line within the same selection', async () => {
-    await readTranscriptRange({ sessionId: 'session-1' }, 7, 50);
-    expect(call).toHaveBeenLastCalledWith(E.readCameraTranscriptRange, {
-      query: { sessionId: 'session-1', anchor: 7, limit: 50 },
-    });
+    await readTranscriptRange({ sessionId: 'session-1' }, 7, 50, signal);
+    expect(call).toHaveBeenLastCalledWith(
+      E.readCameraTranscriptRange,
+      { query: { sessionId: 'session-1', anchor: 7, limit: 50 } },
+      { signal },
+    );
   });
 
   it('keeps readers of different selections, searches and anchors apart', () => {

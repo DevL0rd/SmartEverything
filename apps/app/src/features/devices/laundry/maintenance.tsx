@@ -70,7 +70,8 @@ export function MaintenanceCard({
 }): ReactNode {
   const [tools, setTools] = useState(false);
   const { values } = laundry.snapshot;
-  const clean = drumCleanOf(cycles.cycles, useMinute());
+  const minute = useMinute();
+  const clean = drumCleanOf(cycles.cycles, minute);
   const due = isDue(values, clean);
   const counts = countsText(values.wash_count, values.dry_count);
   const open = due || tools;

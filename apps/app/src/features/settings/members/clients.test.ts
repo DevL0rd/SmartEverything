@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClientRow } from '@smarteverything/domain';
-import { clientViews, livePending, newlyPaired, shownRole } from './clients';
+import { clientViews, newlyPaired } from './clients';
 
 const NOW = Date.parse('2026-10-16T12:00:00.000Z');
 
@@ -96,32 +96,5 @@ describe('newlyPaired', () => {
   it('returns null when every client is already known', () => {
     expect(newlyPaired([client('a')], new Set(['a']))).toBeNull();
     expect(newlyPaired([], new Set())).toBeNull();
-  });
-});
-
-describe('shownRole', () => {
-  it('shows the stored role when nothing is pending', () => {
-    expect(shownRole('member', null)).toBe('member');
-  });
-
-  it('shows the chosen role while the change is on its way', () => {
-    expect(shownRole('member', { from: 'member', to: 'owner' })).toBe('owner');
-  });
-
-  it('shows the role another device set once the stored role has moved on', () => {
-    expect(shownRole('owner', { from: 'member', to: 'member' })).toBe('owner');
-  });
-
-  it('drops the chosen role once the stored role has moved, so a later remote change shows', () => {
-    const chosen = { from: 'member', to: 'owner' } as const;
-    const confirmed = livePending('owner', chosen);
-    expect(confirmed).toBeNull();
-    expect(shownRole('member', confirmed)).toBe('member');
-  });
-
-  it('keeps the chosen role only while the stored role is still the one it replaces', () => {
-    const chosen = { from: 'member', to: 'owner' } as const;
-    expect(livePending('member', chosen)).toBe(chosen);
-    expect(livePending('owner', chosen)).toBeNull();
   });
 });

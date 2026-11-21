@@ -10,7 +10,8 @@ import { setupProgress, setupSteps } from './setup-model';
 const PAGE = 'assistant/phone';
 
 export function PhoneAssistantScreen(): ReactNode {
-  const steps = setupSteps(useSetupFacts());
+  const setupFacts = useSetupFacts();
+  const steps = setupSteps(setupFacts);
   const progress = setupProgress(steps);
   return (
     <SettingsFrame page={PAGE}>

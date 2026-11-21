@@ -52,7 +52,9 @@ function Legend({ entries }: { readonly entries: readonly KindLegendEntry[] }): 
 
 function KindBar({ hero }: { readonly hero: DriveHeroModel }): ReactNode {
   if (hero.segments.length === 0) {
-    return <ProgressBar progress={0} colour="primary" label={`${hero.title} by kind`} />;
+    return (
+      <ProgressBar progress={0} colour="primary" label={`${hero.title} by kind`} ticking={false} />
+    );
   }
   return (
     <SegmentBar
@@ -117,7 +119,13 @@ function Gauge({ gauge }: { readonly gauge: HeroGauge }): ReactNode {
   return (
     <View className="gap-2">
       {gauge.share === null ? null : (
-        <ProgressBar progress={gauge.share} colour={gauge.colour} label="Space used" thick />
+        <ProgressBar
+          progress={gauge.share}
+          colour={gauge.colour}
+          label="Space used"
+          thick
+          ticking={false}
+        />
       )}
       <View>
         <Text
@@ -218,13 +226,14 @@ function useDriveSync(rootId: string): ReactNode {
 }
 
 function Phases({ root }: { readonly root: DriveRoot }): ReactNode {
-  const lines = phaseLinesOf(useRootProgress(root.id), root.state);
+  const rootProgress = useRootProgress(root.id);
+  const lines = phaseLinesOf(rootProgress, root.state);
   return lines.map((line) => (
     <View key={line.phase} className="gap-1.5">
       <Text variant="caption" tone="variant" numberOfLines={1} className="tabular">
         {line.text}
       </Text>
-      <ProgressBar progress={line.share} colour="info" label={line.text} />
+      <ProgressBar progress={line.share} colour="info" label={line.text} ticking={false} />
     </View>
   ));
 }
@@ -301,8 +310,8 @@ export function MyDriveHero({
 
 export function SharedDriveHero({ root }: { readonly root: DriveRoot }): ReactNode {
   const stats = useDriveStats().data;
-  const kinds = rootKindsOf(stats, root.id);
   const owner = useIsOwner();
+  const kinds = rootKindsOf(stats, root.id);
   return (
     <HeroCard
       root={root}

@@ -9,7 +9,7 @@ import { LOG_PAGE_SIZE, nextLogCursor } from './log-model';
 export function useLatestLogEntry(deviceId: string, enabled: boolean): DeviceLogEntry | undefined {
   return useScreenQuery({
     queryKey: deviceLogKey(deviceId, 1),
-    queryFn: () => readDeviceLog(deviceId, 1),
+    queryFn: ({ signal }) => readDeviceLog(deviceId, 1, undefined, signal),
     enabled,
   }).data?.[0];
 }
@@ -33,7 +33,7 @@ export function useDeviceLogPages(deviceId: string): DeviceLogPages {
     string | undefined
   >({
     queryKey: deviceLogKey(deviceId, 'pages'),
-    queryFn: ({ pageParam }) => readDeviceLog(deviceId, LOG_PAGE_SIZE, pageParam),
+    queryFn: ({ pageParam, signal }) => readDeviceLog(deviceId, LOG_PAGE_SIZE, pageParam, signal),
     initialPageParam: undefined,
     getNextPageParam: nextLogCursor,
   });

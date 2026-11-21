@@ -19,7 +19,7 @@ export function useSetupFacts(): SetupFacts {
   const alarmPhone = useAlarmPhone();
   const bedtime = useScreenQuery({
     queryKey: plannerKeys.preferences(null),
-    queryFn: () => readPlannerPreferences(undefined),
+    queryFn: ({ signal }) => readPlannerPreferences(undefined, signal),
   }).data?.bedtime;
   const bedtimeQuiet = bedtime?.enabled === true && bedtime.do_not_disturb;
   return useMemo(

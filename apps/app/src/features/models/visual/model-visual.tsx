@@ -1,6 +1,6 @@
 import type { ModelSpec } from '@smarteverything/domain';
 import { useNavigation } from 'expo-router';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { use, useEffect, useRef, useState, type ReactNode } from 'react';
 import { PixelRatio, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -37,6 +37,7 @@ import {
 import { BAKE_VERSION } from '../../../components/models/three/bake-version';
 import { ClipAtlas } from './clip-atlas';
 import { LayerStack, stackMoves, type LayerSignals } from './layer';
+import { StillCoveredContext } from './still-covered';
 
 export const FADE_IN_MS = 180;
 
@@ -331,7 +332,8 @@ export function ModelVisual(props: ModelVisualProps): ReactNode {
   const { source, px, signals } = props;
   const ref = useRef<View>(null);
   const { visible, onLayout } = useOnScreen(ref);
-  const gate = useAnimationGate(isFunctioning(source.spec, signals), visible);
+  const covered = use(StillCoveredContext);
+  const gate = useAnimationGate(isFunctioning(source.spec, signals) && !covered, visible);
   const { face, landed } = useModelFace(props, visible);
   const level = useFade(landed, gate.reduced || landed?.instant === true);
   const modelStyle = useAnimatedStyle(() => ({ opacity: level.get() }));

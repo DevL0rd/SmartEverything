@@ -3,7 +3,8 @@ import { View } from 'react-native';
 import { usePausable } from '../design/external-store';
 import { useSizeClass } from '../design/size-class';
 import { sectionRailOf } from '../components/page-shell/layout';
-import { RailHost, RailHostContext } from '../components/page-shell/rail-host';
+import { RailHost } from '../components/page-shell/rail-host';
+import { RailHostContext } from '../components/page-shell/rail-host-context';
 import { ShellInsetContext } from '../components/page-shell/shell-inset';
 import { ShellRail, railFormOf } from '../components/page-shell/shell-sections';
 

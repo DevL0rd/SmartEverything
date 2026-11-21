@@ -1,11 +1,9 @@
 import {
   API_ENDPOINTS as E,
-  type DRIVE_BROWSE_QUERY,
   type DriveAlbumChange,
   type DriveAlbumCreate,
   type DriveBackupReportInput,
   type DriveAccessAnswer,
-  type DriveAccessBox,
   type DriveAccessRequestCreate,
   type DriveChange,
   type DriveCommentAdd,
@@ -25,9 +23,7 @@ import {
   type DriveMountSet,
   type DrivePlacementSet,
   type DriveConflictResolve,
-  type DriveQuery,
   type DriveQuotaSet,
-  type DriveRecentFilter,
   type DriveRootChange,
   type DriveSettingsUpdate,
   type DriveShareCreate,
@@ -35,8 +31,6 @@ import {
 } from '@smarteverything/domain';
 import type { z } from 'zod';
 import { api } from './transport';
-
-type BrowseQuery = z.infer<typeof DRIVE_BROWSE_QUERY>;
 
 export type DriveResult<K extends keyof typeof E> = z.output<(typeof E)[K]['response']>;
 
@@ -66,8 +60,8 @@ export function removeDrivePlacement(placementId: string): Call<'removePlacement
   return api().call(E.removePlacement, { params: { placementId } });
 }
 
-export function listDriveGrants(itemId: string): Call<'listGrants'> {
-  return api().call(E.listGrants, { params: { itemId } });
+export function listDriveGrants(itemId: string, signal: AbortSignal): Call<'listGrants'> {
+  return api().call(E.listGrants, { params: { itemId } }, { signal });
 }
 
 export function setDriveGrant(body: DriveGrantSet): Call<'setGrant'> {
@@ -78,58 +72,19 @@ export function removeDriveGrant(grantId: string): Call<'removeGrant'> {
   return api().call(E.removeGrant, { params: { grantId } });
 }
 
-export function listDriveSharedWithMe(cursor: string | null): Call<'listSharedWithMe'> {
-  return api().call(E.listSharedWithMe, { query: cursor === null ? {} : { cursor } });
-}
-
-export function listDriveSharedByMe(cursor: string | null): Call<'listSharedByMe'> {
-  return api().call(E.listSharedByMe, { query: cursor === null ? {} : { cursor } });
-}
-
-export function browseDrive(query: BrowseQuery): Call<'browseFolder'> {
-  return api().call(E.browseFolder, { query });
-}
-
-export function readDriveItem(itemId: string): Call<'readItem'> {
-  return api().call(E.readItem, { params: { itemId } });
-}
-
-export function searchDrive(body: DriveQuery): Call<'searchDrive'> {
-  return api().call(E.searchDrive, { body });
+export function readDriveItem(
+  itemId: string,
+  request: { readonly signal?: AbortSignal } = {},
+): Call<'readItem'> {
+  return api().call(E.readItem, { params: { itemId } }, request);
 }
 
 export function changeDrive(body: DriveChange): Call<'changeDrive'> {
   return api().call(E.changeDrive, { body });
 }
 
-export function readDriveRecent(
-  filter: DriveRecentFilter,
-  cursor: string | null,
-): Call<'readRecent'> {
-  return api().call(E.readRecent, {
-    query: cursor === null ? { filter } : { filter, cursor },
-  });
-}
-
-export function readDriveStats(): Call<'readDriveStats'> {
-  return api().call(E.readDriveStats, {});
-}
-
-export function listDriveDuplicates(
-  rootId: string | null,
-  cursor: string | null,
-): Call<'listDuplicates'> {
-  return api().call(E.listDuplicates, { query: pageQuery(rootId, cursor) });
-}
-
-export function listDriveAlbumItems(
-  albumId: string,
-  cursor: string | null,
-): Call<'listAlbumItems'> {
-  return api().call(E.listAlbumItems, {
-    params: { albumId },
-    query: cursor === null ? {} : { cursor },
-  });
+export function readDriveStats(signal: AbortSignal): Call<'readDriveStats'> {
+  return api().call(E.readDriveStats, {}, { signal });
 }
 
 export function createDriveAlbum(body: DriveAlbumCreate): Call<'createAlbum'> {
@@ -144,33 +99,6 @@ export function removeDriveAlbum(albumId: string): Call<'removeAlbum'> {
   return api().call(E.removeAlbum, { params: { albumId } });
 }
 
-export function listDriveTrash(rootId: string | null, cursor: string | null): Call<'listTrash'> {
-  return api().call(E.listTrash, { query: pageQuery(rootId, cursor) });
-}
-
-export function listDriveVersions(itemId: string, cursor: string | null): Call<'listVersions'> {
-  return api().call(E.listVersions, {
-    params: { itemId },
-    query: cursor === null ? {} : { cursor },
-  });
-}
-
-export function listDriveActivity(from: string, cursor: string | null): Call<'listDriveActivity'> {
-  return api().call(E.listDriveActivity, {
-    query: { from, ...(cursor === null ? {} : { cursor }) },
-  });
-}
-
-export function listDriveItemActivity(
-  itemId: string,
-  cursor: string | null,
-): Call<'listItemActivity'> {
-  return api().call(E.listItemActivity, {
-    params: { itemId },
-    query: cursor === null ? {} : { cursor },
-  });
-}
-
 export function restoreDriveVersion(itemId: string, versionId: string): Call<'restoreVersion'> {
   return api().call(E.restoreVersion, { params: { itemId, versionId } });
 }
@@ -179,15 +107,6 @@ export async function driveVersionFileUrl(itemId: string, versionId: string): Pr
   const client = api().forMedia();
   const link = await client.call(E.versionLink, { params: { itemId, versionId } });
   return client.resourceUrl(link.url, link.expiresAt, 'attachment');
-}
-
-export function listDriveShares(itemId: string | null, cursor: string | null): Call<'listShares'> {
-  return api().call(E.listShares, {
-    query: {
-      ...(itemId === null ? {} : { itemId }),
-      ...(cursor === null ? {} : { cursor }),
-    },
-  });
 }
 
 export function createDriveShare(body: DriveShareCreate): Call<'createShare'> {
@@ -202,20 +121,20 @@ export function unlockDriveShare(token: string, body: DriveShareUnlock): Call<'u
   return api().call(E.unlockShare, { params: { token }, body });
 }
 
-export function readDriveUsage(): Call<'readUsage'> {
-  return api().call(E.readUsage, {});
+export function readDriveUsage(signal: AbortSignal): Call<'readUsage'> {
+  return api().call(E.readUsage, {}, { signal });
 }
 
-export function listDriveQuotas(): Call<'listQuotas'> {
-  return api().call(E.listQuotas, {});
+export function listDriveQuotas(signal: AbortSignal): Call<'listQuotas'> {
+  return api().call(E.listQuotas, {}, { signal });
 }
 
 export function setDriveQuota(body: DriveQuotaSet): Call<'setQuota'> {
   return api().call(E.setQuota, { body });
 }
 
-export function readDriveHealth(): Call<'readHealth'> {
-  return api().call(E.readHealth, {});
+export function readDriveHealth(signal: AbortSignal): Call<'readHealth'> {
+  return api().call(E.readHealth, {}, { signal });
 }
 
 export function startDriveScrub(): Call<'startScrub'> {
@@ -226,42 +145,29 @@ export function reportDriveBackup(body: DriveBackupReportInput): Call<'reportBac
   return api().call(E.reportBackup, { body });
 }
 
-export function readDriveBackupStatus(): Call<'readBackupStatus'> {
-  return api().call(E.readBackupStatus, {});
-}
-
-export function listDriveConflicts(
-  rootId: string | null,
-  cursor: string | null,
-): Call<'listConflicts'> {
-  return api().call(E.listConflicts, { query: pageQuery(rootId, cursor) });
+export function readDriveBackupStatus(signal: AbortSignal): Call<'readBackupStatus'> {
+  return api().call(E.readBackupStatus, {}, { signal });
 }
 
 export function resolveDriveConflict(body: DriveConflictResolve): Call<'resolveConflict'> {
   return api().call(E.resolveConflict, { body });
 }
 
-export function readDriveSettings(): Call<'readDriveSettings'> {
-  return api().call(E.readDriveSettings, {});
+export function readDriveSettings(signal: AbortSignal): Call<'readDriveSettings'> {
+  return api().call(E.readDriveSettings, {}, { signal });
 }
 
 export function updateDriveSettings(body: DriveSettingsUpdate): Call<'updateDriveSettings'> {
   return api().call(E.updateDriveSettings, { body });
 }
 
-export function listDriveZipEntries(itemId: string, cursor: string | null): Call<'listZipEntries'> {
-  return api().call(E.listZipEntries, {
-    params: { itemId },
-    query: cursor === null ? {} : { cursor },
-  });
-}
-
 export async function readDriveZipEntryLink(
   itemId: string,
   index: number,
+  request: { readonly signal?: AbortSignal } = {},
 ): Promise<DriveZipEntryLink> {
   const client = api().forMedia();
-  const link = await client.call(E.zipEntryLink, { params: { itemId }, query: { index } });
+  const link = await client.call(E.zipEntryLink, { params: { itemId }, query: { index } }, request);
   const present = async (
     target: DriveZipEntryLink['file'],
   ): Promise<DriveZipEntryLink['file']> => ({
@@ -275,12 +181,12 @@ export async function readDriveZipEntryLink(
   };
 }
 
-export function readDriveItemText(itemId: string): Call<'readItemText'> {
-  return api().call(E.readItemText, { params: { itemId } });
+export function readDriveItemText(itemId: string, signal: AbortSignal): Call<'readItemText'> {
+  return api().call(E.readItemText, { params: { itemId } }, { signal });
 }
 
-export function openDriveItem(itemId: string): Call<'openItem'> {
-  return api().call(E.openItem, { params: { itemId } });
+export function openDriveItem(itemId: string, signal: AbortSignal): Call<'openItem'> {
+  return api().call(E.openItem, { params: { itemId } }, { signal });
 }
 
 export function setDriveItemLock(body: DriveLockSet): Call<'setItemLock'> {
@@ -306,17 +212,6 @@ export function removeDriveShortcut(shortcutId: string): Call<'removeShortcut'> 
   return api().call(E.removeShortcut, { params: { shortcutId } });
 }
 
-export function listDriveSuggested(cursor: string | null): Call<'listSuggested'> {
-  return api().call(E.listSuggested, { query: cursor === null ? {} : { cursor } });
-}
-
-export function listDriveComments(itemId: string, cursor: string | null): Call<'listComments'> {
-  return api().call(E.listComments, {
-    params: { itemId },
-    query: cursor === null ? {} : { cursor },
-  });
-}
-
 export function addDriveComment(itemId: string, body: DriveCommentAdd): Call<'addComment'> {
   return api().call(E.addComment, { params: { itemId }, body });
 }
@@ -337,15 +232,6 @@ export function requestDriveAccess(body: DriveAccessRequestCreate): Call<'reques
   return api().call(E.requestDriveAccess, { body });
 }
 
-export function listDriveAccessRequests(
-  box: DriveAccessBox,
-  cursor: string | null,
-): Call<'listDriveAccessRequests'> {
-  return api().call(E.listDriveAccessRequests, {
-    query: cursor === null ? { box } : { box, cursor },
-  });
-}
-
 export function answerDriveAccessRequest(
   requestId: string,
   body: DriveAccessAnswer,
@@ -355,18 +241,6 @@ export function answerDriveAccessRequest(
 
 export function createDriveFileRequest(body: DriveFileRequestCreate): Call<'createFileRequest'> {
   return api().call(E.createFileRequest, { body });
-}
-
-export function listDriveFileRequests(
-  folderItemId: string | null,
-  cursor: string | null,
-): Call<'listFileRequests'> {
-  return api().call(E.listFileRequests, {
-    query: {
-      ...(folderItemId === null ? {} : { folderItemId }),
-      ...(cursor === null ? {} : { cursor }),
-    },
-  });
 }
 
 export function updateDriveFileRequest(
@@ -380,20 +254,6 @@ export function closeDriveFileRequest(fileRequestId: string): Call<'closeFileReq
   return api().call(E.closeFileRequest, { params: { fileRequestId } });
 }
 
-export function listDriveFileRequestUploads(
-  fileRequestId: string,
-  cursor: string | null,
-): Call<'listFileRequestUploads'> {
-  return api().call(E.listFileRequestUploads, {
-    params: { fileRequestId },
-    query: cursor === null ? {} : { cursor },
-  });
-}
-
-export function listDriveNotifications(cursor: string | null): Call<'listNotifications'> {
-  return api().call(E.listNotifications, { query: cursor === null ? {} : { cursor } });
-}
-
 export function markDriveNotificationsRead(
   body: DriveNotificationsRead,
 ): Call<'markNotificationsRead'> {
@@ -402,10 +262,6 @@ export function markDriveNotificationsRead(
 
 export function offerDriveTransfer(body: DriveTransferOffer): Call<'offerTransfer'> {
   return api().call(E.offerTransfer, { body });
-}
-
-export function listDriveTransfers(cursor: string | null): Call<'listTransfers'> {
-  return api().call(E.listTransfers, { query: cursor === null ? {} : { cursor } });
 }
 
 export function answerDriveTransfer(
@@ -419,28 +275,6 @@ export function cancelDriveTransfer(transferId: string): Call<'cancelTransfer'> 
   return api().call(E.cancelTransfer, { params: { transferId } });
 }
 
-export function listDriveOffline(
-  clientId: string | null,
-  cursor: string | null,
-): Call<'listOffline'> {
-  return api().call(E.listOffline, {
-    query: {
-      ...(clientId === null ? {} : { clientId }),
-      ...(cursor === null ? {} : { cursor }),
-    },
-  });
-}
-
 export function setDriveOffline(body: DriveOfflineSet): Call<'setOffline'> {
   return api().call(E.setOffline, { body });
-}
-
-function pageQuery(
-  rootId: string | null,
-  cursor: string | null,
-): { readonly rootId?: string; readonly cursor?: string } {
-  return {
-    ...(rootId === null ? {} : { rootId }),
-    ...(cursor === null ? {} : { cursor }),
-  };
 }

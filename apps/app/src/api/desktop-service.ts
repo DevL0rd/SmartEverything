@@ -46,5 +46,9 @@ export function useServiceStatus(bridge: DesktopBridge): {
 }
 
 export function useServiceLogTail(bridge: DesktopBridge): UseQueryResult<DesktopServiceLogs> {
-  return useScreenQuery({ queryKey: SERVICE_LOG_TAIL_KEY, queryFn: () => bridge.serviceLogs() });
+  return useScreenQuery({
+    queryKey: SERVICE_LOG_TAIL_KEY,
+    // eslint-disable-next-line local/query-fn-signal -- the desktop bridge reads over IPC, which cannot be aborted
+    queryFn: () => bridge.serviceLogs(),
+  });
 }

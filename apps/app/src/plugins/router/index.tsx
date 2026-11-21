@@ -63,7 +63,7 @@ export const routerAppPlugin: AppPlugin = {
       scrolls: true,
       search: { placeholder: 'Name, address or MAC' },
       applies: isRouter,
-      render: () => <ClientsSection />,
+      render: (device) => <ClientsSection device={device} />,
     },
     {
       key: 'wifi',
@@ -71,7 +71,7 @@ export const routerAppPlugin: AppPlugin = {
       icon: 'wifi',
       title: 'Wi-Fi',
       applies: isRouter,
-      render: () => <WifiSection />,
+      render: (device) => <WifiSection device={device} />,
     },
   ],
   settings: null,

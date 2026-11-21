@@ -162,11 +162,17 @@ describe('ancestors', () => {
   };
 
   it('walks up to the top in order', async () => {
-    expect((await ancestorsOf(leaf, read, null)).map((item) => item.name)).toEqual(['A', 'B']);
+    expect(
+      (await ancestorsOf(leaf, read, null, new AbortController().signal)).map((item) => item.name),
+    ).toEqual(['A', 'B']);
   });
 
   it('stops at the folder a person was given access to', async () => {
-    expect((await ancestorsOf(leaf, read, middle.id)).map((item) => item.name)).toEqual(['B']);
+    expect(
+      (await ancestorsOf(leaf, read, middle.id, new AbortController().signal)).map(
+        (item) => item.name,
+      ),
+    ).toEqual(['B']);
   });
 });
 

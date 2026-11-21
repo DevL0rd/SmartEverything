@@ -48,18 +48,23 @@ export async function readPlannerSearch(
   person: PlannerPerson,
   filter: PlannerSearchFilter,
   cursor: string | null,
+  signal: AbortSignal,
 ): Promise<PlannerSearchPage> {
   const who = apiPerson(person);
-  return api().call(E.readPlannerSearch, {
-    query: {
-      ...(who === undefined ? {} : { personId: who }),
-      text: filter.text,
-      when: filter.when,
-      ...(filter.collections === null ? {} : { collections: [...filter.collections] }),
-      ...(filter.kinds === null ? {} : { kinds: [...filter.kinds] }),
-      ...(cursor === null ? {} : { cursor }),
+  return api().call(
+    E.readPlannerSearch,
+    {
+      query: {
+        ...(who === undefined ? {} : { personId: who }),
+        text: filter.text,
+        when: filter.when,
+        ...(filter.collections === null ? {} : { collections: [...filter.collections] }),
+        ...(filter.kinds === null ? {} : { kinds: [...filter.kinds] }),
+        ...(cursor === null ? {} : { cursor }),
+      },
     },
-  });
+    { signal },
+  );
 }
 
 export function usePlannerSearch(
@@ -72,7 +77,7 @@ export function usePlannerSearch(
     enabled: enabled && filter.text.trim() !== '',
     initialPageParam: FIRST_PAGE,
     placeholderData: keepPreviousData,
-    queryFn: ({ pageParam }) => readPlannerSearch(person, filter, pageParam),
+    queryFn: ({ pageParam, signal }) => readPlannerSearch(person, filter, pageParam, signal),
     getNextPageParam: (page) => page.next,
   });
 }

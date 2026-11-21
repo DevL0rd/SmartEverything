@@ -83,7 +83,9 @@ vi.mock('../../home-map/components/stage/home-map-3d', () => ({
 vi.mock('../../home-map/data/live-feed', () => ({
   useHomeMapLive: (): { summary: string } => ({ summary: 'Ground floor' }),
 }));
-vi.mock('../../../store/store-context', () => ({ useStoreSelector: (): object => ({}) }));
+vi.mock('../../../store/store-context', () => ({
+  useStoreSelector: (): object => ({ rooms: [], devices: [] }),
+}));
 vi.mock('../../../components/house-map/adapters/home-map-scene', () => ({
   homeMapRenderScene: (): RenderScene => SCENE,
 }));

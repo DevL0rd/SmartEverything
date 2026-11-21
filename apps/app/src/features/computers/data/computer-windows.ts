@@ -54,7 +54,7 @@ export function useComputerApps(
 ): ReturnType<typeof useScreenQuery<ComputerApps>> {
   return useScreenQuery({
     queryKey: ['window', 'computer-apps', deviceId],
-    queryFn: () => api().call(E.listComputerApps, { params: { deviceId } }),
+    queryFn: ({ signal }) => api().call(E.listComputerApps, { params: { deviceId } }, { signal }),
     enabled,
     retry: false,
   });

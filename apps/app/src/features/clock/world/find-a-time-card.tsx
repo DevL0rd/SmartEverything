@@ -5,7 +5,7 @@ import { Card } from '../../../components/card';
 import { IconButton } from '../../../components/icon-button';
 import { Slider } from '../../../components/slider';
 import { Text } from '../../../components/text';
-import { useClockFormat } from '../format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import type { WorldCity } from './cities';
 import { DAY_HOURS, hourTimeOf, hourShiftedBy, type HomeDay, type HourPlan } from './find-a-time';
 import { HourGrid, type HourPick } from './hour-grid';

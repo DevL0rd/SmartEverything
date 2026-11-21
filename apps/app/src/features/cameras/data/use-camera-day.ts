@@ -21,11 +21,14 @@ function cameraDayQuery(
   deviceIds: readonly string[],
   day: CalendarDate,
   timeZone: string,
-): { readonly queryKey: readonly string[]; readonly queryFn: () => Promise<CameraDay> } {
+): {
+  readonly queryKey: readonly string[];
+  readonly queryFn: (context: { readonly signal: AbortSignal }) => Promise<CameraDay>;
+} {
   const window = dayBounds(day, timeZone);
   return {
     queryKey: cameraDayKey(window.start, window.end, deviceIds),
-    queryFn: () => readCameraDay(deviceIds, window),
+    queryFn: ({ signal }) => readCameraDay(deviceIds, window, signal),
   };
 }
 

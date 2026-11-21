@@ -15,13 +15,13 @@ const CHOSEN_STALE_MS = 30_000;
 
 export interface OptionFeed {
   readonly key: readonly string[];
-  readonly read: (query: PluginOptionQuery) => Promise<PluginOptionPage>;
+  readonly read: (query: PluginOptionQuery, signal: AbortSignal) => Promise<PluginOptionPage>;
 }
 
 export function pluginOptionFeed(row: PluginRow, source: string): OptionFeed {
   return {
     key: pluginOptionsKey(row.id, source, []),
-    read: (query) => readPluginOptions(row.id, source, query),
+    read: (query, signal) => readPluginOptions(row.id, source, query, signal),
   };
 }
 
@@ -53,11 +53,14 @@ export function useOptionPages(feed: OptionFeed, search: string, enabled: boolea
     string | null
   >({
     queryKey: [...feed.key, 'page', search],
-    queryFn: ({ pageParam }) =>
-      feed.read({
-        ...(search === '' ? {} : { q: search }),
-        ...(pageParam === null ? {} : { after: pageParam }),
-      }),
+    queryFn: ({ pageParam, signal }) =>
+      feed.read(
+        {
+          ...(search === '' ? {} : { q: search }),
+          ...(pageParam === null ? {} : { after: pageParam }),
+        },
+        signal,
+      ),
     initialPageParam: null,
     getNextPageParam: (last) => (last.state === 'ready' ? last.next : null),
     enabled,
@@ -89,7 +92,7 @@ export function useChosenOptions(
     queryFn:
       feed === null || ids.length === 0
         ? skipToken
-        : (): Promise<PluginOptionPage> => readChosen(feed.read, ids),
+        : ({ signal }): Promise<PluginOptionPage> => readChosen(feed.read, ids, signal),
     staleTime: CHOSEN_STALE_MS,
   });
 }

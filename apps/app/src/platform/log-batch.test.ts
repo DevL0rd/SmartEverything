@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { API_ENDPOINTS as E, LOG_RECORD, type RuntimeLogRecord } from '@smarteverything/domain';
 import { Logger, shippedRecord, type LogRecord } from '@smarteverything/logging';
 
@@ -85,6 +86,8 @@ import {
 
 const OWNER = { hub: 'house', clientId: 'device', profileId: 'owner' };
 const SCOPE = logScopeOf(OWNER);
+
+const TRAIL = z.array(z.object({ detail: z.string().optional() }));
 
 function record(index: number, detail = 'x'): RuntimeLogRecord {
   return {
@@ -200,8 +203,8 @@ describe('what the app remembers before a failure', () => {
     ship.record(logged(3, 'error', { failed: true }));
     ship.resume(send);
     await ship.flush();
-    const shipped = transport.calls.flatMap((call) => call.records).at(-1);
-    expect(shipped?.payload?.['recent']).toEqual([
+    const [warning, failure] = transport.calls.flatMap((call) => call.records);
+    expect(warning?.payload?.['recent']).toEqual([
       {
         at: logged(1).timestamp,
         scope: 'app.cameras',
@@ -210,29 +213,25 @@ describe('what the app remembers before a failure', () => {
         level: 'info',
         detail: '{"index":1,"page":"drive"}',
       },
-      {
-        at: logged(2).timestamp,
-        scope: 'app.cameras',
-        event: 'capture.opened',
-        screen: 'start',
-        level: 'warn',
-        detail: '{"index":2,"slowMs":1200}',
-      },
     ]);
+    expect(failure?.payload?.['recent']).toEqual([]);
+    expect(failure?.payload?.['recentSince']).toBe(logged(2).timestamp);
     ship.stop();
   });
 
-  it('keeps the newest events when far more happened than it holds', () => {
+  it('keeps the newest events when far more happened than it holds', async () => {
     const ship = new LogShip(OWNER);
     ship.start();
     ship.pause();
     for (let index = 0; index < 60; index += 1) ship.record(logged(index, 'info'));
     ship.record(logged(60, 'error'));
+    await ship.settled();
     const [queuedRecord] = transport.calls;
     expect(queuedRecord).toBeUndefined();
-    const trail = (ship as unknown as { recent: readonly { detail?: string }[] }).recent;
+    const failure = (await readLogOutbox(SCOPE)).records.at(-1)?.record;
+    const trail = TRAIL.parse(failure?.payload?.['recent']);
     expect(trail.length).toBe(40);
-    expect(trail.at(-1)?.detail).toBe('{"index":60}');
+    expect(trail.at(-1)?.detail).toBe('{"index":59}');
     ship.stop();
   });
 });
@@ -468,7 +467,7 @@ describe('draining the kept records to the hub', () => {
     expect(shipped[0]?.platform).toBe('android');
     expect(shipped[0]?.failure?.name).toBe('Error');
     expect(LOG_RECORD.safeParse(shipped[0]).success).toBe(true);
-    expect(shipped[0]?.payload).toMatchObject({ password: 'hunter2' });
+    expect(shipped[0]?.payload).toMatchObject({ password: '[redacted]' });
     ship.stop();
   });
 

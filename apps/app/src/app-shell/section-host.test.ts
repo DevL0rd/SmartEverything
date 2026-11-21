@@ -7,7 +7,15 @@ import {
   useNavigationBuilder,
 } from 'expo-router/build/react-navigation/core';
 import { Screen } from 'expo-router/build/react-navigation/core/Screen';
-import { TabRouter } from 'expo-router/build/react-navigation/routers';
+import {
+  TabRouter,
+  type NavigationAction,
+  type ParamListBase,
+  type RouterFactory,
+  type TabNavigationState,
+  type TabRouterOptions,
+} from 'expo-router/build/react-navigation/routers';
+import { reduce } from './router-kit.test-util';
 import type { SectionRailProps } from '../components/page-shell/section-rail';
 import type { ShellSections } from '../components/page-shell/shell-sections';
 import { CLOCK_SECTION_ROUTES, type ClockSection } from '../features/clock/model/section-routes';
@@ -64,7 +72,7 @@ vi.mock('../components/page-shell/section-rail', () => ({
 }));
 
 const { SectionHost } = await import('./section-host');
-const { RailHostContext } = await import('../components/page-shell/rail-host');
+const { RailHostContext } = await import('../components/page-shell/rail-host-context');
 const { RailPublisher } = await import('../components/page-shell/rail-publish');
 
 const pageMounts = new Map<string, number>();
@@ -92,8 +100,25 @@ function sectionOf(name: string): ClockSection {
 
 const shownKeys = new Set<string>();
 
+const tabRouter: RouterFactory<
+  TabNavigationState<ParamListBase>,
+  NavigationAction,
+  TabRouterOptions
+> = (options) => {
+  const real = TabRouter(options);
+  return {
+    type: real.type,
+    getInitialState: (config) => real.getInitialState(config),
+    getRehydratedState: (partial, config) => real.getRehydratedState(partial, config),
+    getStateForRouteNamesChange: (state, config) => real.getStateForRouteNamesChange(state, config),
+    getStateForRouteFocus: (state, key) => real.getStateForRouteFocus(state, key),
+    getStateForAction: (state, action, config) => reduce(real, state, action, config),
+    shouldActionChangeFocus: (action) => real.shouldActionChangeFocus(action),
+  };
+};
+
 function SectionsLike({ children }: { readonly children?: ReactNode }): ReactNode {
-  const { state, descriptors, NavigationContent } = useNavigationBuilder(TabRouter as never, {
+  const { state, descriptors, NavigationContent } = useNavigationBuilder(tabRouter, {
     children,
     backBehavior: 'initialRoute',
     initialRouteName: 'index',

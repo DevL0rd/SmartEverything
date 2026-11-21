@@ -34,6 +34,7 @@ export interface GaugeProps {
   readonly thickness?: number;
   readonly ticks?: GaugeTicks;
   readonly marker?: number;
+  readonly ticking: boolean;
   readonly children?: ReactNode;
 }
 
@@ -98,12 +99,12 @@ function shadesOf(
 }
 
 function GaugeArcs(props: GaugeProps & { readonly thickness: number }): ReactNode {
-  const { value, min, max, size, thickness } = props;
+  const { value, min, max, size, thickness, ticking } = props;
   const centre = size / 2;
   const radius = (size - thickness) / 2;
   const shown = clamp(value, { min, max });
   const share = max === min ? 0 : (shown - min) / (max - min);
-  const drawn = useDraw(share, !useMotion().reduced);
+  const drawn = useDraw(share, !useMotion().reduced, ticking);
   const ring = { cx: centre, cy: centre, r: radius };
   const full = arcPath(ring, START, START + SWEEP);
   const length = arcLength(radius, SWEEP);

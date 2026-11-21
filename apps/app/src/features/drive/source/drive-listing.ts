@@ -116,17 +116,18 @@ export function crumbsOf(
   return [...root, ...inner];
 }
 
-export type ReadItem = (itemId: string) => Promise<DriveItem>;
+export type ReadItem = (itemId: string, signal: AbortSignal) => Promise<DriveItem>;
 
 export async function ancestorsOf(
   folder: DriveItem,
   read: ReadItem,
   stopAt: string | null,
+  signal: AbortSignal,
 ): Promise<readonly DriveItem[]> {
   const chain: DriveItem[] = [];
   let current: DriveItem = folder;
   while (current.parentId !== null && current.id !== stopAt) {
-    current = await read(current.parentId);
+    current = await read(current.parentId, signal);
     chain.unshift(current);
   }
   return chain;

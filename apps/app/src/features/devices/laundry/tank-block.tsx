@@ -29,6 +29,12 @@ function startValue(laundry: Laundry, slot: string): string | Record<string, str
   return names.length === 0 ? null : Object.fromEntries(names.map((name) => [name, slot]));
 }
 
+function RinseBar({ share }: { readonly share: number }): ReactNode {
+  return (
+    <ProgressBar progress={share} colour="temp-cool" label="Tank rinse progress" ticking={false} />
+  );
+}
+
 export function TankBlock({ laundry }: { readonly laundry: Laundry }): ReactNode {
   const slot = useRoleControl(laundry, 'tank_clean_slot');
   const start = useRoleControl(laundry, 'tank_clean_start');
@@ -50,11 +56,7 @@ export function TankBlock({ laundry }: { readonly laundry: Laundry }): ReactNode
       sub={rinsing ? `${String(left)} min left` : 'Flushes the auto-dose tank and pipe.'}
     >
       {rinsing ? (
-        <ProgressBar
-          progress={1 - left / totalMinutes(laundry)}
-          colour="temp-cool"
-          label="Tank rinse progress"
-        />
+        <RinseBar share={1 - left / totalMinutes(laundry)} />
       ) : (
         <ChoiceStrip
           label="Tank"

@@ -69,8 +69,10 @@ export function sharingWith(
 
 function PersonStep({ draft, onDraft }: StepProps): ReactNode {
   const me = useActiveProfile()?.id ?? null;
-  const people = useProfiles().filter((profile) => profile.id !== me);
-  const partners = usePhotoSharing().data?.partners ?? [];
+  const sharing = usePhotoSharing();
+  const profiles = useProfiles();
+  const partners = sharing.data?.partners ?? [];
+  const people = profiles.filter((profile) => profile.id !== me);
   const taken = sharingWith(partners, me, draft.recipientId);
   if (people.length === 0) {
     return (

@@ -41,6 +41,7 @@ export function BatteryArc({
           thickness={THICKNESS}
           colour={stale ? 'on-surface-faint' : ARC_COLOUR[tone]}
           trackColour="surface-3"
+          ticking={false}
         />
       </View>
       <View className="items-center">

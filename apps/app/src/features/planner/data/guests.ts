@@ -21,7 +21,7 @@ import { applyChange } from '../../../store/live-reducers';
 import { memoOnInputs } from '../../../store/memo-selector';
 import { rowsOf, type StoreState } from '../../../store/state';
 import { shallowEqual, useEntityStore, useStoreSelector } from '../../../store/store-context';
-import { rowEdit, writeOptimistically, type RowAccess } from './optimistic';
+import { rowEdit, writeOptimistically, type RowAccess } from '../../../store/optimistic';
 import { apiPerson, profileIn, type PlannerPerson } from './person';
 
 export interface Invitation {
@@ -158,12 +158,11 @@ export function guestWrites(store: EntityStore, person: PlannerPerson): GuestWri
         return rows;
       }),
     respond: (guest, choice) =>
-      writeOptimistically(
-        store,
-        'planner_guest.respond',
-        [rowEdit(guestAccess(guest.id), guest, answeredGuest(guest, choice, new Date()))],
-        () => respondPlannerInvite(who, guest.item_id, choice),
-      ),
+      writeOptimistically(store, {
+        event: 'planner_guest.respond',
+        edits: [rowEdit(guestAccess(guest.id), guest, answeredGuest(guest, choice, new Date()))],
+        send: () => respondPlannerInvite(who, guest.item_id, choice),
+      }),
     resend: (guest) => resendPlannerInvite(who, guest.item_id, guest.id),
     inviteLink: (guest) => readPlannerInviteLink(who, guest.item_id, guest.id),
   };
@@ -179,11 +178,13 @@ export function guestSuggestionsQuery(
   text: string,
 ): {
   readonly queryKey: readonly unknown[];
-  readonly queryFn: () => Promise<PlannerGuestSuggestion[]>;
+  readonly queryFn: (context: {
+    readonly signal: AbortSignal;
+  }) => Promise<PlannerGuestSuggestion[]>;
 } {
   return {
     queryKey: [...PLANNER_PREFIX, 'guest-suggestions', person, text],
-    queryFn: () => suggestPlannerGuests(apiPerson(person), text),
+    queryFn: ({ signal }) => suggestPlannerGuests(apiPerson(person), text, signal),
   };
 }
 

@@ -1,6 +1,7 @@
 import { Logger } from '@smarteverything/logging';
 import {
   CancelledError,
+  skipToken,
   useQueryClient,
   type QueryClient,
   type UseQueryResult,
@@ -20,11 +21,12 @@ const log = new Logger('app.images');
 export async function readImageOperations(
   client: QueryClient,
   chatId: string,
+  signal: AbortSignal,
 ): Promise<readonly ImageOperationReceipt[]> {
   const scope = imageSessionScope();
   const startedAt = Date.now();
   const receipts = await api()
-    .call(E.listImageOperations, { query: { chat_id: chatId } })
+    .call(E.listImageOperations, { query: { chat_id: chatId } }, { signal })
     .catch((error: unknown) => {
       log.warn('image_operations.read_failed', {
         chatId,
@@ -57,9 +59,9 @@ export function useImageOperations(
   return useScreenQuery({
     queryKey: imageOperationsKey(chatId ?? 'unselected'),
     enabled: chatId !== null,
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       if (chatId === null) throw new Error('Choose a chat before reading image operations.');
-      return readImageOperations(client, chatId);
+      return readImageOperations(client, chatId, signal);
     },
     retry: false,
   });
@@ -110,8 +112,7 @@ export function useImagePreview(operationId: string): ImageOperationPreview | nu
   return (
     useScreenQuery<ImageOperationPreview | null>({
       queryKey: imagePreviewKey(operationId),
-      queryFn: () => null,
-      enabled: false,
+      queryFn: skipToken,
     }).data ?? null
   );
 }

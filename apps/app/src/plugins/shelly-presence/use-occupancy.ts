@@ -13,8 +13,8 @@ export interface Occupancy {
 
 const NONE: Occupancy = { segments: [], from: 0, to: 0 };
 
-async function readOccupancy(deviceId: string): Promise<Occupancy> {
-  const rows = await readDeviceRows(deviceId, 'occupancy', OCCUPANCY_HOURS);
+async function readOccupancy(deviceId: string, signal: AbortSignal): Promise<Occupancy> {
+  const rows = await readDeviceRows(deviceId, 'occupancy', OCCUPANCY_HOURS, signal);
   const to = Date.now();
   return { segments: occupiedSegments(rows, to), ...occupancyWindow(to) };
 }
@@ -22,7 +22,7 @@ async function readOccupancy(deviceId: string): Promise<Occupancy> {
 export function useOccupancy(device: Device, enabled: boolean): Occupancy {
   const query = useScreenQuery({
     queryKey: deviceHistoryKey(device.id, 'occupancy-timeline', OCCUPANCY_HOURS),
-    queryFn: () => readOccupancy(device.id),
+    queryFn: ({ signal }) => readOccupancy(device.id, signal),
     enabled,
   });
   return query.data ?? NONE;

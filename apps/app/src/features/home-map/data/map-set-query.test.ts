@@ -112,7 +112,9 @@ afterEach(() => {
 
 describe('the set of maps', () => {
   it('reads the list from the hub', async () => {
-    expect((await fetchHomeMapSet()).map((map) => map.id)).toStrictEqual(['home', 'cabin']);
+    expect(
+      (await fetchHomeMapSet(new AbortController().signal)).map((map) => map.id),
+    ).toStrictEqual(['home', 'cabin']);
     expect(calls).toStrictEqual([{ endpoint: E.listHomeMaps, request: {} }]);
   });
 

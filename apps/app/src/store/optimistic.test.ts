@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { EntityStore } from '../../../store/entity-store';
-import type { StoreState } from '../../../store/state';
+import { EntityStore } from './entity-store';
+import type { StoreState } from './state';
 import { rowEdit, writeOptimistically, type RowAccess } from './optimistic';
 
 const access: RowAccess<string> = {
@@ -19,9 +19,13 @@ describe('writeOptimistically', () => {
   it('shows the new row at once and keeps it when the write succeeds', async () => {
     const store = storeWith('old');
     const seen: (string | null)[] = [];
-    await writeOptimistically(store, 'planner_item.update', [rowEdit(access, 'old', 'new')], () => {
-      seen.push(access.find(store.get()));
-      return Promise.resolve('ok');
+    await writeOptimistically(store, {
+      event: 'planner_item.update',
+      edits: [rowEdit(access, 'old', 'new')],
+      send: () => {
+        seen.push(access.find(store.get()));
+        return Promise.resolve('ok');
+      },
     });
     expect(seen).toEqual(['new']);
     expect(access.find(store.get())).toBe('new');
@@ -30,9 +34,11 @@ describe('writeOptimistically', () => {
   it('puts the previous row back and rethrows when the write fails', async () => {
     const store = storeWith('old');
     await expect(
-      writeOptimistically(store, 'planner_item.update', [rowEdit(access, 'old', 'new')], () =>
-        Promise.reject(new Error('refused')),
-      ),
+      writeOptimistically(store, {
+        event: 'planner_item.update',
+        edits: [rowEdit(access, 'old', 'new')],
+        send: () => Promise.reject(new Error('refused')),
+      }),
     ).rejects.toThrow('refused');
     expect(access.find(store.get())).toBe('old');
   });
@@ -40,9 +46,11 @@ describe('writeOptimistically', () => {
   it('removes a row that did not exist before when its write fails', async () => {
     const store = storeWith(null);
     await expect(
-      writeOptimistically(store, 'planner_item.complete', [rowEdit(access, null, 'done')], () =>
-        Promise.reject(new Error('refused')),
-      ),
+      writeOptimistically(store, {
+        event: 'planner_item.complete',
+        edits: [rowEdit(access, null, 'done')],
+        send: () => Promise.reject(new Error('refused')),
+      }),
     ).rejects.toThrow('refused');
     expect(access.find(store.get())).toBeNull();
   });
@@ -54,7 +62,11 @@ describe('writeOptimistically', () => {
       return Promise.reject(new Error('refused'));
     };
     await expect(
-      writeOptimistically(store, 'planner_item.delete', [rowEdit(access, 'keep', null)], send),
+      writeOptimistically(store, {
+        event: 'planner_item.delete',
+        edits: [rowEdit(access, 'keep', null)],
+        send: send,
+      }),
     ).rejects.toThrow('refused');
     expect(access.find(store.get())).toBe('keep');
   });
@@ -62,9 +74,13 @@ describe('writeOptimistically', () => {
   it('does not overwrite a row a live change has replaced since', async () => {
     const store = storeWith('old');
     await expect(
-      writeOptimistically(store, 'planner_item.update', [rowEdit(access, 'old', 'new')], () => {
-        store.update((state) => access.put(state, 'from-the-hub'));
-        return Promise.reject(new Error('refused'));
+      writeOptimistically(store, {
+        event: 'planner_item.update',
+        edits: [rowEdit(access, 'old', 'new')],
+        send: () => {
+          store.update((state) => access.put(state, 'from-the-hub'));
+          return Promise.reject(new Error('refused'));
+        },
       }),
     ).rejects.toThrow('refused');
     expect(access.find(store.get())).toBe('from-the-hub');
@@ -73,7 +89,11 @@ describe('writeOptimistically', () => {
   it('sends without touching the store when nothing is predicted', async () => {
     const store = storeWith('old');
     const before = store.get();
-    await writeOptimistically(store, 'planner_item.update', [], () => Promise.resolve(1));
+    await writeOptimistically(store, {
+      event: 'planner_item.update',
+      edits: [],
+      send: () => Promise.resolve(1),
+    });
     expect(store.get()).toBe(before);
   });
 });

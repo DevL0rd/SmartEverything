@@ -24,31 +24,35 @@ export function homeMapVersionsQueryKey(mapId: string): readonly unknown[] {
   return ['window', 'home-map', 'versions', mapId];
 }
 
-export function fetchHomeMapSet(): Promise<readonly HomeMapSummary[]> {
-  return api().call(E.listHomeMaps, {});
+export function fetchHomeMapSet(signal: AbortSignal): Promise<readonly HomeMapSummary[]> {
+  return api().call(E.listHomeMaps, {}, { signal });
 }
 
 export const homeMapSetQueryOptions = {
   queryKey: HOME_MAP_SET_QUERY_KEY,
-  queryFn: fetchHomeMapSet,
+  queryFn: ({ signal }: { readonly signal: AbortSignal }): Promise<readonly HomeMapSummary[]> =>
+    fetchHomeMapSet(signal),
   staleTime: Infinity,
   gcTime: Infinity,
 } as const;
 
 export const robotMapFeedsQueryOptions = {
   queryKey: HOME_MAP_FEEDS_QUERY_KEY,
-  queryFn: (): Promise<readonly HomeMapFeed[]> => api().call(E.listRobotMapFeeds, {}),
+  queryFn: ({ signal }: { readonly signal: AbortSignal }): Promise<readonly HomeMapFeed[]> =>
+    api().call(E.listRobotMapFeeds, {}, { signal }),
   staleTime: Infinity,
   gcTime: Infinity,
 } as const;
 
 export function homeMapVersionsQueryOptions(mapId: string): {
   readonly queryKey: readonly unknown[];
-  readonly queryFn: () => Promise<readonly HomeMapVersion[]>;
+  readonly queryFn: (context: {
+    readonly signal: AbortSignal;
+  }) => Promise<readonly HomeMapVersion[]>;
 } {
   return {
     queryKey: homeMapVersionsQueryKey(mapId),
-    queryFn: () => api().call(E.listHomeMapVersions, { params: { mapId } }),
+    queryFn: ({ signal }) => api().call(E.listHomeMapVersions, { params: { mapId } }, { signal }),
   };
 }
 

@@ -29,11 +29,16 @@ export function usePresenceResource(
 ): ResourceState {
   const query = useScreenQuery({
     queryKey: [...PLUGIN_PREFIX, SHELLY_PLUGIN_ID, 'resource', sensor.externalId, resource],
-    queryFn: async (): Promise<ShellyResources> => {
-      const reply = await callPluginTool(SHELLY_PLUGIN_ID, 'read', {
-        externalId: sensor.externalId,
-        resource,
-      });
+    queryFn: async ({ signal }): Promise<ShellyResources> => {
+      const reply = await callPluginTool(
+        SHELLY_PLUGIN_ID,
+        'read',
+        {
+          externalId: sensor.externalId,
+          resource,
+        },
+        { signal },
+      );
       return READ_RESULT.parse(reply.result).device.resources ?? NONE;
     },
     retry: false,

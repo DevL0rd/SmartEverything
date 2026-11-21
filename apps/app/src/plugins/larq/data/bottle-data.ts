@@ -33,7 +33,7 @@ export function useBottleView<K extends BottleReadQuery['view']>(
 ): UseQueryResult<BottleViewOf<K>> {
   return useScreenQuery({
     queryKey: bottleKey(deviceId, { ...query, view: kind }),
-    queryFn: () => readBottleView(deviceId, kind, query),
+    queryFn: ({ signal }) => readBottleView(deviceId, kind, query, { signal }),
     enabled,
     staleTime: Infinity,
   });

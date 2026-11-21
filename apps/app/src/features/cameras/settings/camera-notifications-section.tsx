@@ -25,7 +25,7 @@ import { ListRow } from '../../../components/list-row';
 import { SelectRow, SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { PREFS, usePref } from '../../../store/prefs';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 function cooldownValue(pref: CameraNotificationsPref, deviceId: string): string {
   const own = cameraNotificationOverride(pref, deviceId).cooldownMinutes;

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as StoreModule from './ai-drafts';
 import type * as OutboxModule from './outbox';
+import type * as OutgoingModule from './outgoing';
 
 const mocks = vi.hoisted(() => ({
   disk: new Map<string, string>(),
@@ -34,11 +35,21 @@ const CHAT_TWO = 'chat-two';
 async function boot(): Promise<{
   readonly store: typeof StoreModule;
   readonly outbox: typeof OutboxModule;
+  readonly outgoing: typeof OutgoingModule;
 }> {
   vi.resetModules();
   const store = await import('./ai-drafts');
   const outbox = await import('./outbox');
-  return { store, outbox };
+  const outgoing = await import('./outgoing');
+  return { store, outbox, outgoing };
+}
+
+function phasesOf(outgoing: typeof OutgoingModule): readonly string[] {
+  const seen: string[] = [];
+  outgoing.subscribeOutgoing(() => {
+    seen.push(outgoing.outgoingMessage('id-1')?.phase ?? 'none');
+  });
+  return seen;
 }
 
 async function queued(
@@ -48,6 +59,11 @@ async function queued(
   id: string,
 ): Promise<void> {
   await outbox.outboxSender(chat, false)(text, [], { clientMessageId: id });
+}
+
+async function refusal(code: 'forbidden' | 'conflict', message: string): Promise<Error> {
+  const { ApiError } = await import('@smarteverything/domain');
+  return new ApiError(code, message);
 }
 
 beforeAll(async () => {
@@ -203,5 +219,89 @@ describe('removing a waiting message', () => {
     undoLatestToast();
     vi.useRealTimers();
     expect(store.aiDrafts.get().outbox.map((m) => m.id)).toEqual(['id-1', 'id-2']);
+  });
+});
+
+describe('sending a message while connected', () => {
+  it('shows the message as sending at once, before the hub answers', async () => {
+    const { store, outbox, outgoing } = await boot();
+    await store.bindAiDraftsProfile(PROFILE);
+    let answer: (value: unknown) => void = () => undefined;
+    mocks.send.mockImplementation(
+      () =>
+        new Promise((done) => {
+          answer = done;
+        }),
+    );
+    const sent = outbox.outboxSender(CHAT_ONE, true)('hello', [], { clientMessageId: 'id-1' });
+    expect(outgoing.outgoingMessage('id-1')?.phase).toBe('sending');
+    expect(await sent).toBe(true);
+    answer({});
+    await vi.waitFor(() => {
+      expect(outgoing.outgoingMessage('id-1')?.phase).toBe('sent');
+    });
+    expect(store.aiDrafts.get().outbox).toEqual([]);
+  });
+
+  it('keeps the sent message until the stored row with its client id arrives', async () => {
+    const { store, outbox, outgoing } = await boot();
+    await store.bindAiDraftsProfile(PROFILE);
+    await outbox.outboxSender(CHAT_ONE, true)('hello', [], { clientMessageId: 'id-1' });
+    await vi.waitFor(() => {
+      expect(outgoing.outgoingMessage('id-1')?.phase).toBe('sent');
+    });
+    outgoing.settleOutgoing([{ client_message_id: 'another' }]);
+    expect(outgoing.outgoingMessage('id-1')?.phase).toBe('sent');
+    outgoing.settleOutgoing([{ client_message_id: 'id-1' }]);
+    expect(outgoing.outgoingMessage('id-1')).toBeUndefined();
+  });
+
+  it('marks a refused message failed with the hub reason, shows it and does not retry', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { store, outbox, outgoing } = await boot();
+    await store.bindAiDraftsProfile(PROFILE);
+    mocks.send.mockRejectedValue(await refusal('forbidden', 'This chat is read only.'));
+    await outbox.outboxSender(CHAT_ONE, true)('hello', [], { clientMessageId: 'id-1' });
+    await vi.advanceTimersByTimeAsync(outbox.OUTBOX_RETRY_MS * 3);
+    const failed = outgoing.outgoingMessage('id-1');
+    expect(failed?.phase === 'failed' ? failed.error : null).toBe('This chat is read only.');
+    expect(mocks.send).toHaveBeenCalledTimes(1);
+    expect(mocks.notify).toHaveBeenCalledWith(expect.objectContaining({ tone: 'critical' }));
+    expect(store.aiDrafts.get().outbox).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('sends a failed message again with the same client id when retried', async () => {
+    const { store, outbox, outgoing } = await boot();
+    await store.bindAiDraftsProfile(PROFILE);
+    mocks.send.mockRejectedValueOnce(await refusal('conflict', 'Busy.'));
+    await outbox.outboxSender(CHAT_ONE, true)('hello', [], { clientMessageId: 'id-1' });
+    await vi.waitFor(() => {
+      expect(outgoing.outgoingMessage('id-1')?.phase).toBe('failed');
+    });
+    const phases = phasesOf(outgoing);
+    outbox.retryOutgoing('id-1');
+    await vi.waitFor(() => {
+      expect(outgoing.outgoingMessage('id-1')?.phase).toBe('sent');
+    });
+    expect(phases).toContain('sending');
+    expect(mocks.send.mock.calls.map((call: readonly unknown[]) => call[3])).toEqual([
+      expect.objectContaining({ clientMessageId: 'id-1' }),
+      expect.objectContaining({ clientMessageId: 'id-1' }),
+    ]);
+  });
+
+  it('moves a message the hub could not be reached for back to waiting', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { store, outbox, outgoing } = await boot();
+    await store.bindAiDraftsProfile(PROFILE);
+    mocks.send.mockRejectedValueOnce(new Error('offline'));
+    await outbox.outboxSender(CHAT_ONE, true)('hello', [], { clientMessageId: 'id-1' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outgoing.outgoingMessage('id-1')).toBeUndefined();
+    expect(store.aiDrafts.get().outbox.map((m) => m.id)).toEqual(['id-1']);
+    outbox.cancelPending('id-1');
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
   });
 });

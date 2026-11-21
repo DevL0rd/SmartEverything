@@ -199,13 +199,13 @@ function AppUpdatePrompt({
 }): ReactNode {
   const scope = useShellScope();
   const fallback = useUpdateDetailsFallback(buttonRef);
-  const press = offer === null ? undefined : offerPress(offer, actions);
   const onDetails = offer === null ? undefined : detailsPress(offer, actions, fallback);
   const details = useUpdateDetails(
     appDetailsOf(state, offer, onDetails, scope),
     buttonRef,
     suspended,
   );
+  const press = offer === null ? undefined : offerPress(offer, actions);
   return (
     <>
       {offer === null || dismissed.key === offer.key ? null : (
@@ -251,10 +251,10 @@ export function AppUpdateBanner({
   const { state, actions } = useAppUpdate();
   const apk = useAndroidApkOffer().data ?? null;
   const confirmation = useRestartNotice(state);
-  const bridge = desktopBridge();
   const installerButton = useRef<View>(null);
   const restartButton = useRef<View>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
+  const bridge = desktopBridge();
   const desktop = installerOf(bridge, useDesktopInstaller(bridge));
   const offer = shownDuringConfirmation(bannerOf(state), confirmation);
   const otaShown = offer !== null && dismissed !== offer.key;

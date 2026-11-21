@@ -30,11 +30,13 @@ export async function readBottleView<K extends ViewName>(
   deviceId: string,
   kind: K,
   query: Omit<BottleReadQuery, 'view'> = {},
+  request: { readonly signal?: AbortSignal } = {},
 ): Promise<BottleViewOf<K>> {
-  const view = await api().call(E.readBottle, {
-    params: { deviceId },
-    query: { ...query, view: kind },
-  });
+  const view = await api().call(
+    E.readBottle,
+    { params: { deviceId }, query: { ...query, view: kind } },
+    request,
+  );
   if (!isView(kind, view)) {
     throw new UnexpectedBottleViewError(kind, view.view);
   }

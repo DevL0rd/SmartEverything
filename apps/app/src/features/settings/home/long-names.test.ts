@@ -1,6 +1,8 @@
 import type { SettingsRow, TableRow } from '@smarteverything/domain';
 import { createElement, Fragment, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import type * as StoreContext from '../../../store/store-context';
+import { EntityStore } from '../../../store/entity-store';
 import { describe, expect, it, vi } from 'vitest';
 import type { ListRowProps } from '../../../components/list-row';
 import type { ReorderableListProps } from '../../../components/reorderable-list';
@@ -26,6 +28,10 @@ vi.mock('../../../api/settings', () => ({ removeRoom: vi.fn(), updateHome: vi.fn
 vi.mock('../../../components/button', () => ({ Button: (): null => null }));
 vi.mock('../../../components/card', () => ({ Card: childrenOf }));
 vi.mock('../../../components/confirm-store', () => ({ confirm: vi.fn() }));
+vi.mock('../../../store/store-context', async (original) => ({
+  ...(await original<typeof StoreContext>()),
+  useEntityStore: (): EntityStore => new EntityStore(),
+}));
 vi.mock('../../../components/empty-state', () => ({ EmptyState: (): null => null }));
 vi.mock('../../../components/icon', () => ({ Icon: (): null => null }));
 vi.mock('../../../components/list-row', () => ({ ListRow: fixture.row }));
@@ -72,9 +78,9 @@ const { RoomsBlock } = await import('./rooms-block');
 describe('Home settings names', () => {
   it('renders the whole saved place name', () => {
     renderToStaticMarkup(createElement(LocationCard));
-    const title = fixture.text.mock.calls.map(([props]) => props).find(
-      ({ children }) => children === fixture.placeName,
-    );
+    const title = fixture.text.mock.calls
+      .map(([props]) => props)
+      .find(({ children }) => children === fixture.placeName);
     expect(title).toBeDefined();
     expect(title?.numberOfLines).toBeUndefined();
   });

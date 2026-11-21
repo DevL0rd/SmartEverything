@@ -140,11 +140,15 @@ export function chosenRobot(
 export function useRobotScene(deviceId: string | null): VacuumSceneAnswer | null {
   const query = useScreenQuery({
     queryKey: ['window', 'home-map', 'robot-preview', deviceId ?? ''],
-    queryFn: (): Promise<VacuumSceneAnswer> =>
-      api().call(E.getVacuumScene, {
-        params: { deviceId: deviceId ?? '' },
-        query: { slot: 'current' },
-      }),
+    queryFn: ({ signal }): Promise<VacuumSceneAnswer> =>
+      api().call(
+        E.getVacuumScene,
+        {
+          params: { deviceId: deviceId ?? '' },
+          query: { slot: 'current' },
+        },
+        { signal },
+      ),
     enabled: deviceId !== null,
   });
   return query.data ?? null;

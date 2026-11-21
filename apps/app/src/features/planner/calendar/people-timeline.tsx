@@ -13,7 +13,7 @@ import { useScreenPaused } from '../../../design/screen-pause';
 import type { Idiom } from '../../../design/tokens';
 import type { ClockFormat } from '../../../format/clock-text';
 import { shiftDay, zonedStartOfDay } from '../../../format/time';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import { useRows, useSettings } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { ProfileAvatar } from '../../profiles';

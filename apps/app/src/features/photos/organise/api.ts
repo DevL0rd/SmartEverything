@@ -7,7 +7,7 @@ import {
   type PhotoDescriptionSet,
   type PhotoMetaPatch,
 } from '@smarteverything/domain';
-import type { PhotosResult } from '../../../api/photos';
+import type { PageRead, PhotosResult } from '../../../api/photos';
 import { api } from '../../../api/transport';
 import { routedDriveLinks } from '../../drive';
 
@@ -40,27 +40,37 @@ export function unarchivePhotos(itemIds: readonly string[]): Call<'unarchivePhot
   return api().call(P.unarchivePhotos, { body: { itemIds: [...itemIds] } });
 }
 
-export function readPhotoArchived(itemId: string): Call<'readPhotoArchived'> {
-  return api().call(P.readPhotoArchived, { params: { itemId } });
+export function readPhotoArchived(itemId: string, signal: AbortSignal): Call<'readPhotoArchived'> {
+  return api().call(P.readPhotoArchived, { params: { itemId } }, { signal });
 }
 
-export function readArchiveBuckets(scope: LibraryScope): Call<'readArchiveBuckets'> {
-  return api().call(P.readArchiveBuckets, { query: scope });
+export function readArchiveBuckets(
+  scope: LibraryScope,
+  signal: AbortSignal,
+): Call<'readArchiveBuckets'> {
+  return api().call(P.readArchiveBuckets, { query: scope }, { signal });
 }
 
 export function readArchivePage(
   month: string,
   scope: LibraryScope,
   cursor: string | null,
+  signal: AbortSignal,
 ): Call<'readArchivePage'> {
-  return api().call(P.readArchivePage, {
-    params: { month },
-    query: { ...scope, ...cursorQuery(cursor) },
-  });
+  return api().call(
+    P.readArchivePage,
+    {
+      params: { month },
+      query: { ...scope, ...cursorQuery(cursor) },
+    },
+    { signal },
+  );
 }
 
-export function readLockedState(): Call<'readLockedState'> {
-  return api().call(P.readLockedState, {});
+export function readLockedState(
+  request: { readonly signal?: AbortSignal } = {},
+): Call<'readLockedState'> {
+  return api().call(P.readLockedState, {}, request);
 }
 
 export function setLockedPin(body: LockedPinSet): Call<'setLockedPin'> {
@@ -75,20 +85,28 @@ export function lockLockedFolder(token: string): Call<'lockLockedFolder'> {
   return api().call(P.lockLockedFolder, {}, { headers: tokenHeaders(token) });
 }
 
-export function readLockedBuckets(token: string, scope: LibraryScope): Call<'readLockedBuckets'> {
-  return api().call(P.readLockedBuckets, { query: scope }, { headers: tokenHeaders(token) });
+export function readLockedBuckets(
+  token: string,
+  scope: LibraryScope,
+  signal: AbortSignal,
+): Call<'readLockedBuckets'> {
+  return api().call(
+    P.readLockedBuckets,
+    { query: scope },
+    { headers: tokenHeaders(token), signal },
+  );
 }
 
 export function readLockedPage(
   token: string,
   month: string,
   scope: LibraryScope,
-  cursor: string | null,
+  { cursor, signal }: PageRead,
 ): Call<'readLockedPage'> {
   return api().call(
     P.readLockedPage,
     { params: { month }, query: { ...scope, ...cursorQuery(cursor) } },
-    { headers: tokenHeaders(token) },
+    { headers: tokenHeaders(token), signal },
   );
 }
 

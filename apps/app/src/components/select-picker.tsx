@@ -140,13 +140,14 @@ function Options<T extends string>({
   readonly options: readonly SelectOption<T>[];
   readonly value: T | null;
   readonly searchable: boolean;
-  readonly searchPlaceholder: string;
+  readonly searchPlaceholder: string | undefined;
   readonly search: RefObject<TextInput | null>;
   readonly touch: boolean;
   readonly pick: (value: T) => void;
 }): ReactNode {
   const [query, setQuery] = useState('');
-  const shown = matching(options, useDeferredValue(query));
+  const deferredValue = useDeferredValue(query);
+  const shown = matching(options, deferredValue);
   return (
     <View accessibilityRole="radiogroup" accessibilityLabel={label}>
       {searchable ? (
@@ -154,7 +155,7 @@ function Options<T extends string>({
           <SearchField
             value={query}
             onChange={setQuery}
-            placeholder={searchPlaceholder}
+            placeholder={searchPlaceholder ?? `Search ${label.toLowerCase()}`}
             inputRef={search}
             focusOnMount={!touch}
           />
@@ -181,7 +182,7 @@ export function SelectPicker<T extends string>({
   onPick,
   onClose,
   searchable = false,
-  searchPlaceholder = `Search ${label.toLowerCase()}`,
+  searchPlaceholder,
   presentation = 'anchored',
   opener,
   width,

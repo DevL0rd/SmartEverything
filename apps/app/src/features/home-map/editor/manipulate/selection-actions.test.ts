@@ -27,7 +27,7 @@ vi.mock('../tools/walls-openings', () => ({
 vi.mock('../../../../design/size-class', () => ({ useIsPhone: (): boolean => false }));
 vi.mock('../../../../store/selectors', () => ({
   useRooms: (): readonly never[] => [],
-  useDevices: (): readonly never[] => [],
+  useDeviceNames: (): ReadonlyMap<string, string> => new Map(),
 }));
 vi.mock('../../../../platform/haptics', () => ({ selectionTick: vi.fn() }));
 vi.mock('../../../../components/icon', () => ({ Icon: none }));

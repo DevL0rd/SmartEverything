@@ -11,6 +11,7 @@ import { Text } from '../../../../components/text';
 import { notify } from '../../../../components/toast-store';
 import { cn } from '../../../../design/cn';
 import type { Device } from '../../../../store/state';
+import { useEntityStore } from '../../../../store/store-context';
 import {
   links,
   toggleAutomation,
@@ -86,6 +87,7 @@ function ScheduleRow({
   readonly next: string | null;
   readonly deviceLabel: string;
 }): ReactNode {
+  const store = useEntityStore();
   const [first] = entry.times;
   const days = first?.days ?? [];
   return (
@@ -117,7 +119,7 @@ function ScheduleRow({
         label={`${entry.name} on`}
         value={entry.enabled}
         onChange={(on) => {
-          toggleAutomation(entry.automationId, on);
+          toggleAutomation(store, entry.automationId, on);
         }}
       />
     </View>

@@ -4,7 +4,10 @@ import { WATCH_CONFIG, type WatchActionRequest, type WatchConfig } from '@smarte
 import { runWatchAction } from '../../api/watches';
 import { notify } from '../../components/toast-store';
 import { errorText } from '../../format/errors';
+import { writeOptimistically } from '../../store/optimistic';
 import type { Device } from '../../store/state';
+import { useEntityStore } from '../../store/store-context';
+import { watchEdits } from './watch-shown';
 
 const log = new Logger('app.watch');
 
@@ -80,8 +83,22 @@ export function outcomeOf(
 }
 
 export function useWatchCommand(watch: Pick<Device, 'id'>): WatchCommand {
+  const store = useEntityStore();
   const mutation = useMutation({
-    mutationFn: (actions: readonly WatchActionRequest[]) => runInOrder(watch.id, actions),
+    mutationFn: (actions: readonly WatchActionRequest[]) => {
+      const edits = watchEdits(store.get(), watch.id, actions);
+      return writeOptimistically(store, {
+        event: 'watch.command',
+        edits,
+        send: () => runInOrder(watch.id, actions),
+        fields: { deviceId: watch.id },
+      }).catch((error: unknown) => {
+        if (edits.length > 0) {
+          notify({ message: 'The watch didn’t take the change', error, tone: 'critical' });
+        }
+        throw error;
+      });
+    },
     onSuccess: (): void => {
       notify({ message: 'Sent to the watch', tone: 'positive' });
     },

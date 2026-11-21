@@ -13,9 +13,9 @@ async function preloadNutrition({ queryClient }: PreloadContext): Promise<void> 
   const to = endOfDayKey(today);
   await queryClient.query({
     queryKey: entriesKey(from, to, LOGGED_TYPES.join(',')),
-    queryFn: () => readEntries(from, to, LOGGED_TYPES),
+    queryFn: ({ signal }) => readEntries(from, to, LOGGED_TYPES, signal),
   });
-  await queryClient.query({ queryKey: FOODS_KEY, queryFn: readFoods });
+  await queryClient.query({ queryKey: FOODS_KEY, queryFn: ({ signal }) => readFoods(signal) });
 }
 
 export const ROUTES: readonly RouteDefinition[] = [

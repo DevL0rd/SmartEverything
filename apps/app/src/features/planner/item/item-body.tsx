@@ -48,7 +48,7 @@ import { ItemTitle } from './item-title';
 import { PanelAttachments } from './panel-parts';
 import { RsvpBar } from './rsvp-bar';
 import { OUTDENT_CHANGE, canHoldSteps, type StepMove } from './steps-model';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const selectViewer = (state: StoreState): string | null => state.session?.client.profile_id ?? null;
 

@@ -10,8 +10,7 @@ import { TimeField } from '../../../components/time-field';
 import { clockTextOfTime, timeOfClockText, type ClockFormat } from '../../../format/clock-text';
 import { useReachUpdate } from './reach-data';
 import { ReachLoaded, unsaved } from './reach-loaded';
-import { useHour24 } from '../../../store/clock-format';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useHour24, useClockFormat } from '../../../store/clock-format';
 
 const STANDARD: QuietHours = { from: '22:00', to: '07:00', urgent: true };
 

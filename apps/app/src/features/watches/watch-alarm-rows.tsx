@@ -14,8 +14,7 @@ import { Switch } from '../../components/switch';
 import { TimeField } from '../../components/time-field';
 import type { WatchCommand } from './watch-config';
 import { clockText, timeOf } from './watch-time';
-import { useHour24 } from '../../store/clock-format';
-import { useClockFormat } from '../clock/format/clock-format';
+import { useHour24, useClockFormat } from '../../store/clock-format';
 
 type Day = WatchAlarm['days'][number];
 

@@ -70,7 +70,12 @@ function Headline({
       <InBedLine night={night} />
       <View className="flex-row items-center gap-3">
         <View className="flex-1">
-          <ProgressBar progress={percent / 100} colour="sleep-deep" label="Sleep goal" />
+          <ProgressBar
+            progress={percent / 100}
+            colour="sleep-deep"
+            label="Sleep goal"
+            ticking={false}
+          />
         </View>
         <Text variant="footnote" tone="variant" className="tabular">
           {goalLine(goalMinutes, percent)}
@@ -224,12 +229,13 @@ function NightBody({ night, naps, goalMinutes, quiet }: BodyProps): ReactNode {
     />
   );
   const parts = expanded && score !== null ? <ScoreParts night={night} score={score} /> : null;
-  const summary = !night.hasStages && naps.length === 0 ? null : (
-    <View className="gap-3">
-      <StageSummary rows={stageRowsOf(night)} />
-      <Naps naps={naps} reveal={nap.reveal} />
-    </View>
-  );
+  const summary =
+    !night.hasStages && naps.length === 0 ? null : (
+      <View className="gap-3">
+        <StageSummary rows={stageRowsOf(night)} />
+        <Naps naps={naps} reveal={nap.reveal} />
+      </View>
+    );
   const chart = <StageChart night={night} quiet={quiet} at={at} onAt={setAt} />;
   return (
     <Card title="Last night" icon="moon" metadata={<DateLabel night={night} />}>

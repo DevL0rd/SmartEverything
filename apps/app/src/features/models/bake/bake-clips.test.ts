@@ -7,10 +7,9 @@ import {
   cropFrame,
   packFrames,
   unionRect,
-  type MakeCanvas,
-  type StagingCanvas,
 } from './bake-clips';
 import type { PixelRect } from './bake-bounds';
+import type { MakeCanvas, Snapshot, StagingCanvas } from './bake-staging';
 
 interface FakeCanvas {
   readonly name: string;
@@ -19,23 +18,32 @@ interface FakeCanvas {
   readonly drawn: (readonly [string, PixelRect, PixelRect])[];
 }
 
-function fakeCanvases(): { readonly made: FakeCanvas[]; readonly make: MakeCanvas<FakeCanvas> } {
+interface FakeCanvases {
+  readonly made: FakeCanvas[];
+  readonly make: MakeCanvas<FakeCanvas>;
+  readonly snapshot: Snapshot<FakeCanvas>;
+}
+
+function fakeCanvases(): FakeCanvases {
   const made: FakeCanvas[] = [];
-  return {
-    made,
-    make: (width, height): StagingCanvas<FakeCanvas> => {
-      const canvas: FakeCanvas = { name: `c${String(made.length)}`, width, height, drawn: [] };
-      made.push(canvas);
-      return {
-        canvas,
-        draw: {
-          copy: (image, from, to): void => {
-            canvas.drawn.push([image.name, from, to]);
-          },
+  const make = (width: number, height: number): StagingCanvas<FakeCanvas> => {
+    const canvas: FakeCanvas = { name: `c${String(made.length)}`, width, height, drawn: [] };
+    made.push(canvas);
+    return {
+      canvas,
+      draw: {
+        copy: (image, from, to): void => {
+          canvas.drawn.push([image.name, from, to]);
         },
-      };
-    },
+      },
+    };
   };
+  const snapshot = (source: FakeCanvas, rect: PixelRect): Promise<FakeCanvas> => {
+    const { canvas, draw } = make(rect.width, rect.height);
+    draw?.copy(source, rect, { x: 0, y: 0, width: rect.width, height: rect.height });
+    return Promise.resolve(canvas);
+  };
+  return { made, make, snapshot };
 }
 
 const bytes = (canvas: { readonly width: number; readonly height: number }): number =>
@@ -111,16 +119,16 @@ describe('bake clips', () => {
     expect(rect).toEqual({ x: 1, y: 4, width: 5, height: 7 });
   });
 
-  it('stages each frame cropped to its own bounds, never the full frame grid, at dpr 3', () => {
+  it('stages each frame cropped to its own bounds, never the full frame grid, at dpr 3', async () => {
     const dpr = 3;
     const side = 280 * dpr;
     const renderer: FakeCanvas = { name: 'webgl', width: side, height: side, drawn: [] };
-    const { made, make } = fakeCanvases();
+    const { made, make, snapshot } = fakeCanvases();
     const count = 36;
     const bounds = (index: number): PixelRect | null =>
       index === 5 ? null : { x: 200 + (index % 4) * 10, y: 150, width: 420, height: 500 + index };
-    const frames = Array.from({ length: count }, (_, index) =>
-      cropFrame(renderer, bounds(index), make),
+    const frames = await Promise.all(
+      Array.from({ length: count }, (_, index) => cropFrame(renderer, bounds(index), snapshot)),
     );
     const atlas = packFrames(frames, make);
     expect(atlas).not.toBeNull();
@@ -144,13 +152,13 @@ describe('bake clips', () => {
     expect(peak).toBeLessThan(fullGrid);
   });
 
-  it('places each cropped frame at its offset inside its shared atlas cell', () => {
+  it('places each cropped frame at its offset inside its shared atlas cell', async () => {
     const renderer: FakeCanvas = { name: 'webgl', width: 100, height: 100, drawn: [] };
-    const { make } = fakeCanvases();
+    const { make, snapshot } = fakeCanvases();
     const frames = [
-      cropFrame(renderer, { x: 10, y: 20, width: 30, height: 40 }, make),
+      await cropFrame(renderer, { x: 10, y: 20, width: 30, height: 40 }, snapshot),
       null,
-      cropFrame(renderer, { x: 15, y: 25, width: 20, height: 10 }, make),
+      await cropFrame(renderer, { x: 15, y: 25, width: 20, height: 10 }, snapshot),
     ];
     const rect = (x: number, y: number, width: number, height: number): PixelRect => ({
       x,

@@ -1,10 +1,7 @@
-import { createContext, use, type ReactNode } from 'react';
+import { use, type ReactNode } from 'react';
 import { View } from 'react-native';
 import { useHeaderStatus } from '../header-status';
-
-export type StatusForm = 'chip' | 'icon';
-
-const StatusFormContext = createContext<StatusForm>('chip');
+import { StatusFormContext, type StatusForm } from './shell-status-context';
 
 export function useStatusForm(): StatusForm {
   return use(StatusFormContext);

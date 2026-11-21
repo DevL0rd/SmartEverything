@@ -39,12 +39,12 @@ interface ClientInfoState {
 function useClientInfo(client: string | null): ClientInfoState {
   const query = useScreenQuery({
     queryKey: [...PLUGIN_PREFIX, ADGUARD_PLUGIN, 'client', client],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const info = parsePluginReply(
         ADGUARD_PLUGIN,
         'client_info',
         CLIENT_REPLY,
-        await readPluginTool(ADGUARD_PLUGIN, 'client_info', { client }),
+        await readPluginTool(ADGUARD_PLUGIN, 'client_info', { client }, { signal }),
       ).client;
       pluginLog.debug('plugin_query.fetched', {
         pluginId: ADGUARD_PLUGIN,
@@ -166,6 +166,7 @@ function Lead({ info }: { readonly info: AdGuardClientInfo }): ReactNode {
         live={false}
         size="widget"
         label={text}
+        ticking={false}
       />
       <Text variant="callout" tone="variant" className="flex-1">
         {text}

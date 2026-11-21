@@ -14,13 +14,16 @@ import { transcriptKeys } from '../../../queries/keys';
 import { background } from '@smarteverything/logging';
 
 export function useTranscriptSettings(): UseQueryResult<TranscriptSettings> {
-  return useScreenQuery({ queryKey: transcriptKeys.settings(), queryFn: readTranscriptSettings });
+  return useScreenQuery({
+    queryKey: transcriptKeys.settings(),
+    queryFn: ({ signal }) => readTranscriptSettings(signal),
+  });
 }
 
 export function useTranscriptStatus(cameraId?: string): UseQueryResult<TranscriptStatus> {
   return useScreenQuery({
     queryKey: transcriptKeys.status(cameraId),
-    queryFn: () => readTranscriptStatus(cameraId),
+    queryFn: ({ signal }) => readTranscriptStatus(cameraId, signal),
   });
 }
 

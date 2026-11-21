@@ -11,9 +11,7 @@ import { PHOTOS_BACKUP_PAGE } from '../settings';
 import { AddedCard } from './added-card';
 import { FreeUpCard } from './free-up-card';
 import { useBackupHandle } from './handle';
-import { useLiveProgress } from './live';
 import { DevicesCard } from './phones-card';
-import type { LiveProgress } from './phones-model';
 import { ProcessingCard } from './processing-card';
 import { StorageCard } from './storage-card';
 import { ThisPhoneCard } from './this-phone-card';
@@ -22,28 +20,22 @@ const OPEN_PHOTOS: readonly ShellAction[] = [
   { icon: 'image', label: 'Open Photos', href: href.photos() },
 ];
 
-function HubCards({
-  live,
-  currentDeviceId,
-}: {
-  readonly live: LiveProgress;
-  readonly currentDeviceId: string | null;
-}): ReactNode {
+function HubCards({ currentDeviceId }: { readonly currentDeviceId: string | null }): ReactNode {
   return (
     <>
-      <DevicesCard live={live} currentDeviceId={currentDeviceId} />
+      <DevicesCard currentDeviceId={currentDeviceId} />
       <StorageCard />
-      <ProcessingCard live={live} />
+      <ProcessingCard />
     </>
   );
 }
 
-function HubBackup({ live }: { readonly live: LiveProgress }): ReactNode {
+function HubBackup(): ReactNode {
   return (
     <View className="gap-4 large:flex-row large:items-start">
       <View className="min-w-0 gap-4 large:flex-1">
-        <DevicesCard live={live} currentDeviceId={null} />
-        <ProcessingCard live={live} />
+        <DevicesCard currentDeviceId={null} />
+        <ProcessingCard />
       </View>
       <View className="min-w-0 gap-4 large:w-96">
         <StorageCard />
@@ -52,7 +44,7 @@ function HubBackup({ live }: { readonly live: LiveProgress }): ReactNode {
   );
 }
 
-function LocalBackup({ live }: { readonly live: LiveProgress }): ReactNode {
+function LocalBackup(): ReactNode {
   const handle = useBackupHandle();
   const state = usePhotoBackupState().data;
   const deviceId = handle?.deviceId ?? null;
@@ -65,7 +57,7 @@ function LocalBackup({ live }: { readonly live: LiveProgress }): ReactNode {
         {appPlatform() === 'android' ? <FreeUpCard /> : null}
       </View>
       <View className="min-w-0 gap-4 large:flex-1">
-        <HubCards live={live} currentDeviceId={deviceId} />
+        <HubCards currentDeviceId={deviceId} />
         <AddedCard compact={isNative()} />
       </View>
     </View>
@@ -73,11 +65,10 @@ function LocalBackup({ live }: { readonly live: LiveProgress }): ReactNode {
 }
 
 export function BackupSettingsScreen(): ReactNode {
-  const live = useLiveProgress();
   const local = localMediaSource() !== null;
   return (
     <SettingsFrame page={PHOTOS_BACKUP_PAGE} actions={OPEN_PHOTOS}>
-      {local ? <LocalBackup live={live} /> : <HubBackup live={live} />}
+      {local ? <LocalBackup /> : <HubBackup />}
     </SettingsFrame>
   );
 }

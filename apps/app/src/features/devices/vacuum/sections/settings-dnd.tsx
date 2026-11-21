@@ -23,8 +23,7 @@ import {
   readDndWindow,
   type DndWindow,
 } from './dnd-model';
-import { useHour24 } from '../../../../store/clock-format';
-import { useClockFormat } from '../../../clock/format/clock-format';
+import { useHour24, useClockFormat } from '../../../../store/clock-format';
 
 const RING = 64;
 const DEFAULT_WINDOW: DndWindow = { startHour: 22, startMinute: 0, endHour: 8, endMinute: 0 };
@@ -181,6 +180,7 @@ function WindowRow({
           colour="primary"
           startAngle={ring?.startAngle ?? 0}
           sweep={ring?.sweep ?? 360}
+          ticking={false}
         />
         <View className="absolute">
           <Icon name="moon" size={20} tone="variant" />

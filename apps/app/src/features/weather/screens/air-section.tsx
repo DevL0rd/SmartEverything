@@ -34,6 +34,7 @@ function Headline({ aqi }: { readonly aqi: number }): ReactNode {
         size={112}
         thickness={10}
         label={`US AQI ${look.value}, ${look.label}`}
+        ticking={false}
       >
         <Figure value={look.value} size="m" />
       </Gauge>

@@ -19,7 +19,10 @@ import { useAutomationsSource } from './source';
 
 export function useFunctions(): UseQueryResult<AutomationFunctionSummary[]> {
   const { api } = useAutomationsSource();
-  return useScreenQuery({ queryKey: automationKeys.functions(), queryFn: api.listFunctions });
+  return useScreenQuery({
+    queryKey: automationKeys.functions(),
+    queryFn: ({ signal }) => api.listFunctions(signal),
+  });
 }
 
 export function useFunction(functionId: string): UseQueryResult<FunctionDetail> {
@@ -27,7 +30,7 @@ export function useFunction(functionId: string): UseQueryResult<FunctionDetail> 
   const { api } = useAutomationsSource();
   return useScreenQuery({
     queryKey: automationKeys.function(functionId),
-    queryFn: () => api.getFunction(functionId, kinds),
+    queryFn: ({ signal }) => api.getFunction(functionId, kinds, signal),
   });
 }
 

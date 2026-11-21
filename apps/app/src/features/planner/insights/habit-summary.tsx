@@ -103,11 +103,9 @@ const HabitLine = memo(function HabitLine(props: LineProps): ReactNode {
 export function HabitSummary({ stats }: { readonly stats: PlannerStats }): ReactNode {
   const { person } = usePlannerFrame();
   const today = useMinuteOf(dayKeyOf);
-  const habits = habitViewsOf(
-    usePlannerItems(person),
-    usePlannerOccurrences(person),
-    rangeDaysOf(stats),
-  );
+  const plannerItems = usePlannerItems(person);
+  const plannerOccurrences = usePlannerOccurrences(person);
+  const habits = habitViewsOf(plannerItems, plannerOccurrences, rangeDaysOf(stats));
   return (
     <Card title="Habits" icon="flame" className="grow">
       {habits.length === 0 ? (

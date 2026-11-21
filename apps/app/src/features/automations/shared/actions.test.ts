@@ -6,6 +6,7 @@ const notify = vi.hoisted(() => vi.fn());
 vi.mock('../../../api/automations', () => ({ setAutomationEnabled: setEnabled }));
 vi.mock('../../../components/toast-store', () => ({ notify }));
 
+import { EntityStore } from '../../../store/entity-store';
 import { attempt, toggleAutomation } from './actions';
 
 const AUTOMATION = '00000000-0000-4000-8000-000000000501';
@@ -18,7 +19,7 @@ beforeEach(() => {
 describe('automation actions', () => {
   it('switches an automation through the hub', async () => {
     setEnabled.mockResolvedValue(undefined);
-    toggleAutomation(AUTOMATION, false);
+    toggleAutomation(new EntityStore(), AUTOMATION, false);
     await vi.waitFor(() => {
       expect(setEnabled).toHaveBeenCalledWith(AUTOMATION, false);
     });

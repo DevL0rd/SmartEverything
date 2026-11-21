@@ -14,7 +14,6 @@ View className="h-full overflow-hidden rounded-lg border-hairline border-outline
       View aria-hidden=true className="absolute inset-0"
         Svg.default aria-hidden=true height=48 width=48
           Svg.Path d="M24.00 1.50 A22.5 22.5 0 1 1 24.00 46.50 A22.5 22.5 0 1 1 24.00 1.50" fill="none" stroke="#2cf201" strokeLinecap="round" strokeOpacity=1 strokeWidth=3
-          Anim.created animatedProps={} d="M24.00 1.50 A22.5 22.5 0 1 1 24.00 46.50 A22.5 22.5 0 1 1 24.00 1.50" fill="none" stroke="#8dfa7a" strokeDasharray="141.3716694115407 141.3716694115407" strokeLinecap="round" strokeWidth=3
       View aria-hidden=true className="absolute rounded-full border-2 border-surface-1 bg-positive" style={left:34.944,top:1.056000000000001,width:12,height:12}
     View className="min-w-0 flex-1"
       View className="min-w-0 gap-0.5"

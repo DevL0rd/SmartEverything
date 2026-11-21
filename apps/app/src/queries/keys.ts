@@ -273,7 +273,6 @@ export const DRIVE_WINDOW_KINDS = [
   'offline',
   'photo-buckets',
   'photo-rail-counts',
-  'photo-cover',
   'photo-trash-thumb',
   'photo-month',
   'photo-media',

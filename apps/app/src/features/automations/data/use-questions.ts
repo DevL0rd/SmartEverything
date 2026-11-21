@@ -7,21 +7,24 @@ import { automationKeys } from './keys';
 import { useAutomationsSource } from './source';
 
 export function useQuestions(): UseQueryResult<AutomationQuestion[]> {
-  const { api, runChanges } = useAutomationsSource();
+  const { api, runWaitChanges } = useAutomationsSource();
   const client = useQueryClient();
   useEffect(
     () =>
-      runChanges(() => {
+      runWaitChanges(() => {
         background(
-          client.invalidateQueries({ queryKey: automationKeys.questions() }),
+          client.invalidateQueries(
+            { queryKey: automationKeys.questions() },
+            { cancelRefetch: false },
+          ),
           'automations.questions_refresh',
         );
       }),
-    [client, runChanges],
+    [client, runWaitChanges],
   );
   return useScreenQuery({
     queryKey: automationKeys.questions(),
-    queryFn: () => api.listQuestions(),
+    queryFn: ({ signal }) => api.listQuestions(signal),
   });
 }
 

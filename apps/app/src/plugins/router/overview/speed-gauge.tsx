@@ -87,6 +87,7 @@ export function SpeedGauge({
         bands={[{ upTo: reading.max, colour: reading.colour }]}
         size={GAUGE_SIZE}
         label={`${reading.caption} ${reading.figure} ${reading.unit}`}
+        ticking={run.running}
       >
         <View className="items-center">
           <Figure value={reading.figure} unit={reading.unit} size="xl" />

@@ -165,7 +165,8 @@ function countIn(props: SmartListChipsProps, list: PlannerCollectionRow): number
 export function SmartListChips(props: SmartListChipsProps): ReactNode {
   const { filter, onFilter, mode, trailing } = props;
   const { person } = usePlannerFrame();
-  const lists = userListsOf(usePlannerCollections(person));
+  const plannerCollections = usePlannerCollections(person);
+  const lists = userListsOf(plannerCollections);
   return (
     <HScroller label="Smart lists, scrolls sideways" fade>
       <View className="flex-row items-center gap-2">

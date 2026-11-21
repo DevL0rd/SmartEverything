@@ -27,9 +27,20 @@ export class ProgramPins {
   }
 }
 
+const rendererPins = new WeakMap<readonly CompiledProgram[], ProgramPins>();
+
+export function pinsOf(info: ProgramInfo): ProgramPins | null {
+  const { programs } = info;
+  if (programs === null) return null;
+  const known = rendererPins.get(programs);
+  if (known !== undefined) return known;
+  const made = new ProgramPins();
+  rendererPins.set(programs, made);
+  return made;
+}
+
 export class FrameCost {
   private sized = false;
-  private readonly pins = new ProgramPins();
 
   resized(): void {
     this.sized = true;
@@ -39,7 +50,7 @@ export class FrameCost {
     const started = performance.now();
     draw();
     const elapsed = performance.now() - started;
-    const compiled = this.pins.keep(info);
+    const compiled = pinsOf(info)?.keep(info) === true;
     const sized = this.sized;
     this.sized = false;
     return sized || compiled ? null : elapsed;

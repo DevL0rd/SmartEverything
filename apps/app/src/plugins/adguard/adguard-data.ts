@@ -117,17 +117,22 @@ const FIRST_PAGE: string | null = null;
 export function queryLogOptions(search: string, filter: QueryLogFilter): QueryLogOptions {
   return {
     queryKey: [...PLUGIN_PREFIX, ADGUARD_PLUGIN, 'log', filter, search],
-    queryFn: async ({ pageParam }): Promise<QueryLogPage> => {
+    queryFn: async ({ pageParam, signal }): Promise<QueryLogPage> => {
       const page = parsePluginReply(
         ADGUARD_PLUGIN,
         'find_lookups',
         PAGE_REPLY,
-        await readPluginTool(ADGUARD_PLUGIN, 'find_lookups', {
-          search,
-          outcome: filter,
-          olderThan: pageParam,
-          limit: PAGE_SIZE,
-        }),
+        await readPluginTool(
+          ADGUARD_PLUGIN,
+          'find_lookups',
+          {
+            search,
+            outcome: filter,
+            olderThan: pageParam,
+            limit: PAGE_SIZE,
+          },
+          { signal },
+        ),
       ).page;
       pluginLog.debug('plugin_query.fetched', {
         pluginId: ADGUARD_PLUGIN,

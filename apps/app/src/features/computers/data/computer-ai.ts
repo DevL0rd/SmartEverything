@@ -17,12 +17,12 @@ export function useComputerAi(
 ): ReturnType<typeof useScreenQuery<Awaited<ReturnType<typeof readComputerAi>>>> {
   return useScreenQuery({
     queryKey: [...computerAiKey(deviceId), 'status'],
-    queryFn: () => readComputerAi(deviceId),
+    queryFn: ({ signal }) => readComputerAi(deviceId, signal),
   });
 }
 
-export function readComputerAi(deviceId: string): Promise<ComputerAiStatus> {
-  return api().call(E.readComputerAi, { params: { deviceId } });
+export function readComputerAi(deviceId: string, signal: AbortSignal): Promise<ComputerAiStatus> {
+  return api().call(E.readComputerAi, { params: { deviceId } }, { signal });
 }
 
 export function useComputerAiChange(
@@ -50,7 +50,8 @@ export function useComputerModels(
 ): ReturnType<typeof useScreenQuery<ComputerAiModel[]>> {
   return useScreenQuery({
     queryKey: [...computerAiKey(deviceId), 'models'],
-    queryFn: () => api().call(E.listComputerClaudeModels, { params: { deviceId } }),
+    queryFn: ({ signal }) =>
+      api().call(E.listComputerClaudeModels, { params: { deviceId } }, { signal }),
     enabled,
   });
 }
@@ -72,7 +73,8 @@ export function useComputerProviderMetadata(
 ): ReturnType<typeof useScreenQuery<ProviderMetadata>> {
   return useScreenQuery({
     queryKey: [...computerAiKey(deviceId), 'provider-metadata'],
-    queryFn: () => api().call(E.readComputerClaudeProviderMetadata, { params: { deviceId } }),
+    queryFn: ({ signal }) =>
+      api().call(E.readComputerClaudeProviderMetadata, { params: { deviceId } }, { signal }),
     enabled,
   });
 }

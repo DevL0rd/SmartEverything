@@ -66,7 +66,7 @@ export function usePlacesData(
 ): ReturnType<typeof useScreenQuery<FilePlaces>> {
   return useScreenQuery({
     queryKey: placesKey(deviceId),
-    queryFn: () => api().call(E.readComputerPlaces, { params: { deviceId } }),
+    queryFn: ({ signal }) => api().call(E.readComputerPlaces, { params: { deviceId } }, { signal }),
     enabled,
     retry: false,
   });
@@ -87,15 +87,19 @@ export function useFolderData(
     number
   >({
     queryKey: [...listKey(deviceId, path ?? ''), sort.field, sort.direction],
-    queryFn: ({ pageParam }) =>
-      api().call(E.listComputerFiles, {
-        params: { deviceId },
-        query: {
-          ...(path === null ? {} : { path }),
-          ...(pageParam === 0 ? {} : { cursor: pageParam }),
-          ...(sort.field === 'by' ? {} : { sort: sort.field, direction: sort.direction }),
+    queryFn: ({ pageParam, signal }) =>
+      api().call(
+        E.listComputerFiles,
+        {
+          params: { deviceId },
+          query: {
+            ...(path === null ? {} : { path }),
+            ...(pageParam === 0 ? {} : { cursor: pageParam }),
+            ...(sort.field === 'by' ? {} : { sort: sort.field, direction: sort.direction }),
+          },
         },
-      }),
+        { signal },
+      ),
     initialPageParam: 0,
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: live,
@@ -114,8 +118,12 @@ export function useTrashData(deviceId: string, enabled: boolean): Pages<FileTras
     number
   >({
     queryKey: [...filesKey(deviceId), 'trash'],
-    queryFn: ({ pageParam }) =>
-      api().call(E.listComputerTrash, { params: { deviceId }, query: { cursor: pageParam } }),
+    queryFn: ({ pageParam, signal }) =>
+      api().call(
+        E.listComputerTrash,
+        { params: { deviceId }, query: { cursor: pageParam } },
+        { signal },
+      ),
     initialPageParam: 0,
     getNextPageParam: (last) => last.next ?? undefined,
     enabled,
@@ -150,11 +158,13 @@ function searchPageOf(
   deviceId: string,
   find: SearchFind,
   cursor: string | null,
+  signal: AbortSignal,
 ): Promise<FileSearchResult> {
-  return api().call(E.searchComputerFiles, {
-    params: { deviceId },
-    query: { ...find, ...(cursor === null ? {} : { cursor }) },
-  });
+  return api().call(
+    E.searchComputerFiles,
+    { params: { deviceId }, query: { ...find, ...(cursor === null ? {} : { cursor }) } },
+    { signal },
+  );
 }
 
 export function useSearchData(deviceId: string, find: SearchFind, enabled: boolean): SearchData {
@@ -167,7 +177,7 @@ export function useSearchData(deviceId: string, find: SearchFind, enabled: boole
     string | null
   >({
     queryKey: [...filesKey(deviceId), 'find', path, text, contents ? 'contents' : 'names'],
-    queryFn: ({ pageParam }) => searchPageOf(deviceId, find, pageParam),
+    queryFn: ({ pageParam, signal }) => searchPageOf(deviceId, find, pageParam, signal),
     initialPageParam: null,
     getNextPageParam: (last) => last.next ?? undefined,
     enabled,
@@ -193,8 +203,12 @@ export function usePropertiesData(
 ): ReturnType<typeof useScreenQuery<FileProperties>> {
   return useScreenQuery({
     queryKey: [...filesKey(deviceId), 'properties', path],
-    queryFn: () =>
-      api().call(E.readComputerFileProperties, { params: { deviceId }, query: { path } }),
+    queryFn: ({ signal }) =>
+      api().call(
+        E.readComputerFileProperties,
+        { params: { deviceId }, query: { path } },
+        { signal },
+      ),
     enabled,
     retry: false,
   });
@@ -206,12 +220,17 @@ export interface PresentedLinks {
   readonly expiresAt: number;
 }
 
-async function presentedLinksOf(deviceId: string, path: string): Promise<PresentedLinks> {
+async function presentedLinksOf(
+  deviceId: string,
+  path: string,
+  signal: AbortSignal,
+): Promise<PresentedLinks> {
   const client = api().forMedia();
-  const links: ComputerFileLinks = await client.call(E.computerFileLinks, {
-    params: { deviceId },
-    query: { path },
-  });
+  const links: ComputerFileLinks = await client.call(
+    E.computerFileLinks,
+    { params: { deviceId }, query: { path } },
+    { signal },
+  );
   const [file, thumb] = await Promise.all([
     client.resourceUrl(links.file.url, links.file.expiresAt, 'attachment'),
     links.thumb === null
@@ -231,7 +250,7 @@ export function useLinksData(
   const generation = useRouteGeneration();
   return useScreenQuery({
     queryKey: [...filesKey(deviceId), 'links', path, modifiedAt, generation],
-    queryFn: () => presentedLinksOf(deviceId, path),
+    queryFn: ({ signal }) => presentedLinksOf(deviceId, path, signal),
     enabled,
     retry: false,
     staleTime: (query) =>
@@ -248,11 +267,15 @@ export function useZipData(deviceId: string, path: string, enabled: boolean): Pa
     string | null
   >({
     queryKey: [...filesKey(deviceId), 'zip', path],
-    queryFn: ({ pageParam }) =>
-      api().call(E.listComputerZipEntries, {
-        params: { deviceId },
-        query: { path, ...(pageParam === null ? {} : { cursor: pageParam }) },
-      }),
+    queryFn: ({ pageParam, signal }) =>
+      api().call(
+        E.listComputerZipEntries,
+        {
+          params: { deviceId },
+          query: { path, ...(pageParam === null ? {} : { cursor: pageParam }) },
+        },
+        { signal },
+      ),
     initialPageParam: null,
     getNextPageParam: (last) => last.next ?? undefined,
     enabled,

@@ -1,15 +1,13 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import type {
   DriveAccessAnswer,
   DriveAccessRequestCreate,
-  DriveFileRequestChange,
-  DriveFileRequestCreate,
   DriveFolderColourSet,
   DriveGrantSet,
   DriveLockSet,
   DriveNotificationsRead,
   DriveOfflineSet,
-  DrivePlacementSet,
   DriveRootChange,
   DriveSettingsUpdate,
   DriveShortcutChange,
@@ -17,35 +15,49 @@ import type {
   DriveTransferOffer,
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
+import { randomUUID } from 'expo-crypto';
 import {
   answerDriveAccessRequest,
   answerDriveTransfer,
   cancelDriveTransfer,
   closeDriveFileRequest,
-  createDriveFileRequest,
   createDriveShortcut,
   markDriveNotificationsRead,
   offerDriveTransfer,
-  removeDriveComment,
   removeDriveGrant,
-  removeDrivePlacement,
   removeDriveShortcut,
   requestDriveAccess,
-  resolveDriveComment,
   scanDriveRoot,
   setDriveFolderColour,
   setDriveGrant,
   setDriveItemLock,
   setDriveOffline,
-  setDrivePlacement,
-  updateDriveFileRequest,
   updateDriveRoot,
   updateDriveSettings,
   updateDriveShortcut,
 } from '../../../api/drive';
 import { notify } from '../../../components/toast-store';
+import type { EntityStore } from '../../../store/entity-store';
 import { useMutationState } from '../../../store/mutation';
+import { writeOptimistically } from '../../../store/optimistic';
+import type { StoreState } from '../../../store/state';
+import { useEntityStore } from '../../../store/store-context';
 import { invalidateAllDrive } from './live';
+import {
+  accessAnswerShown,
+  accessRequestShown,
+  fileRequestCloseShown,
+  grantRemoveShown,
+  grantSetShown,
+  notificationsReadShown,
+  transferAnswerShown,
+  transferCancelShown,
+  transferOfferShown,
+  type DriveShown,
+  type OfferedItem,
+  type SentAccessRequest,
+  type WithClientId,
+} from './row-shown';
 
 const log = new Logger('app.drive');
 
@@ -85,31 +97,76 @@ function useDriveMutation<Args extends readonly unknown[]>(
   };
 }
 
+type Shown<Args extends readonly unknown[], R> = (
+  state: StoreState,
+  now: string,
+  ...args: Args
+) => DriveShown<R>;
+
+async function sendShown<R>(
+  store: EntityStore,
+  label: string,
+  shown: DriveShown<R>,
+  send: () => Promise<R>,
+): Promise<void> {
+  const answer = await writeOptimistically(store, { event: label, edits: shown.edits, send });
+  const { settle } = shown;
+  if (settle !== null) store.update((state) => settle(state, answer));
+}
+
+function useShownDriveMutation<Args extends readonly unknown[], R>(
+  { label, failure, saved }: DriveMutationCopy,
+  perform: (...args: Args) => Promise<R>,
+  shown: Shown<Args, R>,
+  afterwards?: (client: QueryClient) => void,
+): DriveMutation<Args> {
+  const mutation = useMutationState();
+  const client = useQueryClient();
+  const store = useEntityStore();
+  return {
+    busy: mutation.busy,
+    problem: mutation.problem,
+    run: (...args: Args): void => {
+      const edits = shown(store.get(), new Date().toISOString(), ...args);
+      mutation.run(
+        async () => {
+          await sendShown(store, label, edits, () => perform(...args));
+          afterwards?.(client);
+          if (saved !== undefined) notify({ message: saved, tone: 'positive' });
+        },
+        { failure, label },
+      );
+    },
+  };
+}
+
+function withClientId<B>(
+  mutation: DriveMutation<[body: WithClientId<B>]>,
+): DriveMutation<[body: B]> {
+  return {
+    busy: mutation.busy,
+    problem: mutation.problem,
+    run: (body): void => {
+      mutation.run({ ...body, id: randomUUID() });
+    },
+  };
+}
+
 export function useGrantSet(): DriveMutation<[body: DriveGrantSet]> {
-  return useDriveMutation(
-    { label: 'drive.grant.set', failure: 'Sharing was not changed', saved: 'Sharing saved' },
-    setDriveGrant,
+  return withClientId(
+    useShownDriveMutation(
+      { label: 'drive.grant.set', failure: 'Sharing was not changed', saved: 'Sharing saved' },
+      setDriveGrant,
+      (state, now, body: WithClientId<DriveGrantSet>) => grantSetShown(state, body, now),
+    ),
   );
 }
 
 export function useGrantRemove(): DriveMutation<[grantId: string]> {
-  return useDriveMutation(
+  return useShownDriveMutation(
     { label: 'drive.grant.remove', failure: 'Sharing was not stopped', saved: 'Sharing stopped' },
     removeDriveGrant,
-  );
-}
-
-export function usePlacementSet(): DriveMutation<[body: DrivePlacementSet]> {
-  return useDriveMutation(
-    { label: 'drive.placement.set', failure: 'The folder was not changed on this computer' },
-    setDrivePlacement,
-  );
-}
-
-export function usePlacementRemove(): DriveMutation<[placementId: string]> {
-  return useDriveMutation(
-    { label: 'drive.placement.remove', failure: 'The folder was not stopped on this computer' },
-    removeDrivePlacement,
+    (state, _now, grantId) => grantRemoveShown(state, grantId),
   );
 }
 
@@ -131,20 +188,6 @@ export function useDriveRescan(): DriveMutation<[rootId: string]> {
   return useDriveMutation(
     { label: 'drive.root.scan', failure: 'The drive was not rescanned' },
     scanDriveRoot,
-  );
-}
-
-export function useCommentResolve(): DriveMutation<[commentId: string, resolved: boolean]> {
-  return useDriveMutation(
-    { label: 'drive.comment.resolve', failure: 'The thread was not changed' },
-    resolveDriveComment,
-  );
-}
-
-export function useCommentRemove(): DriveMutation<[commentId: string]> {
-  return useDriveMutation(
-    { label: 'drive.comment.remove', failure: 'The comment was not deleted' },
-    removeDriveComment,
   );
 }
 
@@ -182,48 +225,54 @@ export function useShortcutRemove(): DriveMutation<[shortcutId: string]> {
   );
 }
 
-export function useAccessRequest(): DriveMutation<[body: DriveAccessRequestCreate]> {
-  return useDriveMutation(
-    {
-      label: 'drive.access.request',
-      failure: 'The request was not sent',
-      saved: 'Request sent',
+export interface AccessAsk extends DriveMutation<[body: DriveAccessRequestCreate]> {
+  readonly sent: SentAccessRequest | null;
+}
+
+export function useAccessRequest(): AccessAsk {
+  const mutation = useMutationState();
+  const [sent, setSent] = useState<SentAccessRequest | null>(null);
+  return {
+    busy: mutation.busy,
+    problem: mutation.problem,
+    sent,
+    run: (request): void => {
+      const body = { ...request, id: randomUUID() };
+      setSent(accessRequestShown(body, new Date().toISOString()));
+      mutation.run(() => requestDriveAccess(body), {
+        failure: 'The request was not sent',
+        label: 'drive.access.request',
+        inline: true,
+        onDone: (saved) => {
+          setSent(saved);
+          log.info('drive.access.request', { requestId: saved.id });
+          notify({ message: 'Request sent', tone: 'positive' });
+        },
+        onError: () => {
+          setSent(null);
+        },
+      });
     },
-    requestDriveAccess,
-  );
+  };
 }
 
 export function useAccessAnswer(): DriveMutation<[requestId: string, body: DriveAccessAnswer]> {
-  return useDriveMutation(
+  return useShownDriveMutation(
     { label: 'drive.access.answer', failure: 'The request was not answered' },
     answerDriveAccessRequest,
-  );
-}
-
-export function useFileRequestCreate(): DriveMutation<[body: DriveFileRequestCreate]> {
-  return useDriveMutation(
-    { label: 'drive.file_request.create', failure: 'The upload link was not made' },
-    createDriveFileRequest,
-  );
-}
-
-export function useFileRequestUpdate(): DriveMutation<
-  [fileRequestId: string, body: DriveFileRequestChange]
-> {
-  return useDriveMutation(
-    { label: 'drive.file_request.update', failure: 'The file request was not changed' },
-    updateDriveFileRequest,
+    (state, now, requestId, answer) => accessAnswerShown(state, requestId, answer, now),
   );
 }
 
 export function useFileRequestClose(): DriveMutation<[fileRequestId: string]> {
-  return useDriveMutation(
+  return useShownDriveMutation(
     {
       label: 'drive.file_request.close',
       failure: 'The file request was not closed',
       saved: 'File request closed',
     },
     closeDriveFileRequest,
+    (state, now, requestId) => fileRequestCloseShown(state, requestId, now),
   );
 }
 
@@ -244,39 +293,46 @@ export function useFolderColourSet(): DriveMutation<[body: DriveFolderColourSet]
 }
 
 export function useNotificationsRead(): DriveMutation<[body: DriveNotificationsRead]> {
-  return useDriveMutation(
+  return useShownDriveMutation(
     { label: 'drive.notifications.read', failure: 'The notifications were not marked as read' },
     markDriveNotificationsRead,
+    (state, now, body) => notificationsReadShown(state, body, now),
   );
 }
 
-export function useTransferOffer(): DriveMutation<[body: DriveTransferOffer]> {
-  return useDriveMutation(
-    {
-      label: 'drive.transfer.offer',
-      failure: 'The ownership offer was not sent',
-      saved: 'Ownership offered',
-    },
-    offerDriveTransfer,
+export function useTransferOffer(item: OfferedItem): DriveMutation<[body: DriveTransferOffer]> {
+  return withClientId(
+    useShownDriveMutation(
+      {
+        label: 'drive.transfer.offer',
+        failure: 'The ownership offer was not sent',
+        saved: 'Ownership offered',
+      },
+      offerDriveTransfer,
+      (state, now, body: WithClientId<DriveTransferOffer>) =>
+        transferOfferShown(state, item, body, now),
+    ),
   );
 }
 
 export function useTransferAnswer(): DriveMutation<[transferId: string, accept: boolean]> {
-  return useDriveMutation(
+  return useShownDriveMutation(
     { label: 'drive.transfer.answer', failure: 'The ownership offer was not answered' },
     (transferId: string, accept: boolean) => answerDriveTransfer(transferId, { accept }),
+    (state, now, transferId, accept) => transferAnswerShown(state, transferId, accept, now),
     invalidateAllDrive,
   );
 }
 
 export function useTransferCancel(): DriveMutation<[transferId: string]> {
-  return useDriveMutation(
+  return useShownDriveMutation(
     {
       label: 'drive.transfer.cancel',
       failure: 'The ownership offer was not taken back',
       saved: 'Offer taken back',
     },
     cancelDriveTransfer,
+    (state, now, transferId) => transferCancelShown(state, transferId, now),
   );
 }
 

@@ -68,7 +68,10 @@ it('allows an empty state only when the installed list has synced successfully',
     return {
       status,
       problem: null,
-      failed: sections.map((section) => ({ section, reason: 'the server did not send this table' })),
+      failed: sections.map((section) => ({
+        section,
+        reason: 'the server did not send this table',
+      })),
     };
   }
   expect(pluginCatalogStatus(sync('loading'))).toBe('loading');

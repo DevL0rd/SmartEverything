@@ -80,7 +80,8 @@ function FigureView({ pluginId, body, size }: ViewProps<'figure'>): ReactNode {
 }
 
 function GaugeView({ pluginId, body, size }: ViewProps<'gauge'>): ReactNode {
-  const reading = numberReading(useStreamValue(pluginId, body.value));
+  const streamValue = useStreamValue(pluginId, body.value);
+  const reading = numberReading(streamValue);
   if (reading.state === 'missing') return <Missing reason={reading.reason} />;
   const text = formatNumber(reading.value);
   return (
@@ -94,6 +95,7 @@ function GaugeView({ pluginId, body, size }: ViewProps<'gauge'>): ReactNode {
             bands={[{ upTo: body.max, colour: 'primary' }]}
             size={Math.min(GAUGE_SIZE[size], room ?? GAUGE_SIZE[size])}
             label={`${text} of ${formatNumber(body.max)}`}
+            ticking={false}
           />
           <View className="min-w-0 flex-1 gap-0.5">
             <Figure value={text} size={heroFigure(size)} />

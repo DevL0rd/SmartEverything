@@ -4,7 +4,8 @@ import type { QualitySettings } from '../live-visibility/quality-scaler';
 import type { EditEvent } from './map-3d-edit-protocol';
 import { gizmoBreakpointOf, type YieldZones } from './edit/overlay-model';
 import { EditStage, type OverlaySink, type StageEdit } from './render-core-edit';
-import { coreSurface, type CoreSurface } from './render-core-surface';
+import { coreSurface, type StageSurface } from './render-core-surface';
+import { ShaderWarmup } from './render-core-warmup';
 import type { RealisticView } from './render-core-realistic';
 import { realisticViewOf, sceneLights } from './render-core-parts';
 import {
@@ -37,7 +38,7 @@ import {
 export * from './render-core-orbit';
 
 export interface RenderCoreOptions {
-  readonly canvas: HTMLCanvasElement;
+  readonly host: HTMLElement;
   readonly sharedRenderer?: boolean;
   readonly onPickRoom: (roomId: string | null) => void;
   readonly onPickDevice?: ((deviceId: string) => void) | undefined;
@@ -50,13 +51,15 @@ export interface RenderCoreOptions {
   readonly onScanFailed?: (detail: string) => void;
   readonly onEdit?: ((event: EditEvent) => void) | undefined;
   readonly onYield?: (zones: YieldZones) => void;
+  readonly onPainted?: () => void;
 }
 
 export type RenderPainter = OverlaySink & LoupeSink;
 
 export class RenderCore {
-  private readonly surface: CoreSurface;
+  private readonly surface: StageSurface;
   private readonly renderer: WebGLRenderer;
+  private readonly canvas: HTMLCanvasElement;
   private ratio = 1;
   private renderScale = 1;
   private readonly scene = new Scene();
@@ -83,17 +86,23 @@ export class RenderCore {
   private reducedMotion = false;
   private readonly frames = new FrameLoop((nowMs) => this.onFrame(nowMs));
   private readonly cost = new FrameCost();
+  private readonly warmup = new ShaderWarmup((): void => {
+    this.requestRender();
+  });
+  private painted = false;
   private disposed = false;
 
   constructor(private readonly options: RenderCoreOptions) {
-    this.surface = coreSurface(options.canvas, options.sharedRenderer === true);
+    this.surface = coreSurface(options.host, options.sharedRenderer === true);
     this.renderer = this.surface.renderer;
-    this.rig = new CameraRig(options.preset ?? 'angled', options.canvas, (): void => {
+    this.canvas = this.surface.canvas;
+    this.rig = new CameraRig(options.preset ?? 'angled', this.canvas, (): void => {
       this.requestRender();
     });
     this.robot.group.visible = false;
     this.objects = objectsLayerOf(options.createModelSet, (): void => {
       this.live.refresh();
+      this.warmup.invalidate();
       this.requestRender();
     });
     const lights = sceneLights();
@@ -102,6 +111,7 @@ export class RenderCore {
       createDecals: options.createDecals ?? null,
       items: this.objects,
       onChange: (): void => {
+        this.warmup.invalidate();
         this.requestRender();
       },
     });
@@ -116,8 +126,8 @@ export class RenderCore {
       },
     });
     this.edit = this.editStage();
-    this.lens = new LoupeLens(options.canvas, this.renderer);
-    this.fingers = new FingerTracker(options.canvas, (): void => {
+    this.lens = new LoupeLens(this.canvas, this.renderer);
+    this.fingers = new FingerTracker(this.canvas, (): void => {
       if (this.loupeShown) this.requestRender();
     });
     if (this.objects !== null) this.scene.add(this.objects.group);
@@ -135,6 +145,7 @@ export class RenderCore {
 
   setGeometry(geometry: SceneGeometry): void {
     this.geometry = geometry;
+    this.warmup.invalidate();
     this.base.replace(geometry.base);
     this.highlight.attach(this.base.named('floor') ?? null, geometry.rooms);
     this.trail.replace(geometry.trail);
@@ -277,13 +288,9 @@ export class RenderCore {
   }
 
   private bindInput(): () => void {
-    const unbindGestures = bindCanvas(
-      this.options.canvas,
-      this.gestures,
-      (deltaY, at, alt): void => {
-        if (this.edit.pointer?.wheel(deltaY, at, alt) !== 'claimed') this.rig.wheel(deltaY, at);
-      },
-    );
+    const unbindGestures = bindCanvas(this.canvas, this.gestures, (deltaY, at, alt): void => {
+      if (this.edit.pointer?.wheel(deltaY, at, alt) !== 'claimed') this.rig.wheel(deltaY, at);
+    });
     const unbindFingers = this.fingers.bind();
     return (): void => {
       unbindGestures();
@@ -316,7 +323,7 @@ export class RenderCore {
         this.rig.steer(steer);
       },
       camera: () => this.rig.camera(),
-      bounds: () => this.options.canvas.getBoundingClientRect(),
+      bounds: () => this.canvas.getBoundingClientRect(),
       viewport: () => this.rig.viewport,
       targets: () => this.pickTargets(),
       look: () =>
@@ -357,6 +364,7 @@ export class RenderCore {
     if (this.cutaway?.update(this.rig.state, full) === true) this.live.walls(this.cutaway.view());
     const camera = this.rig.camera();
     const animating = this.live.tick(nowMs, camera);
+    if (!this.warmup.ready(this.renderer, this.scene, camera)) return false;
     const marks = this.surface.frame(() => {
       this.draw(camera);
       const shown = this.marks(camera);
@@ -365,6 +373,10 @@ export class RenderCore {
       return shown;
     });
     this.options.onMarks?.(marks);
+    if (!this.painted && this.geometry !== null) {
+      this.painted = true;
+      this.options.onPainted?.();
+    }
     return animating;
   }
 

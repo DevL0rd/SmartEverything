@@ -65,3 +65,4 @@ export { SelectionRow } from './browser/selection-row';
 export { InfoCard, InfoFact, InfoValue } from './details/info-facts';
 export { VIEW_ONLY_LINE } from './quick-look/export-model';
 export { isTextMime, showsImageFile } from './quick-look/quick-look-model';
+export { KIND_ICON } from './browser/node-glyph';

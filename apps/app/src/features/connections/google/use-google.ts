@@ -59,7 +59,7 @@ export function useGoogleSyncLog(
 ): UseQueryResult<readonly GoogleSyncLogEntry[]> {
   return useScreenQuery({
     queryKey: [...LOG_PREFIX, account.profile_id, account.last_sync_at],
-    queryFn: () => readGoogleSyncLog(account.profile_id, undefined),
+    queryFn: ({ signal }) => readGoogleSyncLog(account.profile_id, undefined, signal),
   });
 }
 

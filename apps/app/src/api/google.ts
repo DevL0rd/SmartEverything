@@ -39,10 +39,15 @@ export async function syncGoogle(personId: string | undefined): Promise<void> {
 export async function readGoogleSyncLog(
   personId: string | undefined,
   before: string | undefined,
+  signal: AbortSignal,
 ): Promise<GoogleSyncLogEntry[]> {
-  return api().call(E.googleSyncLog, {
-    query: { ...person(personId), ...(before === undefined ? {} : { before }) },
-  });
+  return api().call(
+    E.googleSyncLog,
+    {
+      query: { ...person(personId), ...(before === undefined ? {} : { before }) },
+    },
+    { signal },
+  );
 }
 
 export async function storeGoogleApp(body: Body<'googleApp'>): Promise<void> {

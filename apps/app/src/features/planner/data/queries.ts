@@ -20,13 +20,13 @@ import { apiPerson, type PlannerPerson } from './person';
 
 interface PlannerQuery<T> {
   readonly queryKey: readonly unknown[];
-  readonly queryFn: () => Promise<T>;
+  readonly queryFn: (context: { readonly signal: AbortSignal }) => Promise<T>;
 }
 
 export function dayQuery(person: PlannerPerson, date: string): PlannerQuery<PlannerDay> {
   return {
     queryKey: plannerKeys.day(person, date),
-    queryFn: () => readPlannerDay(apiPerson(person), date),
+    queryFn: ({ signal }) => readPlannerDay(apiPerson(person), date, signal),
   };
 }
 
@@ -38,7 +38,11 @@ export function rangeQuery(
 ): PlannerQuery<PlannerRange> {
   return {
     queryKey: plannerKeys.range(person, from, to, collections),
-    queryFn: () => readPlannerRange(apiPerson(person), from, to, collections ?? undefined),
+    queryFn: ({ signal }) =>
+      readPlannerRange(apiPerson(person), from, to, {
+        collections: collections ?? undefined,
+        signal,
+      }),
   };
 }
 
@@ -48,7 +52,7 @@ export function statsQuery(
 ): PlannerQuery<PlannerStats> {
   return {
     queryKey: plannerKeys.stats(person, range),
-    queryFn: () => readPlannerStats(apiPerson(person), range),
+    queryFn: ({ signal }) => readPlannerStats(apiPerson(person), range, signal),
   };
 }
 
@@ -59,14 +63,14 @@ export function ringsQuery(
 ): PlannerQuery<PlannerRingRow[]> {
   return {
     queryKey: plannerKeys.rings(person, from, to),
-    queryFn: () => readPlannerRings(apiPerson(person), from, to),
+    queryFn: ({ signal }) => readPlannerRings(apiPerson(person), from, to, signal),
   };
 }
 
 export function preferencesQuery(person: PlannerPerson): PlannerQuery<PlannerPreferences> {
   return {
     queryKey: plannerKeys.preferences(person),
-    queryFn: () => readPlannerPreferences(apiPerson(person)),
+    queryFn: ({ signal }) => readPlannerPreferences(apiPerson(person), signal),
   };
 }
 

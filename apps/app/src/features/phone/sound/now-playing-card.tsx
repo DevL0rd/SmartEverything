@@ -14,7 +14,13 @@ import { usePhoneAction } from '../data/phone-action';
 import { usePhoneLiveHeld } from '../data/phone-live';
 import type { PhoneReadings } from '../phone-values';
 import { LockLine } from '../screens/detail-parts';
-import { mediaProgressOf, mediaSubtitle, mediaTitle, type PhoneMedia } from './sound-model';
+import {
+  mediaProgressOf,
+  mediaSubtitle,
+  mediaTitle,
+  type MediaProgress,
+  type PhoneMedia,
+} from './sound-model';
 
 function Transport({
   device,
@@ -58,6 +64,12 @@ function Transport({
   );
 }
 
+function TrackBar({ progress }: { readonly progress: MediaProgress }): ReactNode {
+  return (
+    <ProgressBar progress={progress.share} colour="viz-1" label={progress.spoken} ticking={false} />
+  );
+}
+
 function Progress({
   device,
   media,
@@ -76,7 +88,7 @@ function Progress({
     return (
       <View className="flex-row items-center gap-3">
         <View className="min-w-0 flex-1">
-          <ProgressBar progress={progress.share} colour="viz-1" label={progress.spoken} />
+          <TrackBar progress={progress} />
         </View>
         <Text variant="footnote" tone="variant" className="tabular">
           {times}

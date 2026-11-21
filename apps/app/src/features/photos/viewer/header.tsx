@@ -57,6 +57,7 @@ function JobRing({ job }: { readonly job: EditJobView | null }): ReactNode {
         thickness={3}
         colour="primary"
         trackColour="surface-3"
+        ticking={false}
       />
     </View>
   );

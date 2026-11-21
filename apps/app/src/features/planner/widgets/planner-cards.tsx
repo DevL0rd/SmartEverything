@@ -35,7 +35,7 @@ import { DayStrip } from '../today/day-strip';
 import { isOpenDay } from '../today/today-states';
 import { useDayLines, useStripModel } from './day-lines';
 import { DayBadge, DayRows, WidgetOffline } from './home-cards';
-import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
+import { useInstantClock, type InstantClock } from '../../../store/clock-format';
 import { LINE_GAP, SECTION_GAP, STRIP_HEIGHT, leadWhenOf, linesFit, rowLineOf } from './home-fit';
 
 const OPEN = { label: 'Open Planner', href: href.planner.index() } as const;

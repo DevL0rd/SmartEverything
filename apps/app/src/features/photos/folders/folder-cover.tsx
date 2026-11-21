@@ -13,6 +13,7 @@ function useLocalCover(localId: string | null): string | null {
   const query = useScreenQuery({
     queryKey: ['window', 'photos-folder-cover', localId],
     queryFn:
+      // eslint-disable-next-line local/query-fn-signal -- the thumbnail is read from the device library, which cannot be aborted
       localId === null ? skipToken : (): Promise<string | null> => localPhotoThumbnail(localId),
     retry: false,
   });

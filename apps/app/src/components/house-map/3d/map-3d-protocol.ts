@@ -238,6 +238,7 @@ export interface Map3dDomProps {
   readonly label: string;
   readonly sharedRenderer?: boolean;
   readonly onReady: () => Promise<void>;
+  readonly onPainted?: () => Promise<void>;
   readonly onPickRoom: (roomId: string | null) => Promise<void>;
   readonly onPickDevice?: (deviceId: string) => Promise<void>;
   readonly onUnavailable: (failure: Map3dFailure, detail: string) => Promise<void>;

@@ -84,6 +84,7 @@ export function RouterHero({ device }: { readonly device: Device }): ReactNode {
             size="hero"
             label={hero.spoken}
             offline={hero.stale}
+            ticking
           />
         }
         state={{ title: hero.title, tone: hero.tone }}

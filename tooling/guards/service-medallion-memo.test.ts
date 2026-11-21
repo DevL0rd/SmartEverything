@@ -45,7 +45,7 @@ function compile(): { readonly code: string; readonly pruned: ReadonlyMap<string
             logger: {
               logEvent: (_: unknown, raw: unknown): void => {
                 const event = EVENT.parse(raw);
-                if (event.kind !== 'CompileSuccess' || event.fnName == null) return;
+                if (event.kind !== 'CompileSuccess' || typeof event.fnName !== 'string') return;
                 pruned.set(event.fnName, event.prunedMemoBlocks ?? 0);
               },
             },

@@ -20,9 +20,17 @@ export function shownHashOf(scan: HomeMapScan): string {
   return scan.lod?.hash ?? scan.file.hash;
 }
 
-export async function scanLink(mapId: HomeMapId, hash: string): Promise<SignedLink> {
+export async function scanLink(
+  mapId: HomeMapId,
+  hash: string,
+  signal: AbortSignal,
+): Promise<SignedLink> {
   const client = api().forMedia();
-  const link = await client.call(E.homeMapScanLink, { params: { mapId }, query: { hash } });
+  const link = await client.call(
+    E.homeMapScanLink,
+    { params: { mapId }, query: { hash } },
+    { signal },
+  );
   return {
     url: await client.resourceUrl(link.url, link.expiresAt, 'attachment'),
     expiresAt: link.expiresAt,
@@ -43,7 +51,7 @@ export function useShownScan(mapId: HomeMapId, scan: HomeMapScan | null): ShownS
   const hash = scan === null ? '' : shownHashOf(scan);
   const link = useScreenQuery({
     queryKey: scanLinkKey(mapId, hash),
-    queryFn: () => scanLink(mapId, hash),
+    queryFn: ({ signal }) => scanLink(mapId, hash, signal),
     staleTime: linkFresh,
     enabled: scan !== null,
   });

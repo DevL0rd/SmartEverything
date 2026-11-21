@@ -69,6 +69,23 @@ export function rasterRoomPools(
   return { width, height, data, bounds };
 }
 
+interface HeldRaster {
+  readonly key: string;
+  readonly raster: PoolRaster;
+}
+
+const heldRasters = new Map<string, HeldRaster>();
+
+export function roomRaster(room: RoomLightPools, pools: readonly LightPool[]): PoolRaster {
+  const slot = JSON.stringify([room.id, room.bounds]);
+  const key = JSON.stringify([POOL_PIXELS_PER_M, pools]);
+  const held = heldRasters.get(slot);
+  if (held?.key === key) return held.raster;
+  const raster = rasterRoomPools(pools, room.bounds, POOL_PIXELS_PER_M);
+  heldRasters.set(slot, { key, raster });
+  return raster;
+}
+
 function rasterTexture(raster: PoolRaster): DataTexture {
   const texture = new DataTexture(
     raster.data,
@@ -85,7 +102,7 @@ function rasterTexture(raster: PoolRaster): DataTexture {
 
 function roomDecal(room: RoomLightPools, pools: readonly LightPool[], elevation: number): PoolMesh {
   const { bounds } = room;
-  const texture = rasterTexture(rasterRoomPools(pools, bounds, POOL_PIXELS_PER_M));
+  const texture = rasterTexture(roomRaster(room, pools));
   const geometry = new PlaneGeometry(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
   const material = new MeshBasicMaterial({
     map: texture,

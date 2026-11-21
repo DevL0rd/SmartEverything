@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useMemo } from 'react';
+import { usePausable } from '../../../design/external-store';
 import { useSyncStatus } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { areaStatusOf, graceElapsed, onGraceElapsed, type AreaStatus } from '../model/area-status';
@@ -10,11 +11,7 @@ function useGraceElapsed(): boolean {
     (notify: () => void) => onGraceElapsed(offlineSince, Date.now(), notify),
     [offlineSince],
   );
-  return useSyncExternalStore(
-    subscribe,
-    () => graceElapsed(offlineSince, Date.now()),
-    () => graceElapsed(offlineSince, Date.now()),
-  );
+  return usePausable(subscribe, () => graceElapsed(offlineSince, Date.now()));
 }
 
 export function useAreaStatus(): AreaStatus {

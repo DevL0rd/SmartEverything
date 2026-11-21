@@ -15,7 +15,7 @@ import { dayKeyOf, shortDate, startOfDayKey, weekdayShort } from '../../../forma
 import { useMinute } from '../../../store/clock';
 import { LIST_DOT } from '../item/composer-tokens';
 import { calendarOf, hitTimeOf, matchedTextOf, type HitFormat, type HitTime } from './search-model';
-import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
+import { useInstantClock, type InstantClock } from '../../../store/clock-format';
 
 function hitFormatOf(instant: InstantClock): HitFormat {
   return {

@@ -92,7 +92,8 @@ function HoverActions({
   readonly entry: ChatEntry;
   readonly clearToggle: boolean;
 }): ReactNode {
-  const { leading, trailing } = rowSwipeOf(entry);
+  const store = useEntityStore();
+  const { leading, trailing } = rowSwipeOf(entry, store);
   return (
     <Animated.View
       entering={HOVER_BAR}
@@ -230,7 +231,7 @@ function useRowMenu(
   const readOnly = entry.runtime !== null && !owner;
   const storedMessages = (): readonly AssistantMessageRow[] =>
     store.get().tables.assistant_messages.rows.filter((row) => row.chat_id === entry.id);
-  return menuOf(entry, { onDeleted, storedMessages }).filter(
+  return menuOf(entry, { store, onDeleted, storedMessages }).filter(
     (item) => !readOnly || !OWNER_ONLY_ICONS.has(item.icon ?? ''),
   );
 }
@@ -277,7 +278,8 @@ function RowPress({
 }: PressProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const line = useRowLine(entry, agent);
-  const { leading, trailing } = rowSwipeOf(entry);
+  const store = useEntityStore();
+  const { leading, trailing } = rowSwipeOf(entry, store);
   return (
     <SwipeRow leading={leading} trailing={trailing} surface="bg">
       <Interactive

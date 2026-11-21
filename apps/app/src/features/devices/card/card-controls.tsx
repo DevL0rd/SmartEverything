@@ -269,8 +269,8 @@ function RemoteButtons({
   readonly remote: IrRemoteRow;
   readonly count: number;
 }): ReactNode {
-  const codes = useIrCodes(remote.id).slice(0, count);
   const control = useControl(blaster.id, 'ir_send');
+  const codes = useIrCodes(remote.id).slice(0, count);
   const send = (code: IrCodeRow): void => {
     background(control.set({ format: code.format, code: code.code }), 'control.set_failed');
   };

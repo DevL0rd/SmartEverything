@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from 'react';
 import {
   ApiError,
   HOME_MAP_SCAN_FORMATS,
@@ -6,6 +5,7 @@ import {
   type HomeMapScanStored,
 } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
+import { usePausable } from '../../../design/external-store';
 import { decimal } from '../../../format/number';
 import type { PickedBlob } from '../../../platform/pick-files';
 
@@ -206,5 +206,5 @@ export class ScanUploads {
 
 export function useScanUpload(uploads: ScanUploads, mapId: string): ScanUploadState {
   const read = (): ScanUploadState => uploads.stateOf(mapId);
-  return useSyncExternalStore(uploads.subscribe, read, read);
+  return usePausable(uploads.subscribe, read);
 }

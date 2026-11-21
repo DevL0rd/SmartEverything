@@ -52,6 +52,7 @@ function HumidityRing({
         colour="humidity"
         ticks={ticksOf(target)}
         overlay
+        ticking={false}
       />
       <Text variant={size <= RING_PX.m ? 'label' : 'body-strong'}>
         {humidity === null ? '–' : `${String(Math.round(humidity))} %`}

@@ -56,6 +56,7 @@ function useCarCandidates(): {
 } {
   const query = useScreenQuery({
     queryKey: CAR_CANDIDATES_KEY,
+    // eslint-disable-next-line local/query-fn-signal -- the native module reads on the device, which cannot be aborted
     queryFn: phoneCarCandidates,
     staleTime: 0,
     refetchOnWindowFocus: true,

@@ -73,6 +73,7 @@ function ChipRing({ state }: { readonly state: FolderState }): ReactNode {
         thickness={CHIP_RING_THICKNESS}
         colour={state.tone}
         trackColour="outline"
+        ticking={false}
       />
     </View>
   );

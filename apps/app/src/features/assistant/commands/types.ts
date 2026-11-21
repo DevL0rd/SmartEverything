@@ -58,7 +58,7 @@ export interface CommandExecution {
   readonly progress: (state: 'admitted' | 'running', text: string) => void;
 }
 export interface CommandAdapter {
-  readonly discover: (binding: CommandBinding) => Promise<DiscoveredCommands>;
+  readonly discover: (binding: CommandBinding, signal: AbortSignal) => Promise<DiscoveredCommands>;
   readonly execute: (input: CommandExecution) => Promise<CommandOutcome>;
 }
 

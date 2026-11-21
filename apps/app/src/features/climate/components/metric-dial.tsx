@@ -23,6 +23,7 @@ export function MetricDial({
       size={size}
       thickness={big ? 12 : 7}
       label={`${reading.label} ${reading.value}, ${reading.verdict}`}
+      ticking={false}
     >
       <Figure value={reading.value} size={big ? 'l' : 's'} stale={reading.stale} />
       {reading.unit === null ? null : (

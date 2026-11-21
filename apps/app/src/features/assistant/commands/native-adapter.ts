@@ -11,16 +11,21 @@ import type {
   CommandOutcome,
   CommandCompletion,
 } from './types';
-export async function discoverNativeCommands(binding: CommandBinding): Promise<DiscoveredCommands> {
+export async function discoverNativeCommands(
+  binding: CommandBinding,
+  signal: AbortSignal,
+): Promise<DiscoveredCommands> {
   if (binding.target?.kind !== 'native' || binding.chatId === null)
     throw new CommandBindingError(
       'Commands aren’t ready yet. Try again in a moment.',
       'native session',
       'unbound',
     );
-  const catalogue = await api().call(E.listAiChatNativeCommands, {
-    params: { chatId: binding.chatId },
-  });
+  const catalogue = await api().call(
+    E.listAiChatNativeCommands,
+    { params: { chatId: binding.chatId } },
+    { signal },
+  );
   const {
     version: _version,
     connection_generation: _connection,

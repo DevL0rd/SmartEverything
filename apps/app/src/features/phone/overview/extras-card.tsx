@@ -42,6 +42,7 @@ export function ConnectionsCard({ device }: { readonly device: Device }): ReactN
                 progress={entry.batteryPercent / 100}
                 colour={entry.batteryPercent < LOW_BATTERY ? 'warning' : 'positive'}
                 label={`${entry.name ?? 'Device'} battery ${String(entry.batteryPercent)} percent`}
+                ticking={false}
               />
             </View>
           )}

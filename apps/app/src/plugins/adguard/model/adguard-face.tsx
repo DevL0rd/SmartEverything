@@ -19,6 +19,7 @@ function FaceMedallion({ hero }: { readonly hero: HeroModel | null }): ReactNode
       size="widget"
       label={hero?.spoken ?? 'AdGuard Home'}
       offline={hero?.stale ?? true}
+      ticking={false}
     />
   );
 }

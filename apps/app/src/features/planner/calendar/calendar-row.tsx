@@ -35,8 +35,8 @@ function reminderValue(calendar: ViewerCalendar): string {
 
 function useFeedStatus(calendar: ViewerCalendar): FeedStatus | null {
   const feed = calendar.row.feed;
-  const regions = useHolidayRegions(feed?.kind === 'holidays').data ?? [];
   const now = useMinuteOf((minute) => minute);
+  const regions = useHolidayRegions(feed?.kind === 'holidays').data ?? [];
   return feed === null ? null : feedStatusOf(feed, now, regions);
 }
 

@@ -1,19 +1,18 @@
 import { useState, type ReactNode } from 'react';
-import { background } from '@smarteverything/logging';
 import { usePausable, ValueStore } from '../../../design/external-store';
-import { addToAlbum } from '../library/actions';
+import { notify } from '../../../components/toast-store';
+import { photosText } from '../library/actions';
 import { AlbumSheet, type AlbumSheetRequest } from './album-sheet';
 import { newDraft } from './rule-draft';
 
 interface NewAlbumRequest {
   readonly sheet: AlbumSheetRequest;
-  readonly itemIds: readonly string[];
 }
 
 const request = new ValueStore<NewAlbumRequest | null>(null);
 
 export function openNewAlbum(itemIds: readonly string[]): void {
-  request.set({ sheet: { draft: newDraft('manual', 'person'), album: null }, itemIds });
+  request.set({ sheet: { draft: newDraft('manual', 'person'), album: null, itemIds } });
 }
 
 function closeNewAlbum(): void {
@@ -36,7 +35,7 @@ export function NewAlbumHost(): ReactNode {
       onSaved={(album) => {
         if (current === null) throw new Error('An album was made with no new-album request open');
         closeNewAlbum();
-        background(addToAlbum(current.itemIds, album), 'photos.album_add_failed');
+        notify({ message: `Added ${photosText(current.sheet.itemIds.length)} to ${album.title}` });
       }}
     />
   );

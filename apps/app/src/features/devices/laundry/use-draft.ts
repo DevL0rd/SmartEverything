@@ -94,10 +94,10 @@ export function useLaundryDraft(laundry: Laundry): DraftHandle {
   const starter = useStarter(laundry);
   const { snapshot } = laundry;
   const { picker, program, locked } = useSelection(laundry);
-  const values = changes.program === (program?.raw ?? null) ? changes.values : {};
   const estimate = estimateOf(laundry);
   const { finishAt, setFinishAt, enterFinish, problemAt } = useFinish(estimate);
   const reason = laundry.state.readiness;
+  const values = changes.program === (program?.raw ?? null) ? changes.values : {};
   return {
     program,
     shown: mergedShown(reportedOf(snapshot.values), values),

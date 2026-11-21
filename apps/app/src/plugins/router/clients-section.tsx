@@ -29,7 +29,8 @@ import { ClientSheet } from './client-sheet';
 import { ClientControls } from './clients/client-controls';
 import { ClientRow } from './clients/client-row';
 import { PeopleManager } from './clients/people-manager';
-import { routerNotice, useRouterSnapshot } from './router-data';
+import { routerNotice, useWatchedRouterSnapshot } from './router-data';
+import type { Device } from '../../store/state';
 
 function OfflineToggle({
   count,
@@ -183,10 +184,11 @@ function ClientList({ snapshot }: { readonly snapshot: RouterSnapshot }): ReactN
   );
 }
 
-export function ClientsSection(): ReactNode {
+export function ClientsSection({ device }: { readonly device: Device }): ReactNode {
   usePluginScreen('router', 'ClientsSection');
+  const stream = useWatchedRouterSnapshot(device);
   return (
-    <PluginStreamSection stream={useRouterSnapshot()} pluginId="router" notice={routerNotice} fill>
+    <PluginStreamSection stream={stream} pluginId="router" notice={routerNotice} fill>
       {(snapshot) =>
         snapshot.clients.length === 0 ? (
           <View className="w-full self-start">

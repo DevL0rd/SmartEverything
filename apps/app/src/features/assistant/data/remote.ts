@@ -14,7 +14,7 @@ function linksFresh(query: Query<Links, Error, Links, readonly string[]>): numbe
 export function useAttachmentLinks(ids: readonly string[]): UseQueryResult<Links> {
   return useScreenQuery({
     queryKey: assistantLinksKey(ids),
-    queryFn: () => assistantAttachmentLinks(ids),
+    queryFn: ({ signal }) => assistantAttachmentLinks(ids, { signal }),
     staleTime: linksFresh,
     enabled: ids.length > 0,
   });

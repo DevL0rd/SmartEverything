@@ -116,6 +116,7 @@ function CookingGraph({
         colour="temp-warm"
         label={`Progress ${String(Math.round((run.progress ?? 0) * 100))} percent`}
         thick={panel}
+        ticking={false}
       />
     </View>
   );

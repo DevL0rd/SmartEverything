@@ -50,10 +50,10 @@ export function useDshCommandBinding(
 ): DshCommandBinding {
   const profile = useActiveProfile();
   const live = useSyncStatus().status === 'live';
-  const own = ownEngine(chat);
-  const session = useChatHarness(chat?.id ?? '', hasSession(own));
   const preparation = useCommandPreparation(chat, opened, connectionId(live));
   const catalogue = useHarnessCatalogue();
+  const own = ownEngine(chat);
+  const session = useChatHarness(chat?.id ?? '', hasSession(own));
   const host = selectedHost(catalogue.data, own, preparation.data);
   const input = {
     chat,

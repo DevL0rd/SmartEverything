@@ -2,7 +2,6 @@ import type { GeoPoint } from '@smarteverything/domain';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
-import { updateHome } from '../../../api/settings';
 import { Button } from '../../../components/button';
 import { Card } from '../../../components/card';
 import { confirm } from '../../../components/confirm-store';
@@ -11,7 +10,10 @@ import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { useSizeClass } from '../../../design/size-class';
 import { useMinute } from '../../../store/clock';
+import type { EntityStore } from '../../../store/entity-store';
+import { writeHome } from '../../../store/home-writes';
 import { useIsOwner, useSettings } from '../../../store/selectors';
+import { useEntityStore } from '../../../store/store-context';
 import { LocationSheet } from './location-sheet';
 import { sunLines } from './place';
 
@@ -24,7 +26,7 @@ function pointOf(settings: ReturnType<typeof useSettings>): GeoPoint | null {
   return latitude === null || longitude === null ? null : { latitude, longitude };
 }
 
-async function removeLocation(): Promise<void> {
+async function removeLocation(store: EntityStore): Promise<void> {
   const sure = await confirm({
     title: 'Remove the location?',
     body: 'Weather, sunrise and sunset stop until you set it again.',
@@ -35,7 +37,7 @@ async function removeLocation(): Promise<void> {
     return;
   }
   await trackSetting('home_location.remove', {}, () =>
-    updateHome({ latitude: null, longitude: null }),
+    writeHome(store, { latitude: null, longitude: null }),
   ).catch(notifyFailure('The location was not removed'));
 }
 
@@ -56,8 +58,8 @@ function SunLines({
   readonly zone: string;
   readonly now: number;
 }): ReactNode {
-  const lines = sunLines(point, zone, new Date(now));
   const stacked = useSizeClass().width === 'compact';
+  const lines = sunLines(point, zone, new Date(now));
   return (
     <View>
       {(stacked ? lines : [lines.join(' · ')]).map((line) => (
@@ -80,6 +82,7 @@ function SetPlace({
   readonly owner: boolean;
   readonly onChange: () => void;
 }): ReactNode {
+  const store = useEntityStore();
   const zone = useSettings().time_zone;
   const now = useMinute();
   return (
@@ -99,7 +102,7 @@ function SetPlace({
             variant="text"
             icon="trash"
             onPress={() => {
-              background(removeLocation(), 'location.remove_failed');
+              background(removeLocation(store), 'location.remove_failed');
             }}
           />
         </View>

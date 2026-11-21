@@ -114,6 +114,7 @@ function Body({
           progress={card.progress}
           colour={frozen ? 'critical' : paused ? 'outline' : 'primary'}
           label="Job progress"
+          ticking={false}
         />
       )}
       <Times card={card} />

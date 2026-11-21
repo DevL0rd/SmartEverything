@@ -24,7 +24,8 @@ export function useEngineRouteInfo(engine: Engine): UseQueryResult<AiRouteInfo> 
     queryFn:
       choice === null
         ? skipToken
-        : (): Promise<AiRouteInfo> => api().call(E.readAiRouteInfo, { query: choice }),
+        : ({ signal }): Promise<AiRouteInfo> =>
+            api().call(E.readAiRouteInfo, { query: choice }, { signal }),
   });
 }
 

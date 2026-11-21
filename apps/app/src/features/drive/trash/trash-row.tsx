@@ -47,7 +47,13 @@ function LeavesIn({ item, layout }: Pick<Part, 'item' | 'layout'>): ReactNode {
         compact ? 'w-14 gap-0.5' : cn(TABLE_COLUMNS.leaves, 'flex-row gap-2'),
       )}
     >
-      <Arc value={item.kept} size={compact ? 20 : 16} thickness={3} colour="on-surface-variant" />
+      <Arc
+        value={item.kept}
+        size={compact ? 20 : 16}
+        thickness={3}
+        colour="on-surface-variant"
+        ticking={false}
+      />
       <Text variant={compact ? 'caption' : 'callout'} tone="variant" numberOfLines={1}>
         {leavesText(item.daysLeft, compact)}
       </Text>

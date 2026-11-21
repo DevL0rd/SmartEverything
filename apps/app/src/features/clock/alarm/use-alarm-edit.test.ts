@@ -33,7 +33,7 @@ vi.mock('../../../components/toast-store', () => ({
   notifyFailure: (): typeof toasts.notify => toasts.notify,
 }));
 vi.mock('../../../components/confirm-store', () => ({ confirm: vi.fn() }));
-vi.mock('../format/clock-format', () => ({ useClockLabel: (): typeof asStored => asStored }));
+vi.mock('../../../store/clock-format', () => ({ useClockLabel: (): typeof asStored => asStored }));
 vi.mock('../../planner', async () => ({
   alarmLabelOf: (alarm: PlannerAlarmRow): string => alarm.label ?? 'Alarm',
   useAlarmSaves: (await import('../../planner/data/alarm-saves')).useAlarmSaves,

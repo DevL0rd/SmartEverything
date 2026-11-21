@@ -71,6 +71,7 @@ export function useDesktopHarness(): {
     queryKey: DESKTOP_IDENTITY_KEY,
     enabled: bridge !== null,
     retry: false,
+    // eslint-disable-next-line local/query-fn-signal -- the desktop bridge reads over IPC, which cannot be aborted
     queryFn: async () => {
       if (bridge?.computerIdentity === undefined) throw new DesktopHarnessIdentityError();
       return DESKTOP_COMPUTER_IDENTITY.parse(await bridge.computerIdentity());

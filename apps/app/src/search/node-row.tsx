@@ -17,6 +17,7 @@ import {
   useDeviceModel,
 } from '../features/devices';
 import { useDeviceValues } from '../store/selectors';
+import { useEntityStore } from '../store/store-context';
 import { inlineOf, type InlineAction } from './actions';
 import { deviceIdOf, type SearchCatalogue } from './catalogue';
 import { titleOf, type NodeItem, type ResultNode } from './nodes';
@@ -53,6 +54,7 @@ function ExpandButton(props: NodeRowProps): ReactNode {
 }
 
 function InlineControl({ action }: { readonly action: InlineAction | null }): ReactNode {
+  const store = useEntityStore();
   switch (action?.kind) {
     case 'automation':
       return (
@@ -60,7 +62,7 @@ function InlineControl({ action }: { readonly action: InlineAction | null }): Re
           label={action.enabled ? 'Pause automation' : 'Turn automation on'}
           value={action.enabled}
           onChange={(enabled) => {
-            toggleAutomation(action.automationId, enabled);
+            toggleAutomation(store, action.automationId, enabled);
           }}
         />
       );

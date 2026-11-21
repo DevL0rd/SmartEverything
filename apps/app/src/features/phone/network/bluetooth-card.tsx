@@ -21,6 +21,7 @@ function BatteryBar({
           progress={percent / 100}
           colour={percent < 25 ? 'warning' : 'positive'}
           label={`${name} battery ${String(percent)} percent`}
+          ticking={false}
         />
       </View>
       <Text variant="caption" tone="variant" className="tabular">

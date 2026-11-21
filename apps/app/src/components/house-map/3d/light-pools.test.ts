@@ -8,6 +8,7 @@ import {
   createLightPoolLayer,
   applySplit,
   rasterRoomPools,
+  roomRaster,
   splitLights,
   type GlowDecal,
   type GlowDecalFactory,
@@ -121,6 +122,16 @@ describe('3d light pool layer', () => {
       raster.data[(Math.floor(y * 2) * raster.width + Math.floor(x * 2)) * 4 + 3] ?? -1;
     expect(alphaAt(0.6, 0.6)).toBeGreaterThan(0);
     expect(alphaAt(6, 2)).toBe(0);
+  });
+
+  it('keeps the raster of a room for its light state, so a returning stage rasters nothing', () => {
+    const room = lit(3).rooms.find((group) => group.id === 'kitchen');
+    if (room === undefined) throw new Error('no kitchen pools');
+    const first = roomRaster(room, room.pools);
+    expect(roomRaster(room, room.pools)).toBe(first);
+    expect(roomRaster(room, room.pools.slice(1))).not.toBe(first);
+    expect(roomRaster(room, room.pools)).not.toBe(first);
+    expect(roomRaster(room, room.pools).data).toEqual(first.data);
   });
 });
 

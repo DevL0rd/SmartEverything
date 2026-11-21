@@ -47,7 +47,8 @@ vi.mock('./conflicts-card', () => ({
 }));
 vi.mock('./mount-panel', () => ({ MountPanel: (): null => null }));
 vi.mock('../../../components/banner', () => ({
-  Banner: ({ title }: { readonly title: string }): ReactNode => createElement('aside', {}, title),
+  Banner: ({ title }: { readonly title: string }): ReactNode =>
+    createElement('aside', { 'data-banner': 'page' }, title),
 }));
 vi.mock('../../../components/empty-state', () => ({
   EmptyState: ({
@@ -126,7 +127,7 @@ describe('ComputersScreen', () => {
   it('keeps the cards without a page banner while the hub is offline', () => {
     seen.status = 'offline';
     const html = render();
-    expect(html).not.toContain('<aside>');
+    expect(html).not.toContain('data-banner');
     expect(html).toContain('Office PC');
     expect(seen.disabled).toEqual([true]);
   });

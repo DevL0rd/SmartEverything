@@ -11,6 +11,8 @@ import {
 } from '@smarteverything/domain';
 import { useQueryClient } from '@tanstack/react-query';
 import { useScreenQuery } from '../../queries/use-screen-query';
+import type { Device } from '../../store/state';
+import { useLiveDemand } from '../../store/use-live-demand';
 import { useEffect } from 'react';
 import { z } from 'zod';
 import { PLUGIN_PREFIX } from '../../queries/keys';
@@ -90,6 +92,13 @@ export function useRouterSnapshot(): PluginStream<RouterSnapshot> {
   );
 }
 
+const ROUTER_LIVE_TOPICS = ['live'] as const;
+
+export function useWatchedRouterSnapshot(device: Pick<Device, 'id'>): PluginStream<RouterSnapshot> {
+  useLiveDemand(device.id, ROUTER_LIVE_TOPICS);
+  return useRouterSnapshot();
+}
+
 function useSpeedTestProgress(): PluginStream<z.output<typeof SPEED_TEST_PROGRESS>> {
   return usePluginStream(ROUTER_PLUGIN, 'router.speed_test', SPEED_TEST_PROGRESS);
 }
@@ -109,16 +118,18 @@ export const SPEED_TESTS_KEY = [...PLUGIN_PREFIX, ROUTER_PLUGIN, 'speed-tests'] 
 
 export function speedTestsQuery(): {
   readonly queryKey: typeof SPEED_TESTS_KEY;
-  readonly queryFn: () => Promise<readonly SpeedTestResult[]>;
+  readonly queryFn: (context: {
+    readonly signal: AbortSignal;
+  }) => Promise<readonly SpeedTestResult[]>;
 } {
   return {
     queryKey: SPEED_TESTS_KEY,
-    queryFn: async (): Promise<readonly SpeedTestResult[]> => {
+    queryFn: async ({ signal }): Promise<readonly SpeedTestResult[]> => {
       const tests = parsePluginReply(
         ROUTER_PLUGIN,
         'list_speed_tests',
         SPEED_TESTS,
-        await readPluginTool(ROUTER_PLUGIN, 'list_speed_tests', {}),
+        await readPluginTool(ROUTER_PLUGIN, 'list_speed_tests', {}, { signal }),
       ).tests;
       pluginLog.debug('plugin_query.fetched', {
         pluginId: ROUTER_PLUGIN,

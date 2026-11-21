@@ -122,6 +122,31 @@ describe('sending a laundry plan', () => {
     expect(sent).toHaveLength(1);
   });
 
+  it('does not wake a pending step on device state frames', async () => {
+    const { run } = harness({ 'raw:2.3': 'pending' });
+    const finished = sendPlan(run, STEPS);
+    await vi.advanceTimersByTimeAsync(0);
+    const reads = vi.spyOn(run.store, 'get');
+    for (let index = 0; index < 50; index += 1) {
+      sequence += 1;
+      run.store.apply(
+        wired([
+          {
+            seq: sequence,
+            type: 'change',
+            table: 'device_state',
+            operation: 'UPDATE',
+            record: { device_id: DEVICE.id, capability: 'raw:2.9', value: index, observed_at: NOW },
+            oldRecord: null,
+          },
+        ]),
+      );
+    }
+    expect(reads).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(await finished).toMatchObject({ sent: false, failed: 'Program' });
+  });
+
   it('gives up on a step that never finishes, and does not start', async () => {
     const { run, sent } = harness({ 'raw:2.3': 'pending' });
     const finished = sendPlan(run, STEPS);

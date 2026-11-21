@@ -27,11 +27,12 @@ async function readChunk(
   selection: TranscriptSelection,
   words: string,
   position: Position,
+  signal: AbortSignal,
 ): Promise<Chunk> {
   const startedAt = Date.now();
   const base = { position: position.kind, searchLength: words.length };
   try {
-    const chunk = await readChunkUnlogged(selection, words, position);
+    const chunk = await readChunkUnlogged(selection, words, position, signal);
     log.debug('transcript_chunk.read', () => ({
       ...base,
       items: chunk.page.items.length,
@@ -55,17 +56,22 @@ async function readChunkUnlogged(
   selection: TranscriptSelection,
   words: string,
   position: Position,
+  signal: AbortSignal,
 ): Promise<Chunk> {
   if (position.kind === 'anchor') {
-    const range = await readTranscriptRange(selection, position.id, TRANSCRIPT_CHUNK_SIZE);
+    const range = await readTranscriptRange(selection, position.id, TRANSCRIPT_CHUNK_SIZE, signal);
     return { page: range.page, missingAnchor: range.anchor === null };
   }
-  const page = await readTranscriptPage(selection, {
-    words,
-    limit: TRANSCRIPT_CHUNK_SIZE,
-    direction: position.kind === 'cursor' ? position.direction : 'before',
-    ...(position.kind === 'cursor' ? { cursor: position.cursor } : {}),
-  });
+  const page = await readTranscriptPage(
+    selection,
+    {
+      words,
+      limit: TRANSCRIPT_CHUNK_SIZE,
+      direction: position.kind === 'cursor' ? position.direction : 'before',
+      ...(position.kind === 'cursor' ? { cursor: position.cursor } : {}),
+    },
+    signal,
+  );
   return { page, missingAnchor: false };
 }
 
@@ -91,7 +97,8 @@ export function useTranscriptReader(
     enabled,
     queryKey: transcriptReaderKey(selection, words, anchor),
     initialPageParam,
-    queryFn: ({ pageParam }) => readChunk(selection, anchor === null ? words : '', pageParam),
+    queryFn: ({ pageParam, signal }) =>
+      readChunk(selection, anchor === null ? words : '', pageParam, signal),
     getNextPageParam: (last) => boundary(last.page.before, 'before'),
     getPreviousPageParam: (first) => boundary(first.page.after, 'after'),
     maxPages: TRANSCRIPT_KEPT_CHUNKS,

@@ -98,15 +98,10 @@ vi.mock('../source/drive-node', () => ({
   shortcutNodeOf: (shortcut: { readonly id: string }): object => ({ key: shortcut.id }),
 }));
 vi.mock('../source/drive-lists', () => ({
-  useDriveNodeList: (
-    _list: string,
-    build: (context: object) => readonly object[],
-  ): { readonly browser: null; readonly nodes: readonly object[] } => ({
-    browser: null,
-    nodes: build({}),
-  }),
+  useDriveList: (): null => null,
   DriveListFrame: ({ children }: { readonly children: ReactNode }): ReactNode => children,
 }));
+vi.mock('../source/drive-location', () => ({ useDriveNodeContext: (): object => ({}) }));
 vi.mock('./recent-states', () => ({
   RecentEmpty: ({ live }: { readonly live: boolean }): ReactNode =>
     createElement('p', {}, live ? 'empty' : 'offline'),

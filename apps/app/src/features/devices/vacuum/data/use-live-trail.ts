@@ -23,7 +23,8 @@ function advanced(held: Held, base: readonly VacuumTrailRun[], pose: VacuumLiveP
 }
 
 export function useLiveTrail(deviceId: string, base: readonly VacuumTrailRun[]): ShownTrail {
-  const pose = valueOrNull(useVacuumLivePose(deviceId));
+  const vacuumLivePose = useVacuumLivePose(deviceId);
+  const pose = valueOrNull(vacuumLivePose);
   const [held, setHeld] = useState<Held>(() => ({ pose, trail: startLiveTrail(base, pose) }));
   const stale = held.pose !== pose || held.trail.base !== base;
   const current = stale ? advanced(held, base, pose) : held;

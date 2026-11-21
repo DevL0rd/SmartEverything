@@ -54,7 +54,13 @@ export function BatteryCard({ deviceId }: { readonly deviceId: string }): ReactN
         <Text variant="callout" tone="variant" className="tabular">
           {view.line}
         </Text>
-        <ProgressBar progress={view.percent / 100} colour={view.tone} label="Battery" thick />
+        <ProgressBar
+          progress={view.percent / 100}
+          colour={view.tone}
+          label="Battery"
+          thick
+          ticking={false}
+        />
         <HistoryChart deviceId={deviceId} />
       </View>
     </Card>

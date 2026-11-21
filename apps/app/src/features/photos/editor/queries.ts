@@ -22,7 +22,9 @@ export function usePhotoEdit(itemId: string | null): UseQueryResult<PhotosResult
   return useScreenQuery({
     queryKey: photoKeys.edit(itemId),
     queryFn:
-      itemId === null ? skipToken : (): ReturnType<typeof readPhotoEdit> => readPhotoEdit(itemId),
+      itemId === null
+        ? skipToken
+        : ({ signal }): ReturnType<typeof readPhotoEdit> => readPhotoEdit(itemId, signal),
     retry: false,
   });
 }
@@ -33,7 +35,8 @@ export function usePhotoEditBase(
 ): UseQueryResult<PhotosResult<'readPhotoEditBase'>> {
   return useScreenQuery({
     queryKey: photoKeys.editBase(itemId, rev),
-    queryFn: (): ReturnType<typeof readPhotoEditBase> => readPhotoEditBase(itemId),
+    queryFn: ({ signal }): ReturnType<typeof readPhotoEditBase> =>
+      readPhotoEditBase(itemId, signal),
     retry: false,
     gcTime: 0,
   });
@@ -51,7 +54,8 @@ export function useKeptPatches(itemId: string, patchIds: readonly string[]): Kep
   const results = useQueries({
     queries: patchIds.map((patchId) => ({
       queryKey: photoKeys.editPatch(itemId, patchId),
-      queryFn: (): ReturnType<typeof readPhotoEditPatch> => readPhotoEditPatch(itemId, patchId),
+      queryFn: ({ signal }): ReturnType<typeof readPhotoEditPatch> =>
+        readPhotoEditPatch(itemId, patchId, signal),
       retry: false,
       gcTime: 0,
     })),
@@ -75,7 +79,9 @@ export function useKeptPatches(itemId: string, patchIds: readonly string[]): Kep
 export function useEraserKey(enabled: boolean): boolean | null {
   const status = useScreenQuery({
     queryKey: photoKeys.aiStatus(),
-    queryFn: enabled ? readPhotoAiStatus : skipToken,
+    queryFn: enabled
+      ? ({ signal }): ReturnType<typeof readPhotoAiStatus> => readPhotoAiStatus(signal)
+      : skipToken,
     retry: false,
   });
   return status.data?.hasKey ?? null;
@@ -109,7 +115,10 @@ export function useEditJob(itemId: string): TrackedJob | null {
   const jobId = useValue(runningEditJobs)[itemId] ?? null;
   const query = useScreenQuery({
     queryKey: photoKeys.editJob(itemId, jobId),
-    queryFn: jobId === null ? skipToken : (): Promise<EditJob> => readPhotoEditJob(jobId),
+    queryFn:
+      jobId === null
+        ? skipToken
+        : ({ signal }): Promise<EditJob> => readPhotoEditJob(jobId, signal),
     retry: false,
   });
   if (jobId === null) return null;

@@ -86,8 +86,12 @@ export function useProcessDetail(
 ): ReturnType<typeof useScreenQuery<ProcessDetail>> {
   return useScreenQuery({
     queryKey: detailKey(deviceId, pid ?? 0),
-    queryFn: () =>
-      api().call(E.readComputerProcess, { params: { deviceId, pid: String(pid ?? 0) } }),
+    queryFn: ({ signal }) =>
+      api().call(
+        E.readComputerProcess,
+        { params: { deviceId, pid: String(pid ?? 0) } },
+        { signal },
+      ),
     enabled: pid !== null,
     retry: false,
   });

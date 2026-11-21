@@ -94,6 +94,7 @@ function CallRow({ level }: { readonly level: number }): ReactNode {
           progress={level / 100}
           colour="on-surface-variant"
           label={`Call volume ${String(level)} percent, read only`}
+          ticking={false}
         />
       </View>
       <Text variant="callout" className="tabular w-12 text-right">

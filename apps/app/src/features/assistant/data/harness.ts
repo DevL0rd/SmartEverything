@@ -27,7 +27,7 @@ export function harnessCatalogueQuery(): ReturnType<
 > {
   return queryOptions({
     queryKey: HARNESS_CATALOGUE_KEY,
-    queryFn: () => api().call(E.readAiHarnessCatalogue, {}),
+    queryFn: ({ signal }) => api().call(E.readAiHarnessCatalogue, {}, { signal }),
     retry: (failures, error) => failures < 1 && !(error instanceof UnreadableAnswerError),
   });
 }

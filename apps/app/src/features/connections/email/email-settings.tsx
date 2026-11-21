@@ -284,7 +284,10 @@ function EmailForm({ settings }: { readonly settings: MailSettings | null }): Re
 }
 
 export function EmailSettings(): ReactNode {
-  const query = useScreenQuery({ queryKey: MAIL_SETTINGS_KEY, queryFn: readMailSettings });
+  const query = useScreenQuery({
+    queryKey: MAIL_SETTINGS_KEY,
+    queryFn: ({ signal }) => readMailSettings(signal),
+  });
   if (query.data !== undefined) return <EmailForm settings={query.data} />;
   if (query.isError) {
     return (

@@ -7,7 +7,7 @@ import {
   type QualitySettings,
   type QualityState,
 } from '../live-visibility/quality-scaler';
-import { FrameCost, ProgramPins, type CompiledProgram } from './render-core-cost';
+import { FrameCost, ProgramPins, pinsOf, type CompiledProgram } from './render-core-cost';
 
 const STEADY_MS = 8;
 const RESIZE_MS = 240;
@@ -105,5 +105,17 @@ describe('the 3D map frame cost', () => {
     programs.push(next);
     expect(pins.keep({ programs })).toBe(true);
     expect([program.usedTimes, next.usedTimes]).toEqual([1, 2]);
+  });
+
+  it('keeps the pins of a renderer across the stages that reuse it, so a return counts no compile', () => {
+    const program = { usedTimes: 1 };
+    const info = { programs: [program] };
+    expect(pinsOf(info)).toBe(pinsOf({ programs: info.programs }));
+    const first = new FrameCost();
+    expect(first.measure(info, () => (now += STEADY_MS))).toBeNull();
+    const returned = new FrameCost();
+    expect(returned.measure(info, () => (now += STEADY_MS))).toBe(STEADY_MS);
+    expect(program.usedTimes).toBe(2);
+    expect(pinsOf({ programs: null })).toBeNull();
   });
 });

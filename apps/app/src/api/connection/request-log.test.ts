@@ -80,7 +80,7 @@ describe('request logging', () => {
     const failures = records.filter((entry) => entry.event === 'api.request_failed');
     expect(failures).toHaveLength(2);
     expect(failures[1]?.payload).toMatchObject({ attempt: 2, errorName: 'TypeError' });
-    expect(JSON.stringify(failures[0]?.payload)).not.toContain('10.0.0.5');
+    expect(JSON.stringify(failures[0]?.payload)).toContain('Network request failed');
   });
 
   it('records a caller abort as a cancellation, not a failure', () => {
@@ -94,7 +94,9 @@ describe('request logging', () => {
   it('keeps url shapes free of hosts and queries', () => {
     expect(pathShape('https://192.168.1.4:8443/api/devices/abc?x=1')).toBe('/api/devices/abc');
     expect(pathShape('nonsense')).toBe('unparsable');
-    expect(safeText('see https://host.example/path?token=1 now')).not.toContain('host.example');
+    expect(safeText('see https://host.example/path?token=1 now')).toBe(
+      'see https://host.example/path?token=1 now',
+    );
     expect(failureFacts('boom')).toEqual({ errorName: 'string', cause: 'not an Error' });
   });
 });

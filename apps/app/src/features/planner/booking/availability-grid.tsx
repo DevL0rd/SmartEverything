@@ -15,7 +15,7 @@ import {
   type BookingCells,
   type HourSpan,
 } from './booking-model';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import type { ClockFormat } from '../../../format/clock-text';
 
 const ROW_PX = 12;

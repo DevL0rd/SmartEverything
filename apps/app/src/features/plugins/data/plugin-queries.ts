@@ -13,7 +13,7 @@ import { useScreenQuery } from '../../../queries/use-screen-query';
 export function usePluginTools(row: PluginRow): UseQueryResult<PluginToolRow[]> {
   return useScreenQuery({
     queryKey: pluginKey(row.id, 'tools'),
-    queryFn: () => readPluginTools(row.id),
+    queryFn: ({ signal }) => readPluginTools(row.id, signal),
     enabled: row.status === 'running',
   });
 }
@@ -21,14 +21,14 @@ export function usePluginTools(row: PluginRow): UseQueryResult<PluginToolRow[]> 
 export function usePluginLog(row: PluginRow): UseQueryResult<PluginLogLine[]> {
   return useScreenQuery({
     queryKey: pluginKey(row.id, 'log'),
-    queryFn: () => readPluginLog(row.id),
+    queryFn: ({ signal }) => readPluginLog(row.id, signal),
   });
 }
 
 export function usePluginPeople(row: PluginRow): UseQueryResult<PluginPerson[]> {
   return useScreenQuery({
     queryKey: pluginKey(row.id, 'people'),
-    queryFn: () => readPluginPeople(row.id),
+    queryFn: ({ signal }) => readPluginPeople(row.id, signal),
     select: (people) => [...people].sort((a, b) => naturalCompare(a.name, b.name)),
   });
 }

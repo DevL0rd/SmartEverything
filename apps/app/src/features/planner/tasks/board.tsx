@@ -90,8 +90,8 @@ export function TaskBoard({ entries, today, filter, grouping }: TaskBoardProps):
   const collections = usePlannerCollections(person);
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const [available, setAvailable] = useState(0);
-  const columns = boardColumnsOf({ entries, filter, collections, today, grouping });
   const gap = useGridGap();
+  const columns = boardColumnsOf({ entries, filter, collections, today, grouping });
   const width = columnWidthOf({ available, count: columns.length, gap, compact });
   if (columns.every((column) => column.entries.length === 0)) {
     return <TaskEmptyState entries={entries} today={today} filter={filter} />;

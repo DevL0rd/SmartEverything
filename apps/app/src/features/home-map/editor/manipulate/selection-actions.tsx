@@ -7,7 +7,7 @@ import {
   type HomeMapRoom,
   type ModelSpec,
 } from '@smarteverything/domain';
-import { useDevices, useRooms } from '../../../../store/selectors';
+import { useDeviceNames, useRooms } from '../../../../store/selectors';
 import { objectEditFacts } from '../inspector/object-edit-model';
 import { OUTSIDE_TEXT } from '../list-editor/objects-devices-model';
 import { roomTitle } from '../list-editor/rooms-walls-model';
@@ -106,7 +106,7 @@ interface LabelInput {
   readonly floor: HomeMapFloor;
   readonly here: HomeMapRoom | null;
   readonly hubRooms: ReturnType<typeof useRooms>;
-  readonly devices: ReturnType<typeof useDevices>;
+  readonly labels: ReadonlyMap<string, string>;
   readonly nameOf: (id: string) => string;
 }
 
@@ -118,13 +118,12 @@ function labelsOf(input: LabelInput): { readonly title: string; readonly room: s
   const room = here === null ? OUTSIDE_TEXT : roomName(here);
   if (target.kind === 'object') return { title: input.nameOf(target.object.id), room };
   const { deviceId } = target.placement;
-  const device = input.devices.find((item) => item.id === deviceId);
-  return { title: device?.label ?? UNNAMED_DEVICE, room };
+  return { title: input.labels.get(deviceId) ?? UNNAMED_DEVICE, room };
 }
 
 export function useSelectionActions(tool: FurnitureTool): SelectionActions | null {
   const hubRooms = useRooms();
-  const devices = useDevices();
+  const labels = useDeviceNames('label');
   const { floor } = tool;
   const target = floor === null ? null : selectionTarget(floor, tool.selectedId);
   if (floor === null || target === null) return null;
@@ -144,7 +143,7 @@ export function useSelectionActions(tool: FurnitureTool): SelectionActions | nul
   return {
     id,
     target,
-    ...labelsOf({ target, floor, here, hubRooms, devices, nameOf: tool.nameOf }),
+    ...labelsOf({ target, floor, here, hubRooms, labels, nameOf: tool.nameOf }),
     rooms: floor.rooms.map((room, index) => ({
       key: room.id,
       label: roomTitle(room, hubRooms, index),

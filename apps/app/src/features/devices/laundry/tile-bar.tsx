@@ -22,6 +22,7 @@ export function Bar({
       progress={progress}
       colour={state.key === 'paused' ? 'warning' : 'primary'}
       label="Cycle progress"
+      ticking={false}
     />
   );
 }

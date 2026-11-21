@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HEALTH_METRICS } from '@smarteverything/domain';
 import { dayKeyOf, shiftDay } from '../../../format/time';
+import { emptyState } from '../../../store/state';
 import { seriesOf } from '../model/catalogue';
 import { windowOf } from '../model/window';
 import { ROUTES } from '../routes';
@@ -61,7 +62,7 @@ describe('fitness page preloads', () => {
   });
 
   it('fills the presence and older-days queries the Today and Browse pages read', async () => {
-    await preloadToday({ queryClient: client });
+    await preloadToday({ queryClient: client, state: emptyState });
     const keys = cachedKeys(client);
     const older = olderDailyQuery(shiftDay(today, -PRESENCE_DAYS), today);
     expect(keys).toContain(key(healthKeys.sightings(sightingsSince(today))));
@@ -70,12 +71,12 @@ describe('fitness page preloads', () => {
     const night = lastNightRange(today);
     expect(keys).toContain(key(healthKeys.records(['SleepSession'], night.from, night.to)));
     const browse = new QueryClient();
-    await preloadBrowse({ queryClient: browse });
+    await preloadBrowse({ queryClient: browse, state: emptyState });
     expect(cachedKeys(browse)).toContain(key(healthKeys.sightings(sightingsSince(today))));
   });
 
   it('fills the series queries of a domain page for the series that have data', async () => {
-    await preloadActivity({ queryClient: client });
+    await preloadActivity({ queryClient: client, state: emptyState });
     const window = windowOf('week', today);
     const reads = seriesReads(seriesOf('steps'), window, false);
     expect(reads.metrics.length).toBeGreaterThan(0);
@@ -85,8 +86,8 @@ describe('fitness page preloads', () => {
   });
 
   it('skips series with no data', async () => {
-    await preloadBody({ queryClient: client });
-    await preloadVitals({ queryClient: client });
+    await preloadBody({ queryClient: client, state: emptyState });
+    await preloadVitals({ queryClient: client, state: emptyState });
     const month = windowOf('month', today);
     const weight = seriesReads(seriesOf('weight'), month, false);
     expect(cachedKeys(client)).not.toContain(
@@ -95,9 +96,9 @@ describe('fitness page preloads', () => {
   });
 
   it('fills the sleep, heart and workouts page extras', async () => {
-    await preloadSleep({ queryClient: client });
-    await preloadHeart({ queryClient: client });
-    await preloadWorkouts({ queryClient: client });
+    await preloadSleep({ queryClient: client, state: emptyState });
+    await preloadHeart({ queryClient: client, state: emptyState });
+    await preloadWorkouts({ queryClient: client, state: emptyState });
     const keys = cachedKeys(client);
     const week = windowOf('week', today);
     const month = windowOf('month', today);

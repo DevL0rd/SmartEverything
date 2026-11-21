@@ -4,23 +4,19 @@ import { skipToken } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { Icon } from '../../../components/icon';
 import { cn } from '../../../design/cn';
-import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
 import { useScreenQuery } from '../../../queries/use-screen-query';
-import { readRoutedDriveLinks } from '../../drive/data/links';
-import { coverLinkOf, coverStaleMs, type CoverLink } from './cover-link';
-
-export function coverKey(itemId: string | null): readonly unknown[] {
-  return driveKey('photo-cover', DRIVE_EVERYWHERE, itemId);
-}
-
-async function coverLink(itemId: string): Promise<CoverLink | null> {
-  return coverLinkOf(await readRoutedDriveLinks([itemId]), itemId);
-}
+import { driveLinks, useRouteGeneration, type ResolvedDriveLink } from '../../drive';
+import { coverKey, coverStaleMs } from './cover-link';
 
 export function useCoverUrl(itemId: string | null): string | null {
+  const generation = useRouteGeneration();
   const query = useScreenQuery({
-    queryKey: coverKey(itemId),
-    queryFn: itemId === null ? skipToken : (): Promise<CoverLink | null> => coverLink(itemId),
+    queryKey: coverKey(itemId, generation),
+    queryFn:
+      itemId === null
+        ? skipToken
+        : // eslint-disable-next-line local/query-fn-signal -- one batched link request serves every cover, so one cover cannot abort it
+          (): Promise<ResolvedDriveLink | null> => driveLinks.resolveLatest(itemId, 'thumb'),
     staleTime: (entry) => coverStaleMs(entry.state.data ?? null, Date.now()),
     retry: false,
   });

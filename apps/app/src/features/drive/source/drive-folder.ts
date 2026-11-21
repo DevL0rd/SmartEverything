@@ -1,6 +1,7 @@
 import { background } from '@smarteverything/logging';
 import type { DriveItem } from '@smarteverything/domain';
-import { type DriveResult, browseDrive, listDriveTrash, readDriveItem } from '../../../api/drive';
+import { type DriveResult, readDriveItem } from '../../../api/drive';
+import { browseDrive, listDriveTrash } from '../../../api/drive-pages';
 import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import {
@@ -41,8 +42,10 @@ export function useDriveAncestors(
   const scope = { rootId: item?.rootId ?? null, folderId: item?.id ?? null, albumId: null };
   return useScreenQuery({
     queryKey: driveKey('folder', scope, 'ancestors', stopAt),
-    queryFn: (): Promise<readonly DriveItem[]> =>
-      item === null ? Promise.resolve([]) : ancestorsOf(item, readDriveItem, stopAt),
+    queryFn: ({ signal }): Promise<readonly DriveItem[]> =>
+      item === null
+        ? Promise.resolve([])
+        : ancestorsOf(item, (id, abort) => readDriveItem(id, { signal: abort }), stopAt, signal),
     enabled: item !== null && enabled,
     retry: false,
   }).data;
@@ -111,13 +114,16 @@ function useBrowsePages(
   const sorted = driveSortOf(sort);
   return useDrivePages({
     queryKey: driveKey('folder', { rootId, folderId, albumId: null }, sorted),
-    read: (cursor) =>
-      browseDrive({
-        rootId: rootId ?? '',
-        ...(folderId === null ? {} : { folderId }),
-        ...(sorted === null ? {} : { sortField: sorted.field, sortDirection: sorted.direction }),
-        ...(cursor === null ? {} : { cursor }),
-      }),
+    read: (cursor, signal) =>
+      browseDrive(
+        {
+          rootId: rootId ?? '',
+          ...(folderId === null ? {} : { folderId }),
+          ...(sorted === null ? {} : { sortField: sorted.field, sortDirection: sorted.direction }),
+          ...(cursor === null ? {} : { cursor }),
+        },
+        signal,
+      ),
     enabled: on,
   });
 }
@@ -125,7 +131,7 @@ function useBrowsePages(
 function useTrashPages(on: boolean): DrivePages<DriveResult<'listTrash'>> {
   return useDrivePages({
     queryKey: driveKey('trash', DRIVE_EVERYWHERE),
-    read: (cursor) => listDriveTrash(null, cursor),
+    read: (cursor, signal) => listDriveTrash(null, cursor, signal),
     enabled: on,
   });
 }
@@ -194,6 +200,7 @@ export function useDriveListing(
 ): FolderListing<DriveOrigin> {
   const state = useDriveLocation(location);
   const crumbs = useCrumbs(location, state, useDrivePlaces());
+  const rights = { owner: useIsOwner(), ...state.context };
   const shape = shapeOf(state, location);
   const pages = useBrowsePages(state, location, sort, shape.browsing);
   const trashPages = useTrashPages(shape.trash);
@@ -203,7 +210,6 @@ export function useDriveListing(
     pageStateOf(trashPages, shape.trash),
   );
   const first = pages.data?.pages[0];
-  const rights = { owner: useIsOwner(), ...state.context };
   const entries = arrangedOf(shape, state.context, sort, {
     loaded: flattenPages(pages.data, (page) => page.items),
     shortcuts: first?.shortcuts ?? [],

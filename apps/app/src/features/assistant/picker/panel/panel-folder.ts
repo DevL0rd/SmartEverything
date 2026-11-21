@@ -2,6 +2,7 @@ import { background } from '@smarteverything/logging';
 import type { AiChatRow, DshEngine } from '@smarteverything/domain';
 import { notify } from '../../../../components/toast-store';
 import { changeChat } from '../../chats/chat-actions';
+import { useEntityStore } from '../../../../store/store-context';
 import { useChatHandoff } from '../../chats/chat-engine-change';
 import type { ComputerEngine } from '../../provider/computer-engine';
 import { folderName } from './panel-machine';
@@ -29,9 +30,10 @@ export function useComputerFolderChange(
   chat: AiChatRow,
   engine: ComputerEngine,
 ): (path: string) => void {
+  const store = useEntityStore();
   return (path): void => {
     background(
-      changeChat(chat.id, { engine: withFolder(engine, path) }),
+      changeChat(store, chat.id, { engine: withFolder(engine, path) }),
       'chat.folder_change_failed',
     );
     notify({ message: `Folder is now ${folderName(path) ?? path}`, tone: 'positive' });

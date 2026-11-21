@@ -145,6 +145,9 @@ vi.mock('../../../components/house-map/adapters/home-map-scene', () => ({
 vi.mock('../../../design/colour', () => ({
   useColourResolver: (): ((role: string) => string) => (role) => role,
 }));
+vi.mock('../../../store/store-context', () => ({
+  useStoreSelector: (): object => ({ rooms: [], devices: [] }),
+}));
 vi.mock('../../../store/selectors', () => ({
   useDevices: (): [] => [],
   useFirstDevice: (): null => null,

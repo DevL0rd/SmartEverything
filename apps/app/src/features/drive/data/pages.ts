@@ -11,7 +11,7 @@ export interface CursorPage {
 
 export interface PagesOptions<P extends CursorPage> {
   readonly queryKey: readonly unknown[];
-  readonly read: (cursor: string | null) => Promise<P>;
+  readonly read: (cursor: string | null, signal: AbortSignal) => Promise<P>;
   readonly enabled?: boolean;
 }
 
@@ -28,7 +28,7 @@ export function useDrivePages<P extends CursorPage>(options: PagesOptions<P>): D
     string | null
   >({
     queryKey: options.queryKey,
-    queryFn: ({ pageParam }) => options.read(pageParam),
+    queryFn: ({ pageParam, signal }) => options.read(pageParam, signal),
     initialPageParam: null,
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: options.enabled ?? true,

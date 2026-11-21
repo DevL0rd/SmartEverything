@@ -68,8 +68,8 @@ export function HistorySection({ device }: { readonly device: Device }): ReactNo
   const model = useDeviceModel(device);
   const [extras, setExtras] = useState(false);
   const [range, setRange] = useState<HistoryRangeKey>('24h');
-  const metrics = historyMetrics(model.presentation, extras);
   const [chosen, setChosen] = useSectionParam('metric');
+  const metrics = historyMetrics(model.presentation, extras);
   const metric = metrics.find((candidate) => candidate.key === chosen) ?? metrics[0];
   if (metric === undefined) {
     return (

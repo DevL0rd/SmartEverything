@@ -14,12 +14,16 @@ describe('reading image operations', () => {
       return Promise.resolve([]);
     });
     const client = new QueryClient();
-    await expect(readImageOperations(client, 'chat-1')).rejects.toBeInstanceOf(CancelledError);
+    await expect(
+      readImageOperations(client, 'chat-1', new AbortController().signal),
+    ).rejects.toBeInstanceOf(CancelledError);
   });
 
   it('returns the receipts of the current session', async () => {
     call.mockResolvedValue([]);
     const client = new QueryClient();
-    await expect(readImageOperations(client, 'chat-1')).resolves.toEqual([]);
+    await expect(
+      readImageOperations(client, 'chat-1', new AbortController().signal),
+    ).resolves.toEqual([]);
   });
 });

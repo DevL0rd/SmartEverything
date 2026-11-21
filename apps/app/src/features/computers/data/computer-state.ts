@@ -11,24 +11,29 @@ export interface StateLoad {
   readonly retry: () => void;
 }
 
-const READS: Readonly<Record<StateTopic, (deviceId: string) => Promise<ComputerParts>>> = {
-  audio: async (deviceId) => ({
-    audio: await api().call(E.readComputerAudio, { params: { deviceId } }),
+type StateRead = (
+  deviceId: string,
+  request: { readonly signal?: AbortSignal },
+) => Promise<ComputerParts>;
+
+const READS: Readonly<Record<StateTopic, StateRead>> = {
+  audio: async (deviceId, request) => ({
+    audio: await api().call(E.readComputerAudio, { params: { deviceId } }, request),
   }),
-  displays: async (deviceId) => ({
-    displays: await api().call(E.readComputerDisplays, { params: { deviceId } }),
+  displays: async (deviceId, request) => ({
+    displays: await api().call(E.readComputerDisplays, { params: { deviceId } }, request),
   }),
-  system: async (deviceId) => ({
-    system: await api().call(E.readComputerSystem, { params: { deviceId } }),
+  system: async (deviceId, request) => ({
+    system: await api().call(E.readComputerSystem, { params: { deviceId } }, request),
   }),
-  services: async (deviceId) => ({
-    services: await api().call(E.readComputerServices, { params: { deviceId } }),
+  services: async (deviceId, request) => ({
+    services: await api().call(E.readComputerServices, { params: { deviceId } }, request),
   }),
-  windows: async (deviceId) => ({
-    windows: await api().call(E.readComputerWindows, { params: { deviceId } }),
+  windows: async (deviceId, request) => ({
+    windows: await api().call(E.readComputerWindows, { params: { deviceId } }, request),
   }),
-  tiling: async (deviceId) => ({
-    tiling: await api().call(E.readComputerTiling, { params: { deviceId } }),
+  tiling: async (deviceId, request) => ({
+    tiling: await api().call(E.readComputerTiling, { params: { deviceId } }, request),
   }),
 };
 
@@ -36,20 +41,24 @@ export function feedState(deviceId: string, parts: ComputerParts): void {
   computerLive.receive({ type: 'computer_live', deviceId, at: new Date().toISOString(), parts });
 }
 
-export async function seedState(deviceId: string, topic: StateTopic): Promise<ComputerParts> {
-  const parts = await READS[topic](deviceId);
+export async function seedState(
+  deviceId: string,
+  topic: StateTopic,
+  signal: AbortSignal,
+): Promise<ComputerParts> {
+  const parts = await READS[topic](deviceId, { signal });
   if (computerLive.store(deviceId).get().parts[topic] === undefined) feedState(deviceId, parts);
   return parts;
 }
 
 export async function refreshState(deviceId: string, topic: StateTopic): Promise<void> {
-  feedState(deviceId, await READS[topic](deviceId));
+  feedState(deviceId, await READS[topic](deviceId, {}));
 }
 
 export function useStateSeed(deviceId: string, topic: StateTopic, enabled: boolean): StateLoad {
   const query = useScreenQuery({
     queryKey: ['window', 'computer-state', deviceId, topic],
-    queryFn: () => seedState(deviceId, topic),
+    queryFn: ({ signal }) => seedState(deviceId, topic, signal),
     enabled,
     retry: false,
   });

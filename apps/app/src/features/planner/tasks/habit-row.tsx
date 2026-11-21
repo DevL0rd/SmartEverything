@@ -96,13 +96,13 @@ function HabitHead({
   readonly today: string;
 }): ReactNode {
   const device = useDeviceLabel(entry);
+  const touch = useIdiom() === 'touch';
+  const press = useItemPress(entry.item.id, entry.occurrenceKey);
   const settled = todayOccurrenceOf(occurrences, today);
   const shown = shownEntryOf(entry, settled);
   const actions = useTaskActions(shown);
-  const touch = useIdiom() === 'touch';
   const repeat = entry.item.rrule === null ? 'Repeats' : repeatWordsOf(entry.item.rrule);
   const words = [repeat, device, todayWordsOf(entry, settled)].filter((part) => part !== null);
-  const press = useItemPress(entry.item.id, entry.occurrenceKey);
   return (
     <View className="flex-row items-center gap-3">
       <TaskCheck entry={shown} actions={actions} />

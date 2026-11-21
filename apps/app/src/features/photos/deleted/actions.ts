@@ -1,9 +1,12 @@
+import { useQueryClient } from '@tanstack/react-query';
 import type { DriveChangeResult } from '@smarteverything/domain';
+import { changeDrive } from '../../../api/drive';
 import { background } from '@smarteverything/logging';
 import { confirm, type ConfirmRequest } from '../../../components/confirm-store';
 import { notify } from '../../../components/toast-store';
 import { keptLine, useBulkRunning } from '../../../store/bulk-run';
 import { changeDriveInBatches, type DriveBulk, type DriveChanger } from '../../../store/drive-bulk';
+import { shownDriveChange } from '../../drive';
 import { restoreLocalCopiesWithNotice } from '../library/local-copies';
 import {
   deleteAllConfirm,
@@ -63,50 +66,62 @@ export async function runDeleted(
   }
 }
 
-async function restoreNow(items: readonly DeletedItem[], onDone: () => void): Promise<void> {
-  const result = await runDeleted({
-    bulk: {
-      label: 'photos.deleted.restore',
-      verb: 'Restoring',
-      ids: idsOf(items),
-      body: (batch) => ({ action: 'restore', itemIds: batch }),
+async function restoreNow(
+  change: DriveChanger,
+  items: readonly DeletedItem[],
+  onDone: () => void,
+): Promise<void> {
+  const result = await runDeleted(
+    {
+      bulk: {
+        label: 'photos.deleted.restore',
+        verb: 'Restoring',
+        ids: idsOf(items),
+        body: (batch) => ({ action: 'restore', itemIds: batch }),
+      },
+      verb: 'restored',
+      failure: 'Not everything was restored',
+      onDone,
     },
-    verb: 'restored',
-    failure: 'Not everything was restored',
-    onDone,
-  });
+    change,
+  );
   if (result !== null) restoreLocalOf(result);
 }
 
 async function removeNow(
+  change: DriveChanger,
   items: readonly DeletedItem[],
   request: ConfirmRequest,
   onDone: () => void,
 ): Promise<void> {
   if (!(await confirm(request))) return;
-  await runDeleted({
-    bulk: {
-      label: 'photos.deleted.delete_now',
-      verb: 'Deleting',
-      ids: idsOf(items),
-      body: (batch) => ({ action: 'delete_now', itemIds: batch }),
+  await runDeleted(
+    {
+      bulk: {
+        label: 'photos.deleted.delete_now',
+        verb: 'Deleting',
+        ids: idsOf(items),
+        body: (batch) => ({ action: 'delete_now', itemIds: batch }),
+      },
+      verb: 'deleted',
+      failure: 'Not everything was deleted',
+      onDone,
     },
-    verb: 'deleted',
-    failure: 'Not everything was deleted',
-    onDone,
-  });
+    change,
+  );
 }
 
 export function useDeletedActions(onDone: () => void): DeletedActions {
+  const change = shownDriveChange(useQueryClient(), changeDrive);
   const confirmed = (items: readonly DeletedItem[], request: ConfirmRequest): void => {
     if (items.length === 0) return;
-    background(removeNow(items, request, onDone), 'photos.deleted.delete_failed');
+    background(removeNow(change, items, request, onDone), 'photos.deleted.delete_failed');
   };
   return {
     busy: useBulkRunning(),
     restore: (items): void => {
       if (items.length === 0) return;
-      background(restoreNow(items, onDone), 'photos.deleted.restore_failed');
+      background(restoreNow(change, items, onDone), 'photos.deleted.restore_failed');
     },
     deleteNow: (items): void => {
       confirmed(items, deleteNowConfirm(totalsOf(items)));

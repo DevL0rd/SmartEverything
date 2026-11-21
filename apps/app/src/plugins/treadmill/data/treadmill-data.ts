@@ -22,7 +22,7 @@ export function useTreadmillView<K extends TreadmillReadQuery['view']>(
 ): UseQueryResult<TreadmillViewOf<K>> {
   return useScreenQuery({
     queryKey: treadmillKey(deviceId, { ...query, view: kind }),
-    queryFn: () => readTreadmillView(deviceId, kind, query),
+    queryFn: ({ signal }) => readTreadmillView(deviceId, kind, query, { signal }),
     enabled,
     staleTime: Infinity,
   });

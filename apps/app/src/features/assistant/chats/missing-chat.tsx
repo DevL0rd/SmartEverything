@@ -8,6 +8,7 @@ import type { ShellAction } from '../../../components/page-shell/shell-actions';
 import { useSyncStatus } from '../../../store/selectors';
 import { useArchivedChats } from '../data/archived-chats';
 import { setChatArchived } from './chat-actions';
+import { useEntityStore } from '../../../store/store-context';
 import { ThreadSkeleton } from '../components/thread-skeleton';
 import { leaveChat } from './leave-chat';
 import { missingChatState, type MissingChatState } from '../model/missing-chat';
@@ -21,6 +22,7 @@ function MissingBody({
   readonly chatId: string;
   readonly retry: () => void;
 }): ReactNode {
+  const store = useEntityStore();
   switch (state) {
     case 'waiting':
     case 'checking':
@@ -44,7 +46,7 @@ function MissingBody({
             <Button
               label="Restore chat"
               onPress={() => {
-                setChatArchived(chatId, false);
+                setChatArchived(store, chatId, false);
               }}
             />
           }

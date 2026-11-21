@@ -43,10 +43,14 @@ export function usePhonePlaces(
   const from = new Date(startOfDayKey(dayKeyOf(now))).toISOString();
   const query = useScreenQuery({
     queryKey: ['window', 'phone-places', deviceId, from],
-    queryFn: () =>
-      api().call(E.listEvents, {
-        query: { deviceIds: [deviceId], kinds: [...PLACE_KINDS], from, limit: MOST_PLACE_EVENTS },
-      }),
+    queryFn: ({ signal }) =>
+      api().call(
+        E.listEvents,
+        {
+          query: { deviceIds: [deviceId], kinds: [...PLACE_KINDS], from, limit: MOST_PLACE_EVENTS },
+        },
+        { signal },
+      ),
     select: placeVisitsOf,
     enabled,
   });

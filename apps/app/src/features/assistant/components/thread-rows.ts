@@ -5,9 +5,12 @@ import { usePendingKeys } from '../../../components/deferred-action';
 import { useRow } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { timed } from '../../../perf/probe-kit';
+import { compareText } from '../../../format/text';
 import { mergedRows, useOlderComplete, useOlderRows } from '../data/history';
 import { useAssistantName, useAssistantStatus } from '../data/assistant-data';
-import { usePendingMessages, type PendingMessage } from '../data/outbox';
+import { usePendingMessages } from '../data/outbox';
+import { useOutgoingMessages, type UnsentMessage } from '../data/outgoing';
+import type { PendingMessage } from '../data/ai-drafts';
 import { isFooter, threadOf, type MessageItem } from '../data/thread';
 import { castOf, type Cast } from '../model/participant';
 import { imageTimelineIds } from '../model/reply-timeline';
@@ -17,7 +20,7 @@ import { attachImageOperations, type ImageOperationItem } from '../images/model/
 interface OutboxItem {
   readonly type: 'outbox';
   readonly key: string;
-  readonly message: PendingMessage;
+  readonly message: UnsentMessage;
 }
 
 export type ThreadRow = MessageItem | ImageOperationItem | OutboxItem;
@@ -29,8 +32,29 @@ export interface ThreadRows {
   readonly complete: boolean;
 }
 
-function outboxOf(pending: readonly PendingMessage[]): readonly OutboxItem[] {
-  return [...pending]
+function storedClientIds(rows: readonly AssistantMessageRow[]): ReadonlySet<string> {
+  return new Set(
+    rows.flatMap((row) => (row.client_message_id === null ? [] : [row.client_message_id])),
+  );
+}
+
+export function unsentOf(
+  queued: readonly PendingMessage[],
+  outgoing: readonly UnsentMessage[],
+  stored: readonly AssistantMessageRow[],
+): readonly UnsentMessage[] {
+  const known = storedClientIds(stored);
+  const tracked = new Set(outgoing.map((message) => message.id));
+  const waiting = queued
+    .filter((message) => !tracked.has(message.id))
+    .map((message): UnsentMessage => ({ ...message, phase: 'queued' }));
+  return [...outgoing, ...waiting]
+    .filter((message) => !known.has(message.id))
+    .sort((left, right) => compareText(left.queuedAt, right.queuedAt));
+}
+
+function outboxOf(unsent: readonly UnsentMessage[]): readonly OutboxItem[] {
+  return [...unsent]
     .reverse()
     .map((message): OutboxItem => ({ type: 'outbox', key: `outbox-${message.id}`, message }));
 }
@@ -71,10 +95,12 @@ export function useThreadRows(
   const cast = useCast(historyKey, chat);
   const [opened] = useState(() => ({ at: Date.now(), readAt: chat?.read_at ?? null }));
   const hidden = usePendingKeys();
-  const pending = usePendingMessages(historyKey);
+  const queued = usePendingMessages(historyKey);
+  const outgoing = useOutgoingMessages(historyKey);
   const operations = useImageOperations(historyKey);
   const all = useMemo(() => mergedRows(rows, olderRows), [rows, olderRows]);
   const boundImages = useMemo(() => imageTimelineIds(all), [all]);
+  const unsent = useMemo(() => unsentOf(queued, outgoing, all), [queued, outgoing, all]);
   const items = useMemo(
     () =>
       timed('items', () =>
@@ -98,9 +124,9 @@ export function useThreadRows(
           hidden,
           replyStartedAt: items.find(isFooter)?.row.created_at ?? null,
         }),
-        outboxOf(pending),
+        outboxOf(unsent),
       ),
-    [pending, items, operations.data, hidden, boundImages],
+    [unsent, items, operations.data, hidden, boundImages],
   );
   return { data, all, readAt: opened.readAt, complete };
 }

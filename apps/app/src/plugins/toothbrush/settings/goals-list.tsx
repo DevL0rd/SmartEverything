@@ -7,7 +7,7 @@ import { hourText } from '../model/brush-model';
 import { Anchored } from './anchored';
 import { StepperRow } from './rows';
 import type { SettingsProps } from './settings-props';
-import { useClockFormat } from '../../../features/clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const HOURS = { min: 0, max: 23, step: 1 } as const;
 const MINIMUM = { min: 30, max: 300, step: 10 } as const;

@@ -291,7 +291,8 @@ function useFixtureSearch(
   location: FileLocation,
   query: SearchQuery | null,
 ): FileSearch<FixtureOrigin> {
-  const nodes = descendantsOf(useValue(tree), folderKeyOf(location));
+  const value = useValue(tree);
+  const nodes = descendantsOf(value, folderKeyOf(location));
   return {
     matches: query === null ? [] : searchOf(nodes, query),
     scanned: query === null ? null : nodes.length,

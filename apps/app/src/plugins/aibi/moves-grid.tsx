@@ -33,8 +33,8 @@ export function MovesGrid({
   readonly status: RobotStatus;
   readonly asleep: boolean;
 }): ReactNode {
-  const shown = quickMoves(moves.actions, GRID_MOVES);
   const mover = useMover(device);
+  const shown = quickMoves(moves.actions, GRID_MOVES);
   return (
     <Card title="Moves" icon="move">
       <Text variant="footnote" tone="variant">

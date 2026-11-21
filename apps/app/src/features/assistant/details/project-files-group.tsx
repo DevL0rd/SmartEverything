@@ -22,6 +22,13 @@ import {
 } from './project-files';
 import { background } from '@smarteverything/logging';
 
+interface MoreText {
+  readonly available: boolean;
+  readonly loading: boolean;
+  readonly failed: boolean;
+  readonly load: () => void;
+}
+
 function FileToolbar({
   text,
   name,
@@ -29,12 +36,7 @@ function FileToolbar({
 }: {
   readonly text: string;
   readonly name: string;
-  readonly more: {
-    readonly available: boolean;
-    readonly loading: boolean;
-    readonly failed: boolean;
-    readonly load: () => void;
-  };
+  readonly more: MoreText;
 }): ReactNode {
   return (
     <View className="flex-row flex-wrap gap-2">
@@ -68,7 +70,7 @@ function ProjectFileBody({
   const read = useScreenInfiniteQuery({
     queryKey: ['window', 'ai-project', chatId, path, 'text'],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => readProjectText(chatId, path, pageParam),
+    queryFn: ({ pageParam, signal }) => readProjectText(chatId, path, pageParam, signal),
     getNextPageParam: (page) => page.next_offset ?? undefined,
   });
   if (read.data === undefined && read.error !== null) {
@@ -82,25 +84,38 @@ function ProjectFileBody({
     );
   }
   if (read.data === undefined) return <RowsSkeleton />;
-  const text = read.data.pages.map((page) => page.content ?? '').join('');
+  return (
+    <ProjectFileText
+      path={path}
+      text={read.data.pages.map((page) => page.content ?? '').join('')}
+      more={{
+        available: read.hasNextPage,
+        loading: read.isFetchingNextPage,
+        failed: read.isFetchNextPageError,
+        load: () => {
+          background(read.fetchNextPage(), 'next_page.fetch_failed');
+        },
+      }}
+    />
+  );
+}
+
+function ProjectFileText({
+  path,
+  text,
+  more,
+}: {
+  readonly path: string;
+  readonly text: string;
+  readonly more: MoreText;
+}): ReactNode {
   return (
     <View className="gap-3">
       <Text variant="caption" tone="variant" selectable>
         {path}
       </Text>
-      <FileToolbar
-        text={text}
-        name={leafName(path)}
-        more={{
-          available: read.hasNextPage,
-          loading: read.isFetchingNextPage,
-          failed: read.isFetchNextPageError,
-          load: () => {
-            background(read.fetchNextPage(), 'next_page.fetch_failed');
-          },
-        }}
-      />
-      {read.isFetchNextPageError ? (
+      <FileToolbar text={text} name={leafName(path)} more={more} />
+      {more.failed ? (
         <Text variant="caption" tone="critical">
           Couldn’t load more of this file.
         </Text>

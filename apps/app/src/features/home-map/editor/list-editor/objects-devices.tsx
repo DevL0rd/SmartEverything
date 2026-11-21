@@ -11,7 +11,8 @@ import { background } from '@smarteverything/logging';
 import { Icon } from '../../../../components/icon';
 import { Text } from '../../../../components/text';
 import { compareText } from '../../../../format/text';
-import { useDevices, useRooms } from '../../../../store/selectors';
+import { useRooms } from '../../../../store/selectors';
+import { usePlacingDevices } from '../tools/placing-devices';
 import { PlacedDeviceItem, UnplacedDeviceRow } from './device-item';
 import { ListSection } from './list-parts';
 import { ObjectItem } from './object-item';
@@ -153,7 +154,7 @@ function useItemsContext(
 
 export function ObjectsDevicesList(props: ObjectsDevicesListProps): ReactNode {
   const hubRooms = useRooms();
-  const devices = useDevices();
+  const devices = usePlacingDevices();
   const { context, notice } = useItemsContext(props, hubRooms);
   const [openId, setOpenId] = useState<string | null>(null);
   const open = { openId, onOpen: setOpenId };

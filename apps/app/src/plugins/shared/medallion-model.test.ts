@@ -27,6 +27,28 @@ describe('medallionGeometry', () => {
     expect(glowInset).toBeCloseTo(-px * 0.3);
     expect(glowSpan).toBeCloseTo(px * 1.6);
   });
+
+  it('hands out one frozen geometry per size and idiom so its identity holds across renders', () => {
+    const hero = medallionGeometry('hero', true);
+    expect(medallionGeometry('hero', true)).toBe(hero);
+    expect(medallionGeometry('hero', false)).not.toBe(hero);
+    expect(Object.isFrozen(hero)).toBe(true);
+    expect(Object.isFrozen(hero.discStyle)).toBe(true);
+  });
+
+  it('carries the ready styles for the box, glow, disc and status dot', () => {
+    const { px, boxStyle, glowStyle, discStyle, dotStyle, glowInset, glowSpan, discInset, dot } =
+      medallionGeometry('hero', false);
+    expect(boxStyle).toEqual({ width: px, height: px });
+    expect(glowStyle).toEqual({
+      left: glowInset,
+      top: glowInset,
+      width: glowSpan,
+      height: glowSpan,
+    });
+    expect(discStyle.width).toBeCloseTo(px - 2 * discInset);
+    expect(dotStyle.width).toBe(dot);
+  });
 });
 
 describe('ringValue', () => {

@@ -24,6 +24,7 @@ export function HeartRange({
       marker={resting === null ? null : share(resting)}
       colour="heart"
       label={`Heart rate from ${String(Math.round(low))} to ${String(Math.round(high))} bpm`}
+      ticking={false}
     />
   );
 }

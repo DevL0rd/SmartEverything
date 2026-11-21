@@ -6,7 +6,7 @@ import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
 import { eventLook } from '../../activity';
 import { fractionTime, nearest, type TrackItem } from '../logic/timeline-track';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const HANDLE = 24;
 
@@ -65,8 +65,8 @@ export function ScrubPreview({
   readonly items: readonly TrackItem[];
   readonly fraction: number;
 }): ReactNode {
-  const item = nearest(items, fraction);
   const format = useClockFormat();
+  const item = nearest(items, fraction);
   return (
     <View className="flex-row items-center gap-3 rounded-lg bg-surface-2 p-2">
       <View className="aspect-video w-24 items-center justify-center overflow-hidden rounded-sm bg-surface-3">

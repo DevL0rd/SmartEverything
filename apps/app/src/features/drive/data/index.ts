@@ -11,3 +11,5 @@ export * from './refresh';
 export * from './tables';
 export * from './windows';
 export * from './library-refresh';
+export { createAlbumShown, type AlbumCreate } from './album-create';
+export { editOfChange, hiddenEdit, shownDriveChange, writeDriveShown } from './shown';

@@ -184,7 +184,8 @@ function usePill(
   snapshot: VacuumSnapshot,
   scene: VacuumScene | null,
 ): StagePill | null {
-  const pose = valueOrNull(useVacuumPose(deviceId)) ?? scene?.robot ?? null;
+  const vacuumPose = useVacuumPose(deviceId);
+  const pose = valueOrNull(vacuumPose) ?? scene?.robot ?? null;
   const chip = vacuumChipOf(snapshot.values, snapshot.online);
   if (chip.key === 'asleep') {
     return ASLEEP_PILL;
@@ -268,10 +269,10 @@ export function MapView(props: MapViewProps): ReactNode {
   const { frame, visible, laidOut } = useFrame(props.onReady);
   useVacuumRoute(device.id, { stageId: live?.id ?? null, onScreen: visible });
   const feed = useMapFeed(device.id, snapshot.mapVersionText);
-  const chip = vacuumChipOf(snapshot.values, snapshot.online);
   const plan = usePlan(props, snapshot, { requested, webgl }, feed);
   const pill = usePill(device.id, snapshot, feed.scene);
   const locate = useVacuumLocate(device);
+  const chip = vacuumChipOf(snapshot.values, snapshot.online);
   return (
     <View ref={frame} onLayout={laidOut} collapsable={false} className={FRAME[variant]}>
       <MapStage

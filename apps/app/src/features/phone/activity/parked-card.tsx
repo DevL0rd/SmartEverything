@@ -19,6 +19,7 @@ function useParkedSpot(): {
 } {
   const query = useScreenQuery({
     queryKey: PARKED_SPOT_KEY,
+    // eslint-disable-next-line local/query-fn-signal -- the native module reads on the device, which cannot be aborted
     queryFn: parkedSpot,
     staleTime: 0,
     refetchOnWindowFocus: true,

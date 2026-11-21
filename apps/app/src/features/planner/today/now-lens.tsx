@@ -14,7 +14,7 @@ import { Text } from '../../../components/text';
 import { useAreaWidth } from '../../../design/size-class';
 import { plural } from '../../../format/text';
 import { dayBoundsOf } from '../../../format/time';
-import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
+import { useInstantClock, type InstantClock } from '../../../store/clock-format';
 import { DeviceFace } from '../../devices';
 import { usePlannerCollections, usePlannerItems, useVisibleMinute } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
@@ -118,6 +118,7 @@ function Countdown({ timing }: { readonly timing: LensTiming | null }): ReactNod
         thickness={RING.thickness}
         colour="primary"
         overlay
+        ticking={false}
       />
       <Text variant="label" className="tabular-nums">
         {`${String(timing.minutes)}m`}

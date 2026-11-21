@@ -14,18 +14,23 @@ export function readEntries(
   from: number,
   to: number,
   types: readonly LoggableType[],
+  signal: AbortSignal,
 ): Promise<HealthEntryRow[]> {
-  return api().call(E.readHealthEntries, {
-    query: {
-      from: new Date(from).toISOString(),
-      to: new Date(to).toISOString(),
-      ...(types.length === 0 ? {} : { types: [...types] }),
+  return api().call(
+    E.readHealthEntries,
+    {
+      query: {
+        from: new Date(from).toISOString(),
+        to: new Date(to).toISOString(),
+        ...(types.length === 0 ? {} : { types: [...types] }),
+      },
     },
-  });
+    { signal },
+  );
 }
 
-export function readEntry(entryId: string): Promise<HealthEntryRow> {
-  return api().call(E.readHealthEntry, { params: { entryId } });
+export function readEntry(entryId: string, signal: AbortSignal): Promise<HealthEntryRow> {
+  return api().call(E.readHealthEntry, { params: { entryId } }, { signal });
 }
 
 export function createEntry(entry: HealthEntryInput): Promise<HealthEntryRow> {
@@ -44,8 +49,8 @@ export async function deleteEntry(entryId: string): Promise<void> {
   await api().call(E.deleteHealthEntry, { params: { entryId } });
 }
 
-export function readFoods(): Promise<FoodRow[]> {
-  return api().call(E.listFoods, {});
+export function readFoods(signal: AbortSignal): Promise<FoodRow[]> {
+  return api().call(E.listFoods, {}, { signal });
 }
 
 export function saveFood(food: NewFood): Promise<FoodRow> {
@@ -64,7 +69,7 @@ export function lookupBarcode(barcode: string): Promise<FoodCandidate> {
   return api().call(E.lookupFood, { query: { barcode } });
 }
 
-export async function searchProducts(query: string): Promise<FoodCandidate[]> {
-  const answer = await api().call(E.searchFoods, { query: { q: query } });
+export async function searchProducts(query: string, signal: AbortSignal): Promise<FoodCandidate[]> {
+  const answer = await api().call(E.searchFoods, { query: { q: query } }, { signal });
   return answer.products;
 }

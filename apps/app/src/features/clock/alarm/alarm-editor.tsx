@@ -16,7 +16,7 @@ export interface AlarmEditorProps {
   readonly alarmId: string | null;
   readonly open: boolean;
   readonly onClose: () => void;
-  readonly onCreated: (alarm: PlannerAlarmRow) => void;
+  readonly onCreated: (alarmId: string) => void;
 }
 
 interface OpenProps extends AlarmEditorProps {

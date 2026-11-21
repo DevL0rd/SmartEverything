@@ -5,6 +5,10 @@ import type { SettingEnv } from '../../../settings/types';
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: { getItem: vi.fn(), setItem: vi.fn().mockResolvedValue(undefined) },
 }));
+vi.mock('./overlay-shortcut-row', () => ({
+  MuteShortcutRow: (): null => null,
+  TalkShortcutRow: (): null => null,
+}));
 vi.mock('./overlay-native', () => ({
   overlayStatus: (): null => null,
   openOverlaySettings: vi.fn(),

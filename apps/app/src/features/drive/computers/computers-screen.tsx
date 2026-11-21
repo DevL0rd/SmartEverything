@@ -154,8 +154,9 @@ export function ComputersScreen(): ReactNode {
   const loaded = useLoaded();
   const live = useSyncStatus().status === 'live';
   const here = useThisComputer();
-  const computers = computersOf(useDevices(), here?.deviceId ?? null);
+  const devices = useDevices();
   const [pairing, setPairing] = useState(false);
+  const computers = computersOf(devices, here?.deviceId ?? null);
   const pair = (): void => {
     setPairing(true);
   };

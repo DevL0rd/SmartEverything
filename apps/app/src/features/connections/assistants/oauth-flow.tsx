@@ -102,8 +102,9 @@ function useNewGrant(assistant: OAuthAssistant): boolean {
 }
 
 export function OAuthFlow({ assistant }: { readonly assistant: OAuthAssistant }): ReactNode {
-  const publicUrl = verifiedPublicUrl(useSettings());
+  const settings = useSettings();
   const connected = useNewGrant(assistant);
+  const publicUrl = verifiedPublicUrl(settings);
   const body =
     publicUrl === null ? (
       <RemoteAccessGate who={assistant.name} />

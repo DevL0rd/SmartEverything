@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 import {
   API_ENDPOINTS as E,
   type DriveItemLink,
@@ -6,6 +6,7 @@ import {
 } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { routeFor } from '../../../api/connection/active-route';
+import { usePausable } from '../../../design/external-store';
 import { connectionState } from '../../../api/connection/connection';
 import { api } from '../../../api/transport';
 
@@ -21,6 +22,11 @@ interface Entry {
   readonly expiresAt: number;
 }
 
+export interface ResolvedDriveLink {
+  readonly url: string;
+  readonly expiresAt: number;
+}
+
 interface Batch {
   readonly ids: Set<string>;
   readonly done: Promise<void>;
@@ -32,6 +38,10 @@ export type RouteGeneration = () => number;
 
 function keyOf(itemId: string, rev: number, size: DriveLinkSize, generation: number): string {
   return `${itemId}\n${String(rev)}\n${size}\n${String(generation)}`;
+}
+
+function latestKeyOf(itemId: string, size: DriveLinkSize, generation: number): string {
+  return `${itemId}\n${size}\n${String(generation)}`;
 }
 
 function routeStore(): ReturnType<typeof routeFor>['state'] | null {
@@ -109,6 +119,7 @@ export async function routedDriveLinks(
 
 export class DriveLinkCache {
   private readonly entries = new Map<string, Entry>();
+  private readonly latest = new Map<string, Entry>();
   private readonly inflight = new Map<string, Promise<void>>();
   private batch: Batch | null = null;
 
@@ -120,6 +131,7 @@ export class DriveLinkCache {
 
   clear(): void {
     this.entries.clear();
+    this.latest.clear();
   }
 
   async resolve(itemId: string, rev: number, size: DriveLinkSize): Promise<string | null> {
@@ -133,6 +145,19 @@ export class DriveLinkCache {
     const entry = this.entries.get(keyOf(itemId, rev, size, this.generation()));
     if (entry === undefined) return null;
     return entry.expiresAt - this.now() > LINK_RENEW_LEAD_MS ? entry.url : null;
+  }
+
+  async resolveLatest(itemId: string, size: DriveLinkSize): Promise<ResolvedDriveLink | null> {
+    const cached = this.peekLatest(itemId, size);
+    if (cached !== null) return cached;
+    await this.request(itemId);
+    return this.peekLatest(itemId, size);
+  }
+
+  private peekLatest(itemId: string, size: DriveLinkSize): ResolvedDriveLink | null {
+    const entry = this.latest.get(latestKeyOf(itemId, size, this.generation()));
+    if (entry === undefined || entry.expiresAt - this.now() <= LINK_RENEW_LEAD_MS) return null;
+    return { url: entry.url, expiresAt: entry.expiresAt };
   }
 
   private request(itemId: string): Promise<void> {
@@ -181,18 +206,18 @@ export class DriveLinkCache {
     link: DriveItemLink['file'],
     generation: number,
   ): void {
-    this.entries.set(keyOf(owner.itemId, owner.rev, size, generation), {
-      generation,
-      url: link.url,
-      expiresAt: Date.parse(link.expiresAt),
-    });
+    const entry = { generation, url: link.url, expiresAt: Date.parse(link.expiresAt) };
+    this.entries.set(keyOf(owner.itemId, owner.rev, size, generation), entry);
+    this.latest.set(latestKeyOf(owner.itemId, size, generation), entry);
   }
 
   private sweep(): void {
     const now = this.now();
     const current = this.generation();
-    for (const [key, entry] of this.entries) {
-      if (entry.expiresAt <= now || entry.generation !== current) this.entries.delete(key);
+    for (const map of [this.entries, this.latest]) {
+      for (const [key, entry] of map) {
+        if (entry.expiresAt <= now || entry.generation !== current) map.delete(key);
+      }
     }
   }
 }
@@ -200,7 +225,7 @@ export class DriveLinkCache {
 export const driveLinks = new DriveLinkCache(readRoutedDriveLinks, Date.now, routeGeneration);
 
 export function useRouteGeneration(): number {
-  return useSyncExternalStore(subscribeGeneration, routeGeneration, routeGeneration);
+  return usePausable(subscribeGeneration, routeGeneration);
 }
 
 export function useDriveLink(

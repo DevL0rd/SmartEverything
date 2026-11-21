@@ -7,6 +7,7 @@ import type {
 } from '@smarteverything/domain';
 import type { SegmentedOption } from '../../../components/segmented';
 import { relative } from '../../../format/time';
+import type { SentAccessRequest } from '../data/row-shown';
 
 export const WANTED_ROLE_OPTIONS: readonly SegmentedOption<DriveGrantRole>[] = [
   { value: 'view', label: 'View' },
@@ -18,7 +19,7 @@ const WANTS: Readonly<Record<DriveGrantRole, string>> = { view: 'view', edit: 'e
 export type AccessScreenState =
   | { readonly kind: 'open'; readonly item: DriveItem }
   | { readonly kind: 'ask' }
-  | { readonly kind: 'sent'; readonly request: DriveAccessRequest }
+  | { readonly kind: 'sent'; readonly request: SentAccessRequest }
   | { readonly kind: 'declined'; readonly request: DriveAccessRequest }
   | { readonly kind: 'unavailable' };
 
@@ -40,7 +41,7 @@ export function askBodyOf(ownerName: string | null): string {
 }
 
 export function sentLineOf(
-  request: DriveAccessRequest,
+  request: Pick<SentAccessRequest, 'createdAt'>,
   now: number,
   ownerName: string | null,
 ): string {

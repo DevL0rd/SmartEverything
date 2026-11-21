@@ -1,8 +1,9 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { background } from '@smarteverything/logging';
+import { changeDrive } from '../../../api/drive';
 import type { MenuItem } from '../../../components/menu';
 import { useLastChat } from '../../assistant';
-import { useDriveAlbums, useDriveRoots } from '../../drive';
+import { useDriveAlbums, useDriveRoots, shownDriveChange } from '../../drive';
 import { dropPhotoItems } from '../data';
 import { openNewAlbum } from '../albums/new-album-host';
 import { NO_CHAT_HINT } from '../model/ask-actions';
@@ -25,11 +26,19 @@ export interface MediaActions {
   readonly trash: (ids: Ids, onMoved: () => void) => void;
 }
 
+async function trashShown(client: QueryClient, ids: Ids, onMoved: () => void): Promise<void> {
+  const landed = (moved: Ids): void => {
+    dropPhotoItems(client, moved);
+  };
+  if (await moveToTrash(ids, landed, shownDriveChange(client, changeDrive))) onMoved();
+}
+
 export function useMediaActions(): MediaActions {
   const albums = useDriveAlbums('photos');
   const roots = useDriveRoots();
   const last = useLastChat();
   const client = useQueryClient();
+  const change = shownDriveChange(client, changeDrive);
   const chatId = last.kind === 'open' ? last.chatId : null;
   return {
     chatHint: chatId === null ? NO_CHAT_HINT : null,
@@ -37,14 +46,14 @@ export function useMediaActions(): MediaActions {
       albumMenuItems(
         albums,
         (id, title) => {
-          background(addToAlbum(ids, { id, title }), 'photos.album_add_failed');
+          background(addToAlbum(ids, { id, title }, change), 'photos.album_add_failed');
         },
         () => {
           openNewAlbum(ids);
         },
       ),
     favourite: (ids, on): void => {
-      background(setFavourite(ids, on), 'photos.favourite_failed');
+      background(setFavourite(ids, on, change), 'photos.favourite_failed');
     },
     toChat: (ids): void => {
       if (chatId !== null) background(sendToChat(ids, chatId), 'photos.to_chat_failed');
@@ -62,14 +71,7 @@ export function useMediaActions(): MediaActions {
       if (chatId !== null) background(askAbout(itemId, chatId), 'photos.ask_failed');
     },
     trash: (ids, onMoved): void => {
-      background(
-        moveToTrash(ids, (landed) => {
-          dropPhotoItems(client, landed);
-        }).then((moved) => {
-          if (moved) onMoved();
-        }),
-        'photos.trash_failed',
-      );
+      background(trashShown(client, ids, onMoved), 'photos.trash_failed');
     },
   };
 }

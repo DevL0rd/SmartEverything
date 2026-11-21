@@ -197,9 +197,9 @@ function MapCanvas(props: CanvasProps): ReactNode {
 export function RoomMap(props: RoomMapProps): ReactNode {
   const { sensor, area, mini = false } = props;
   const measured = useMeasuredWidth();
+  const colours = useZoneColours(sensor);
   const model = modelFor(sensor, area, mini);
   const box = boxOf(props, measured.width, model.frame.view);
-  const colours = useZoneColours(sensor);
   return (
     <View
       className={cn(sensor.connection.state !== 'online' && 'opacity-60')}

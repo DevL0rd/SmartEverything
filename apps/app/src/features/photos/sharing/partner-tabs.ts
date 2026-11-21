@@ -4,9 +4,9 @@ import { nameOf, partnerSidesOf } from './model';
 import { usePhotoSharing } from './queries';
 
 export function usePartnerTabs(): readonly LibraryTab[] {
-  const partners = usePhotoSharing().data?.partners ?? [];
   const people = useProfiles();
   const me = useActiveProfile()?.id ?? null;
+  const partners = usePhotoSharing().data?.partners ?? [];
   return partnerTabsOf(
     partnerSidesOf(partners, me).receiving.map((share) => ({
       id: share.id,

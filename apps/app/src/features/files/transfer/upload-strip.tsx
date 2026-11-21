@@ -63,7 +63,12 @@ function Controls({
     <View className="flex-row items-center gap-1">
       {moving ? (
         <View className="w-20">
-          <ProgressBar progress={progressOf(item)} colour="primary" label={`${item.name} upload`} />
+          <ProgressBar
+            progress={progressOf(item)}
+            colour="primary"
+            label={`${item.name} upload`}
+            ticking={false}
+          />
         </View>
       ) : null}
       {pausable ? (
@@ -331,11 +336,32 @@ function StripHead({
   );
 }
 
+function Overall({
+  summary,
+  rate,
+}: {
+  readonly summary: UploadSummary;
+  readonly rate: number | null;
+}): ReactNode {
+  return (
+    <>
+      <ProgressBar
+        progress={overallProgress(summary)}
+        colour="primary"
+        label="Uploads"
+        ticking={false}
+      />
+      <AmountLine summary={summary} rate={rate} />
+    </>
+  );
+}
+
 export function UploadStrip(props: UploadStripProps): ReactNode {
   const { queue, folderKey, folder } = props;
   const [open, setOpen] = useState(true);
-  const items = itemsIn(useValue(queue.items), folderKey);
+  const value = useValue(queue.items);
   const rate = useRate(queue, folderKey);
+  const items = itemsIn(value, folderKey);
   const rows = shownRowsOf(items);
   if (rows.length === 0) return null;
   const summary = summaryOf(items);
@@ -363,12 +389,7 @@ export function UploadStrip(props: UploadStripProps): ReactNode {
         folder={folder}
         onConflicts={props.onConflicts}
       />
-      {isActive(summary) ? (
-        <>
-          <ProgressBar progress={overallProgress(summary)} colour="primary" label="Uploads" />
-          <AmountLine summary={summary} rate={rate} />
-        </>
-      ) : null}
+      {isActive(summary) ? <Overall summary={summary} rate={rate} /> : null}
       {open ? (
         <ScrollView className="max-h-60">
           {rows.map((item) => (

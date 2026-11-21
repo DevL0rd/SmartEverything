@@ -114,8 +114,8 @@ function shownMatches<O>(
 }
 
 function useSourceSearch<O>(input: FilterInput<O>, words: readonly string[]): SourceSearch<O> {
-  const match = matchOf(input.filter, input.abilities);
   const deferred = useDeferredValue(input.filter.text);
+  const match = matchOf(input.filter, input.abilities);
   const asked = input.abilities.searchNames && asksSource(words, input.listing.complete, match);
   const search = useFileSearch(input.source, input.location, queryOf(deferred, match, asked));
   const state = searchStateOf({

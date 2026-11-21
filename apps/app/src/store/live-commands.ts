@@ -4,6 +4,8 @@ import { background } from '@smarteverything/logging';
 
 const EXPIRY_GRACE_MS = 5000;
 
+export const COMMAND_READS = ['tables.commands'] as const;
+
 export function commandSucceeded(store: EntityStore, row: CommandRow): Promise<boolean> {
   return new Promise((resolve) => {
     const end = (success: boolean): void => {
@@ -11,19 +13,25 @@ export function commandSucceeded(store: EntityStore, row: CommandRow): Promise<b
       unsubscribe();
       resolve(success);
     };
-    const check = (): void => {
+    const outcome = (): boolean | undefined => {
       const current = store.get().tables.commands.byId[row.id];
-      if (current !== undefined && isFinished(current.status)) {
-        end(current.status === 'succeeded');
+      return current !== undefined && isFinished(current.status)
+        ? current.status === 'succeeded'
+        : undefined;
+    };
+    const check = (): void => {
+      const finished = outcome();
+      if (finished !== undefined) {
+        end(finished);
       }
     };
     const timer = setTimeout(
       () => {
-        end(false);
+        end(outcome() === true);
       },
       Math.max(0, Date.parse(row.expires_at) - Date.now() + EXPIRY_GRACE_MS),
     );
-    const unsubscribe = store.subscribe(check);
+    const unsubscribe = store.subscribeSlices(COMMAND_READS, check);
     check();
   });
 }

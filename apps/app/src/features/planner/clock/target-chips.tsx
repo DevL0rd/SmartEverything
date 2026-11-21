@@ -7,7 +7,7 @@ import { useRow } from '../../../store/selectors';
 import { useStoreSelector } from '../../../store/store-context';
 import { deviceIcon } from '../../device-visuals';
 import type { AlarmDefaults } from './alarm-chips';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import { wakeRoutineTimeOf } from './alarm-text';
 import { useWatchName } from './watch-state-line';
 

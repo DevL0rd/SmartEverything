@@ -44,6 +44,7 @@ export function SleepScoreRing({
           thickness={Math.round(size * RING_THICKNESS_RATIO)}
           colour="sleep-deep"
           trackColour="surface-3"
+          ticking={false}
         />
       </View>
       <Text variant={ringTextOf(size)} className="tabular">
@@ -97,7 +98,7 @@ function PartRow({ row }: { readonly row: ScorePartRow }): ReactNode {
           {row.detail}
         </Text>
       </View>
-      <ProgressBar progress={row.fraction} colour="sleep-deep" label={row.label} />
+      <ProgressBar progress={row.fraction} colour="sleep-deep" label={row.label} ticking={false} />
       <Text variant="caption" tone="variant">
         {row.points}
       </Text>

@@ -7,6 +7,7 @@ import type { SwitchRow } from '../../../../components/rows';
 import type { ComponentProps } from 'react';
 import type { useEngineAccessory } from '../../chats/engine-accessories';
 import type { useMemorySession } from '../../memory/memory-data';
+import type * as StoreContext from '../../../../store/store-context';
 
 const MEMORY_SESSION: ReturnType<typeof useMemorySession> = {
   key: 'test-memory-session',
@@ -14,7 +15,8 @@ const MEMORY_SESSION: ReturnType<typeof useMemorySession> = {
   assertCurrent: (): void => undefined,
 };
 
-const { accessory, memoryList, changeChat, keyboard, switchRow } = vi.hoisted(() => ({
+const { STORE, accessory, memoryList, changeChat, keyboard, switchRow } = vi.hoisted(() => ({
+  STORE: { fixture: 'store' },
   accessory: vi.fn<typeof useEngineAccessory>(),
   memoryList:
     vi.fn<() => { readonly data?: { readonly settings: { readonly enabled: boolean } } }>(),
@@ -26,6 +28,10 @@ const { accessory, memoryList, changeChat, keyboard, switchRow } = vi.hoisted(()
 vi.mock('../../chats/engine-accessories', () => ({ useEngineAccessory: accessory }));
 vi.mock('../../chats/engine-efforts', () => ({ useEngineEfforts: (): readonly [] => [] }));
 vi.mock('../../chats/chat-actions', () => ({ changeChat }));
+vi.mock('../../../../store/store-context', async (original) => ({
+  ...(await original<typeof StoreContext>()),
+  useEntityStore: (): typeof STORE => STORE,
+}));
 vi.mock('../../memory/memory-data', () => ({
   useMemorySession: (): typeof MEMORY_SESSION => MEMORY_SESSION,
   useMemoryList: memoryList,
@@ -157,8 +163,8 @@ describe('chat memory in the model picker', () => {
     keys?.onActivate('memory');
     row?.onChange(false);
     expect(changeChat.mock.calls).toEqual([
-      [CHAT_ID, { memory: false }],
-      [CHAT_ID, { memory: false }],
+      [STORE, CHAT_ID, { memory: false }],
+      [STORE, CHAT_ID, { memory: false }],
     ]);
   });
 

@@ -32,7 +32,7 @@ export interface ArcProps {
   readonly tinted?: boolean;
   readonly ticks?: readonly ArcTick[];
   readonly overlay?: boolean;
-  readonly ticking?: boolean;
+  readonly ticking: boolean;
 }
 
 function ArcStroke({
@@ -187,7 +187,7 @@ export function Arc({
   tinted = false,
   ticks = [],
   overlay = false,
-  ticking = false,
+  ticking,
 }: ArcProps): ReactNode {
   const centre = size / 2;
   const radius = (size - thickness) / 2;

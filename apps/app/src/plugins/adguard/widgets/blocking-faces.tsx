@@ -73,6 +73,7 @@ function Tile({ view }: BlockingFaceProps): ReactNode {
         size="widget"
         label={view.stale === null ? view.spoken : view.stale.long}
         offline={view.stale !== null}
+        ticking={false}
       />
       <View className="min-w-0 flex-1">
         <TileText view={view} />

@@ -31,7 +31,7 @@ export function useDraftLoad(automationId: string): {
   const drafted = view?.drafted === true;
   const baseRow = useScreenQuery({
     queryKey: automationKeys.revision(automationId, view?.revision ?? 0),
-    queryFn: () => api.getRevision(automationId, view?.revision ?? 0, kinds),
+    queryFn: ({ signal }) => api.getRevision(automationId, view?.revision ?? 0, kinds, { signal }),
     enabled: drafted,
     staleTime: Infinity,
   });
@@ -95,12 +95,12 @@ export function useComparisons(
   return {
     theirs: useScreenQuery({
       queryKey: automationKeys.compare(automationId, base, theirs),
-      queryFn: () => api.compareRevisions(automationId, base, theirs),
+      queryFn: ({ signal }) => api.compareRevisions(automationId, base, theirs, { signal }),
       enabled,
     }),
     mine: useScreenQuery({
       queryKey: [...automationKeys.compare(automationId, base, 'draft'), theirs],
-      queryFn: () => api.compareRevisions(automationId, base, 'draft'),
+      queryFn: ({ signal }) => api.compareRevisions(automationId, base, 'draft', { signal }),
       enabled,
       staleTime: 0,
     }),
@@ -115,7 +115,7 @@ export function useDraftChanges(
   const { api } = useAutomationsSource();
   return useScreenQuery({
     queryKey: [...automationKeys.compare(automationId, current, 'draft'), 'publish'],
-    queryFn: () => api.compareRevisions(automationId, current, 'draft'),
+    queryFn: ({ signal }) => api.compareRevisions(automationId, current, 'draft', { signal }),
     enabled,
     staleTime: 0,
   });

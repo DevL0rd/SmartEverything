@@ -46,6 +46,7 @@ function Side({
           colour={tint}
           label={`${label} ${text}`}
           thick
+          ticking={false}
         />
       </View>
       <Text variant="callout" className="w-14 text-right tabular" numberOfLines={1}>
@@ -92,8 +93,9 @@ function Compare({
   readonly readings: readonly MetricReading[];
   readonly forecast: WeatherForecast;
 }): ReactNode {
+  const climateBody = useClimateBody();
   const comparisons = comparisonsOf(readings, forecast);
-  const fit = outdoorFit(useClimateBody().box, comparisons.length);
+  const fit = outdoorFit(climateBody.box, comparisons.length);
   const hint = fit.hintLines === 0 ? null : hintOf(readings, forecast);
   return (
     <View className="flex-1 gap-3">

@@ -131,8 +131,8 @@ export function useNodeDrag<O>({ node, browser, session }: NodeViewProps<O>): {
 } {
   const ref = useRef<View>(null);
   const [hovering, setHovering] = useState(false);
-  const into = browser.source.openTargetOf?.(node) ?? node;
   useRowDrag(ref, session, () => browser.drag.payloadOf(node), isDraggable(browser, node));
+  const into = browser.source.openTargetOf?.(node) ?? node;
   useFolderDrop(
     ref,
     {

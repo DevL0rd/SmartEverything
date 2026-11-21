@@ -12,6 +12,8 @@ import { NavRow, SelectRow, SwitchRow } from '../../../components/rows';
 import { List } from '../../../components/section';
 import { TextEditSheet, type TextEditRequest } from '../../../settings/text-edit-sheet';
 import { changePlugin, savePlugin } from '../data/plugin-actions';
+import type { EntityStore } from '../../../store/entity-store';
+import { useEntityStore } from '../../../store/store-context';
 import { settingGroups } from '../model/setting-groups';
 import {
   listItems,
@@ -24,18 +26,21 @@ import {
 import { background } from '@smarteverything/logging';
 
 interface FieldProps<S extends PluginSetting> {
+  readonly store: EntityStore;
   readonly row: PluginRow;
   readonly name: string;
   readonly setting: S;
   readonly edit: (request: TextEditRequest) => void;
 }
 
-function saver(row: PluginRow, name: string): (value: JsonValue) => Promise<void> {
-  return (value) => savePlugin(row, { settings: { [name]: value } });
-}
-
-function textRequest(row: PluginRow, name: string, setting: TextSetting): TextEditRequest {
-  const save = saver(row, name);
+function textRequest({
+  store,
+  row,
+  name,
+  setting,
+}: Omit<FieldProps<TextSetting>, 'edit'>): TextEditRequest {
+  const save = (value: JsonValue): Promise<void> =>
+    savePlugin(store, row, { settings: { [name]: value } });
   const description = setting.description ?? undefined;
   const base = {
     title: setting.title,
@@ -60,13 +65,13 @@ function textRequest(row: PluginRow, name: string, setting: TextSetting): TextEd
   return { ...base, maxLength: 2000, kind: setting.secret ? 'password' : 'text', save };
 }
 
-function TextSettingRow({ row, name, setting, edit }: FieldProps<TextSetting>): ReactNode {
+function TextSettingRow({ edit, ...field }: FieldProps<TextSetting>): ReactNode {
   return (
     <NavRow
-      title={setting.title}
-      value={shownValue(row, name, setting)}
+      title={field.setting.title}
+      value={shownValue(field.row, field.name, field.setting)}
       onPress={() => {
-        edit(textRequest(row, name, setting));
+        edit(textRequest(field));
       }}
     />
   );
@@ -76,7 +81,7 @@ function ListSettingRow({
   row,
   name,
   setting,
-}: Omit<FieldProps<PluginListSetting>, 'edit'>): ReactNode {
+}: Omit<FieldProps<PluginListSetting>, 'edit' | 'store'>): ReactNode {
   const items = listItems(row, name, setting);
   return (
     <NavRow
@@ -88,10 +93,10 @@ function ListSettingRow({
   );
 }
 
-function Field({ row, name, setting, edit }: FieldProps<PluginSetting>): ReactNode {
+function Field({ store, row, name, setting, edit }: FieldProps<PluginSetting>): ReactNode {
   const change = (value: JsonValue): void => {
     background(
-      changePlugin(row, { settings: { [name]: value } }, `${setting.title} wasn’t saved`),
+      changePlugin(store, row, { settings: { [name]: value } }, `${setting.title} wasn’t saved`),
       'plugin.change_failed',
     );
   };
@@ -119,11 +124,12 @@ function Field({ row, name, setting, edit }: FieldProps<PluginSetting>): ReactNo
   if (setting.type === 'list') {
     return <ListSettingRow row={row} name={name} setting={setting} />;
   }
-  return <TextSettingRow row={row} name={name} setting={setting} edit={edit} />;
+  return <TextSettingRow store={store} row={row} name={name} setting={setting} edit={edit} />;
 }
 
 export function PluginSettingsForm({ row }: { readonly row: PluginRow }): ReactNode {
   const [request, setRequest] = useState<TextEditRequest | null>(null);
+  const store = useEntityStore();
   const groups = settingGroups(Object.entries(row.manifest.contributes.settings));
   if (groups.length === 0) {
     return null;
@@ -133,7 +139,14 @@ export function PluginSettingsForm({ row }: { readonly row: PluginRow }): ReactN
       {groups.map((group) => (
         <List inset key={group.title ?? 'settings'} title={group.title ?? 'Settings'}>
           {group.fields.map(([name, setting]) => (
-            <Field key={name} row={row} name={name} setting={setting} edit={setRequest} />
+            <Field
+              key={name}
+              store={store}
+              row={row}
+              name={name}
+              setting={setting}
+              edit={setRequest}
+            />
           ))}
         </List>
       ))}

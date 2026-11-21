@@ -15,7 +15,7 @@ import { listPhotoAiModels, readPhotoAiStatus, readPhotoAnalysis, suggestPhotoSe
 export function usePhotoAiStatus(): UseQueryResult<PhotosResult<'readPhotoAiStatus'>> {
   return useScreenQuery({
     queryKey: photoKeys.aiStatus(),
-    queryFn: readPhotoAiStatus,
+    queryFn: ({ signal }) => readPhotoAiStatus(signal),
     retry: false,
   });
 }
@@ -23,7 +23,7 @@ export function usePhotoAiStatus(): UseQueryResult<PhotosResult<'readPhotoAiStat
 export function usePhotoAiModels(): UseQueryResult<PhotosResult<'listPhotoAiModels'>> {
   return useScreenQuery({
     queryKey: photoKeys.aiModels(),
-    queryFn: listPhotoAiModels,
+    queryFn: ({ signal }) => listPhotoAiModels(signal),
     retry: false,
   });
 }
@@ -36,7 +36,8 @@ export function usePhotoAnalysis(
     queryFn:
       itemId === null
         ? skipToken
-        : (): Promise<PhotosResult<'readPhotoAnalysis'>> => readPhotoAnalysis(itemId),
+        : ({ signal }): Promise<PhotosResult<'readPhotoAnalysis'>> =>
+            readPhotoAnalysis(itemId, signal),
     retry: false,
   });
 }
@@ -48,7 +49,8 @@ export function usePhotoSuggestions(q: string): UseQueryResult<PhotosResult<'sug
     queryFn:
       query === ''
         ? skipToken
-        : (): Promise<PhotosResult<'suggestPhotoSearch'>> => suggestPhotoSearch(query),
+        : ({ signal }): Promise<PhotosResult<'suggestPhotoSearch'>> =>
+            suggestPhotoSearch(query, signal),
     placeholderData: keepPreviousData,
     retry: false,
   });

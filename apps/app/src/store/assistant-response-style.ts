@@ -37,7 +37,7 @@ export async function refreshResponseStyle(client: QueryClient, store: EntitySto
   try {
     const style = await client.query({
       queryKey: [...RESPONSE_STYLE_KEY, hub.baseUrl, profileId ?? null],
-      queryFn: () => hub.call(E.readAssistantResponseStyle, {}),
+      queryFn: ({ signal }) => hub.call(E.readAssistantResponseStyle, {}, { signal }),
       staleTime: 0,
     });
     if (!current()) return;

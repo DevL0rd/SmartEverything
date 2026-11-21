@@ -1,7 +1,8 @@
-import { createContext, use, useMemo } from 'react';
+import { use, useMemo } from 'react';
 import { usePausable } from '../../../../design/external-store';
 import type { GraphRunNode, GraphRunOverlay, GraphRunStepper } from '../../model/graph/run-overlay';
 import type { GraphCanvasIntent } from './graph-canvas-types';
+import { GraphEmitContext, GraphRunContext } from './graph-contexts';
 
 export interface GraphNodeRun {
   readonly node: GraphRunNode | null;
@@ -107,10 +108,6 @@ export class MissingGraphContextError extends Error {
     super('A graph canvas card was rendered outside the graph canvas.');
   }
 }
-
-export const GraphRunContext = createContext<GraphRunStore | null>(null);
-
-export const GraphEmitContext = createContext<((intent: GraphCanvasIntent) => void) | null>(null);
 
 export function useGraphRun(id: string): GraphNodeRun {
   const store = use(GraphRunContext);

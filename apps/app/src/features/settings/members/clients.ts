@@ -75,16 +75,3 @@ export function platformIcon(platform: ClientRow['platform']): 'smartphone' | 'm
       return 'globe';
   }
 }
-
-export interface PendingRole {
-  readonly from: Role;
-  readonly to: Role;
-}
-
-export function livePending(current: Role, pending: PendingRole | null): PendingRole | null {
-  return pending !== null && pending.from === current ? pending : null;
-}
-
-export function shownRole(current: Role, pending: PendingRole | null): Role {
-  return livePending(current, pending)?.to ?? current;
-}

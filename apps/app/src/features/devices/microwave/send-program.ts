@@ -8,7 +8,9 @@ import {
 import { Logger } from '@smarteverything/logging';
 import type { CommandLedger } from '../../../store/command-ledger';
 import type { EntityStore } from '../../../store/entity-store';
+import { COMMAND_READS } from '../../../store/live-commands';
 import type { Device, StoreState } from '../../../store/state';
+import { deviceValuesSlice, type Slice } from '../../../store/subscriptions';
 import { confirmedValue } from './program-status';
 
 const log = new Logger('app.devices');
@@ -37,7 +39,10 @@ export interface PlanInput {
   readonly applied: string | undefined;
   readonly start: boolean;
 }
-type Probe = (state: StoreState) => boolean | undefined;
+interface Probe {
+  readonly reads: readonly Slice[];
+  readonly outcome: (state: StoreState) => boolean | undefined;
+}
 
 function settingSteps(
   program: MicrowaveProgram,
@@ -97,16 +102,17 @@ function settle(store: EntityStore, probe: Probe, expires: string): Promise<bool
       resolve(outcome);
     };
     const check = (): void => {
-      const outcome = probe(store.get());
+      const outcome = probe.outcome(store.get());
       if (outcome !== undefined) {
         finish(outcome);
       }
     };
-    const unsubscribe = store.subscribe(check);
+    const unsubscribe = store.subscribeSlices(probe.reads, check);
     const timer = setTimeout(
       () => {
-        log.warn('microwave.settle_timed_out', { expires });
-        finish(false);
+        const outcome = probe.outcome(store.get());
+        if (outcome === undefined) log.warn('microwave.settle_timed_out', { expires });
+        finish(outcome === true);
       },
       Math.max(0, Date.parse(expires) - Date.now()) + COMMAND_COMPLETION_GRACE_MS,
     );
@@ -114,18 +120,24 @@ function settle(store: EntityStore, probe: Probe, expires: string): Promise<bool
   });
 }
 function commandDone(id: string): Probe {
-  return (state) => {
-    const row = state.tables.commands.byId[id];
-    return row !== undefined && isFinished(row.status) ? row.status === 'succeeded' : undefined;
+  return {
+    reads: COMMAND_READS,
+    outcome: (state): boolean | undefined => {
+      const row = state.tables.commands.byId[id];
+      return row !== undefined && isFinished(row.status) ? row.status === 'succeeded' : undefined;
+    },
   };
 }
 function reportedSteps(deviceId: string, steps: readonly ProgramStep[]): Probe {
-  return (state) =>
-    steps.every(({ reported }) =>
-      confirmedValue(state.deviceValues.get(deviceId) ?? {}, reported.key, reported.value),
-    )
-      ? true
-      : undefined;
+  return {
+    reads: [deviceValuesSlice(deviceId)],
+    outcome: (state): boolean | undefined =>
+      steps.every(({ reported }) =>
+        confirmedValue(state.deviceValues.get(deviceId) ?? {}, reported.key, reported.value),
+      )
+        ? true
+        : undefined,
+  };
 }
 async function dispatch(
   run: ProgramRun,

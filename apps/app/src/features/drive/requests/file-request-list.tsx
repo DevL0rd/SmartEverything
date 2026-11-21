@@ -16,8 +16,7 @@ import { joinParts } from '../../../format/text';
 import { relative } from '../../../format/time';
 import { useMinute } from '../../../store/clock';
 import { useSyncStatus } from '../../../store/selectors';
-import { KIND_ICON } from '../../files/browser/node-glyph';
-import { kindOfFile } from '../../files/source/node';
+import { KIND_ICON, kindOfFile } from '../../files';
 import {
   flattenPages,
   useDriveFileRequestRows,
@@ -230,7 +229,8 @@ export function useMyFileRequests(): readonly DriveFileRequest[] {
 export function FileRequestsSection({ onEdit }: { readonly onEdit: EditFileRequest }): ReactNode {
   const now = useMinute();
   const rows = useDriveFileRequestRows();
-  const groups = fileRequestGroupsOf(rows, useViewerId(), now);
+  const viewerId = useViewerId();
+  const groups = fileRequestGroupsOf(rows, viewerId, now);
   if (groups.open.length === 0 && groups.ended.length === 0) return null;
   return (
     <View className="gap-2">

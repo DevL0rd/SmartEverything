@@ -19,7 +19,10 @@ const adapters: Readonly<Record<'dsh' | 'native', CommandAdapter>> = {
 export function commandAdapter(kind: 'dsh' | 'native'): CommandAdapter {
   return adapters[kind];
 }
-async function discoverHarnessCommands(binding: CommandBinding): Promise<DiscoveredCommands> {
+async function discoverHarnessCommands(
+  binding: CommandBinding,
+  signal: AbortSignal,
+): Promise<DiscoveredCommands> {
   if (binding.target?.kind !== 'dsh' || binding.chatId === null)
     throw new CommandBindingError(
       'Commands aren’t ready yet. Try again in a moment.',
@@ -27,10 +30,11 @@ async function discoverHarnessCommands(binding: CommandBinding): Promise<Discove
       'unbound',
     );
   const scope = binding.target.scope;
-  const result = await api().call(E.listAiChatHarnessCommands, {
-    params: { chatId: binding.chatId },
-    body: scope,
-  });
+  const result = await api().call(
+    E.listAiChatHarnessCommands,
+    { params: { chatId: binding.chatId }, body: scope },
+    { signal },
+  );
   if (result.session_id !== scope.session_id || result.epoch < scope.expected_epoch)
     throw new CommandBindingError(
       'Command discovery returned another session. Refresh commands.',

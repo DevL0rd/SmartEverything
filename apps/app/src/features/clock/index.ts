@@ -14,3 +14,4 @@ export { snoozeLimitText } from './alarm/alarm-options';
 export { musicItemIdOf, soundIconOf, soundTextOf } from './alarm/sound-model';
 export { challengeTextOf } from './alarm/challenge-draft';
 export { sunriseTextOf } from './alarm/sunrise-model';
+export { ClockFigure } from './format/clock-figure';

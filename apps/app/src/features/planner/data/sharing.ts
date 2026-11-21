@@ -13,12 +13,12 @@ import {
   unsharePlannerCollection,
 } from '../../../api/planner-sharing';
 import type { EntityStore } from '../../../store/entity-store';
-import { applyChange } from '../../../store/live-reducers';
 import { memoOnInputs } from '../../../store/memo-selector';
 import { rowsOf, type StoreState } from '../../../store/state';
 import { shallowEqual, useEntityStore, useStoreSelector } from '../../../store/store-context';
 import { viewerCalendarsOf, type ViewerCalendar } from '../calendar/calendars-model';
-import { collectionEdit, rowEdit, writeOptimistically, type RowAccess } from './optimistic';
+import { rowById, rowEdit, writeOptimistically, type RowAccess } from '../../../store/optimistic';
+import { collectionEdit } from './optimistic';
 import { apiPerson, profileIn, type PlannerPerson } from './person';
 
 type Select<T> = (state: StoreState) => T;
@@ -107,26 +107,7 @@ function shareAccess(
   collectionId: string,
   profileId: string,
 ): RowAccess<PlannerCollectionShareRow> {
-  return {
-    find: (state) =>
-      state.tables.planner_collection_shares.byId[`${collectionId}\n${profileId}`] ?? null,
-    put: (state, row) =>
-      applyChange(state, {
-        type: 'change',
-        table: 'planner_collection_shares',
-        operation: 'UPDATE',
-        record: row,
-        oldRecord: null,
-      }),
-    drop: (state, row) =>
-      applyChange(state, {
-        type: 'change',
-        table: 'planner_collection_shares',
-        operation: 'DELETE',
-        record: null,
-        oldRecord: row,
-      }),
-  };
+  return rowById('planner_collection_shares', `${collectionId}\n${profileId}`);
 }
 
 export interface ViewerLook {
@@ -151,9 +132,11 @@ function shareWrites(store: EntityStore, who: string | undefined): SharingWrites
       previous === null
         ? []
         : [rowEdit(shareAccess(calendar.row.id, personId), previous, { ...previous, role })];
-    return writeOptimistically(store, 'planner_share.set', edits, () =>
-      sharePlannerCollection(who, calendar.row.id, personId, { role }),
-    );
+    return writeOptimistically(store, {
+      event: 'planner_share.set',
+      edits: edits,
+      send: () => sharePlannerCollection(who, calendar.row.id, personId, { role }),
+    });
   };
 }
 
@@ -163,9 +146,11 @@ function unshareWrites(store: EntityStore, who: string | undefined): SharingWrit
       calendar.sharedWith.find((entry) => entry.profile_id === personId) ?? calendar.share;
     const edits =
       previous === null ? [] : [rowEdit(shareAccess(calendar.row.id, personId), previous, null)];
-    return writeOptimistically(store, 'planner_share.remove', edits, () =>
-      unsharePlannerCollection(who, calendar.row.id, personId),
-    );
+    return writeOptimistically(store, {
+      event: 'planner_share.remove',
+      edits: edits,
+      send: () => unsharePlannerCollection(who, calendar.row.id, personId),
+    });
   };
 }
 
@@ -174,19 +159,19 @@ function lookWrites(store: EntityStore, who: string | undefined): SharingWrites[
     const { share } = calendar;
     if (share === null) {
       const row = store.get().tables.planner_collections.byId[calendar.row.id] ?? calendar.row;
-      return writeOptimistically(
-        store,
-        'planner_collection.update',
-        [collectionEdit(row, { ...row, ...change })],
-        () => updatePlannerCollection(who, row.id, change),
-      );
+      return writeOptimistically(store, {
+        event: 'planner_collection.update',
+        edits: [collectionEdit(row, { ...row, ...change })],
+        send: () => updatePlannerCollection(who, row.id, change),
+      });
     }
-    return writeOptimistically(
-      store,
-      'planner_share.look',
-      [rowEdit(shareAccess(share.collection_id, share.profile_id), share, { ...share, ...change })],
-      () => changePlannerShare(who, share.collection_id, share.profile_id, change),
-    );
+    return writeOptimistically(store, {
+      event: 'planner_share.look',
+      edits: [
+        rowEdit(shareAccess(share.collection_id, share.profile_id), share, { ...share, ...change }),
+      ],
+      send: () => changePlannerShare(who, share.collection_id, share.profile_id, change),
+    });
   };
 }
 

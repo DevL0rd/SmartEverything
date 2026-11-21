@@ -34,6 +34,12 @@ export function useColumnScrub(
   readonly keys: StepKeys;
 } {
   const pointer = useIdiom() === 'pointer';
+  const step = (direction: 1 | -1): void => {
+    set(stepColumn(count, current, direction));
+  };
+  const keys = useStepKeys(step, () => {
+    set(null);
+  });
   const scrub = scrubGesture(pointer, (point) => {
     if (point !== null) {
       set(columnAt(count, frame.left, frame.right, point.x));
@@ -46,12 +52,6 @@ export function useColumnScrub(
     .onEnd(() => {
       set(null);
     });
-  const step = (direction: 1 | -1): void => {
-    set(stepColumn(count, current, direction));
-  };
-  const keys = useStepKeys(step, () => {
-    set(null);
-  });
   return {
     gesture: pointer ? scrub : Gesture.Race(scrub, clear),
     onAction: (event): void => {

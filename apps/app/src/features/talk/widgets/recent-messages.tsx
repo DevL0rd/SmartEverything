@@ -58,9 +58,10 @@ export function RecentMessages({
   readonly editing: boolean;
   readonly inline: boolean;
 }): ReactNode {
-  const messages = historyRows(useChannelMessages(channelId), limit, inline);
+  const channelMessages = useChannelMessages(channelId);
   const playing = usePlayingMessage();
   const now = useMinute();
+  const messages = historyRows(channelMessages, limit, inline);
   if (messages.length === 0) {
     return null;
   }

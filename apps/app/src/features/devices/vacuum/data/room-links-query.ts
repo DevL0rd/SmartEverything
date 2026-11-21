@@ -26,8 +26,8 @@ export function useVacuumRoomLinks(deviceId: string, mapVersion: string): RoomLi
   const position = useRooms().length;
   const query = useScreenQuery({
     queryKey: key,
-    queryFn: (): Promise<VacuumRoomLinks> =>
-      api().call(E.listVacuumRoomLinks, { params: { deviceId } }),
+    queryFn: ({ signal }): Promise<VacuumRoomLinks> =>
+      api().call(E.listVacuumRoomLinks, { params: { deviceId } }, { signal }),
     staleTime: Infinity,
   });
   const mutation = useMutation({

@@ -40,7 +40,7 @@ export function useWatchToday(): WatchDayState {
   const today = useDayKey();
   const query = useScreenQuery({
     queryKey: watchDaysKey(today, today),
-    queryFn: () => readWatchDays(today, today),
+    queryFn: ({ signal }) => readWatchDays(today, today, signal),
   });
   if (query.isPending) {
     return { kind: 'loading' };

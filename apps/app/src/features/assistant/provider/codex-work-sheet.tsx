@@ -9,6 +9,7 @@ import { Text } from '../../../components/text';
 import { useIsOwner } from '../../../store/selectors';
 import { CodexOptions, QueryState } from '../../computers';
 import { changeChat } from '../chats/chat-actions';
+import { useEntityStore } from '../../../store/store-context';
 import { useProviderWorking } from '../provider/provider-working';
 import { useCodexProvider } from './codex-provider-data';
 import { CodexProviderPrompt } from './codex-provider-prompts';
@@ -45,6 +46,7 @@ function Overview({
 function Options({ chat }: { readonly chat: AiChatRow }): ReactNode {
   const working = useProviderWorking(chat);
   const [saving, setSaving] = useState(false);
+  const store = useEntityStore();
   if (chat.engine.kind !== 'codex') return null;
   const engine = chat.engine;
   return (
@@ -57,7 +59,7 @@ function Options({ chat }: { readonly chat: AiChatRow }): ReactNode {
       save={(settings) => {
         setSaving(true);
         background(
-          changeChat(chat.id, { engine: { ...engine, settings } }).finally(() => {
+          changeChat(store, chat.id, { engine: { ...engine, settings } }).finally(() => {
             setSaving(false);
           }),
           'chat.change_failed',

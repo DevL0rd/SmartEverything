@@ -42,7 +42,12 @@ function Headline({ live }: { readonly live: PrinterLive }): ReactNode {
         </Text>
       )}
       {status.progress === null ? null : (
-        <ProgressBar progress={status.progress} colour="primary" label="Job progress" />
+        <ProgressBar
+          progress={status.progress}
+          colour="primary"
+          label="Job progress"
+          ticking={false}
+        />
       )}
     </>
   );
@@ -56,6 +61,7 @@ function Week({ today }: { readonly today: PrinterOverview['today'] }): ReactNod
         progress={Math.min(1, today.pagesWeek / Math.max(1, today.weeklyBudget))}
         colour={today.pagesWeek > today.weeklyBudget ? 'warning' : 'primary'}
         label={text}
+        ticking={false}
       />
       <Text variant="caption" tone="variant" className="tabular" numberOfLines={2}>
         {text}

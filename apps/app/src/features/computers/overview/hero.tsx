@@ -39,6 +39,7 @@ function HeroMedallion({
       size="hero"
       label={`${status.word}${load === null ? '' : `, processor ${String(load)} percent`}`}
       offline={status.offline}
+      ticking
     />
   );
 }

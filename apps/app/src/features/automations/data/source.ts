@@ -1,9 +1,10 @@
-import type { NodeKindLookup } from '@smarteverything/domain';
+import { ACTIVE_RUN_RECORD_STATUSES, type NodeKindLookup } from '@smarteverything/domain';
 import { use, useMemo } from 'react';
 import type { NodeKind } from '@smarteverything/domain';
 import { usePausable } from '../../../design/external-store';
 import type { EntityStore } from '../../../store/entity-store';
-import { rowsOf } from '../../../store/state';
+import { liveRowEdit, writeOptimistically, type Edit } from '../../../store/optimistic';
+import { rowsOf, type RowOf } from '../../../store/state';
 import { StoreContext } from '../../../store/store-runtime';
 import * as hubApi from './api';
 import { AutomationsSourceContext } from './source-context';
@@ -22,12 +23,25 @@ export interface KindSource {
   readonly subscribe: (listener: () => void) => () => void;
 }
 
+export type StoredAutomation = RowOf<'automations'>;
+
+export interface AutomationWrite<T> {
+  readonly event: string;
+  readonly automationId: string;
+  readonly change: (row: StoredAutomation) => StoredAutomation | null;
+  readonly added?: (row: StoredAutomation) => StoredAutomation;
+  readonly send: () => Promise<T>;
+}
+
+export type AutomationWriter = <T>(write: AutomationWrite<T>) => Promise<T>;
+
 export interface AutomationsSource {
   readonly api: AutomationsApi;
+  readonly write: AutomationWriter;
   readonly automations: AutomationRowsSource;
   readonly kindSource: KindSource;
   readonly trace: TraceChannel;
-  readonly runChanges: (listener: () => void) => () => void;
+  readonly runWaitChanges: (listener: () => void) => () => void;
 }
 
 export interface ResolvedAutomationsSource extends Omit<AutomationsSource, 'kindSource'> {
@@ -70,6 +84,64 @@ function storeKinds(store: EntityStore): KindSource {
   };
 }
 
+function writeEdits<T>(
+  previous: StoredAutomation | null,
+  write: AutomationWrite<T>,
+): readonly Edit[] {
+  if (previous === null) return [];
+  const next = write.change(previous);
+  const changed =
+    next === previous ? [] : [liveRowEdit('automations', write.automationId, previous, next)];
+  const row = write.added?.(previous) ?? null;
+  return row === null ? changed : [...changed, liveRowEdit('automations', row.id, null, row)];
+}
+
+function storeWriter(store: EntityStore): AutomationWriter {
+  return (write) => {
+    const { automationId } = write;
+    const previous = store.get().tables.automations.byId[automationId] ?? null;
+    return writeOptimistically(store, {
+      event: write.event,
+      edits: writeEdits(previous, write),
+      send: write.send,
+      fields: { automationId },
+    });
+  };
+}
+
+interface RunWaits {
+  readonly waiting: ReadonlySet<string>;
+  readonly held: ReadonlySet<string>;
+}
+
+function runWaitsOf(store: EntityStore, previous: RunWaits | null): RunWaits {
+  const waiting = new Set<string>();
+  const held = new Set<string>();
+  rowsOf(store.get().tables.automation_runs).forEach((run) => {
+    if (run.status === 'waiting') {
+      waiting.add(run.id);
+      held.add(run.id);
+    } else if (previous?.held.has(run.id) === true && ACTIVE_RUN_RECORD_STATUSES.has(run.status)) {
+      held.add(run.id);
+    }
+  });
+  return { waiting, held };
+}
+
+function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  return left.size === right.size && [...left].every((id) => right.has(id));
+}
+
+function runWaitChanges(store: EntityStore, listener: () => void): () => void {
+  let waits = runWaitsOf(store, null);
+  return store.subscribeSlices(['tables.automation_runs'], () => {
+    const next = runWaitsOf(store, waits);
+    const changed = !sameIds(waits.waiting, next.waiting) || !sameIds(waits.held, next.held);
+    waits = next;
+    if (changed) listener();
+  });
+}
+
 const HUB_SOURCES = new WeakMap<EntityStore, AutomationsSource>();
 
 export function hubSource(store: EntityStore): AutomationsSource {
@@ -78,10 +150,11 @@ export function hubSource(store: EntityStore): AutomationsSource {
   const kindSource = storeKinds(store);
   const source: AutomationsSource = {
     api: hubApi,
+    write: storeWriter(store),
     automations: storeRows(store, kindSource),
     kindSource,
     trace: automationTrace,
-    runChanges: (listener) => store.subscribeSlices(['tables.automation_runs'], listener),
+    runWaitChanges: (listener) => runWaitChanges(store, listener),
   };
   HUB_SOURCES.set(store, source);
   return source;
@@ -99,9 +172,10 @@ export function useAutomationsSource(): ResolvedAutomationsSource {
   return useMemo(
     () => ({
       api: source.api,
+      write: source.write,
       automations: source.automations,
       trace: source.trace,
-      runChanges: source.runChanges,
+      runWaitChanges: source.runWaitChanges,
       kinds: lookup.kinds,
       lookup,
     }),

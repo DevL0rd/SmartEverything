@@ -154,6 +154,7 @@ function UsageWindow({ window }: { readonly window: SubscriptionWindow }): React
           progress={Math.min(1, window.percent / 100)}
           colour={window.percent >= 80 ? 'warning' : 'primary'}
           label={`${window.label} used`}
+          ticking={false}
         />
       )}
       {window.resetAt === null ? null : (

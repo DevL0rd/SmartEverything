@@ -1,6 +1,8 @@
+import type { QueryClient } from '@tanstack/react-query';
 import type { PhotoGroup, PhotoGroupUpdate } from '@smarteverything/domain';
 import { notify } from '../../../components/toast-store';
-import { useMutationState } from '../../../store/mutation';
+import { useShownWriter, type ShownWriter } from '../../../queries/shown-writer';
+import { hiddenEdit, writeDriveShown } from '../../drive';
 import {
   dismissPhotoMergeSuggestion,
   facesOfGroupIn,
@@ -9,7 +11,15 @@ import {
   updatePhotoGroup,
 } from './api';
 import { groupTitleOf, photosText } from './model';
-import { usePeopleRefresh } from './queries';
+import { invalidatePeople } from './queries';
+import {
+  dismissTargets,
+  fewerTargets,
+  lessFaces,
+  mergeTargets,
+  removeTargets,
+  updateTargets,
+} from './shown';
 
 export type GroupRef = Pick<PhotoGroup, 'id' | 'kind' | 'name' | 'species'>;
 
@@ -18,11 +28,7 @@ export interface PeopleActions {
   readonly update: (group: PhotoGroup, patch: PhotoGroupUpdate, onDone?: () => void) => void;
   readonly merge: (target: PhotoGroup, sources: readonly PhotoGroup[], onDone?: () => void) => void;
   readonly dismissMerge: (pair: readonly [PhotoGroup, PhotoGroup]) => void;
-  readonly removeFaces: (
-    group: GroupRef,
-    faceIds: readonly string[],
-    onDone?: (left: PhotoGroup | null) => void,
-  ) => void;
+  readonly removeFaces: (group: GroupRef, faceIds: readonly string[]) => void;
   readonly removeItems: (
     group: PhotoGroup,
     itemIds: readonly string[],
@@ -49,71 +55,89 @@ async function removeOfItems(
   return removePhotoGroupFaces(group.id, faceIds);
 }
 
-type Left = (left: PhotoGroup | null) => void;
-
-function removedOf(refresh: () => void, group: GroupRef, onDone?: Left): Left {
-  return (left): void => {
-    refresh();
+function removedToast(group: GroupRef): () => void {
+  return (): void => {
     notify({ message: `Removed from ${groupTitleOf(group)}` });
-    onDone?.(left);
   };
 }
 
-function mergedOf(refresh: () => void, onDone?: () => void): (merged: PhotoGroup) => void {
-  return (merged): void => {
-    refresh();
-    notify({ message: `${groupTitleOf(merged)} now has ${photosText(merged.count)}` });
-    onDone?.();
-  };
-}
-
-function mergeOf(target: PhotoGroup, sources: readonly PhotoGroup[]): () => Promise<PhotoGroup> {
+function itemsHidden(
+  client: QueryClient,
+  group: PhotoGroup,
+  itemIds: readonly string[],
+): () => Promise<PhotoGroup | null> {
   return () =>
-    mergePhotoGroups({ targetId: target.id, sourceIds: sources.map((group) => group.id) });
+    writeDriveShown(client, {
+      event: 'photos.people.items_hidden',
+      edit: hiddenEdit(itemIds, (key) => JSON.stringify(key).includes(group.id)),
+      send: () => removeOfItems(group, itemIds),
+      incomplete: () => false,
+    });
 }
 
-export function usePeopleActions(): PeopleActions {
-  const mutation = useMutationState();
-  const refresh = usePeopleRefresh();
+function removalsOf(
+  client: QueryClient,
+  write: ShownWriter,
+): Pick<PeopleActions, 'removeFaces' | 'removeItems'> {
   return {
-    busy: mutation.busy,
-    update: (group, patch, onDone): void => {
-      mutation.run(() => updatePhotoGroup(group.id, patch), {
-        failure: updateFailureOf(patch),
-        label: 'photos.people.update',
-        onDone: () => {
-          refresh();
-          onDone?.();
-        },
-      });
-    },
-    merge: (target, sources, onDone): void => {
-      mutation.run(mergeOf(target, sources), {
-        failure: 'Nothing was merged',
-        label: 'photos.people.merge',
-        onDone: mergedOf(refresh, onDone),
-      });
-    },
-    dismissMerge: (pair): void => {
-      mutation.run(() => dismissPhotoMergeSuggestion([pair[0].id, pair[1].id]), {
-        failure: 'The suggestion was not dismissed',
-        label: 'photos.people.dismiss_merge',
-        onDone: refresh,
-      });
-    },
-    removeFaces: (group, faceIds, onDone): void => {
-      mutation.run(() => removePhotoGroupFaces(group.id, faceIds), {
+    removeFaces: (group, faceIds): void => {
+      write({
+        event: 'photos.people.remove_faces',
+        targets: removeTargets(group.id, faceIds),
+        send: () => removePhotoGroupFaces(group.id, faceIds),
         failure: 'Nothing was removed',
-        label: 'photos.people.remove_faces',
-        onDone: removedOf(refresh, group, onDone),
+        saved: removedToast(group),
       });
     },
     removeItems: (group, itemIds, onDone): void => {
-      mutation.run(() => removeOfItems(group, itemIds), {
+      write({
+        event: 'photos.people.remove_items',
+        targets: fewerTargets(group.id, itemIds.length),
+        send: itemsHidden(client, group, itemIds),
         failure: 'Nothing was removed',
-        label: 'photos.people.remove_items',
-        onDone: removedOf(refresh, group, onDone),
+        saved: removedToast(group),
       });
+      onDone?.(lessFaces(group, itemIds.length));
     },
   };
+}
+
+function actionsOf(client: QueryClient, write: ShownWriter): Omit<PeopleActions, 'busy'> {
+  return {
+    update: (group, patch, onDone): void => {
+      write({
+        event: 'photos.people.update',
+        targets: updateTargets(group, patch),
+        send: () => updatePhotoGroup(group.id, patch),
+        failure: updateFailureOf(patch),
+      });
+      onDone?.();
+    },
+    merge: (target, sources, onDone): void => {
+      const count = sources.reduce((total, group) => total + group.count, target.count);
+      write({
+        event: 'photos.people.merge',
+        targets: mergeTargets(target, sources),
+        send: () =>
+          mergePhotoGroups({ targetId: target.id, sourceIds: sources.map((group) => group.id) }),
+        failure: 'Nothing was merged',
+      });
+      notify({ message: `${groupTitleOf(target)} now has ${photosText(count)}` });
+      onDone?.();
+    },
+    dismissMerge: (pair): void => {
+      write({
+        event: 'photos.people.dismiss_merge',
+        targets: dismissTargets([pair[0].id, pair[1].id]),
+        send: () => dismissPhotoMergeSuggestion([pair[0].id, pair[1].id]),
+        failure: 'The suggestion was not dismissed',
+      });
+    },
+    ...removalsOf(client, write),
+  };
+}
+
+export function usePeopleActions(): PeopleActions {
+  const { busy, write, client } = useShownWriter(invalidatePeople);
+  return { busy, ...actionsOf(client, write) };
 }

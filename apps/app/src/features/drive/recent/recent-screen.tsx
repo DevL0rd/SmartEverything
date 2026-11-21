@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import { View } from 'react-native';
-import type { DriveRecentFilter } from '@smarteverything/domain';
+import type { DriveRecentEntry, DriveRecentFilter } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { Segmented, type SegmentedOption } from '../../../components/segmented';
 import { useLifecycleLog } from '../../../components/use-lifecycle-log';
@@ -36,7 +36,8 @@ import {
 } from './recent-model';
 import { RECENT_COLUMNS, RecentRow, type RecentColumns } from './recent-row';
 import type { FileBrowserHandle } from '../../files';
-import { DriveListFrame, useDriveNodeList } from '../source/drive-lists';
+import { DriveListFrame, useDriveList } from '../source/drive-lists';
+import { useDriveNodeContext } from '../source/drive-location';
 import {
   driveNodeOf,
   shortcutNodeOf,
@@ -58,13 +59,16 @@ const FILTERS: readonly SegmentedOption<DriveRecentFilter>[] = [
 
 function useNames(): RecentNames {
   const me = useSession().client.profile_id;
-  const people = new Map(useRows('profiles').map((person) => [person.id, person.name]));
+  const profiles = useRows('profiles');
   const devices = useDeviceNames('name');
-  return {
-    me,
-    personOf: (id) => people.get(id) ?? null,
-    deviceOf: (id) => devices.get(id) ?? null,
-  };
+  return useMemo(() => {
+    const people = new Map(profiles.map((person) => [person.id, person.name]));
+    return {
+      me,
+      personOf: (id) => people.get(id) ?? null,
+      deviceOf: (id) => devices.get(id) ?? null,
+    };
+  }, [me, profiles, devices]);
 }
 
 interface DriveScope {
@@ -144,11 +148,9 @@ function renderLine({
 }: RowRenderInput): (line: RecentLine) => ReactElement {
   return function RenderedLine(line: RecentLine): ReactElement {
     const chip = chipOf(rootIdOf(line.entry));
-    const node = list.nodeOf.get(line.key);
-    if (node === undefined) throw new MissingRecentNodeError(line.key);
     return (
       <RecentRow
-        node={node}
+        node={heldNodeOf(line.entry, list.context)}
         browser={list.browser}
         how={howOf(line.entry, names)}
         chip={chip}
@@ -160,16 +162,9 @@ function renderLine({
   };
 }
 
-class MissingRecentNodeError extends Error {
-  override readonly name = 'MissingRecentNodeError';
-  constructor(key: string) {
-    super(`The recent line ${key} has no file node.`);
-  }
-}
-
 interface RecentList {
   readonly browser: FileBrowserHandle<DriveOrigin>;
-  readonly nodeOf: ReadonlyMap<string, DriveNode>;
+  readonly context: DriveNodeContext;
 }
 
 function nodeOfEntry(entry: RecentLine['entry'], context: DriveNodeContext): DriveNode {
@@ -178,16 +173,33 @@ function nodeOfEntry(entry: RecentLine['entry'], context: DriveNodeContext): Dri
     : driveNodeOf(entry.item, context);
 }
 
+const HELD_NODES = new WeakMap<DriveNodeContext, WeakMap<DriveRecentEntry, DriveNode>>();
+
+function nodesHeldFor(context: DriveNodeContext): WeakMap<DriveRecentEntry, DriveNode> {
+  const held = HELD_NODES.get(context);
+  if (held !== undefined) return held;
+  const nodes = new WeakMap<DriveRecentEntry, DriveNode>();
+  HELD_NODES.set(context, nodes);
+  return nodes;
+}
+
+function heldNodeOf(entry: DriveRecentEntry, context: DriveNodeContext): DriveNode {
+  const nodes = nodesHeldFor(context);
+  const held = nodes.get(entry);
+  if (held !== undefined) return held;
+  const node = nodeOfEntry(entry, context);
+  nodes.set(entry, node);
+  return node;
+}
+
 function useRecentList(lines: readonly RecentLine[]): RecentList {
-  const keyed = new Map<string, DriveNode>();
-  const { browser } = useDriveNodeList('recent', (context) =>
-    lines.map((line) => {
-      const node = nodeOfEntry(line.entry, context);
-      keyed.set(line.key, node);
-      return node;
-    }),
+  const context = useDriveNodeContext();
+  const nodes = useMemo(
+    () => lines.map((line) => heldNodeOf(line.entry, context)),
+    [lines, context],
   );
-  return { browser, nodeOf: keyed };
+  const browser = useDriveList('recent', 'items', nodes);
+  return useMemo(() => ({ browser, context }), [browser, context]);
 }
 
 interface RecentListProps {
@@ -205,14 +217,18 @@ function RecentLines(props: RecentListProps): ReactNode {
   const names = useNames();
   const list = useRecentList(lines);
   const row = useMeasuredWidth();
-  const columns = placeColumns(row.width, RECENT_COLUMNS);
+  const columns = useMemo(() => placeColumns(row.width, RECENT_COLUMNS), [row.width]);
+  const renderItem = useMemo(
+    () => renderLine({ names, chipOf: scope.chipOf, days: feed.days, columns, list }),
+    [names, scope.chipOf, feed.days, columns, list],
+  );
   return (
     <DriveListFrame browser={list.browser}>
       <View className="-mx-gutter flex-1" onLayout={row.onLayout}>
         <VirtualList
           sections={sectionsOf(lines)}
           keyOf={(line) => line.key}
-          renderItem={renderLine({ names, chipOf: scope.chipOf, days: feed.days, columns, list })}
+          renderItem={renderItem}
           header={<ListTop {...props} columns={columns} />}
           empty={
             <RecentEmpty
@@ -242,7 +258,10 @@ export function RecentScreen(): ReactNode {
   const feed = useRecentFeed(filter);
   const wide = useAreaWidth() >= SHELL_BREAKPOINTS.compactMax;
   const chipOf = useDriveChips();
-  const lines = inDrive(feed.lines, drive, chipOfLine(chipOf));
+  const lines = useMemo(
+    () => inDrive(feed.lines, drive, chipOfLine(chipOf)),
+    [feed.lines, drive, chipOf],
+  );
   const live = useSyncStatus().status === 'live';
   useRecentLog(filter, lines.length);
   return (

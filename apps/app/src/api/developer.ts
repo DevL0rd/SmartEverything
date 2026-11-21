@@ -11,7 +11,7 @@ export async function setDeveloperDevice(developer: boolean): Promise<boolean> {
 export function useWatchCaptures(): UseQueryResult<WatchCaptureSummary> {
   return useScreenQuery({
     queryKey: WATCH_CAPTURES_KEY,
-    queryFn: () => api().call(E.readWatchCaptures, {}),
+    queryFn: ({ signal }) => api().call(E.readWatchCaptures, {}, { signal }),
   });
 }
 

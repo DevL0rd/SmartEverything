@@ -203,11 +203,12 @@ export function MemorySection({
   readonly list: AiMemoryList;
 }): ReactNode {
   const copy = SCOPE_COPY[scope];
-  const editable = mayChange(scope, useIsOwner());
+  const isOwner = useIsOwner();
   const actions = useMemoryActions();
   const [editing, setEditing] = useState<Editing | null>(null);
   const [order, setOrder] = useState<MemoryOrder>('importance');
   const memories = useMemo(() => memoriesIn(list, scope, order), [list, scope, order]);
+  const editable = mayChange(scope, isOwner);
   return (
     <>
       <List

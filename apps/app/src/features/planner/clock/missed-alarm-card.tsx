@@ -11,7 +11,7 @@ import { Text } from '../../../components/text';
 import { dayBoundsOf, localDayKey } from '../../../format/time';
 import { usePlannerRings, type PlannerPerson } from '../data';
 import { alarmLabelOf, missedAlarmsOf, missedPillOf, missedStoryOf } from './alarm-text';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 
 export interface MissedAlarmCardProps {
   readonly ring: PlannerRingRow;

@@ -5,7 +5,7 @@ import { useIdiom } from '../../../design/platform';
 import { initialsOf } from '../../../format/text';
 import { useChannelMembers, useFloor, useOnlineClients } from '../data/talk-data';
 
-import { AVATAR_GAP, AVATAR_SIZE, membersShown } from './layout';
+import { AVATAR_SIZE, membersShown } from './layout';
 
 const AVATAR = { width: AVATAR_SIZE, height: AVATAR_SIZE };
 
@@ -19,11 +19,12 @@ export function MemberStrip({
   const members = useChannelMembers(channelId);
   const floor = useFloor(channelId);
   const online = useOnlineClients();
-  const shown = membersShown(members.length, width, useIdiom());
+  const idiom = useIdiom();
+  const shown = membersShown(members.length, width, idiom);
   const extra = members.length - shown;
   if (members.length === 0) return null;
   return (
-    <View className="flex-row items-center" style={{ gap: AVATAR_GAP }}>
+    <View className="flex-row items-center gap-1">
       {members.slice(0, shown).map((member) => {
         const talking = floor?.speaker.id === member.member_id;
         const live = talking || online.has(member.member_id);

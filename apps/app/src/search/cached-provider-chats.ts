@@ -50,8 +50,8 @@ export function useCachedProviderChats(
       .map((chat) => ({
         queryKey:
           chat.runtime === 'codex' ? codexProviderKey(chat.id) : [...providerKey(chat.id), 'state'],
-        queryFn: (): Promise<AiChatProvider | AiChatRuntimeProvider> =>
-          api().call(E.readAiChatProvider, { params: { chatId: chat.id } }),
+        queryFn: ({ signal }): Promise<AiChatProvider | AiChatRuntimeProvider> =>
+          api().call(E.readAiChatProvider, { params: { chatId: chat.id } }, { signal }),
         enabled: false,
       })),
   });
@@ -59,12 +59,16 @@ export function useCachedProviderChats(
     subscribed,
     queries: chats.map((chat) => ({
       queryKey: [...agentRunKey(chat.id), 'list'],
-      queryFn: async (): Promise<RunPages> => ({
+      queryFn: async ({ signal }): Promise<RunPages> => ({
         pages: [
-          await api().call(E.listAiAgentRuns, {
-            params: { chatId: chat.id },
-            query: { limit: 50 },
-          }),
+          await api().call(
+            E.listAiAgentRuns,
+            {
+              params: { chatId: chat.id },
+              query: { limit: 50 },
+            },
+            { signal },
+          ),
         ],
         pageParams: [undefined],
       }),

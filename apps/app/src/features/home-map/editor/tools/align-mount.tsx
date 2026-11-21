@@ -15,7 +15,9 @@ import { sourceToHouse } from '../../../../components/house-map/overlays/model';
 import type { OverlayTransform } from '../../../../components/house-map/overlays/model-types';
 import type { RenderBounds } from '../../../../components/house-map/render-scene';
 import { selectionTick } from '../../../../platform/haptics';
-import { useDevices } from '../../../../store/selectors';
+import type { StoreState } from '../../../../store/state';
+import { useStoreSelector } from '../../../../store/store-context';
+import { sameFields, sameRows, shownDevices } from '../../data/map-devices';
 import { pairGhosts } from './scan-align-model';
 import {
   EMPTY_ALIGN,
@@ -29,6 +31,7 @@ import {
   useRobotScene,
   vacuumRobots,
   type AlignDraft,
+  type RobotCandidate,
   type Ring,
   type VacuumAlign,
 } from './vacuum-align';
@@ -126,8 +129,19 @@ export function alignNotice(align: VacuumAlign): EditorNotice | null {
   return { text: alignPrompt(align.draft), tone: 'info' };
 }
 
+const ROBOT_FIELDS = ['id', 'name', 'kind', 'provider'] as const;
+
+export const sameRobots = sameRows(sameFields<RobotCandidate>(ROBOT_FIELDS));
+
+const shownRobots = (state: StoreState): readonly RobotCandidate[] =>
+  vacuumRobots(shownDevices(state));
+
+export function useVacuumRobots(): readonly RobotCandidate[] {
+  return useStoreSelector(shownRobots, sameRobots);
+}
+
 function useVacuumAlign(input: AlignInput): VacuumAlign {
-  const robots = vacuumRobots(useDevices());
+  const robots = useVacuumRobots();
   const [picked, setPicked] = useState<string | null>(null);
   const [draft, setDraft] = useState<AlignDraft>(EMPTY_ALIGN);
   const deviceId = chosenRobot(picked, input.map, robots);

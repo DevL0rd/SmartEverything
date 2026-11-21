@@ -83,7 +83,7 @@ beforeEach(() => {
 describe('the device history queries', () => {
   it('ask the hub for this device only', async () => {
     stored = [row(1, THIS_DEVICE, 20), row(2, OTHER_DEVICE, 99)];
-    const rows = await readDeviceRows(THIS_DEVICE, 'temperature', 24);
+    const rows = await readDeviceRows(THIS_DEVICE, 'temperature', 24, new AbortController().signal);
     expect(rows.map((found) => found.device_id)).toEqual([THIS_DEVICE]);
     expect(calls[0]?.query.deviceIds).toEqual([THIS_DEVICE]);
     expect(calls[0]?.query.capabilities).toEqual(['temperature']);
@@ -94,7 +94,7 @@ describe('the device history queries', () => {
     stored = Array.from({ length: HUB_LIMIT + 200 }, (_, index) =>
       row(index + 1, index % 2 === 0 ? THIS_DEVICE : OTHER_DEVICE, index),
     );
-    const rows = await readDeviceRows(THIS_DEVICE, 'temperature', 24);
+    const rows = await readDeviceRows(THIS_DEVICE, 'temperature', 24, new AbortController().signal);
     const newest = Math.max(...stored.map((found) => found.id));
     expect(rows.at(-1)?.id).toBe(newest - 1);
     expect(rows.map((found) => found.id)).toEqual(
@@ -104,8 +104,10 @@ describe('the device history queries', () => {
 
   it('read 7 d and 30 d as one bucket size per range, up to now', async () => {
     buckets = [bucket('2026-10-16T11:00:00.000Z', 21)];
-    await expect(readDeviceBuckets(THIS_DEVICE, 'temperature', 168)).resolves.toEqual(buckets);
-    await readDeviceBuckets(THIS_DEVICE, 'temperature', 720);
+    await expect(
+      readDeviceBuckets(THIS_DEVICE, 'temperature', 168, new AbortController().signal),
+    ).resolves.toEqual(buckets);
+    await readDeviceBuckets(THIS_DEVICE, 'temperature', 720, new AbortController().signal);
     expect(calls.map((call) => call.endpoint)).toEqual([
       E.readHistoryBuckets.path,
       E.readHistoryBuckets.path,

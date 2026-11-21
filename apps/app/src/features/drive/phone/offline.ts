@@ -81,9 +81,10 @@ export interface PhoneStorage {
 
 export function usePhoneStorage(link: DriveProviderLink = nativeDriveProvider): PhoneStorage {
   const clientId = useSession().client.id;
-  const rows = pinnedRowsOf(useDriveOfflineRows(), clientId);
+  const driveOfflineRows = useDriveOfflineRows();
   const [status, setStatus] = useState<DriveOfflineStatus | null>(null);
   const [clearing, setClearing] = useState(false);
+  const rows = pinnedRowsOf(driveOfflineRows, clientId);
   const available = link.linked();
   const signature = rows.map((row) => `${row.itemId}:${row.state}:${String(row.bytes)}`).join('|');
   useEffect(() => {

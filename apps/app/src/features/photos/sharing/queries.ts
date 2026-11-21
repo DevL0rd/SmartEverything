@@ -18,7 +18,7 @@ export type ActivityPage = PhotosResult<'listPhotoAlbumActivity'>;
 export function usePhotoSharing(): UseQueryResult<PhotosResult<'readPhotoSharing'>> {
   return useScreenQuery({
     queryKey: photoKeys.sharing(),
-    queryFn: readPhotoSharing,
+    queryFn: ({ signal }) => readPhotoSharing(signal),
     retry: false,
   });
 }
@@ -31,8 +31,13 @@ export function useAlbumActivity(
     queryFn:
       albumId === null
         ? skipToken
-        : ({ pageParam }: { readonly pageParam: string | null }): Promise<ActivityPage> =>
-            listAlbumActivity(albumId, pageParam),
+        : ({
+            pageParam,
+            signal,
+          }: {
+            readonly pageParam: string | null;
+            readonly signal: AbortSignal;
+          }): Promise<ActivityPage> => listAlbumActivity(albumId, pageParam, signal),
     initialPageParam: null,
     getNextPageParam: (page: ActivityPage) => page.next,
     retry: false,

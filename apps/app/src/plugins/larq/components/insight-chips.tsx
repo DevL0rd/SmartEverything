@@ -31,7 +31,8 @@ export function InsightChips({
   readonly skip?: readonly string[];
 }): ReactNode {
   const stats = useBottleView(view.deviceId, 'stats', { range: 'week' }).data;
-  const insights = insightsOf(view, stats, minutesOfDay(useMinute())).filter(
+  const minute = useMinute();
+  const insights = insightsOf(view, stats, minutesOfDay(minute)).filter(
     (insight) => !skip.includes(insight.key),
   );
   return insights.length === 0 ? null : (

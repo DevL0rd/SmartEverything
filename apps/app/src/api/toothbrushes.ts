@@ -29,11 +29,13 @@ export async function readBrushView<K extends ViewName>(
   deviceId: string,
   kind: K,
   query: Omit<BrushReadQuery, 'view'> = {},
+  request: { readonly signal?: AbortSignal } = {},
 ): Promise<BrushViewOf<K>> {
-  const view = await api().call(E.readToothbrush, {
-    params: { deviceId },
-    query: { ...query, view: kind },
-  });
+  const view = await api().call(
+    E.readToothbrush,
+    { params: { deviceId }, query: { ...query, view: kind } },
+    request,
+  );
   if (!isView(kind, view)) {
     throw new UnexpectedBrushViewError(kind, view.view);
   }

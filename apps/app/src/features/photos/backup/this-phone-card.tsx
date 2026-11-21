@@ -86,7 +86,7 @@ function Ring({ status }: { readonly status: BackupStatus }): ReactNode {
       className="size-22 items-center justify-center"
     >
       <View className="absolute inset-0">
-        <Arc value={share} size={RING} thickness={8} colour="primary" />
+        <Arc value={share} size={RING} thickness={8} colour="primary" ticking={false} />
       </View>
       <Text variant="body-strong" className="tabular-nums">
         {percent(share)}

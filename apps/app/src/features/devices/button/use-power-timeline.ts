@@ -20,7 +20,7 @@ export function usePowerTimeline(
 ): PowerTimeline {
   const rows = useScreenQuery({
     queryKey: deviceHistoryKey(deviceId, capability ?? 'power', HOURS),
-    queryFn: () => readDeviceRows(deviceId, capability ?? 'power', HOURS),
+    queryFn: ({ signal }) => readDeviceRows(deviceId, capability ?? 'power', HOURS, signal),
     enabled: enabled && capability !== null,
   });
   return useMemo(() => {

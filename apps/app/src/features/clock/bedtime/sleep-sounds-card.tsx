@@ -11,7 +11,7 @@ import { Text } from '../../../components/text';
 import { notifyFailure } from '../../../components/toast-store';
 import { cn } from '../../../design/cn';
 import type { SleepSoundState } from '../../../../modules/health-connect';
-import { useInstantClock, type InstantClock } from '../format/clock-format';
+import { useInstantClock, type InstantClock } from '../../../store/clock-format';
 import { NoiseSpectrum } from './noise-spectrum';
 import { OFF } from './schedule-model';
 import { SleepSoundPicker } from './sleep-sound-picker';

@@ -1,7 +1,6 @@
-import { useSyncExternalStore } from 'react';
 import type { AppUpdateSummary } from '@smarteverything/domain';
 import { Logger, background } from '@smarteverything/logging';
-import { ValueStore } from '../../../design/external-store';
+import { ValueStore, usePausable } from '../../../design/external-store';
 import {
   INITIAL_UPDATE_VIEW,
   type AppUpdateController,
@@ -81,6 +80,6 @@ function readView(): AppUpdateView {
 }
 
 export function useAppUpdate(): AppUpdateView & { readonly actions: AppUpdateActions } {
-  const view = useSyncExternalStore(subscribeView, readView, readView);
+  const view = usePausable(subscribeView, readView);
   return { ...view, actions: APP_UPDATE_ACTIONS };
 }

@@ -115,6 +115,33 @@ describe('drive link cache', () => {
     expect(read).toHaveBeenCalledExactlyOnceWith([ITEM]);
   });
 
+  it('fetches every item asked for by id alone in the same tick with one request', async () => {
+    const { cache, read } = cacheOf();
+    const ids = Array.from({ length: 120 }, (_, index) => `${ITEM}-${String(index)}`);
+    await Promise.all([...ids, ITEM].map((id) => cache.resolveLatest(id, 'thumb')));
+    expect(read).toHaveBeenCalledExactlyOnceWith([...ids, ITEM]);
+    expect(await cache.resolveLatest(ITEM, 'thumb')).toEqual({
+      url: `/media/t-${ITEM}-1-${String(START)}`,
+      expiresAt: START + TEN_MINUTES,
+    });
+    expect(await cache.resolveLatest(OTHER, 'thumb')).toBeNull();
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it('renews a link asked for by id alone only once it nears expiry or the route changes', async () => {
+    const { cache, read, advance, switchRoute } = cacheOf();
+    const first = await cache.resolveLatest(ITEM, 'thumb');
+    advance(TEN_MINUTES - LINK_RENEW_LEAD_MS - 1);
+    expect(await cache.resolveLatest(ITEM, 'thumb')).toEqual(first);
+    expect(read).toHaveBeenCalledTimes(1);
+    advance(1);
+    expect(await cache.resolveLatest(ITEM, 'thumb')).not.toEqual(first);
+    expect(read).toHaveBeenCalledTimes(2);
+    switchRoute();
+    await cache.resolveLatest(ITEM, 'thumb');
+    expect(read).toHaveBeenCalledTimes(3);
+  });
+
   it('forgets its links when cleared', async () => {
     const { cache, read } = cacheOf();
     await cache.resolve(ITEM, 1, 'file');

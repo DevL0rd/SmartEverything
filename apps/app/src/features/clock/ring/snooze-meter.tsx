@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import { Icon } from '../../../components/icon';
 import { Text } from '../../../components/text';
-import { useInstantClock } from '../format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 import { useSecondOf } from '../../../store/clock';
 
 const SECOND_MS = 1000;

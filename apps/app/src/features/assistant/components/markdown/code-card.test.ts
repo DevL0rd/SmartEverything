@@ -19,6 +19,10 @@ function Box({ className, contentContainerClassName, children }: Props): ReactNo
 }
 
 vi.mock('react-native', () => ({ View: Box, Text: Box, ScrollView: Box }));
+vi.mock('react-native-gesture-handler', () => ({
+  GestureDetector: ({ children }: Props): ReactNode => children,
+}));
+vi.mock('../inner-scroll', () => ({ useInnerScrollGesture: (): null => null }));
 interface Action {
   readonly label: string;
   readonly selected?: boolean;

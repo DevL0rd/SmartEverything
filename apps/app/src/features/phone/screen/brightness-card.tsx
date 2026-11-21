@@ -30,6 +30,7 @@ function ReadOnly({ level }: { readonly level: number | null }): ReactNode {
             progress={level === null ? null : level / 100}
             colour="viz-1"
             label={level === null ? 'Brightness unknown' : `Brightness ${String(level)} percent`}
+            ticking={false}
           />
         </View>
         <Text variant="callout" className="tabular w-12 text-right">

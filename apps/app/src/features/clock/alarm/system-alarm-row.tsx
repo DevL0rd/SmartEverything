@@ -8,13 +8,14 @@ import type { ClockFormat } from '../../../format/clock-text';
 import { MINUTE_MS, localDayKey, zonedStartOfDay } from '../../../format/time';
 import { useScreenQuery } from '../../../queries/use-screen-query';
 import { dayWordOf } from '../../planner';
-import { useClockFormat } from '../format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const SYSTEM_ALARM_KEY = ['clock', 'system-alarm'] as const;
 
 function useSystemAlarm(): string | null {
   const query = useScreenQuery({
     queryKey: SYSTEM_ALARM_KEY,
+    // eslint-disable-next-line local/query-fn-signal -- the native module reads on the device, which cannot be aborted
     queryFn: nextSystemAlarm,
     enabled: plannerLinked(),
   });

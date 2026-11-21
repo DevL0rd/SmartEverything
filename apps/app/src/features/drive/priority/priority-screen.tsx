@@ -192,13 +192,17 @@ export function PriorityScreen(): ReactNode {
   const now = useMinute();
   const timeZone = useSettings().time_zone;
   const live = useSyncStatus().status === 'live';
+  const driveAccessRequestRows = useDriveAccessRequestRows();
+  const driveTransferRows = useDriveTransferRows();
+  const driveNotificationRows = useDriveNotificationRows();
+  const viewerId = useViewerId();
   const suggestions = flattenPages(query.data, (page) => page.items);
   const groups = suggestionGroupsOf(suggestions, now, timeZone);
   const tiles = waitingTilesOf({
-    viewerId: useViewerId(),
-    requests: useDriveAccessRequestRows(),
-    transfers: useDriveTransferRows(),
-    notifications: useDriveNotificationRows(),
+    viewerId,
+    requests: driveAccessRequestRows,
+    transfers: driveTransferRows,
+    notifications: driveNotificationRows,
   });
   const shown = groups.reduce((sum, group) => sum + group.suggestions.length, 0);
   const subtitle = prioritySubtitleOf(

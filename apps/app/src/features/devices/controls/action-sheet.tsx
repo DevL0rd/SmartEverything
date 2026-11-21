@@ -16,8 +16,8 @@ interface ActionSheetProps {
 }
 
 export function ActionSheet({ presented, opener, onClose, onRun }: ActionSheetProps): ReactNode {
-  const names = argumentsOf(presented);
   const [given, setGiven] = useState<Readonly<Record<string, string>>>({});
+  const names = argumentsOf(presented);
   const ready = names.every((name) => (given[name] ?? '').trim() !== '');
   const run = (): void => {
     if (!ready) {

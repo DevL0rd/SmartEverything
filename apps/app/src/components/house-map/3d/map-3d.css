@@ -17,6 +17,11 @@ body,
   outline: none;
 }
 
+.vacuum-map3d-host {
+  width: 100%;
+  height: 100%;
+}
+
 .vacuum-map3d-frame {
   width: 100%;
   height: 100%;
@@ -244,11 +249,11 @@ body,
   stroke-width: 1.5px;
 }
 
-.vacuum-map3d-frame:has(> .map3d-edit[data-cursor='grab']) > .vacuum-map3d {
+.vacuum-map3d-frame:has(> .map3d-edit[data-cursor='grab']) .vacuum-map3d {
   cursor: grab;
 }
 
-.vacuum-map3d-frame:has(> .map3d-edit[data-cursor='grabbing']) > .vacuum-map3d {
+.vacuum-map3d-frame:has(> .map3d-edit[data-cursor='grabbing']) .vacuum-map3d {
   cursor: grabbing;
 }
 

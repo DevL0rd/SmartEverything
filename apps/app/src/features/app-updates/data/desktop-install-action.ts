@@ -1,12 +1,11 @@
-import { useSyncExternalStore } from 'react';
-import { useValue } from '../../../design/external-store';
+import { usePausable, useValue } from '../../../design/external-store';
 import type { DesktopBridge } from '../../../design/platform';
 import { confirmDesktopInstall } from '../model/desktop-install';
 import { busyNow, watchBusy } from './busy';
 import { askToRestart, pendingRestart } from './restart-confirmation';
 
 export function useDesktopInstallBlock(): string | null {
-  const busy = useSyncExternalStore(watchBusy, busyNow, busyNow);
+  const busy = usePausable(watchBusy, busyNow);
   const pending = useValue(pendingRestart);
   if (busy) return 'Available after your call';
   return pending === null ? null : 'Answer the update prompt first';

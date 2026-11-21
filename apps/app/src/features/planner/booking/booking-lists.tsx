@@ -11,7 +11,7 @@ import { joinParts, plural } from '../../../format/text';
 import { startOfDayKey, weekdayShort } from '../../../format/time';
 import { weekdayLetterOf } from '../clock/alarm-text';
 import { bookerNameOf, type BookingDay, type UpcomingBooking } from './booking-model';
-import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
+import { useInstantClock, type InstantClock } from '../../../store/clock-format';
 
 export function bookingDayLabelOf(day: BookingDay): string {
   const date = new Date(startOfDayKey(day.day));
@@ -25,8 +25,8 @@ export function BookingWeekCard({
   readonly week: readonly BookingDay[];
   readonly next: UpcomingBooking | null;
 }): ReactNode {
-  const total = week.reduce((sum, day) => sum + day.count, 0);
   const instant = useInstantClock();
+  const total = week.reduce((sum, day) => sum + day.count, 0);
   const nextText =
     next === null
       ? null

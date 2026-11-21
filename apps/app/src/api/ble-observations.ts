@@ -6,8 +6,9 @@ import { api } from './transport';
 
 async function readObservation(
   deviceId: string,
+  signal: AbortSignal,
 ): Promise<z.output<typeof E.readBleDevice.response>> {
-  return api().call(E.readBleDevice, { params: { deviceId } });
+  return api().call(E.readBleDevice, { params: { deviceId } }, { signal });
 }
 
 export function useBleObservation(
@@ -16,7 +17,7 @@ export function useBleObservation(
 ): UseQueryResult<Awaited<ReturnType<typeof readObservation>>> {
   return useScreenQuery({
     queryKey: ['window', 'ble-observation', deviceId, revision],
-    queryFn: () => readObservation(deviceId),
+    queryFn: ({ signal }) => readObservation(deviceId, signal),
   });
 }
 

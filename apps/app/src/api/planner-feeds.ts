@@ -41,18 +41,25 @@ export async function refreshPlannerFeed(
   });
 }
 
-export async function readPlannerHolidayRegions(): Promise<PlannerHolidayRegion[]> {
-  return api().call(E.readPlannerHolidayRegions, {});
+export async function readPlannerHolidayRegions(
+  signal: AbortSignal,
+): Promise<PlannerHolidayRegion[]> {
+  return api().call(E.readPlannerHolidayRegions, {}, { signal });
 }
 
 export async function readPlannerExportLink(
   personId: PlannerPersonId,
   collectionId: string,
+  signal: AbortSignal,
 ): Promise<PlannerExportLink | null> {
-  return api().call(E.readPlannerExportLink, {
-    params: { collectionId },
-    query: plannerPersonQuery(personId),
-  });
+  return api().call(
+    E.readPlannerExportLink,
+    {
+      params: { collectionId },
+      query: plannerPersonQuery(personId),
+    },
+    { signal },
+  );
 }
 
 export async function createPlannerExportLink(

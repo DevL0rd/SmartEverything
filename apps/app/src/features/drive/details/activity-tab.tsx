@@ -163,7 +163,9 @@ function Feed({
   readonly rows: readonly DriveActivityEntry[];
 }): ReactNode {
   const me = useSession().client.profile_id;
-  const days = activityDaysOf(rows, useNames(), useToday());
+  const names = useNames();
+  const today = useToday();
+  const days = activityDaysOf(rows, names, today);
   if (days.length === 0) {
     return (
       <EmptyState

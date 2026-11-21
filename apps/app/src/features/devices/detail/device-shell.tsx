@@ -13,6 +13,7 @@ import type { Device } from '../../../store/state';
 import { useScheduleBelow, useScheduleItems } from '../../automations';
 import { usePowerAction } from '../controls/power-toggle';
 import { changeDevice } from '../data/change-device';
+import { useEntityStore } from '../../../store/store-context';
 import { useDisplayName } from '../model/display-name';
 import { useDeviceModel } from '../model/device-model';
 import { useStateLine } from '../model/state-line';
@@ -52,8 +53,9 @@ function useOverflow(device: Device, name: string): readonly MenuItem[] {
   const model = useDeviceModel(device);
   const health = model.family === 'scale' || model.family === 'wearable';
   const showOnMap = useShowOnMap(device.id);
+  const store = useEntityStore();
   const favourite = (): void => {
-    changeDevice(device, name, { favourite: !device.favourite });
+    changeDevice(store, device, name, { favourite: !device.favourite });
   };
   return [
     {

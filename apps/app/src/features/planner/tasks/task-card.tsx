@@ -13,7 +13,7 @@ import { AssigneeMark } from './assignee-mark';
 import { PriorityFlag, priorityOf } from './priority-flag';
 import { TaskCheck, useTaskActions } from './task-check';
 import { dueLabelOf, isOverdue, stepsLabelOf, type TaskEntry } from './task-grouping';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 
 function DevicePill({ entry }: { readonly entry: TaskEntry }): ReactNode {
   const attached = entry.item.attachments.find((attachment) => attachment.kind === 'device');

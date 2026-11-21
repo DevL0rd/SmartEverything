@@ -42,18 +42,12 @@ const StaticTile = memo(function StaticTile({
   idiom,
   reveal,
 }: StaticTileProps): ReactNode {
-  const frame = frameOf(cell, placement);
-  const position = { ...frame, top: frame.top - originTop };
-  const props = {
-    size: placement.widget.size,
-    options: placement.widget.options,
-    editing: false,
-    frame: frameBoxOf(frame, cell.pad, idiom),
-  };
   const actions = useMemo(
     () => widgetActions(handle, board, placement.widget.key),
     [handle, board, placement.widget.key],
   );
+  const frame = frameOf(cell, placement);
+  const position = { ...frame, top: frame.top - originTop };
   const widgetType = placement.widget.type;
   useEffect(() => {
     tiles.bump('mounted');
@@ -62,6 +56,12 @@ const StaticTile = memo(function StaticTile({
       tiles.bump('unmounted');
     };
   }, [widgetType]);
+  const props = {
+    size: placement.widget.size,
+    options: placement.widget.options,
+    editing: false,
+    frame: frameBoxOf(frame, cell.pad, idiom),
+  };
   return (
     <TileViewport style={position}>
       <RevealedMember member={reveal?.member ?? null}>

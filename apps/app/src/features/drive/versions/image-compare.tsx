@@ -263,9 +263,9 @@ const TOUCH_FRAME_SCREEN_SHARE = 0.6;
 export function ImageCompare(props: ImageCompareProps): ReactNode {
   const pointer = useIdiom() === 'pointer';
   const screen = useWindowSize().height;
+  const zoom = useZoomState();
   const modes = imageModesFor(pointer);
   const [mode, setMode] = useState<ImageMode>(modes[0] ?? 'side');
-  const zoom = useZoomState();
   return (
     <View className={pointer ? 'min-h-0 flex-1 gap-3' : 'gap-3'}>
       <View

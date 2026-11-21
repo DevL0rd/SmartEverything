@@ -120,6 +120,7 @@ function StepsRing({
         size={STEPS_RING}
         thickness={STEPS_STROKE}
         colour="primary"
+        ticking={false}
       />
       <View className="absolute items-center">
         <Text className="font-mono-medium text-figure-l tabular">{String(count)}</Text>

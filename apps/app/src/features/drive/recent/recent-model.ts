@@ -72,12 +72,17 @@ export function entryKeyOf(entry: DriveRecentEntry): string {
   return `${entry.kind}\n${id}\n${entry.at}`;
 }
 
+const HELD_LINES = new WeakMap<DriveRecentEntry, RecentLine>();
+
 export function linesOf(entries: readonly DriveRecentEntry[], days: RecentDays): RecentLine[] {
-  return entries.map((entry) => ({
-    key: entryKeyOf(entry),
-    entry,
-    group: groupOf(entry.at, days),
-  }));
+  return entries.map((entry) => {
+    const group = groupOf(entry.at, days);
+    const held = HELD_LINES.get(entry);
+    if (held?.group === group) return held;
+    const line: RecentLine = { key: entryKeyOf(entry), entry, group };
+    HELD_LINES.set(entry, line);
+    return line;
+  });
 }
 
 export function weekCovered(entries: readonly DriveRecentEntry[], days: RecentDays): boolean {

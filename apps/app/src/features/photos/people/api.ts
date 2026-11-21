@@ -9,12 +9,15 @@ import { api } from '../../../api/transport';
 
 type Call<K extends keyof typeof P> = Promise<PhotosResult<K>>;
 
-export function listPhotoGroups(kind: PhotoGroupKind | null): Call<'listPhotoGroups'> {
-  return api().call(P.listPhotoGroups, { query: kind === null ? {} : { kind } });
+export function listPhotoGroups(
+  kind: PhotoGroupKind | null,
+  signal: AbortSignal,
+): Call<'listPhotoGroups'> {
+  return api().call(P.listPhotoGroups, { query: kind === null ? {} : { kind } }, { signal });
 }
 
-export function readPhotoGroup(groupId: string): Call<'readPhotoGroup'> {
-  return api().call(P.readPhotoGroup, { params: { groupId } });
+export function readPhotoGroup(groupId: string, signal: AbortSignal): Call<'readPhotoGroup'> {
+  return api().call(P.readPhotoGroup, { params: { groupId } }, { signal });
 }
 
 export function updatePhotoGroup(
@@ -44,15 +47,18 @@ export function removePhotoGroupFaces(
   });
 }
 
-export function readPhotoFaces(itemId: string): Call<'readPhotoFaces'> {
-  return api().call(P.readPhotoFaces, { params: { itemId } });
+export function readPhotoFaces(
+  itemId: string,
+  request: { readonly signal?: AbortSignal } = {},
+): Call<'readPhotoFaces'> {
+  return api().call(P.readPhotoFaces, { params: { itemId } }, request);
 }
 
 export async function facesOfGroupIn(
   groupId: string,
   itemIds: readonly string[],
 ): Promise<readonly string[]> {
-  const found = await Promise.all(itemIds.map(readPhotoFaces));
+  const found = await Promise.all(itemIds.map((itemId) => readPhotoFaces(itemId)));
   return found.flatMap((item) =>
     item.faces.filter((face) => face.groupId === groupId).map((face) => face.id),
   );

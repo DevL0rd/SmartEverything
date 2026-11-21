@@ -1,7 +1,7 @@
 import { background } from '@smarteverything/logging';
 import type { JsonValue } from '@smarteverything/domain';
-import { updateDevice } from '../../../api/devices';
-import { useLedger } from '../../../store/store-context';
+import { useEntityStore, useLedger } from '../../../store/store-context';
+import { writeDevice } from '../data/change-device';
 import { withInputName } from './input-names';
 import type { Television } from './use-television';
 
@@ -15,6 +15,7 @@ export interface TelevisionActions {
 
 export function useTelevisionActions(tv: Television): TelevisionActions {
   const ledger = useLedger();
+  const store = useEntityStore();
   const send = (capability: string, value: JsonValue): void => {
     background(ledger.send(tv.device, capability, value), 'television.command_failed', {
       deviceId: tv.device.id,
@@ -35,6 +36,8 @@ export function useTelevisionActions(tv: Television): TelevisionActions {
       send('channel', channel);
     },
     renameInput: (id, name): Promise<void> =>
-      updateDevice(tv.device.id, { input_names: withInputName(tv.view.inputs, id, name) }),
+      writeDevice(store, tv.device.id, {
+        input_names: withInputName(tv.view.inputs, id, name),
+      }),
   };
 }

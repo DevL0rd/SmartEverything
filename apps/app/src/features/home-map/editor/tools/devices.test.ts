@@ -74,6 +74,12 @@ vi.mock('../../../../store/selectors', () => ({
   useDevices: (): readonly unknown[] => store.devices,
   useRooms: (): readonly unknown[] => store.rooms,
 }));
+vi.mock('./placing-devices', () => ({
+  usePlacingDevices: (): readonly unknown[] => store.devices,
+}));
+vi.mock('../../data/map-devices', () => ({
+  useRoomFlowDevices: (): readonly unknown[] => store.devices,
+}));
 vi.mock('../../../../design/colour', () => ({
   useColourResolver: (): (() => string) => () => '#000',
   withAlpha: (): string => '#000',

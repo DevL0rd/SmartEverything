@@ -5,7 +5,7 @@ import type { MenuItem } from '../../../components/menu';
 import { localDayKey } from '../../../format/time';
 import { useSettings } from '../../../store/selectors';
 import { usePlannerPreferences, useSavePrefs } from '../../planner';
-import { useClockFormat } from '../format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import { useHubOffline } from '../frame/hub-status';
 import {
   addedClock,

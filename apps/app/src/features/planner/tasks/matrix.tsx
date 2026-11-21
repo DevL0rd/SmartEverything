@@ -14,7 +14,7 @@ import { matrixOf, type QuadrantKey, type QuadrantModel } from './matrix-model';
 import { AssigneeMark } from './assignee-mark';
 import { TaskCheck, useTaskActions } from './task-check';
 import { dueLabelOf, isOverdue, type TaskEntry, type TaskFilter } from './task-grouping';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 
 const TITLE_TONE: Readonly<Record<QuadrantKey, Tone>> = {
   now: 'critical',

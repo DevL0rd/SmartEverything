@@ -18,7 +18,7 @@ import { useRow } from '../../../store/selectors';
 import { askAssistantWith } from '../../assistant';
 import { usePlannerAlarms } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 import { occurrenceWhenOf } from '../frame/occurrence-list';
 import { useItemPress } from '../item/item-menu-host';
 import type { ItemOpen } from '../item/selection';

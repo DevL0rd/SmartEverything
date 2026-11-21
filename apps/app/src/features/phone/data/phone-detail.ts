@@ -22,14 +22,14 @@ export function phoneDetailKey(deviceId: string): readonly ['window', 'phone-det
   return ['window', 'phone-detail', deviceId];
 }
 
-function readDetail(deviceId: string): Promise<PhoneDetail> {
-  return api().call(E.readPhoneDetail, { params: { deviceId } });
+function readDetail(deviceId: string, signal: AbortSignal): Promise<PhoneDetail> {
+  return api().call(E.readPhoneDetail, { params: { deviceId } }, { signal });
 }
 
 export function usePhoneDetail(deviceId: string): PhoneDetailLoad {
   const query = useScreenQuery({
     queryKey: phoneDetailKey(deviceId),
-    queryFn: () => readDetail(deviceId),
+    queryFn: ({ signal }) => readDetail(deviceId, signal),
     refetchOnMount: 'always',
   });
   return {
@@ -47,7 +47,7 @@ export function usePhoneSection<K extends PhoneDetailSection>(
 ): PhoneDetail[K] | undefined {
   return useScreenQuery({
     queryKey: phoneDetailKey(deviceId),
-    queryFn: () => readDetail(deviceId),
+    queryFn: ({ signal }) => readDetail(deviceId, signal),
     select: (detail) => detail[name],
   }).data;
 }

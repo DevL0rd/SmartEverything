@@ -110,13 +110,13 @@ function LibraryPage({
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const pref = usePref(PREFS.photos);
   const prefs = pref.status === 'ready' ? pref.value : PREFS.photos.defaultValue;
+  const search = useLibrarySearch(q);
+  const [step, setStep] = useState<MediaZoomStep | null>(null);
   const tabs = [...shownTabs(localMediaSource() !== null, prefs), ...usePartnerTabs()];
   const tab = activeTabOf(tabParam, tabs);
-  const search = useLibrarySearch(q);
   const { state } = search;
   const { tokens, words } = state;
   const query = scopeOf(tab, { tokens, text: words });
-  const [step, setStep] = useState<MediaZoomStep | null>(null);
   const zoom = { step: step ?? prefs.libraryZoom, onStep: setStep };
   const head: LibraryHeadProps = {
     search,

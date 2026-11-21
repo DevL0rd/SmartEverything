@@ -32,6 +32,7 @@ export {
   usePlannerTimers,
 } from './selectors';
 export { usePlannerWrites, type PlannerWrites } from './writes';
+export { alarmDefaultsOf, type AlarmDefaults } from './create-rows';
 export { useAlarmSaves, useShownAlarm, type AlarmSaves, type ShownAlarm } from './alarm-saves';
 export {
   usePlannerClockWrites,

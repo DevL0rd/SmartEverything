@@ -72,7 +72,8 @@ function Counters({ device, view }: FaceProps): ReactNode {
 }
 
 function Trend({ device, view, height }: FaceProps & { readonly height: number }): ReactNode {
-  const points = seriesOf(useLivePoints(device.id, view.recentSpeed), (point) => point.speed);
+  const livePoints = useLivePoints(device.id, view.recentSpeed);
+  const points = seriesOf(livePoints, (point) => point.speed);
   return (
     <View className="min-w-0 flex-1 gap-1">
       <Text variant="caption" tone="variant" numberOfLines={1} className="shrink-0">

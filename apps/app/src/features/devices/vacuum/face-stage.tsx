@@ -67,7 +67,7 @@ export function StageFrame({
       {children}
       {progress === null ? null : (
         <View pointerEvents="none" className="absolute inset-x-0 bottom-0">
-          <ProgressBar progress={progress} colour={tone} label="Progress" />
+          <ProgressBar progress={progress} colour={tone} label="Progress" ticking={false} />
         </View>
       )}
     </View>

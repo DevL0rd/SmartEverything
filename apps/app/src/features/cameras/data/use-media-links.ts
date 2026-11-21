@@ -14,7 +14,7 @@ function linksFresh(query: Query<Links, Error, Links, readonly string[]>): numbe
 export function useRecordingLinks(ids: readonly string[], size: MediaSize): UseQueryResult<Links> {
   return useScreenQuery({
     queryKey: recordingLinksKey(ids, size),
-    queryFn: () => recordingLinks(ids, size),
+    queryFn: ({ signal }) => recordingLinks(ids, size, { signal }),
     staleTime: linksFresh,
     enabled: ids.length > 0,
   });

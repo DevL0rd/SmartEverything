@@ -93,7 +93,12 @@ export function Goal({
   return (
     <View className="flex-row items-center gap-2">
       <View className="min-w-0 flex-1">
-        <ProgressBar progress={goal.progress} colour="sleep-deep" label="Sleep goal" />
+        <ProgressBar
+          progress={goal.progress}
+          colour="sleep-deep"
+          label="Sleep goal"
+          ticking={false}
+        />
       </View>
       <Text variant="footnote" tone="variant" className="tabular" numberOfLines={1}>
         {long ? goal.long : goal.short}

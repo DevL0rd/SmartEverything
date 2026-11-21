@@ -93,6 +93,7 @@ function Progress({
       progress={syncedShareOf(placement.status.needBytes, folderBytes)}
       colour="info"
       label={`${bytes(placement.status.needBytes)} left to sync`}
+      ticking={false}
     />
   );
 }

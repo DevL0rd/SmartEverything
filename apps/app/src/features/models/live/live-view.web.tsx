@@ -15,6 +15,7 @@ import {
 } from '../../../components/models/three/stage';
 import { useStableCallback } from '../../../design/use-stable-callback';
 import { FADE_IN_MS } from '../visual/model-visual';
+import { StillCoveredContext } from '../visual/still-covered';
 import { browserScheduler } from './frame-loop';
 import { watchLayout, type LayoutWatchHost, type NodeWatch } from './layout-watch';
 import { startCanvas, type CanvasGraphics, type RunningCanvas } from './live-canvas';
@@ -231,7 +232,8 @@ export function LiveModelView(props: LiveModelViewProps): ReactNode {
   const frame = useRef<View>(null);
   const { live, drawn, onLayout } = useLiveView(props, frame);
   usePlacement(id, frame, live);
-  const level = useStillFade(live && drawn);
+  const covered = live && drawn;
+  const level = useStillFade(covered);
   const stillStyle = useAnimatedStyle(() => ({ opacity: level.get() }));
   return (
     <View
@@ -244,7 +246,7 @@ export function LiveModelView(props: LiveModelViewProps): ReactNode {
       style={square(px)}
     >
       <Animated.View className="absolute inset-0" style={stillStyle}>
-        {still}
+        <StillCoveredContext value={covered}>{still}</StillCoveredContext>
       </Animated.View>
     </View>
   );

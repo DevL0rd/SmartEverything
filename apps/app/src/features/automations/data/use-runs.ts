@@ -21,7 +21,7 @@ export function useRuns(
   const { api } = useAutomationsSource();
   return useScreenQuery({
     queryKey: automationKeys.runs(automationId),
-    queryFn: () => api.listRuns(automationId ?? undefined, limit),
+    queryFn: ({ signal }) => api.listRuns(automationId ?? undefined, limit, signal),
   });
 }
 
@@ -29,7 +29,7 @@ export function useRun(runId: string): UseQueryResult<AutomationRunView> {
   const { api } = useAutomationsSource();
   return useScreenQuery({
     queryKey: automationKeys.run(runId),
-    queryFn: () => api.readRun(runId),
+    queryFn: ({ signal }) => api.readRun(runId, signal),
   });
 }
 
@@ -45,7 +45,7 @@ export function useRunNodes(
       query.nodeId ?? null,
       query.iteration ?? null,
     ),
-    queryFn: () => api.readRunNodes(runId, query),
+    queryFn: ({ signal }) => api.readRunNodes(runId, query, signal),
   });
 }
 
@@ -53,7 +53,7 @@ export function useDecisions(automationId: string): UseQueryResult<AutomationDec
   const { api } = useAutomationsSource();
   return useScreenQuery({
     queryKey: automationKeys.decisions(automationId),
-    queryFn: () => api.listDecisions(automationId),
+    queryFn: ({ signal }) => api.listDecisions(automationId, signal),
   });
 }
 
@@ -61,7 +61,7 @@ export function useStoredTests(automationId: string): UseQueryResult<StoredTest[
   const { api } = useAutomationsSource();
   return useScreenQuery({
     queryKey: automationKeys.tests(automationId),
-    queryFn: () => api.listTests(automationId),
+    queryFn: ({ signal }) => api.listTests(automationId, signal),
   });
 }
 

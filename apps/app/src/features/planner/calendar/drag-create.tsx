@@ -1,6 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { View, type ViewStyle } from 'react-native';
-import { Gesture, GestureDetector, type ComposedGesture } from 'react-native-gesture-handler';
+import {
+  Gesture,
+  GestureDetector,
+  type ComposedGesture,
+  type TapGesture,
+} from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -12,7 +17,7 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { SPRING, useMotion } from '../../../design/motion';
 import type { ClockFormat } from '../../../format/clock-text';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import { eventFill } from './event-look';
 import {
   SNAP_MINUTES,
@@ -95,9 +100,6 @@ function useCreateGesture(
     if (span === null) props.onDraft(null);
     else props.onCreate({ date, ...span });
   };
-  const slot = (minute: number): void => {
-    props.onSlot({ date, minute });
-  };
   const pan = dragActivation(touch)
     .onStart((event) => {
       const first = minuteAt(event.y - event.translationY, hourHeight.get());
@@ -123,12 +125,19 @@ function useCreateGesture(
     .onFinalize(() => {
       scheduleOnRN(dropFeedback);
     });
-  const tap = Gesture.Tap()
+  return Gesture.Exclusive(pan, slotTap(props));
+}
+
+function slotTap(props: SlotLayerProps): TapGesture {
+  const { date, hourHeight } = props;
+  const slot = (minute: number): void => {
+    props.onSlot({ date, minute });
+  };
+  return Gesture.Tap()
     .maxDistance(TAP_SLOP)
     .onEnd((event, success) => {
       if (success) scheduleOnRN(slot, slotMinute(minuteAt(event.y, hourHeight.get())));
     });
-  return Gesture.Exclusive(pan, tap);
 }
 
 function DraftBlock({

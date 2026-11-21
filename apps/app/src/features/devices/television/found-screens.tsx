@@ -23,7 +23,8 @@ export function FoundScreens({
 }): ReactNode {
   const query = useScreenQuery({
     queryKey: ['window', 'television-candidates', deviceId, attempt],
-    queryFn: () => api().call(E.listTelevisionCandidates, { params: { deviceId } }),
+    queryFn: ({ signal }) =>
+      api().call(E.listTelevisionCandidates, { params: { deviceId } }, { signal }),
     gcTime: 0,
     retry: false,
   });

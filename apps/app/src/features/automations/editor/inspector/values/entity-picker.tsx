@@ -39,11 +39,12 @@ export interface EntityPickerProps {
 function entityFeed(ref: EntityRef): OptionFeed {
   return {
     key: entityKey(ref, []),
-    read: (query: PluginOptionQuery) =>
-      api().call(E.readAutomationEntityOptions, {
-        params: { pluginId: ref.pluginId, entity: ref.entity },
-        query,
-      }),
+    read: (query: PluginOptionQuery, signal: AbortSignal) =>
+      api().call(
+        E.readAutomationEntityOptions,
+        { params: { pluginId: ref.pluginId, entity: ref.entity }, query },
+        { signal },
+      ),
   };
 }
 

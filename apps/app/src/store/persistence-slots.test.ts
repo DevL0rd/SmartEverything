@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { deviceFixture, stateFixture } from './device-fixture';
-import { emptyState, makeTable, type Device, type StoreState } from './state';
+import { DeviceValueIndex } from './device-values';
+import { emptyState, makeTable, type Device, type DeviceValues, type StoreState } from './state';
 
 vi.mock('expo-constants', () => ({ default: { expoConfig: { version: '4.2.0' } } }));
 
@@ -81,6 +83,101 @@ describe('persisted list slots', () => {
     const first = slot.write(before, 1, undefined);
     const second = slot.write(withDevices(before, devices.slice(1)), 2, first.memo);
     expect(second.set).toEqual([[slot.key, JSON.stringify(['dev-1', 'dev-2', 'dev-3', 'dev-4'])]]);
+    expect(second.del).toEqual([rowKey(slot.key, 'dev-0')]);
+  });
+});
+
+function stateSlot(): ReturnType<typeof slotsOf>[number] {
+  const slot = slotsOf(BASE).find((candidate) => candidate.key === `${BASE}.device_state`);
+  if (slot === undefined) throw new Error('The device readings have no persisted slot.');
+  return slot;
+}
+
+function reading(index: number, power: boolean): DeviceValues {
+  return {
+    power: { value: power, observedAt: '2026-10-16T08:00:00.000Z' },
+    power_draw: { value: index * 3.5, observedAt: '2026-10-16T08:00:00.000Z' },
+    temperature: { value: 21.5, observedAt: '2026-10-16T08:00:00.000Z' },
+  };
+}
+
+function withValues(state: StoreState, values: DeviceValueIndex): StoreState {
+  return { ...state, deviceValues: values };
+}
+
+describe('persisted device readings', () => {
+  const ids = Array.from({ length: 200 }, (_, index) => `dev-${String(index)}`);
+  const all = DeviceValueIndex.from(ids.map((id, index) => [id, reading(index, true)]));
+
+  it('writes each device under its own key and the device order once', () => {
+    const slot = stateSlot();
+    const write = slot.write(withValues(emptyState(), all), 1, undefined);
+    expect(write.set).toHaveLength(201);
+    const order = write.set.find(([key]) => key === slot.key)?.[1] ?? '[]';
+    expect(z.array(z.string()).parse(JSON.parse(order)).sort()).toEqual([...ids].sort());
+    const row = write.set.find(([key]) => key === rowKey(slot.key, 'dev-7'))?.[1] ?? 'null';
+    expect(JSON.parse(row)).toEqual([
+      {
+        device_id: 'dev-7',
+        capability: 'power',
+        value: true,
+        observed_at: '2026-10-16T08:00:00.000Z',
+      },
+      {
+        device_id: 'dev-7',
+        capability: 'power_draw',
+        value: 24.5,
+        observed_at: '2026-10-16T08:00:00.000Z',
+      },
+      {
+        device_id: 'dev-7',
+        capability: 'temperature',
+        value: 21.5,
+        observed_at: '2026-10-16T08:00:00.000Z',
+      },
+    ]);
+  });
+
+  it('writes only the one device whose reading changed, a few hundred characters', () => {
+    const slot = stateSlot();
+    const first = slot.write(withValues(emptyState(), all), 1, undefined);
+    const fullChars = first.set.reduce((sum, [, text]) => sum + text.length, 0);
+    const second = slot.write(
+      withValues(emptyState(), all.set('dev-42', reading(42, false))),
+      2,
+      first.memo,
+    );
+    expect(second.set.map(([key]) => key)).toEqual([rowKey(slot.key, 'dev-42')]);
+    expect(second.del).toEqual([]);
+    const chars = second.set.reduce((sum, [, text]) => sum + text.length, 0);
+    expect(chars).toBeLessThan(400);
+    expect(chars * 100).toBeLessThan(fullChars);
+  });
+
+  it('writes nothing when the readings are unchanged', () => {
+    const slot = stateSlot();
+    const state = withValues(emptyState(), all);
+    const first = slot.write(state, 1, undefined);
+    const second = slot.write(state, 2, first.memo);
+    expect(second.set).toEqual([]);
+    expect(second.del).toEqual([]);
+  });
+
+  it('deletes the key of a device that left and rewrites the order', () => {
+    const slot = stateSlot();
+    const few = DeviceValueIndex.from(
+      ids.slice(0, 3).map((id, index) => [id, reading(index, true)]),
+    );
+    const first = slot.write(withValues(emptyState(), few), 1, undefined);
+    const fewer = DeviceValueIndex.from(
+      ids.slice(1, 3).map((id): [string, DeviceValues] => {
+        const values = few.get(id);
+        if (values === undefined) throw new Error(`No reading for ${id}.`);
+        return [id, values];
+      }),
+    );
+    const second = slot.write(withValues(emptyState(), fewer), 2, first.memo);
+    expect(second.set.map(([key]) => key)).toEqual([slot.key]);
     expect(second.del).toEqual([rowKey(slot.key, 'dev-0')]);
   });
 });

@@ -59,6 +59,27 @@ function warn(index: number): LogRecord {
   };
 }
 
+function failed(index: number, level: 'warn' | 'info'): LogRecord {
+  return {
+    timestamp: `2026-11-15T09:${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}.000Z`,
+    runtime: 'app',
+    platform: 'web',
+    scope: 'app.api',
+    level,
+    event: level === 'warn' ? 'api.request_failed' : 'api.request_started',
+    payload: { index, route: 'GET /fitness/heart', reason: 'x'.repeat(300) },
+  };
+}
+
+function storedRecords(): { readonly bytes: number; readonly payload: Record<string, unknown> }[] {
+  return recordKeys()
+    .sort((left, right) => Number(left.split(':').at(-1)) - Number(right.split(':').at(-1)))
+    .map((key) => {
+      const text = fixture.storage.get(key) ?? '';
+      return { bytes: text.length, payload: LOG_RECORD.parse(JSON.parse(text)).payload };
+    });
+}
+
 function recordKeys(): string[] {
   return [...fixture.storage.keys()].filter((key) => key.startsWith(`${outbox}:record:`));
 }
@@ -149,5 +170,42 @@ describe('runtime log outbox', () => {
     expect(send.mock.calls[0]?.[0]).toMatchObject({ dropped: 2 });
     expect(send.mock.calls[0]?.[0].records).toHaveLength(2);
     expect([...fixture.storage.keys()].filter((key) => key.startsWith(outbox))).toEqual([]);
+  });
+});
+
+describe('warning breadcrumb trail', () => {
+  it('keeps a 50 warning burst near linear in stored bytes', async () => {
+    const lone = new LogShip(identity);
+    lone.record(failed(0, 'warn'));
+    await lone.settled();
+    const single = storedRecords()[0]?.bytes ?? 0;
+    fixture.storage.clear();
+    const ship = new LogShip(identity);
+    for (let index = 0; index < 50; index += 1) {
+      ship.record(failed(index, 'info'));
+      ship.record(failed(index, 'warn'));
+    }
+    await ship.settled();
+    const stored = storedRecords();
+    expect(stored).toHaveLength(50);
+    const total = stored.reduce((sum, record) => sum + record.bytes, 0);
+    expect(total).toBeLessThan(single * 50 * 3);
+  });
+
+  it('carries the trail once and later records only the events logged since', async () => {
+    const ship = new LogShip(identity);
+    for (let index = 0; index < 3; index += 1) ship.record(failed(index, 'info'));
+    ship.record(failed(3, 'warn'));
+    ship.record(failed(4, 'warn'));
+    ship.record(failed(5, 'info'));
+    ship.record(failed(6, 'warn'));
+    await ship.settled();
+    const [first, second, third] = storedRecords().map(({ payload }) => payload);
+    expect(first?.['recent']).toHaveLength(3);
+    expect(first?.['recentSince']).toBeUndefined();
+    expect(second?.['recent']).toEqual([]);
+    expect(second?.['recentSince']).toBe(failed(3, 'warn').timestamp);
+    expect(third?.['recent']).toMatchObject([{ event: 'api.request_started', level: 'info' }]);
+    expect(third?.['recentSince']).toBe(failed(4, 'warn').timestamp);
   });
 });

@@ -9,7 +9,8 @@ export function usePlaceSearch(query: string): UseQueryResult<readonly PlaceMatc
   const q = query.trim();
   return useScreenQuery({
     queryKey: ['places', q.toLowerCase()],
-    queryFn: async () => (await api().call(E.searchPlaces, { query: { q } })).places,
+    queryFn: async ({ signal }) =>
+      (await api().call(E.searchPlaces, { query: { q } }, { signal })).places,
     enabled: q.length >= MIN_PLACE_QUERY,
   });
 }

@@ -22,7 +22,8 @@ export function MemberAvatars({
   readonly shown: number;
   readonly size?: 'm' | 'l';
 }): ReactNode {
-  const people = profilesOf(ids, useProfiles());
+  const profiles = useProfiles();
+  const people = profilesOf(ids, profiles);
   const visible = people.slice(0, shown);
   const more = people.length - visible.length;
   return (

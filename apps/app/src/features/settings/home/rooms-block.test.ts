@@ -1,5 +1,7 @@
 import { createElement, Fragment, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import type * as StoreContext from '../../../store/store-context';
+import { EntityStore } from '../../../store/entity-store';
 import { COMPUTER_ROLE_MODELS, type TableRow } from '@smarteverything/domain';
 import { expect, it, vi } from 'vitest';
 import { deviceFixture } from '../../../store/device-fixture';
@@ -18,6 +20,10 @@ vi.mock('../../../store/selectors', async (original) => ({
 }));
 vi.mock('../../../api/settings', () => ({ removeRoom: vi.fn() }));
 vi.mock('../../../components/confirm-store', () => ({ confirm: vi.fn() }));
+vi.mock('../../../store/store-context', async (original) => ({
+  ...(await original<typeof StoreContext>()),
+  useEntityStore: (): EntityStore => new EntityStore(),
+}));
 vi.mock('../../../components/empty-state', () => ({ EmptyState: pass }));
 vi.mock('../../../components/list-row', () => ({
   ListRow: ({ subtitle }: { readonly subtitle: string }): ReactNode => subtitle,

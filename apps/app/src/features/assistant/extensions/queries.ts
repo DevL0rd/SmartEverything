@@ -18,7 +18,7 @@ function extensionsQuery(
   return queryOptions({
     queryKey: EXTENSIONS_KEY,
     enabled: live,
-    queryFn: () => api().call(E.readAiHarnessExtensions, {}),
+    queryFn: ({ signal }) => api().call(E.readAiHarnessExtensions, {}, { signal }),
   });
 }
 
@@ -29,7 +29,7 @@ export function useExtensionConfiguration(): ReturnType<
   return useScreenQuery({
     queryKey: EXTENSION_CONFIGURATION_KEY,
     enabled: sync.status === 'live',
-    queryFn: () => api().call(E.readAiHarnessConfiguration, {}),
+    queryFn: ({ signal }) => api().call(E.readAiHarnessConfiguration, {}, { signal }),
   });
 }
 

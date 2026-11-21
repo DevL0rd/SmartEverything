@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react';
 import { View } from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
 import type {
   AlbumMemberRole,
   DriveAlbum,
@@ -17,12 +16,13 @@ import { useAnchoredMenu, type MenuItem } from '../../../components/menu';
 import { Segmented } from '../../../components/segmented';
 import { Sheet } from '../../../components/sheet';
 import { Text } from '../../../components/text';
-import { useMutationState } from '../../../store/mutation';
+import { useShownWriter } from '../../../queries/shown-writer';
 import { useActiveProfile, useProfiles } from '../../../store/people';
 import { ProfileAvatar } from '../../profiles';
 import { removeAlbumMember, setAlbumMembers } from './api';
 import { ROLE_LABEL } from './model';
 import { invalidateSharing } from './queries';
+import { memberRemovedTargets, membersTargets } from './shown';
 
 const ROLE_OPTIONS = [
   { value: 'contributor', label: 'Can add photos' },
@@ -58,28 +58,23 @@ function useRoleItems(
   profile: ProfileRow,
   role: AlbumMemberRole,
 ): { readonly busy: boolean; readonly roles: readonly MenuItem[] } {
-  const mutation = useMutationState();
-  const client = useQueryClient();
+  const { busy, write } = useShownWriter(invalidateSharing);
   const roles = ROLE_OPTIONS.map((option) => ({
     id: option.value,
     label: option.label,
     selected: option.value === role,
     onPress: (): void => {
       if (option.value === role) return;
-      mutation.run(
-        () =>
-          setAlbumMembers(album.id, { members: [{ profileId: profile.id, role: option.value }] }),
-        {
-          failure: `${profile.name}’s role did not change`,
-          label: 'photos.album_member.role',
-          onDone: () => {
-            invalidateSharing(client);
-          },
-        },
-      );
+      const members = [{ profileId: profile.id, role: option.value }];
+      write({
+        event: 'photos.album_member.role',
+        targets: membersTargets(album, members),
+        send: () => setAlbumMembers(album.id, { members }),
+        failure: `${profile.name}’s role did not change`,
+      });
     },
   }));
-  return { busy: mutation.busy, roles };
+  return { busy, roles };
 }
 
 function RolePicker({
@@ -165,8 +160,7 @@ function useRemoveMember(
   album: DriveAlbum,
   profile: ProfileRow,
 ): { readonly busy: boolean; readonly remove: () => void } {
-  const mutation = useMutationState();
-  const client = useQueryClient();
+  const { busy, write } = useShownWriter(invalidateSharing);
   const remove = (): void => {
     background(
       confirm({
@@ -176,18 +170,17 @@ function useRemoveMember(
         tone: 'destructive',
       }).then((accepted) => {
         if (!accepted) return;
-        mutation.run(() => removeAlbumMember(album.id, profile.id), {
+        write({
+          event: 'photos.album_member.remove',
+          targets: memberRemovedTargets(album.id, profile.id),
+          send: () => removeAlbumMember(album.id, profile.id),
           failure: `${profile.name} was not removed`,
-          label: 'photos.album_member.remove',
-          onDone: () => {
-            invalidateSharing(client);
-          },
         });
       }),
       'photos.album_member.remove_confirm_failed',
     );
   };
-  return { busy: mutation.busy, remove };
+  return { busy, remove };
 }
 
 function Checklist({
@@ -273,26 +266,23 @@ function AddButton({
   readonly role: AlbumMemberRole;
   readonly onAdded: () => void;
 }): ReactNode {
-  const mutation = useMutationState();
-  const client = useQueryClient();
+  const { busy, write } = useShownWriter(invalidateSharing);
   return (
     <View className="flex-1 flex-row justify-end">
       <Button
         label={chosen.size === 0 ? 'Add' : `Add ${String(chosen.size)}`}
         icon="plus"
         variant="filled"
-        disabled={chosen.size === 0}
-        loading={mutation.busy}
+        disabled={chosen.size === 0 || busy}
         onPress={() => {
           const members = [...chosen].map((profileId) => ({ profileId, role }));
-          mutation.run(() => setAlbumMembers(album.id, { members }), {
+          write({
+            event: 'photos.album_member.add',
+            targets: membersTargets(album, members),
+            send: () => setAlbumMembers(album.id, { members }),
             failure: 'People were not added',
-            label: 'photos.album_member.add',
-            onDone: () => {
-              onAdded();
-              invalidateSharing(client);
-            },
           });
+          onAdded();
         }}
       />
     </View>

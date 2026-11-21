@@ -11,6 +11,7 @@ import { NATIVE_OWNER_REASON } from './provider-access';
 import { Text } from '../../../components/text';
 import { ProviderOptions, QueryState } from '../../computers';
 import { changeChat } from '../chats/chat-actions';
+import { useEntityStore } from '../../../store/store-context';
 import { useChatProvider, useEngineCatalogue } from './provider-data';
 import { FlagSettings } from './flag-settings';
 import { OperationForm } from './operation-form';
@@ -121,6 +122,7 @@ function ProviderSettings({
   readonly focus?: string;
 }): ReactNode {
   const [saving, setSaving] = useState(false);
+  const store = useEntityStore();
   if (chat.engine.kind !== 'claude') return null;
   const engine = chat.engine;
   return (
@@ -145,7 +147,7 @@ function ProviderSettings({
         save={(options) => {
           setSaving(true);
           background(
-            changeChat(chat.id, { engine: { ...engine, settings: options } }).finally(() => {
+            changeChat(store, chat.id, { engine: { ...engine, settings: options } }).finally(() => {
               setSaving(false);
             }),
             'chat.change_failed',

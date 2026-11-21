@@ -109,7 +109,11 @@ function AlbumChoices({
   readonly pref: PhotosBackupPref;
   readonly onSave: (next: PhotosBackupPref) => void;
 }): ReactNode {
-  const albums = useScreenQuery({ queryKey: BACKUP_CHOICES_KEY, queryFn: listBackupChoices });
+  const albums = useScreenQuery({
+    queryKey: BACKUP_CHOICES_KEY,
+    // eslint-disable-next-line local/query-fn-signal -- the albums and folders are read from the device or the desktop bridge, which cannot be aborted
+    queryFn: listBackupChoices,
+  });
   const kind = backupChoiceKind();
   const onSave = savingWithRemoval(pref, albums.data, saveNow);
   return (

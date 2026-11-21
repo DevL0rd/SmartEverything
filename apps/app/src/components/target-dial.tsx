@@ -168,11 +168,11 @@ export function TargetDial(props: TargetDialProps): ReactNode {
   const { current, target, min, max, step, unit, label, size = 220, colour = 'primary' } = props;
   const format = props.formatValue ?? stepFormat(step);
   const [dragged, setDragged] = useState<number | null>(null);
+  const pan = useDialDrag(props, size, setDragged);
+  const { nudge, focus } = useDialKeys(props);
   const shown = dragged ?? target;
   const bounds = { min, max };
   const thickness = Math.round(size / 14);
-  const pan = useDialDrag(props, size, setDragged);
-  const { nudge, focus } = useDialKeys(props);
   const box = { width: size, height: size };
   return (
     <GestureDetector gesture={pan}>
@@ -199,6 +199,7 @@ export function TargetDial(props: TargetDialProps): ReactNode {
             colour={colour}
             startAngle={START}
             sweep={SWEEP}
+            ticking={false}
           />
         </View>
         <Markers

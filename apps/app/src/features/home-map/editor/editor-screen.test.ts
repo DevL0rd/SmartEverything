@@ -90,6 +90,9 @@ vi.mock('../../../components/menu', () => ({
     return { ref: null, open: vi.fn(), menu: null };
   },
 }));
+vi.mock('../../../store/store-context', () => ({
+  useStoreSelector: (): object => ({ rooms: [], devices: [] }),
+}));
 vi.mock('../../../store/selectors', () => ({
   useRooms: (): readonly object[] => [],
   useDevices: (): readonly object[] => [],

@@ -38,30 +38,25 @@ export const MACHINE_UNAVAILABLE_NOTICE =
 
 export type StartOutcome =
   | { readonly kind: 'sent'; readonly chatId: string }
-  | { readonly kind: 'failed'; readonly stage: 'create'; readonly cause: unknown }
   | {
       readonly kind: 'failed';
-      readonly stage: 'send';
+      readonly stage: 'create' | 'send';
       readonly cause: unknown;
       readonly chatId: string;
     };
 
 export interface StartSteps {
-  readonly create: () => Promise<{ readonly id: string }>;
+  readonly chatId: string;
+  readonly create: (chatId: string) => Promise<unknown>;
   readonly send: (chatId: string) => Promise<unknown>;
-  readonly chatId: string | null;
-  readonly created: (chatId: string) => void;
 }
 
 export async function startChatWithMessage(steps: StartSteps): Promise<StartOutcome> {
-  let chatId = steps.chatId;
+  const { chatId } = steps;
   try {
-    if (chatId === null) {
-      chatId = (await steps.create()).id;
-      steps.created(chatId);
-    }
+    await steps.create(chatId);
   } catch (cause) {
-    return { kind: 'failed', stage: 'create', cause };
+    return { kind: 'failed', stage: 'create', cause, chatId };
   }
   try {
     await steps.send(chatId);

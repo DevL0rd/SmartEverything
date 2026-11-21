@@ -5,7 +5,7 @@ import type { FolderGlyphWell } from '../../../components/files/folder-glyph-mod
 import { Icon } from '../../../components/icon';
 import { IconWell } from '../../../components/icon-well';
 import { useDriveLink } from '../data';
-import { KIND_ICON } from '../../files/browser/node-glyph';
+import { KIND_ICON } from '../../files';
 import { kindOfItem } from '../source/drive-node';
 
 type Folder = Extract<DriveItem, { readonly kind: 'folder' }>;

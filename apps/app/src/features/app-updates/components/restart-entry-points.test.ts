@@ -81,6 +81,7 @@ vi.mock('../data/android-apk', () => ({
   useAndroidApkOffer: (): { readonly data: null } => ({ data: null }),
 }));
 vi.mock('../data/desktop-installer', () => ({ useDesktopInstaller: (): null => null }));
+vi.mock('../../../app-shell/section-failure', () => ({ UnreadableSections: (): null => null }));
 vi.mock('../data/update-checks', () => ({
   useUpdateChecks: (): { readonly available: false; readonly installer: null } => ({
     available: false,

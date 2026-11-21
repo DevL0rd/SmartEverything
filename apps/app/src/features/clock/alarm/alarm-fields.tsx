@@ -33,10 +33,9 @@ import {
   type AlarmEdit,
 } from './alarm-draft';
 import { ClockFigure } from '../format/clock-figure';
-import { useClockLabel } from '../format/clock-format';
+import { useClockLabel, useHour24 } from '../../../store/clock-format';
 import { minutesText, REPEAT_OPTIONS, snoozeLimitText } from './alarm-options';
 import { SoundPicker } from './sound-picker';
-import { useHour24 } from '../../../store/clock-format';
 
 export interface AlarmFieldProps {
   readonly draft: AlarmDraft;

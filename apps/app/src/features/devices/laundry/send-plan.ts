@@ -2,6 +2,7 @@ import { isFinished, type JsonValue } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import type { CommandLedger } from '../../../store/command-ledger';
 import type { EntityStore } from '../../../store/entity-store';
+import { COMMAND_READS } from '../../../store/live-commands';
 import type { Device, StoreState } from '../../../store/state';
 
 const log = new Logger('app.devices');
@@ -42,11 +43,12 @@ function settled(store: EntityStore, id: string, expires: string): Promise<boole
         finish(outcome);
       }
     };
-    const unsubscribe = store.subscribe(check);
+    const unsubscribe = store.subscribeSlices(COMMAND_READS, check);
     const timer = setTimeout(
       () => {
-        log.warn('laundry.step_timed_out', { commandId: id });
-        finish(false);
+        const outcome = commandDone(store.get(), id);
+        if (outcome === undefined) log.warn('laundry.step_timed_out', { commandId: id });
+        finish(outcome === true);
       },
       Math.max(0, Date.parse(expires) - Date.now()) + COMMAND_COMPLETION_GRACE_MS,
     );

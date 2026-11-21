@@ -20,7 +20,7 @@ export interface ItemDeps {
 }
 
 const LIVE: ItemDeps = {
-  read: readDriveItem,
+  read: (itemId) => readDriveItem(itemId),
   attach: attachFiles,
   openChat: (chatId) => {
     router.push(href.assistantChat(chatId));

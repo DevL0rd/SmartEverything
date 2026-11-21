@@ -47,6 +47,7 @@ export function FaceRing({
           thickness={Math.max(6, size / 10)}
           colour="viz-1"
           tinted
+          ticking={false}
         />
       </View>
       <Text variant="footnote" className="tabular-nums font-sans-medium">

@@ -13,7 +13,7 @@ import { useIdiom } from '../../../design/platform';
 import { dayKeyOf } from '../../../format/time';
 import { useMinuteOf } from '../../../store/clock';
 import { useSettings } from '../../../store/selectors';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 import { usePlannerRange } from '../data';
 import { usePlannerFrame } from '../frame/frame-context';
 import { QueryBody } from '../frame/query-body';
@@ -308,10 +308,10 @@ interface MonthBodyProps {
 function MonthBody({ range, day, onOpenDay }: MonthBodyProps): ReactNode {
   const timeZone = useSettings().time_zone;
   const size = cellSizeOf(useFrameBodyWidth());
-  const month = monthOf(day);
   const [picked, pick] = useState(day);
-  const selected = monthOf(picked) === month ? picked : day;
   const looks = useCalendarLooks(usePlannerFrame().person);
+  const month = monthOf(day);
+  const selected = monthOf(picked) === month ? picked : day;
   const days = dayMapOf(looks.shown(range.occurrences), timeZone, monthBoundsOf(month));
   if (size === 'wide') {
     return (

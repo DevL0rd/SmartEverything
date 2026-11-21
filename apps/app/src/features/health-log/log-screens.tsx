@@ -29,7 +29,7 @@ function useEntry(id: string | undefined): {
 } {
   const query = useScreenQuery({
     queryKey: entryKey(id ?? ''),
-    queryFn: () => findEntry(id ?? ''),
+    queryFn: ({ signal }) => findEntry(id ?? '', signal),
     enabled: id !== undefined,
     retry: false,
   });

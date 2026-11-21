@@ -38,8 +38,8 @@ export function Grid({
 }: GridProps): ReactNode {
   const [layoutWidth, setLayoutWidth] = useState(0);
   const width = measuredWidth ?? layoutWidth;
-  const items = Children.toArray(children).filter(isValidElement);
   const { columns, cellWidth } = useGridLayout(width, minItemWidth, gap, maxColumns);
+  const items = Children.toArray(children).filter(isValidElement);
   const gapClass = gap === 'grid' ? 'gap-grid-gap' : 'gap-2';
   const rows: (typeof items)[] = [];
   for (let index = 0; index < items.length; index += columns) {

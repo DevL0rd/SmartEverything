@@ -50,11 +50,11 @@ function FittedMoves({
   readonly device: Device;
   readonly moves: RobotMoves;
 }): ReactNode {
-  const quick = quickMoves(moves.actions, moves.actions.length);
   const mover = useMover(device);
   const [room, setRoom] = useState<number | null>(null);
   const [menu, setMenu] = useState<number | undefined>(undefined);
   const [widths, setWidths] = useState<Readonly<Record<string, number>>>({});
+  const quick = quickMoves(moves.actions, moves.actions.length);
   const measure =
     (id: string) =>
     (event: LayoutChangeEvent): void => {

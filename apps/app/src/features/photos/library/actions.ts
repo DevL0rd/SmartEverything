@@ -21,7 +21,7 @@ const log = new Logger('app.photos');
 
 export type Change = (body: DriveChange) => Promise<BulkAnswer>;
 
-function photosText(total: number): string {
+export function photosText(total: number): string {
   return total === 1 ? '1 photo' : `${count(total)} photos`;
 }
 

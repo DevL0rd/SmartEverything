@@ -1,4 +1,6 @@
+import chartTicking from './chart-ticking.js';
 import frameBudget from './frame-budget.js';
+import hooksBeforeValues from './hooks-before-values.js';
 import lazyDebugPayload from './lazy-debug-payload.js';
 import noComponentInterval from './no-component-interval.js';
 import noDeviceListSlice from './no-device-list-slice.js';
@@ -10,6 +12,7 @@ import noVoidPromise from './no-void-promise.js';
 import noWholeStoreSubscribe from './no-whole-store-subscribe.js';
 import noStrayText from './no-stray-text.js';
 import preferMinuteSelector from './prefer-minute-selector.js';
+import queryFnSignal from './query-fn-signal.js';
 import thumbnailSize from './thumbnail-size.js';
 import workletCallsWorklets from './worklet-calls-worklets.js';
 
@@ -42,7 +45,9 @@ const noComments = {
 
 export default {
   rules: {
+    'chart-ticking': chartTicking,
     'frame-budget': frameBudget,
+    'hooks-before-values': hooksBeforeValues,
     'lazy-debug-payload': lazyDebugPayload,
     'no-comments': noComments,
     'no-component-interval': noComponentInterval,
@@ -55,6 +60,7 @@ export default {
     'no-void-promise': noVoidPromise,
     'no-whole-store-subscribe': noWholeStoreSubscribe,
     'prefer-minute-selector': preferMinuteSelector,
+    'query-fn-signal': queryFnSignal,
     'thumbnail-size': thumbnailSize,
     'worklet-calls-worklets': workletCallsWorklets,
   },

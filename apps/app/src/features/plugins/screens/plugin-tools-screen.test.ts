@@ -24,7 +24,11 @@ vi.mock('../../../app-shell/hrefs', () => ({
   href: { pluginSettings: (id: string): string => `/settings/plugins/${id}` },
 }));
 
-vi.mock('../data/plugin-actions', () => ({ changePlugin: vi.fn() }));
+vi.mock('../data/plugin-actions', () => ({ switchTool: vi.fn() }));
+
+vi.mock('../../../store/store-context', () => ({ useEntityStore: (): object => ({}) }));
+
+vi.mock('@tanstack/react-query', () => ({ useQueryClient: (): object => ({}) }));
 
 vi.mock('../data/plugin-queries', () => ({
   usePluginTools: (): { readonly data: readonly PluginToolRow[]; readonly isError: boolean } => ({

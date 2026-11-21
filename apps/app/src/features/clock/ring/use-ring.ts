@@ -104,16 +104,16 @@ export function useRingLive(
   dayFailed: boolean,
 ): RingLive {
   const now = useMinute();
-  const ref = ringRefOf(param);
   const incoming = useIncomingPlannerRing();
+  const ref = ringRefOf(param);
   const ringId = ringIdOf(ref, incoming, day?.rings);
   const due = typeof ringId === 'string' ? ringDueOf(ringId, incoming, day?.rings) : ringId;
   const { rows, failed } = useRingRows(due);
+  useShownRing(typeof ringId === 'string' ? ringId : param, useIsFocused());
   const hubRow = rows?.find((row) => row.id === ringId);
   const phoneKey =
     refKeyOf(ref) ?? (hubRow === undefined ? null : phoneRingKeyOf(hubRow.kind, hubRow.ref_id));
   const phone = usePhoneRing(phoneKey);
-  useShownRing(typeof ringId === 'string' ? ringId : param, useIsFocused());
   const state = ringStateOf({
     ringId,
     due,
@@ -125,16 +125,21 @@ export function useRingLive(
   return { state, phoneKey, phone };
 }
 
-function readRecentSleep(): Promise<PlannerSleep> {
+function readRecentSleep(signal: AbortSignal): Promise<PlannerSleep> {
   const to = Date.now();
   const from = to - SLEEP_LOOKBACK_DAYS * DAY_MS;
-  return readPlannerSleep(undefined, new Date(from).toISOString(), new Date(to).toISOString());
+  return readPlannerSleep(
+    undefined,
+    new Date(from).toISOString(),
+    new Date(to).toISOString(),
+    signal,
+  );
 }
 
 export function useRingSleep(today: string, wanted: boolean): PlannerSleep | undefined {
   return useScreenQuery({
     queryKey: [...PLANNER_PREFIX, 'sleep', null, today],
-    queryFn: readRecentSleep,
+    queryFn: ({ signal }) => readRecentSleep(signal),
     enabled: wanted,
   }).data;
 }

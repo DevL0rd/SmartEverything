@@ -22,11 +22,12 @@ export async function readPluginTool(
   pluginId: PluginId,
   tool: string,
   args: PluginToolArgs,
+  request: { readonly signal?: AbortSignal } = {},
 ): Promise<PluginToolResult> {
   const startedAt = Date.now();
   log.debug('plugin_tool.started', () => ({ pluginId, tool, argKeys: Object.keys(args).length }));
   try {
-    const outcome = await callPluginTool(pluginId, tool, args);
+    const outcome = await callPluginTool(pluginId, tool, args, request);
     log.debug('plugin_tool.finished', () => ({
       pluginId,
       tool,

@@ -79,6 +79,7 @@ function Dial({
       size={fit.dial}
       thickness={fit.big ? 14 : 9}
       label={`PM2.5 ${reading.value}, ${reading.verdict}`}
+      ticking={false}
     >
       <Figure value={reading.value} size={fit.big ? 'xl' : 'm'} stale={reading.stale} />
       {fit.big ? (

@@ -1,4 +1,5 @@
-import { listDriveZipEntries, readDriveZipEntryLink } from '../../../api/drive';
+import { readDriveZipEntryLink } from '../../../api/drive';
+import { listDriveZipEntries } from '../../../api/drive-pages';
 import { moment } from '../../../format/time';
 import { DRIVE_EVERYWHERE, driveKey } from '../../../queries/keys';
 import { useMinute } from '../../../store/clock';
@@ -106,7 +107,7 @@ export function useDriveZip(node: DriveNode | null): ZipListing {
   const target = zipTargetOf(node);
   const pages = useDrivePages({
     queryKey: driveKey('zip-entries', DRIVE_EVERYWHERE, target?.id ?? null, target?.rev ?? 0),
-    read: (cursor) => listDriveZipEntries(target?.id ?? '', cursor),
+    read: (cursor, signal) => listDriveZipEntries(target?.id ?? '', cursor, signal),
     enabled: target !== null,
   });
   const paging = pageStateOf(pages, target !== null);

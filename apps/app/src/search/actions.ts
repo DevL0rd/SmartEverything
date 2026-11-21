@@ -99,7 +99,7 @@ export function useSearchActions(
         command(action.entry);
         return;
       case 'automation':
-        toggleAutomation(action.automationId, !action.enabled);
+        toggleAutomation(store, action.automationId, !action.enabled);
         return;
       case 'power': {
         const power = store.get().deviceValues.get(action.device.id)?.['power']?.value;

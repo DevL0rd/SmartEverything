@@ -20,7 +20,7 @@ import {
   alarmsSubtitleOf,
 } from '../planner';
 import { AlarmEditor } from './alarm/alarm-editor';
-import { useClockLabel } from './format/clock-format';
+import { useClockLabel } from '../../store/clock-format';
 import { ALARM_INSPECTOR_WIDTH, AlarmInspector } from './alarm/alarm-inspector';
 import { SystemAlarmRow } from './alarm/system-alarm-row';
 import { WakeInsightsCard } from './alarm/wake-chart';
@@ -139,8 +139,8 @@ function inspectorAsideOf(
         <AlarmInspector
           person={null}
           alarm={alarm}
-          onCreated={(row) => {
-            onChoose({ kind: 'alarm', id: row.id });
+          onCreated={(id) => {
+            onChoose({ kind: 'alarm', id });
           }}
           onClose={close}
         />
@@ -205,8 +205,8 @@ export function AlarmsPage(): ReactNode {
           onClose={() => {
             setEditor({ ...editor, open: false });
           }}
-          onCreated={(row) => {
-            setEditor({ open: true, alarmId: row.id });
+          onCreated={(id) => {
+            setEditor({ open: true, alarmId: id });
           }}
         />
       )}

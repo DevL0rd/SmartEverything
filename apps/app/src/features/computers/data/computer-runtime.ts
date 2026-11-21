@@ -26,7 +26,8 @@ export function useComputerRuntime(
   const owner = useIsOwner();
   return useScreenQuery({
     queryKey: [...runtimeKey(deviceId), 'status'],
-    queryFn: () => api().call(E.readComputerRuntime, { params: { deviceId, runtime: 'codex' } }),
+    queryFn: ({ signal }) =>
+      api().call(E.readComputerRuntime, { params: { deviceId, runtime: 'codex' } }, { signal }),
     enabled: supported && owner,
   });
 }
@@ -62,7 +63,11 @@ export function useCodexModels(
 ): ReturnType<typeof useScreenQuery<ComputerRuntimeModel[]>> {
   return useScreenQuery({
     queryKey: [...runtimeKey(deviceId), 'models'],
-    queryFn: () =>
-      api().call(E.readComputerRuntimeModels, { params: { deviceId, runtime: 'codex' } }),
+    queryFn: ({ signal }) =>
+      api().call(
+        E.readComputerRuntimeModels,
+        { params: { deviceId, runtime: 'codex' } },
+        { signal },
+      ),
   });
 }

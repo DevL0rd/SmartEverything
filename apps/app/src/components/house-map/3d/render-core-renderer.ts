@@ -16,11 +16,19 @@ export function applyPixelRatio(
   return true;
 }
 
-export function releaseRenderer(
-  renderer: Pick<WebGLRenderer, 'dispose' | 'forceContextLoss'>,
-): void {
-  renderer.dispose();
-  renderer.forceContextLoss();
+interface RestingRenderer {
+  setRenderTarget(target: null): void;
+  setClearColor(color: number, alpha: number): void;
+  setSize(width: number, height: number, updateStyle: boolean): void;
+  readonly shadowMap: { enabled: boolean };
+}
+
+export function restRenderer(renderer: RestingRenderer): void {
+  const { shadowMap } = renderer;
+  renderer.setRenderTarget(null);
+  renderer.setClearColor(0x000000, 0);
+  shadowMap.enabled = false;
+  renderer.setSize(1, 1, false);
 }
 
 export class WebglUnavailableError extends Error {

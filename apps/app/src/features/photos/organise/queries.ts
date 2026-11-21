@@ -28,10 +28,10 @@ export function useSourceBuckets(source: MonthSource): UseQueryResult<readonly L
       source.kind === 'archive'
         ? photoKeys.archiveBuckets(PHOTO_ALL)
         : photoKeys.lockedBuckets(source.token),
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       source.kind === 'archive'
-        ? readArchiveBuckets(PHOTO_ALL)
-        : readLockedBuckets(source.token, PHOTO_ALL),
+        ? readArchiveBuckets(PHOTO_ALL, signal)
+        : readLockedBuckets(source.token, PHOTO_ALL, signal),
     ...(source.kind === 'archive' ? { placeholderData: keepPreviousData } : { gcTime: 0 }),
     retry: false,
   });
@@ -43,17 +43,19 @@ export function useSourceMonth(source: MonthSource, month: string): DrivePages<L
       source.kind === 'archive'
         ? photoKeys.archiveMonth(month, PHOTO_ALL)
         : photoKeys.lockedMonth(source.token, month),
-    read: (cursor) =>
+    read: (cursor, signal) =>
       source.kind === 'archive'
-        ? readArchivePage(month, PHOTO_ALL, cursor)
-        : readLockedPage(source.token, month, PHOTO_ALL, cursor),
+        ? readArchivePage(month, PHOTO_ALL, cursor, signal)
+        : readLockedPage(source.token, month, PHOTO_ALL, { cursor, signal }),
   });
 }
 
 export function useLockedState(enabled: boolean): UseQueryResult<PhotosResult<'readLockedState'>> {
   return useScreenQuery({
     queryKey: photoKeys.lockedState(),
-    queryFn: enabled ? readLockedState : skipToken,
+    queryFn: enabled
+      ? ({ signal }): ReturnType<typeof readLockedState> => readLockedState({ signal })
+      : skipToken,
     retry: false,
   });
 }
@@ -63,7 +65,7 @@ export function usePhotoArchived(
 ): UseQueryResult<PhotosResult<'readPhotoArchived'>> {
   return useScreenQuery({
     queryKey: photoKeys.archived(itemId),
-    queryFn: () => readPhotoArchived(itemId),
+    queryFn: ({ signal }) => readPhotoArchived(itemId, signal),
     retry: false,
   });
 }

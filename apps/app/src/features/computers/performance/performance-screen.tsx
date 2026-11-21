@@ -72,8 +72,9 @@ function Grid({
     (parts.gpu?.gpus ?? []).map((gpu) => gpu.id).join('\n'),
   );
   const features = useComputerDetail(device.id, device.online).data?.features;
+  const frameBodyWidth = useFrameBodyWidth();
   const ids = gpuIds === '' ? [] : gpuIds.split('\n');
-  const cols = gridColumnsOf(useFrameBodyWidth());
+  const cols = gridColumnsOf(frameBodyWidth);
   const rows = packRows(performanceCards(ids, cols), cols);
   const permitted = features === undefined || features.includes('cpu_power');
   return (

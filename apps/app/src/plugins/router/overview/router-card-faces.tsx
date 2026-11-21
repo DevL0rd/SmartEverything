@@ -26,6 +26,7 @@ function FaceMedallion({
       size="widget"
       label={hero?.spoken ?? 'Router'}
       offline={hero?.stale ?? true}
+      ticking
     />
   );
 }

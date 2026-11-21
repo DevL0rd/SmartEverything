@@ -71,7 +71,12 @@ export function TokenStrip({
         <Stat title="Thinking" value={compact(facts.thinking)} caption="Reasoning tokens" />
       </View>
       {facts.cacheShare === null ? null : (
-        <ProgressBar progress={facts.cacheShare} colour="viz-4" label="Read from cache" />
+        <ProgressBar
+          progress={facts.cacheShare}
+          colour="viz-4"
+          label="Read from cache"
+          ticking={false}
+        />
       )}
     </CostCard>
   );

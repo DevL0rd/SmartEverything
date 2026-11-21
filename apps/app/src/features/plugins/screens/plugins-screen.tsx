@@ -15,6 +15,7 @@ import { DEVICE_SETTINGS } from '../../devices';
 import { SETTINGS as WATCH_SETTINGS } from '../../watches';
 import { useListedDevices, useRows, useSyncStatus } from '../../../store/selectors';
 import { switchPlugin } from '../data/plugin-actions';
+import { useEntityStore } from '../../../store/store-context';
 import { pluginMenu } from '../data/plugin-menu';
 import { devicePluginRows, type DevicePluginRow } from '../model/device-plugins';
 import { pluginIcon, pluginSubtitle, statusLook } from '../model/plugin-look';
@@ -32,6 +33,7 @@ const PLUGIN_CARD_MIN_WIDTH = 390;
 const ADD = href.settings.page('plugins/add');
 
 function PluginRowItem({ row }: { readonly row: PluginRow }): ReactNode {
+  const store = useEntityStore();
   const subtitle = pluginSubtitle(row);
   const source = pluginSourceLabel(row);
   return (
@@ -45,13 +47,13 @@ function PluginRowItem({ row }: { readonly row: PluginRow }): ReactNode {
       caption={source}
       label={`${row.manifest.name}, ${subtitle}, ${source}`}
       href={href.pluginSettings(row.id)}
-      contextMenu={pluginMenu(row)}
+      contextMenu={pluginMenu(store, row)}
       trailing={
         <Switch
           value={row.enabled}
           label={`${row.manifest.name} on, ${row.manifest.publisher}, ${source}`}
           onChange={(on) => {
-            background(switchPlugin(row, on), 'plugin.switch_failed');
+            background(switchPlugin(store, row, on), 'plugin.switch_failed');
           }}
         />
       }

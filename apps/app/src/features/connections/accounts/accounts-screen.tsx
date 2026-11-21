@@ -16,8 +16,8 @@ import { useAccountBackFocus } from './use-account-back-focus';
 const ADD = href.settings.page('connections/add');
 
 function AccountRows(): ReactNode {
-  const accounts = useRows('provider_links').filter(isAccount);
   const rememberFocus = useAccountBackFocus();
+  const accounts = useRows('provider_links').filter(isAccount);
   if (accounts.length === 0) {
     return (
       <EmptyState

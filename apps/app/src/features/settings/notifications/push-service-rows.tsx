@@ -16,8 +16,12 @@ import { notify, notifyFailure } from '../../../components/toast-store';
 import { jsonText } from '../../../format/json-text';
 import { pickTextFile } from '../../../platform/text-file';
 import { useMinuteOf } from '../../../store/clock';
+import type { EntityStore } from '../../../store/entity-store';
+import { settingsEdit } from '../../../store/home-writes';
 import { useMutationState } from '../../../store/mutation';
+import { writeOptimistically } from '../../../store/optimistic';
 import { useSettings } from '../../../store/selectors';
+import { useEntityStore } from '../../../store/store-context';
 
 import { settingsLog, trackSetting } from '../settings-log';
 import { deliverySummary } from './push-delivery-summary';
@@ -25,7 +29,23 @@ export const FIREBASE_PAGE = 'notifications/push-service/firebase';
 
 const KEY_FAILURE = { failure: 'The key was not saved' } as const;
 
-async function saveKey(read: () => Promise<string | null>): Promise<boolean> {
+function writeProject(
+  store: EntityStore,
+  projectId: string | null,
+  send: () => Promise<void>,
+): Promise<void> {
+  const previous = store.get().settings;
+  return writeOptimistically(store, {
+    event: 'push_key.project_shown',
+    edits:
+      previous === null
+        ? []
+        : [settingsEdit(previous, { ...previous, push_project_id: projectId })],
+    send,
+  });
+}
+
+async function saveKey(store: EntityStore, read: () => Promise<string | null>): Promise<boolean> {
   const text = await read();
   if (text === null) {
     settingsLog.debug('push_key.pick_cancelled');
@@ -38,7 +58,7 @@ async function saveKey(read: () => Promise<string | null>): Promise<boolean> {
   }
   const account = serviceAccountOf(parsed.value);
   await trackSetting('push_key.save', { projectId: account.project_id }, () =>
-    savePushAccount(account),
+    writeProject(store, account.project_id, () => savePushAccount(account)),
   );
   notify({
     message: 'Key saved',
@@ -93,6 +113,7 @@ export function PushPurposeRow(): ReactNode {
 
 export function ChooseKeyRow(): ReactNode {
   const saving = useMutationState();
+  const store = useEntityStore();
   return (
     <ActionRow
       title="Import key file"
@@ -101,7 +122,7 @@ export function ChooseKeyRow(): ReactNode {
       disabled={saving.busy}
       onPress={() => {
         saving.run(
-          () => saveKey(() => pickTextFile('application/json,application/octet-stream')),
+          () => saveKey(store, () => pickTextFile('application/json,application/octet-stream')),
           KEY_FAILURE,
         );
       }}
@@ -111,6 +132,7 @@ export function ChooseKeyRow(): ReactNode {
 
 export function PasteKeyRow(): ReactNode {
   const saving = useMutationState();
+  const store = useEntityStore();
   return (
     <ActionRow
       title="Paste instead"
@@ -118,13 +140,14 @@ export function PasteKeyRow(): ReactNode {
       icon="copy"
       disabled={saving.busy}
       onPress={() => {
-        saving.run(() => saveKey(() => Clipboard.getStringAsync()), KEY_FAILURE);
+        saving.run(() => saveKey(store, () => Clipboard.getStringAsync()), KEY_FAILURE);
       }}
     />
   );
 }
 
 export function ForgetKeyRow(): ReactNode {
+  const store = useEntityStore();
   return (
     <ActionRow
       title="Forget key"
@@ -138,7 +161,11 @@ export function ForgetKeyRow(): ReactNode {
           tone: 'destructive',
         })
           .then((accepted) =>
-            accepted ? trackSetting('push_key.forget', {}, () => clearPushAccount()) : undefined,
+            accepted
+              ? trackSetting('push_key.forget', {}, () =>
+                  writeProject(store, null, () => clearPushAccount()),
+                )
+              : undefined,
           )
           .catch(notifyFailure('The key was not forgotten'));
       }}

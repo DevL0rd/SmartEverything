@@ -126,8 +126,9 @@ function ViewerBody({ target }: { readonly target: ViewerTarget }): ReactNode {
 }
 
 export function ViewerScreen(): ReactNode {
-  const target = viewerTargetOf(useLocalSearchParams());
+  const localSearchParams = useLocalSearchParams();
   useEscape(true, closeViewer);
+  const target = viewerTargetOf(localSearchParams);
   return (
     <ToastModal
       visible

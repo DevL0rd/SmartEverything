@@ -21,21 +21,34 @@ export interface Progress {
 
 export type ProcessingKind = Exclude<PhotosProgressNotice['kind'], 'backup'>;
 
-export interface LiveProgress {
-  readonly devices: ReadonlyMap<string, Progress>;
-  readonly kinds: ReadonlyMap<ProcessingKind, Progress>;
+export type DeviceProgress = ReadonlyMap<string, Progress>;
+
+export type KindProgress = ReadonlyMap<ProcessingKind, Progress>;
+
+export const NO_DEVICE_PROGRESS: DeviceProgress = new Map();
+
+export const NO_KIND_PROGRESS: KindProgress = new Map();
+
+function sameProgress(known: Progress | undefined, notice: PhotosProgressNotice): boolean {
+  return known?.done === notice.done && known.total === notice.total;
 }
 
-export const NO_PROGRESS: LiveProgress = { devices: new Map(), kinds: new Map() };
+export function deviceProgressAfter(
+  current: DeviceProgress,
+  notice: PhotosProgressNotice,
+): DeviceProgress {
+  if (notice.kind !== 'backup' || notice.deviceId === undefined) return current;
+  if (sameProgress(current.get(notice.deviceId), notice)) return current;
+  return new Map(current).set(notice.deviceId, { done: notice.done, total: notice.total });
+}
 
-export function progressAfter(current: LiveProgress, notice: PhotosProgressNotice): LiveProgress {
-  const progress = { done: notice.done, total: notice.total };
-  if (notice.kind === 'backup') {
-    if (notice.deviceId === undefined) return current;
-    return { ...current, devices: new Map(current.devices).set(notice.deviceId, progress) };
-  }
-  if (notice.itemId !== undefined) return current;
-  return { ...current, kinds: new Map(current.kinds).set(notice.kind, progress) };
+export function kindProgressAfter(
+  current: KindProgress,
+  notice: PhotosProgressNotice,
+): KindProgress {
+  if (notice.kind === 'backup' || notice.itemId !== undefined) return current;
+  if (sameProgress(current.get(notice.kind), notice)) return current;
+  return new Map(current).set(notice.kind, { done: notice.done, total: notice.total });
 }
 
 export function leftOf(state: BackupDeviceState): number {
@@ -160,13 +173,13 @@ export function currentFirst<T extends { readonly current: boolean }>(
   return [...views.filter((view) => view.current), ...views.filter((view) => !view.current)];
 }
 
-export function itemsLeftOf(states: readonly BackupDeviceState[], live: LiveProgress): number {
+export function itemsLeftOf(states: readonly BackupDeviceState[], devices: DeviceProgress): number {
   return states
     .filter((state) => state.device.settings.enabled)
-    .reduce((sum, state) => sum + countsOf(state, live.devices.get(state.device.deviceId)).left, 0);
+    .reduce((sum, state) => sum + countsOf(state, devices.get(state.device.deviceId)).left, 0);
 }
 
-export function backupSubtitleOf(state: BackupState | undefined, live: LiveProgress): string {
+export function backupSubtitleOf(state: BackupState | undefined, devices: DeviceProgress): string {
   const states = state?.devices;
   const kept = 'originals kept as they are';
   if (states === undefined || states.length === 0) return `Devices back up here · ${kept}`;
@@ -175,7 +188,7 @@ export function backupSubtitleOf(state: BackupState | undefined, live: LiveProgr
     states.length === 1
       ? `1 ${noun} backs up here`
       : `${count(states.length)} ${noun}s back up here`;
-  const left = itemsLeftOf(states, live);
+  const left = itemsLeftOf(states, devices);
   return joinParts([phones, left === 0 ? 'up to date' : `${count(left)} items left`, kept]);
 }
 
@@ -195,11 +208,11 @@ export interface HubProgress {
 
 export function hubProgressOf(
   state: BackupState | undefined,
-  live: LiveProgress,
+  devices: DeviceProgress,
 ): HubProgress | null {
   const phones = (state?.devices ?? []).filter((entry) => entry.device.settings.enabled);
   if (phones.length === 0) return null;
-  const counts = phones.map((entry) => countsOf(entry, live.devices.get(entry.device.deviceId)));
+  const counts = phones.map((entry) => countsOf(entry, devices.get(entry.device.deviceId)));
   const left = counts.reduce((sum, entry) => sum + entry.left, 0);
   const backedUp = counts.reduce((sum, entry) => sum + entry.backedUp, 0);
   return {
@@ -209,8 +222,11 @@ export function hubProgressOf(
   };
 }
 
-export function hubChipOf(state: BackupState | undefined, live: LiveProgress): ChipView | null {
-  const hub = hubProgressOf(state, live);
+export function hubChipOf(
+  state: BackupState | undefined,
+  devices: DeviceProgress,
+): ChipView | null {
+  const hub = hubProgressOf(state, devices);
   if (hub === null) return null;
   if (hub.left === 0) return { mark: 'check', label: 'Backed up', progress: 1 };
   if (hub.uploading) {

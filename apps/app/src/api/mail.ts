@@ -8,8 +8,8 @@ import { api } from './transport';
 
 type Body<K extends keyof typeof E> = z.input<(typeof E)[K]['body']>;
 
-export async function readMailSettings(): Promise<MailSettings | null> {
-  return api().call(E.readMailSettings, {});
+export async function readMailSettings(signal: AbortSignal): Promise<MailSettings | null> {
+  return api().call(E.readMailSettings, {}, { signal });
 }
 
 export async function writeMailSettings(body: Body<'writeMailSettings'>): Promise<MailSettings> {

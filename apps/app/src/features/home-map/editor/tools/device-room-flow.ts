@@ -6,7 +6,8 @@ import {
   type HomeMapVec,
 } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { useDevices, useRooms } from '../../../../store/selectors';
+import { useRooms } from '../../../../store/selectors';
+import { useRoomFlowDevices, type RoomFlowDevice } from '../../data/map-devices';
 import type { HomeMapEditing } from '../../data/home-map-query';
 import { nearestFreeSpot } from '../manipulate/object-actions';
 import {
@@ -46,7 +47,7 @@ export interface DeviceRoomFlow extends RoomFlowRow {
 
 interface Placing {
   readonly input: RoomFlowInput;
-  readonly devices: ReturnType<typeof useDevices>;
+  readonly devices: readonly RoomFlowDevice[];
   readonly rooms: ReturnType<typeof useRooms>;
   readonly apply: (ops: readonly HomeMapOp[]) => void;
   readonly confirm: (move: RoomMove) => void;
@@ -104,7 +105,7 @@ export interface RoomFlowInput extends Pick<
 }
 
 export function useDeviceRoomFlow(input: RoomFlowInput): DeviceRoomFlow {
-  const devices = useDevices();
+  const devices = useRoomFlowDevices();
   const rooms = useRooms();
   const [flow, setFlow] = useState<Flow>(CALM);
   const run = (job: Promise<Flow>, event: string): void => {

@@ -34,9 +34,13 @@ export interface ClockWrites {
 }
 
 export interface PlannerTools {
-  readonly parse: (body: Body<'parsePlannerText'>) => Promise<Output<'parsePlannerText'>>;
+  readonly parse: (
+    body: Body<'parsePlannerText'>,
+    signal: AbortSignal,
+  ) => Promise<Output<'parsePlannerText'>>;
   readonly suggestCompletion: (
     body: Body<'suggestPlannerCompletion'>,
+    signal: AbortSignal,
   ) => Promise<Output<'suggestPlannerCompletion'>>;
   readonly freeSlots: (body: Body<'plannerFreeSlots'>) => Promise<Output<'plannerFreeSlots'>>;
   readonly acceptProposal: (id: string) => Promise<unknown>;
@@ -60,8 +64,8 @@ export function clockWrites(person: PlannerPerson): ClockWrites {
 export function plannerTools(person: PlannerPerson): PlannerTools {
   const who = apiPerson(person);
   return {
-    parse: (body) => parsePlannerText(who, body),
-    suggestCompletion: (body) => suggestPlannerCompletion(who, body),
+    parse: (body, signal) => parsePlannerText(who, body, signal),
+    suggestCompletion: (body, signal) => suggestPlannerCompletion(who, body, signal),
     freeSlots: (body) => readPlannerFreeSlots(who, body),
     acceptProposal: (id) => acceptPlannerProposal(who, id),
     rejectProposal: (id) => rejectPlannerProposal(who, id),

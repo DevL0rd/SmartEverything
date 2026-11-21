@@ -8,7 +8,7 @@ import { List } from '../../components/section';
 import type { WatchCommand } from './watch-config';
 import { WatchGoalRows } from './watch-goal-rows';
 import { TimeSheet } from './watch-time';
-import { useClockFormat } from '../clock/format/clock-format';
+import { useClockFormat } from '../../store/clock-format';
 
 const ICONS: readonly (readonly [string, IconName])[] = [
   ['heart.', 'heartPulse'],

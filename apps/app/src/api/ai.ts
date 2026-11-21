@@ -33,31 +33,43 @@ export interface ModelPageQuery {
   readonly cursor?: string;
 }
 
-export async function listAiModels(query: ModelPageQuery): Promise<AiModelList> {
-  return api().call(M.listAiModels, { query: { limit: 30, ...query } });
+export async function listAiModels(
+  query: ModelPageQuery,
+  signal: AbortSignal,
+): Promise<AiModelList> {
+  return api().call(M.listAiModels, { query: { limit: 30, ...query } }, { signal });
 }
 
 export async function searchAiModels(
   query: Omit<AiModelSearchRequest, 'limit' | 'gone'>,
+  signal: AbortSignal,
 ): Promise<AiModelSearch> {
-  return api().call(M.searchAiModels, { query: { ...query, limit: 30, gone: false } });
+  return api().call(M.searchAiModels, { query: { ...query, limit: 30, gone: false } }, { signal });
 }
 
 export async function suggestedAiModels(
   kind: AiModelKind,
   current: AiModelChoice | null,
+  signal: AbortSignal,
 ): Promise<AiModelSuggested> {
-  return api().call(M.suggestedAiModels, {
-    query: current === null ? { kind } : { kind, current },
-  });
+  return api().call(
+    M.suggestedAiModels,
+    {
+      query: current === null ? { kind } : { kind, current },
+    },
+    { signal },
+  );
 }
 
-export async function listAiModelProviders(kind: AiModelKind): Promise<AiProviderCount[]> {
-  return api().call(M.listAiModelProviders, { query: { kind } });
+export async function listAiModelProviders(
+  kind: AiModelKind,
+  signal: AbortSignal,
+): Promise<AiProviderCount[]> {
+  return api().call(M.listAiModelProviders, { query: { kind } }, { signal });
 }
 
-export async function readAiModel(id: string): Promise<AiModelRow> {
-  return (await api().call(M.readAiModel, { params: { id } })).model;
+export async function readAiModel(id: string, signal: AbortSignal): Promise<AiModelRow> {
+  return (await api().call(M.readAiModel, { params: { id } }, { signal })).model;
 }
 
 interface ChatListQuery {
@@ -69,8 +81,8 @@ interface ChatListQuery {
   readonly source?: MessageSource;
 }
 
-export async function listAiChats(query: ChatListQuery): Promise<AiChatRow[]> {
-  return api().call(C.listAiChats, { query });
+export async function listAiChats(query: ChatListQuery, signal: AbortSignal): Promise<AiChatRow[]> {
+  return api().call(C.listAiChats, { query }, { signal });
 }
 
 interface ChatSearchQuery {
@@ -79,8 +91,12 @@ interface ChatSearchQuery {
   readonly limit?: number;
 }
 
-export async function searchAiChats(q: string, options: ChatSearchQuery): Promise<AiChatHit[]> {
-  return api().call(C.searchAiChats, { query: { q, ...options } });
+export async function searchAiChats(
+  q: string,
+  options: ChatSearchQuery,
+  signal: AbortSignal,
+): Promise<AiChatHit[]> {
+  return api().call(C.searchAiChats, { query: { q, ...options } }, { signal });
 }
 
 export async function createAiChat(chat: AiChatNew): Promise<AiChatRow> {

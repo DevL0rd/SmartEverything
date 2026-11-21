@@ -49,7 +49,8 @@ function Header({
 function Dialog(props: LibrarySheetProps): ReactNode {
   const motion = useMotion();
   const shown = useOverlayShown();
-  const width = dialogWidth(useWindowSize().width);
+  const windowSize = useWindowSize();
+  const width = dialogWidth(windowSize.width);
   return (
     <Animated.View
       {...entering(motion, FadeIn.duration(250))}

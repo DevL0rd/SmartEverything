@@ -93,6 +93,78 @@ export function invalidateDriveReach(
   );
 }
 
+function union(first: readonly string[], second: readonly string[]): readonly string[] {
+  return [...new Set([...first, ...second])];
+}
+
+function mergedReach(first: DriveChangeReach | null, second: DriveChangeReach): DriveChangeReach {
+  if (first === null) return second;
+  return {
+    rootIds: union(first.rootIds, second.rootIds),
+    folderIds: union(first.folderIds, second.folderIds),
+    albumIds: union(first.albumIds, second.albumIds),
+    months:
+      first.months === null || second.months === null ? null : union(first.months, second.months),
+  };
+}
+
+class ChangeRounds {
+  #pending: DriveChangeReach | null = null;
+  #running = false;
+
+  constructor(private readonly client: QueryClient) {}
+
+  receive(reach: DriveChangeReach): void {
+    if (this.#running) {
+      this.#pending = mergedReach(this.#pending, reach);
+      return;
+    }
+    this.#start(reach, new Set());
+  }
+
+  #start(reach: DriveChangeReach | null, carried: ReadonlySet<Query>): void {
+    this.#running = true;
+    const busy = new Set<Query>();
+    const settled = this.client.invalidateQueries(
+      {
+        queryKey: DRIVE_PREFIX,
+        predicate: (query) => {
+          const hit = carried.has(query) || (reach !== null && keyedBy(query, reach, null));
+          if (hit && query.state.fetchStatus === 'fetching') busy.add(query);
+          return hit;
+        },
+      },
+      { cancelRefetch: false },
+    );
+    background(
+      settled.finally(() => {
+        this.#settle(busy);
+      }),
+      'queries.invalidate_failed',
+    );
+  }
+
+  #settle(busy: ReadonlySet<Query>): void {
+    const next = this.#pending;
+    this.#pending = null;
+    if (next === null && busy.size === 0) {
+      this.#running = false;
+      return;
+    }
+    this.#start(next, busy);
+  }
+}
+
+const rounds = new WeakMap<QueryClient, ChangeRounds>();
+
+function roundsOf(client: QueryClient): ChangeRounds {
+  const known = rounds.get(client);
+  if (known !== undefined) return known;
+  const created = new ChangeRounds(client);
+  rounds.set(client, created);
+  return created;
+}
+
 export function invalidateDriveChanged(client: QueryClient, notice: DriveChangedNotice): void {
-  invalidateDriveReach(client, notice);
+  roundsOf(client).receive(notice);
 }

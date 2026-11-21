@@ -1,19 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Engine } from '@smarteverything/domain';
 import type * as ExternalStore from '../../../design/external-store';
 import type * as ChatActions from './chat-actions';
 import type * as DeferredAction from '../../../components/deferred-action';
 import type * as ToastStore from '../../../components/toast-store';
+import { EntityStore } from '../../../store/entity-store';
 
 const api = vi.hoisted(() => ({
-  createAiChat: vi.fn(),
   removeAiChat: vi.fn(),
   updateAiChat: vi.fn(),
 }));
 
 vi.mock('../../../api/ai', () => ({
   compactAiChat: vi.fn(),
-  createAiChat: api.createAiChat,
   interruptAiChat: vi.fn(),
   removeAiChat: api.removeAiChat,
   sendAiChatMessage: vi.fn(),
@@ -43,22 +41,6 @@ async function fresh(): Promise<{
     toasts,
   };
 }
-
-it('leaves a Quick Ask chat unnamed so its first request can supply a title', async () => {
-  const { actions } = await fresh();
-  const engine: Engine = {
-    kind: 'dsh',
-    execution_target: { kind: 'server' },
-    session_id: null,
-    model_route_id: '20000000-0000-4000-8000-000000000001',
-    model: 'fixture/coordinator',
-    effort: null,
-    permission: { sandbox: 'danger-full-access', approval: 'never' },
-  };
-  api.createAiChat.mockReset().mockRejectedValueOnce(new Error('Fixture stopped before sending'));
-  await expect(actions.chatStarter(engine, vi.fn())('Garden lights', [])).resolves.toBe(false);
-  expect(api.createAiChat).toHaveBeenCalledExactlyOnceWith({ engine });
-});
 
 describe('chat delete and archive with undo', () => {
   beforeEach(() => {
@@ -92,11 +74,12 @@ describe('chat delete and archive with undo', () => {
 
   it('archives after the undo window and unarchives at once', async () => {
     const { actions } = await fresh();
-    actions.setChatArchived('chat-2', false);
+    const store = new EntityStore();
+    actions.setChatArchived(store, 'chat-2', false);
     await vi.advanceTimersByTimeAsync(0);
     expect(api.updateAiChat).toHaveBeenCalledWith('chat-2', { archived: false });
     api.updateAiChat.mockClear();
-    actions.setChatArchived('chat-2', true);
+    actions.setChatArchived(store, 'chat-2', true);
     await vi.advanceTimersByTimeAsync(7999);
     expect(api.updateAiChat).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(2);

@@ -138,6 +138,14 @@ function composerPorts(): RecordedPorts {
         return Promise.resolve(timer({ label: body.label ?? null, duration_ms: body.duration_ms }));
       },
     },
+    alarmDefaults: {
+      sound: { kind: 'tone', id: 'default' },
+      ramp_seconds: 60,
+      vibrate: true,
+      snooze_minutes: 9,
+      snooze_limit: null,
+      targets: [],
+    },
   };
   return { alarms, timers, ports };
 }
@@ -212,7 +220,7 @@ describe('the clock sections', () => {
     const recorded = composerPorts();
     await addFromClock('index', 'wake me 06:30 weekdays', recorded.ports);
     await addFromClock('timers', 'pasta 10 min', recorded.ports);
-    expect(recorded.alarms).toEqual([
+    expect(recorded.alarms).toMatchObject([
       { time: '06:30', label: 'wake me', days: [1, 2, 3, 4, 5], once_on: null },
     ]);
     expect(recorded.timers).toEqual([{ duration_ms: 600_000, label: 'pasta' }]);

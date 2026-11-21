@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { Linking, View } from 'react-native';
 import { MIN_PLACE_QUERY, placeAt, usePlaceSearch } from '../../../api/places';
-import { updateHome } from '../../../api/settings';
 import { Banner } from '../../../components/banner';
 import { Button } from '../../../components/button';
 import { List } from '../../../components/section';
@@ -12,7 +11,7 @@ import { SearchField } from '../../../components/search-field';
 import { Sheet } from '../../../components/sheet';
 import { Skeleton } from '../../../components/skeleton';
 import { Text } from '../../../components/text';
-import { notify } from '../../../components/toast-store';
+import { notify, notifyFailure } from '../../../components/toast-store';
 import { useDebouncedValue } from '../../../design/use-debounced-value';
 import { errorText } from '../../../format/errors';
 import { joinParts } from '../../../format/text';
@@ -24,7 +23,9 @@ import {
   locateHere,
 } from '../../../platform/location';
 import { useMutationState } from '../../../store/mutation';
+import { writeHome } from '../../../store/home-writes';
 import { useSettings } from '../../../store/selectors';
+import { useEntityStore } from '../../../store/store-context';
 
 import { settingsLog, trackSetting } from '../settings-log';
 import { background } from '@smarteverything/logging';
@@ -176,7 +177,7 @@ function ZoneStep({
   readonly current: string;
   readonly onDone: () => void;
 }): ReactNode {
-  const mutation = useMutationState();
+  const store = useEntityStore();
   return (
     <View className="gap-4">
       <Text variant="title-3">Also set the time zone?</Text>
@@ -187,15 +188,11 @@ function ZoneStep({
         <Button
           label={`Use ${zoneLabel(zone)}`}
           icon="clock"
-          loading={mutation.busy}
           onPress={() => {
-            mutation.run(
-              () => trackSetting('home_time_zone.set', {}, () => updateHome({ time_zone: zone })),
-              {
-                failure: 'The time zone was not changed',
-                onDone,
-              },
-            );
+            onDone();
+            trackSetting('home_time_zone.set', {}, () =>
+              writeHome(store, { time_zone: zone }),
+            ).catch(notifyFailure('The time zone was not changed'));
           }}
         />
         <Button label={`Keep ${zoneLabel(current)}`} variant="text" onPress={onDone} />
@@ -208,32 +205,25 @@ function usePick(onClose: () => void): {
   readonly step: Step;
   readonly pick: (place: PlaceMatch) => void;
 } {
+  const store = useEntityStore();
   const zone = useSettings().time_zone;
   const [step, setStep] = useState<Step>({ kind: 'search' });
-  const mutation = useMutationState();
   const pick = (place: PlaceMatch): void => {
     const label = placeLabel(place);
-    mutation.run(
-      () =>
-        trackSetting('home_location.set', { named: label !== '' }, () =>
-          updateHome({
-            latitude: place.latitude,
-            longitude: place.longitude,
-            location_name: label,
-          }),
-        ),
-      {
-        failure: 'The location was not saved',
-        onDone: () => {
-          notify({ message: `Home set to ${label}`, tone: 'positive' });
-          if (place.timeZone !== null && place.timeZone !== zone) {
-            setStep({ kind: 'zone', zone: place.timeZone });
-            return;
-          }
-          onClose();
-        },
-      },
-    );
+    trackSetting('home_location.set', { named: label !== '' }, () =>
+      writeHome(store, {
+        latitude: place.latitude,
+        longitude: place.longitude,
+        location_name: label,
+      }),
+    ).then(() => {
+      notify({ message: `Home set to ${label}`, tone: 'positive' });
+    }, notifyFailure('The location was not saved'));
+    if (place.timeZone !== null && place.timeZone !== zone) {
+      setStep({ kind: 'zone', zone: place.timeZone });
+      return;
+    }
+    onClose();
   };
   return { step, pick };
 }

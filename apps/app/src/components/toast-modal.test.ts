@@ -116,7 +116,10 @@ vi.mock('../design/platform', () => ({
   isNative: (): boolean => false,
   useIdiom: (): string => 'pointer',
 }));
-vi.mock('../design/size-class', () => ({ useSizeClass: (): unknown => ({ nav: 'sidebar' }) }));
+vi.mock('../design/size-class', () => ({
+  useSizeClass: (): unknown => ({ nav: 'sidebar' }),
+  useWindowSize: (): unknown => ({ width: 1280, height: 800, scale: 1, fontScale: 1 }),
+}));
 vi.mock('../design/theme-scope', () => ({ ThemeScope: Pass, useScopedTheme: (): null => null }));
 vi.mock('../platform/haptics', () => ({ warningBuzz: (): void => undefined }));
 vi.mock('./button', () => ({ Button: TestButton }));

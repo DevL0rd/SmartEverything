@@ -6,6 +6,7 @@ import type { Device } from '../../../store/state';
 import { openQuickControls } from '../../../store/ui-state';
 import { useScheduleItems } from '../../automations';
 import { changeDevice } from '../data/change-device';
+import { useEntityStore } from '../../../store/store-context';
 import { QuickControlsPanel } from '../quick/quick-controls';
 import { usePowerAction } from './power-toggle';
 import { settingsItem } from '../../../settings/settings-item';
@@ -31,8 +32,9 @@ export function useDeviceMenu(
   const power = powerItems(powerAction);
   const schedule = useScheduleItems(device.id, powerAction.state);
   const pin = usePinMenuItems({ kind: 'device', deviceId: device.id, focus: null });
+  const store = useEntityStore();
   const toggleFavourite = (): void => {
-    changeDevice(device, device.label, { favourite: !device.favourite });
+    changeDevice(store, device, device.label, { favourite: !device.favourite });
   };
   const quick: readonly MenuItem[] = options.quickControls
     ? [

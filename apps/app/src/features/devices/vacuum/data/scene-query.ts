@@ -33,15 +33,19 @@ export function useVacuumSceneOf(
   map: VacuumMapVersion | null,
   linksValue: JsonValue | undefined,
 ): VacuumSceneState {
-  const links = linksKeyPart(linksValue);
   const homeRooms = useRooms();
+  const links = linksKeyPart(linksValue);
   const query = useScreenQuery({
     queryKey: vacuumSceneKey(deviceId, map?.slot ?? 'current', map?.version ?? NO_MAP, links),
-    queryFn: (): Promise<VacuumSceneAnswer> =>
-      api().call(E.getVacuumScene, {
-        params: { deviceId },
-        query: { slot: map?.slot ?? 'current' },
-      }),
+    queryFn: ({ signal }): Promise<VacuumSceneAnswer> =>
+      api().call(
+        E.getVacuumScene,
+        {
+          params: { deviceId },
+          query: { slot: map?.slot ?? 'current' },
+        },
+        { signal },
+      ),
     enabled: map !== null,
     staleTime: Infinity,
     placeholderData: keepPreviousData,

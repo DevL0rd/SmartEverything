@@ -39,7 +39,10 @@ const STATS = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('react-native', () => ({ View: stub('View'), StyleSheet: { hairlineWidth: 1 } }));
+vi.mock('react-native', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  View: stub('View'),
+}));
 vi.mock('react-native-svg', () => ({ default: stub('Svg'), Path: stub('Path') }));
 vi.mock('../../../design/colour', () => ({ useColour: (): string => '#000000' }));
 vi.mock('../../../components/text', () => ({ Text: stub('Text') }));
@@ -59,6 +62,10 @@ vi.mock('../../../features/device-visuals', () => ({
   usePrinterLive: (): null => null,
 }));
 vi.mock('../../../store/clock', () => ({ useDayKey: (): string => '2026-11-06' }));
+vi.mock('../../../store/clock-format', async () => {
+  const { clockFormatOf } = await import('../../../format/clock-text');
+  return { useClockFormat: (): ReturnType<typeof clockFormatOf> => clockFormatOf(true) };
+});
 vi.mock('../components/printer-card', () => ({ WAITING }));
 vi.mock('../components/supply-band', () => ({
   SupplyBars: stub('SupplyBars'),

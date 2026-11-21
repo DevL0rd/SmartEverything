@@ -8,6 +8,7 @@ import type {
   DriveShortcutCreate,
 } from '@smarteverything/domain';
 import { appendTo } from '@smarteverything/domain';
+import { randomUUID } from 'expo-crypto';
 import { rawErrorText } from '../../../format/errors';
 import {
   NOTHING_DONE,
@@ -59,16 +60,20 @@ function newFolderOf(
   env: DriveOpsEnv,
 ): DriveChange | string {
   const parent: DriveFolderPlace | null = folderPlaceOf(op.in, env.roots, env.viewerId);
-  return parent === null ? NO_PLACE_HERE : { action: 'new_folder', parent, name: op.name };
+  return parent === null
+    ? NO_PLACE_HERE
+    : { action: 'new_folder', parent, name: op.name, id: randomUUID() };
 }
 
 function intoFolderOf(
   op: Extract<DriveFileOp, { readonly kind: 'move' | 'copy' }>,
 ): DriveChange | string {
   const toFolderId = folderOf(op.to);
-  return toFolderId === null
-    ? NO_TOP_MOVE
-    : { action: op.kind, itemIds: idsOf(op.nodes), toFolderId };
+  if (toFolderId === null) return NO_TOP_MOVE;
+  const itemIds = idsOf(op.nodes);
+  return op.kind === 'move'
+    ? { action: 'move', itemIds, toFolderId }
+    : { action: 'copy', itemIds, toFolderId, copyIds: itemIds.map(() => randomUUID()) };
 }
 
 export function driveChangeOf(op: DriveFileOp, env: DriveOpsEnv): DriveChange | string {

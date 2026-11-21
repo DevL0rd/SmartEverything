@@ -55,7 +55,12 @@ function FolderText({
         {countLineOf(folder, backsUp)}
       </Text>
       {share === null || !backsUp ? null : (
-        <ProgressBar progress={share} colour="primary" label={`${folder.name} backed up`} />
+        <ProgressBar
+          progress={share}
+          colour="primary"
+          label={`${folder.name} backed up`}
+          ticking={false}
+        />
       )}
     </View>
   );

@@ -10,6 +10,7 @@ import { cn } from '../../../design/cn';
 import { CONTAINER_WIDTH } from '../../../design/tokens';
 import { count as formatCount } from '../../../format/number';
 import { clock, dayLabel } from '../../../format/time';
+import { useAutomationName } from '../data/use-automations';
 import {
   RUN_LABELS,
   durationLabel,
@@ -102,17 +103,47 @@ export function RunRow({ run, name, zone, mostSteps, onOpen }: RunRowProps): Rea
   );
 }
 
-export interface RunDayGroupProps extends Omit<RunRowProps, 'run' | 'name'> {
+function AutomationRunRow(props: Omit<RunRowProps, 'name'>): ReactNode {
+  const name = useAutomationName(props.run.automation_id) ?? 'A removed automation';
+  return <RunRow {...props} name={name} />;
+}
+
+function DayRow({
+  named,
+  ...props
+}: Omit<RunRowProps, 'name'> & { readonly named: boolean }): ReactNode {
+  return named ? <AutomationRunRow {...props} /> : <RunRow {...props} name={null} />;
+}
+
+export interface RunDayGroupProps {
   readonly day: RunDay;
   readonly now: number;
   readonly width: number;
-  readonly nameOf: (run: AutomationRunSummary) => string | null;
+  readonly zone: string | null;
+  readonly mostSteps: number;
+  readonly named: boolean;
+  readonly onOpen: (run: AutomationRunSummary) => void;
 }
 
-export function RunDayGroup({ day, now, width, nameOf, ...rest }: RunDayGroupProps): ReactNode {
+export function RunDayGroup({
+  day,
+  now,
+  width,
+  zone,
+  mostSteps,
+  named,
+  onOpen,
+}: RunDayGroupProps): ReactNode {
   const { columns } = useGridLayout(width, CONTAINER_WIDTH.reading, 'tight', MAX_RUN_COLUMNS);
   const rows = day.runs.map((run) => (
-    <RunRow key={run.id} run={run} name={nameOf(run)} {...rest} />
+    <DayRow
+      key={run.id}
+      run={run}
+      named={named}
+      zone={zone}
+      mostSteps={mostSteps}
+      onOpen={onOpen}
+    />
   ));
   return (
     <View className="w-full gap-2">
@@ -120,7 +151,7 @@ export function RunDayGroup({ day, now, width, nameOf, ...rest }: RunDayGroupPro
         className={cn('flex-row items-baseline gap-2 px-1', columns === 1 && 'justify-between')}
       >
         <Text variant="footnote" tone="variant" accessibilityRole="header">
-          {dayLabel(day.first.created_at, now, rest.zone)}
+          {dayLabel(day.first.created_at, now, zone)}
         </Text>
         <Text variant="caption" tone={day.failed > 0 ? 'critical' : 'faint'} className="tabular">
           {day.failed > 0

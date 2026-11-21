@@ -11,8 +11,7 @@ import { Card } from '../../../components/card';
 import { notify } from '../../../components/toast-store';
 import { useIdiom } from '../../../design/platform';
 import { localDayKey } from '../../../format/time';
-import { useHour24 } from '../../../store/clock-format';
-import { useInstantClock, type InstantClock } from '../../clock/format/clock-format';
+import { useHour24, useInstantClock, type InstantClock } from '../../../store/clock-format';
 import { useVisibleMinuteOf } from '../data';
 import { PILL_HEIGHT } from './alarm-clusters';
 import type { EventLook } from './calendars-model';
@@ -150,7 +149,8 @@ function GridBody({ pins, view, today, compact, initialHeight }: BodyProps): Rea
   const drafting = useDrafting(view.onCreate, view.held);
   const moves = useMoves(view.onMove);
   const tall = useAnimatedStyle(() => ({ height: (DAY_MINUTES / 60) * hourHeight.get() }));
-  const days = daysAt(view, today, settled, useInstantClock());
+  const instantClock = useInstantClock();
+  const days = daysAt(view, today, settled, instantClock);
   const geometry = { compact, hourHeight: settled };
   return (
     <GestureDetector gesture={gesture} touchAction={touchActionOf(compact)}>
@@ -204,8 +204,9 @@ export function TimeGrid(props: TimeGridProps): ReactNode {
     sameLive,
   );
   const [width, setWidth] = useState(0);
-  const heads = daysAt(props, live.value.today, initialHeight, useInstantClock());
+  const instantClock = useInstantClock();
   const hour24 = useHour24();
+  const heads = daysAt(props, live.value.today, initialHeight, instantClock);
   const shape: HeadShape = {
     compact,
     columns: heads.length,

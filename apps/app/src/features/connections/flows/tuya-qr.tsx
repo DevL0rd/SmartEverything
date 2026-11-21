@@ -21,7 +21,9 @@ const RING_THICKNESS = 8;
 const LOW_SHARE = 0.2;
 
 function MinutesLeft(): ReactNode {
-  const left = qrMinutesLeft(useProviderLink('tuya'), useMinute());
+  const providerLink = useProviderLink('tuya');
+  const now = useMinute();
+  const left = qrMinutesLeft(providerLink, now);
   if (left === null) {
     return null;
   }
@@ -50,6 +52,7 @@ function CountdownQr({
           thickness={RING_THICKNESS}
           colour={share > LOW_SHARE ? 'primary' : 'warning'}
           overlay
+          ticking={false}
         />
       )}
       <QrCode text={content} size={QR_SIZE} label={`Sign-in code for ${app}`} />

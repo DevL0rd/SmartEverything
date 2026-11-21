@@ -10,7 +10,14 @@ vi.mock('react-native', async (importOriginal) => ({
   View: ({ children }: { readonly children?: ReactNode }): ReactNode =>
     createElement('div', null, children),
 }));
-vi.mock('../../../design/platform', () => ({ useIdiom: (): string => 'touch' }));
+vi.mock('react-native-gesture-handler', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  GestureDetector: ({ children }: { readonly children?: ReactNode }): ReactNode => children,
+}));
+vi.mock('../../../design/platform', () => ({
+  useIdiom: (): string => 'touch',
+  idiomNow: (): string => 'touch',
+}));
 vi.mock('../../../components/icon-button', () => ({
   IconButton: ({ label }: { readonly label: string }): ReactNode =>
     createElement('button', null, label),
@@ -23,7 +30,10 @@ vi.mock('../../../components/menu', () => ({
 vi.mock('../../../components/icon', () => ({ Icon: (): null => null }));
 vi.mock('../../../components/text', () => ({ Text: (): null => null }));
 vi.mock('../../../components/tooltip', () => ({ Tooltip: (): null => null }));
-vi.mock('../../../components/toast-store', () => ({ notify: vi.fn() }));
+vi.mock('../../../components/toast-store', () => ({
+  notify: vi.fn(),
+  notifyFailure: (): (() => void) => vi.fn(),
+}));
 vi.mock('../../../platform/pick-files', () => ({ pickFiles: vi.fn() }));
 vi.mock('../data/uploads', () => ({ attachFiles: vi.fn() }));
 vi.mock('../voice-message/voice-message-sheet', () => ({ VoiceMessageSheet: (): null => null }));
@@ -54,7 +64,9 @@ describe('composer actions', () => {
         ),
       );
       expect(markup).toContain('<button>Attach</button><span>Take a photo, Photos, Files</span>');
-      expect(markup).toContain('<button>Voice message</button><button>Send message</button>');
+      expect(markup).toMatch(
+        /<button>Voice message<\/button>(<\/div>)*<button>Send message<\/button>/,
+      );
       expect(markup.match(/Voice message/g)).toHaveLength(1);
       expect(markup).not.toContain('Emoji');
     },

@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { pendingConfirm, settleConfirm } from '../../../components/confirm-store';
 import { APP_SOURCE } from '../model/chat-source';
 import type { ChatEntry } from './chat-entry';
+import { EntityStore } from '../../../store/entity-store';
 
 const removed: string[] = [];
 
@@ -158,7 +159,11 @@ describe('the sidebar chat actions', () => {
   it('opens Rename without offering the removed details panel', async () => {
     const { menuOf } = await import('./row-actions');
     const entry = { id: CHAT, title: 'Garden plan', pinned: false, archived: false, unread: 0 };
-    const menu = menuOf(entry, { onDeleted: vi.fn(), storedMessages: () => [] });
+    const menu = menuOf(entry, {
+      store: new EntityStore(),
+      onDeleted: vi.fn(),
+      storedMessages: () => [],
+    });
     menu.find((item) => item.label === 'Rename')?.onPress();
     expect(menu.some((item) => item.label === 'Chat details')).toBe(false);
     expect(router.push).toHaveBeenNthCalledWith(1, {

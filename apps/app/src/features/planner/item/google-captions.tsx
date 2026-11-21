@@ -78,13 +78,13 @@ export function googleChoiceQuery(
   item: PlannerItemRow,
 ): {
   readonly queryKey: readonly unknown[];
-  readonly queryFn: () => Promise<GoogleChoice | null>;
+  readonly queryFn: (context: { readonly signal: AbortSignal }) => Promise<GoogleChoice | null>;
   readonly enabled: boolean;
 } {
   return {
     queryKey: [...PLANNER_PREFIX, 'google-choice', person, item.id, item.updated_at],
-    queryFn: async () =>
-      pendingChoiceOf(await readGoogleSyncLog(apiPerson(person), undefined), item.id),
+    queryFn: async ({ signal }) =>
+      pendingChoiceOf(await readGoogleSyncLog(apiPerson(person), undefined, signal), item.id),
     enabled: item.google?.state === 'sending',
   };
 }

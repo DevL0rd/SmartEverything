@@ -3,8 +3,10 @@ import {
   applyPixelRatio,
   canvasPixelRatio,
   createRenderer,
-  releaseRenderer,
+  restRenderer,
 } from './render-core-renderer';
+
+const STAGE_CANVAS_CLASS = 'vacuum-map3d';
 
 export interface CoreSurface<R = WebGLRenderer> {
   readonly renderer: R;
@@ -44,10 +46,68 @@ export interface SharedPool<R extends SurfaceRenderer> {
   readonly users: number;
 }
 
-export function ownSurface(canvas: HTMLCanvasElement): CoreSurface {
-  const renderer = createRenderer(canvas);
+export type StageSurface = CoreSurface & { readonly canvas: HTMLCanvasElement };
+
+interface StageSource extends SurfaceSource {
+  remove(): void;
+}
+
+export interface StageRenderer extends SurfaceRenderer<StageSource> {
+  dispose(): void;
+}
+
+interface StagePool<R extends StageRenderer> {
+  acquire(): R;
+  release(renderer: R): void;
+  readonly idle: number;
+}
+
+export function stagePool<R extends StageRenderer>(
+  create: () => R,
+  rest: (renderer: R) => void,
+): StagePool<R> {
+  const idle: R[] = [];
+  const lost = new WeakSet<R>();
+  const made = (): R => {
+    const renderer = create();
+    renderer.domElement.addEventListener('webglcontextlost', () => {
+      lost.add(renderer);
+      const at = idle.indexOf(renderer);
+      if (at === -1) return;
+      idle.splice(at, 1);
+      renderer.dispose();
+    });
+    return renderer;
+  };
+  return {
+    acquire(): R {
+      return idle.pop() ?? made();
+    },
+    release(renderer): void {
+      renderer.domElement.remove();
+      if (lost.has(renderer)) {
+        renderer.dispose();
+        return;
+      }
+      rest(renderer);
+      idle.push(renderer);
+    },
+    get idle(): number {
+      return idle.length;
+    },
+  };
+}
+
+const fullStages = stagePool(() => createRenderer(document.createElement('canvas')), restRenderer);
+
+function ownSurface(host: HTMLElement): StageSurface {
+  const renderer = fullStages.acquire();
+  const canvas = renderer.domElement;
+  canvas.className = STAGE_CANVAS_CLASS;
+  host.appendChild(canvas);
   return {
     renderer,
+    canvas,
     resize(width, height): void {
       renderer.setSize(Math.max(width, 1), Math.max(height, 1), false);
     },
@@ -56,7 +116,7 @@ export function ownSurface(canvas: HTMLCanvasElement): CoreSurface {
     },
     frame: (paint) => paint(),
     release(): void {
-      releaseRenderer(renderer);
+      fullStages.release(renderer);
     },
   };
 }
@@ -93,10 +153,28 @@ export function sharedPool<R extends SurfaceRenderer>(create: () => R): SharedPo
 
 const smallStages = sharedPool(() => createRenderer(document.createElement('canvas')));
 
-export function coreSurface(canvas: HTMLCanvasElement, shared: boolean): CoreSurface {
-  return shared
-    ? sharedSurface<HTMLCanvasElement, WebGLRenderer>(canvas, smallStages)
-    : ownSurface(canvas);
+function smallSurface(host: HTMLElement): StageSurface {
+  const canvas = document.createElement('canvas');
+  canvas.className = STAGE_CANVAS_CLASS;
+  const surface = sharedSurface<HTMLCanvasElement, WebGLRenderer>(canvas, smallStages);
+  host.appendChild(canvas);
+  return {
+    renderer: surface.renderer,
+    canvas,
+    resize: (width, height): void => {
+      surface.resize(width, height);
+    },
+    setPixelRatio: (ratio, renderScale): boolean => surface.setPixelRatio(ratio, renderScale),
+    frame: (paint) => surface.frame(paint),
+    release: (): void => {
+      surface.release();
+      canvas.remove();
+    },
+  };
+}
+
+export function coreSurface(host: HTMLElement, shared: boolean): StageSurface {
+  return shared ? smallSurface(host) : ownSurface(host);
 }
 
 function drawingContext<S>(canvas: SurfaceTarget<S>): SurfacePaint<S> {

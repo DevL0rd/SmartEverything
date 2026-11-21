@@ -24,7 +24,7 @@ export function usePinnedProgram(
   const revision = pin?.revision ?? 0;
   const query = useScreenQuery({
     queryKey: automationKeys.revision(automationId, revision),
-    queryFn: () => api.getRevision(automationId, revision, kinds),
+    queryFn: ({ signal }) => api.getRevision(automationId, revision, kinds, { signal }),
     enabled: pin !== null,
     staleTime: Infinity,
   });

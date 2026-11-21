@@ -45,6 +45,7 @@ function useSyncing(): boolean {
 function useDeviceQuery<T>(part: string, read: () => Promise<T>): UseQueryResult<T> {
   return useScreenQuery({
     queryKey: [...DEVICE_KEY, part],
+    // eslint-disable-next-line local/query-fn-signal -- Health Connect reads on the device, which cannot be aborted
     queryFn: read,
     enabled: HEALTH_CONNECT_ON_DEVICE,
   });

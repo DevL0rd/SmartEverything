@@ -46,6 +46,7 @@ function Fans({
             progress={fan.rpm / (fan.maxRpm ?? DEFAULT_MAX_RPM)}
             colour="viz-blue"
             label={`${readableLabel(fan.label)} ${whole(fan.rpm)} rpm`}
+            ticking={false}
           />
         </View>
       ))}

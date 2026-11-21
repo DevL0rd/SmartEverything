@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
-import { PickerSourceContext, type PickerSource } from '../components/widget-board/picker-source';
+import type { PickerSource } from '../components/widget-board/picker-source';
+import { PickerSourceContext } from '../components/widget-board/picker-source-context';
 import type { PickerState } from '../components/widget-board/types';
 import type { EntityStore } from './entity-store';
 import { rowsOf, type StoreState } from './state';

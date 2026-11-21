@@ -1,3 +1,7 @@
+import FileExclamationPointGlyph from 'lucide-react-native/icons/file-exclamation-point';
+import FolderDownGlyph from 'lucide-react-native/icons/folder-down';
+import FolderInputGlyph from 'lucide-react-native/icons/folder-input';
+import ImagePlusGlyph from 'lucide-react-native/icons/image-plus';
 import FileBracesGlyph from 'lucide-react-native/icons/file-braces';
 import FunnelGlyph from 'lucide-react-native/icons/funnel';
 import MessageCircleQuestionMarkGlyph from 'lucide-react-native/icons/message-circle-question-mark';
@@ -175,6 +179,10 @@ import ZapGlyph from 'lucide-react-native/icons/zap';
 export const NODE_GLYPHS = {
   'circle-help': CircleQuestionMarkGlyph,
   'file-json': FileBracesGlyph,
+  'file-warning': FileExclamationPointGlyph,
+  'folder-down': FolderDownGlyph,
+  'folder-input': FolderInputGlyph,
+  'image-plus': ImagePlusGlyph,
   filter: FunnelGlyph,
   history: ClockArrowLeftGlyph,
   'message-circle-question': MessageCircleQuestionMarkGlyph,

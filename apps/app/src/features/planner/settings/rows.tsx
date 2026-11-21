@@ -12,8 +12,7 @@ import { TimeField } from '../../../components/time-field';
 import { MINUTES_IN_HOUR, clockTextOf, timeOfClockText, type Option } from './options';
 import { useOwnPrefs, useSavePrefs, type Prefs, type PrefsChange } from './preferences';
 import type { ClockFormat } from '../../../format/clock-text';
-import { useHour24 } from '../../../store/clock-format';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useHour24, useClockFormat } from '../../../store/clock-format';
 
 export interface RowSpec {
   readonly title: string;

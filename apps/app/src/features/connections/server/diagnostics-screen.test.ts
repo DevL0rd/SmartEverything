@@ -34,7 +34,8 @@ function childrenOf({ children }: { readonly children: ReactNode }): ReactNode {
   return children;
 }
 
-vi.mock('react-native', () => ({
+vi.mock('react-native', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   View: childrenOf,
   Text: fixture.text,
   ScrollView: fixture.scroll,
@@ -72,7 +73,8 @@ vi.mock('../../../components/rows', () => ({ ValueRow: (): null => null }));
 vi.mock('../../../components/section', () => ({ List: childrenOf, Section: childrenOf }));
 vi.mock('../../../components/skeleton', () => ({ Skeleton: (): null => null }));
 vi.mock('../../../components/text', () => ({ Text: fixture.text }));
-vi.mock('../../../design/platform', () => ({
+vi.mock('../../../design/platform', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   desktopBridge: (): { readonly fixture: true } => ({ fixture: true }),
 }));
 vi.mock('../../../settings/settings-frame', () => ({ SettingsFrame: childrenOf }));

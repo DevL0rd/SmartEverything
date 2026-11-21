@@ -5,7 +5,7 @@ import { ListRow } from '../../../components/list-row';
 import { List } from '../../../components/section';
 import type { MomentText } from '../../../format/clock-text';
 import { dayLabel, zonedStartOfDay } from '../../../format/time';
-import { useInstantClock } from '../../clock/format/clock-format';
+import { useInstantClock } from '../../../store/clock-format';
 
 export type DayContext = Pick<PlannerDay, 'date' | 'time_zone' | 'now'>;
 

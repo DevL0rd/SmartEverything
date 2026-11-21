@@ -75,7 +75,8 @@ interface RobotProps extends SceneProps {
 
 function Robot3d({ turretRaised, context, insets, still, ...rest }: RobotProps): ReactNode {
   const { deviceId, scene, status, selection, handlers } = rest;
-  const pose = valueOrNull(useVacuumPose(deviceId)) ?? scene.robot;
+  const vacuumPose = useVacuumPose(deviceId);
+  const pose = valueOrNull(vacuumPose) ?? scene.robot;
   const currentRoomId = roomAt(scene.rooms, pose);
   return (
     <Map3dView
@@ -125,7 +126,8 @@ function House3d({ unified, host, context, insets, still, ...rest }: HouseProps)
   const mapName = unified.place.map.name;
   const request = useMemo(() => ({ mapName, animate: host.active }), [mapName, host.active]);
   const feed = useHomeMapLive(unified.place.map, unified.floor, look, request);
-  const pose = valueOrNull(useVacuumPose(deviceId)) ?? scene.robot;
+  const vacuumPose = useVacuumPose(deviceId);
+  const pose = valueOrNull(vacuumPose) ?? scene.robot;
   const label = describeUnifiedMap(unified, pose, roomAt(scene.rooms, pose), status);
   return (
     <HomeMap3d

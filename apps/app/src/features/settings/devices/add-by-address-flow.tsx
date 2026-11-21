@@ -89,7 +89,8 @@ function Fields({
 }
 
 function Progress({ baseline }: { readonly baseline: string | null }): ReactNode {
-  const outcome = outcomeOf(useProviderLink('samsung_tv'), baseline);
+  const providerLink = useProviderLink('samsung_tv');
+  const outcome = outcomeOf(providerLink, baseline);
   if (outcome.kind === 'done') {
     return <EmptyState icon="tv" title="Device added" body="It is in Devices now." />;
   }

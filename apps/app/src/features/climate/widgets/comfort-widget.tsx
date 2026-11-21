@@ -99,8 +99,9 @@ function roomKey(room: RoomComfort): string {
 }
 
 function Rooms({ rooms }: { readonly rooms: readonly RoomComfort[] }): ReactNode {
+  const climateBody = useClimateBody();
   const readings = Math.max(0, ...rooms.map((entry) => entry.readings.length));
-  const fit = roomGridFit(useClimateBody().box, rooms.length, readings);
+  const fit = roomGridFit(climateBody.box, rooms.length, readings);
   return (
     <View className="flex-1 gap-2">
       {rowsOf(rooms.slice(0, fit.shown), fit.columns).map((row) => (

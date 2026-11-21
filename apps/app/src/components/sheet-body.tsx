@@ -1,4 +1,4 @@
-import { createContext, use, useState, type ReactNode } from 'react';
+import { use, useState, type ReactNode } from 'react';
 import {
   ScrollView,
   View,
@@ -8,10 +8,9 @@ import {
 } from 'react-native';
 import { cn } from '../design/cn';
 import { isNative } from '../design/platform';
+import { SheetRevealContext } from './sheet-reveal-context';
 
 type Reveal = (node: View | null) => void;
-
-const SheetRevealContext = createContext<Reveal | null>(null);
 
 export function useSheetReveal(): Reveal {
   const reveal = use(SheetRevealContext);

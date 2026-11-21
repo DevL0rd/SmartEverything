@@ -45,4 +45,21 @@ describe('batched Drive changes', () => {
     expect(result.failed).toHaveLength(70);
     expect(result.failed[0]).toEqual({ itemId: ids[50], reason: 'offline' });
   });
+
+  it('keeps each copy id with its item when a copy is sent in batches', async () => {
+    const sent: DriveChange[] = [];
+    const copyIds = ids.map((id) => id.replace('00000000-', 'cccccccc-'));
+    await changeDriveBatched(
+      { action: 'copy', itemIds: ids, toFolderId: ids[0] ?? '', copyIds },
+      (body) => {
+        sent.push(body);
+        return Promise.resolve(answered(body));
+      },
+    );
+    expect(sent.map((body) => (body.action === 'copy' ? body.copyIds : null))).toEqual([
+      copyIds.slice(0, 50),
+      copyIds.slice(50, 100),
+      copyIds.slice(100),
+    ]);
+  });
 });

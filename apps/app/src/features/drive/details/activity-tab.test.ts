@@ -25,7 +25,8 @@ interface Hub {
 
 const hub = vi.hoisted((): Hub => ({ rows: null, live: true, error: false }));
 
-vi.mock('react-native', () => ({
+vi.mock('react-native', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   View: ({ children }: Passed): ReactNode => createElement('div', {}, children),
 }));
 vi.mock('../../../components/button', () => ({

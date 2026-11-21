@@ -181,7 +181,6 @@ export interface TokenFieldProps extends FieldKeys {
   readonly colour: PlannerColourKey | null;
   readonly placeholder: string;
   readonly label: string;
-  readonly disabled: boolean;
   readonly inputRef: RefObject<TextInput | null>;
 }
 
@@ -228,7 +227,6 @@ export function TokenField({
   colour,
   placeholder,
   label,
-  disabled,
   inputRef,
   onSubmit,
   onTab,
@@ -256,7 +254,6 @@ export function TokenField({
         value={value}
         onChangeText={onChange}
         {...keyProps(pointer, { onSubmit, onTab, onEscape })}
-        editable={!disabled}
         multiline
         placeholder={placeholder}
         accessibilityLabel={label}

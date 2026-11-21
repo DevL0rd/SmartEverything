@@ -1,7 +1,6 @@
-import { useSyncExternalStore } from 'react';
 import type { LockedUnlocked } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
-import { ValueStore } from '../../../../design/external-store';
+import { ValueStore, useValue } from '../../../../design/external-store';
 import { lockLockedFolder } from '../api';
 import { msUntil } from './locked-model';
 
@@ -48,5 +47,5 @@ export function subscribeLockedSession(listener: () => void): () => void {
 }
 
 export function useLockedSession(): LockedUnlocked | null {
-  return useSyncExternalStore(session.subscribe, session.get, session.get);
+  return useValue(session);
 }

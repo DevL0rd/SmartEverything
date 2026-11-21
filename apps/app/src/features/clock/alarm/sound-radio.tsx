@@ -37,7 +37,9 @@ function useRadioSearch(text: string): {
   const result = useScreenQuery({
     queryKey: ['planner-radio', query],
     queryFn:
-      query === null ? skipToken : (): Promise<PlannerRadioResult[]> => searchPlannerRadio(query),
+      query === null
+        ? skipToken
+        : ({ signal }): Promise<PlannerRadioResult[]> => searchPlannerRadio(query, signal),
     placeholderData: keepPreviousData,
     retry: false,
   });

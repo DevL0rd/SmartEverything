@@ -8,7 +8,7 @@ import { Text } from '../../../components/text';
 import { cn } from '../../../design/cn';
 import { isNative } from '../../../design/platform';
 import { PHOTOS_BACKUP_SETTINGS_HREF } from '../components/photos-frame';
-import { useLiveProgress } from '../backup/live';
+import { useDeviceProgress } from '../backup/live';
 import { useBackupStatus, type BackupStatus } from '../backup/model/status';
 import { hubChipOf, phoneChipOf, type ChipView } from '../backup/phones-model';
 import { usePhotoBackupState } from '../data';
@@ -37,7 +37,7 @@ function Mark({ view }: { readonly view: LibraryChipView }): ReactNode {
   if (view.mark === 'failed') return <Icon name="alert" size={MARK_SIZE} tone="critical" />;
   return (
     <View className="size-4">
-      <Arc value={view.progress} size={MARK_SIZE} thickness={2} colour="primary" />
+      <Arc value={view.progress} size={MARK_SIZE} thickness={2} colour="primary" ticking={false} />
     </View>
   );
 }
@@ -75,7 +75,7 @@ interface ChipProps {
 
 function HubChip({ iconOnly }: ChipProps): ReactNode {
   const states = usePhotoBackupState().data;
-  const view = hubChipOf(states, useLiveProgress());
+  const view = hubChipOf(states, useDeviceProgress());
   return view === null ? null : <BackupChipFace view={view} iconOnly={iconOnly} />;
 }
 

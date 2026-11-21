@@ -14,7 +14,11 @@ import { Segmented } from '../../../../components/segmented';
 import { Text } from '../../../../components/text';
 import { cn } from '../../../../design/cn';
 import type { Device } from '../../../../store/state';
-import { useDeviceValue, useDevices } from '../../../../store/selectors';
+import {
+  useDeviceValue,
+  useMatchingDevices,
+  type DevicePredicate,
+} from '../../../../store/selectors';
 import {
   LINK_CAPABILITY,
   OPENING_FAMILIES,
@@ -329,8 +333,13 @@ function LinkPicker({
   );
 }
 
+const LINK_KEYS = new Set(Object.values(LINK_CAPABILITY));
+
+const linkable: DevicePredicate = (device) =>
+  device.capabilities.some((capability) => LINK_KEYS.has(capability.key));
+
 export function OpeningInspector({ context, opening, wall }: PartProps): ReactNode {
-  const devices = useDevices();
+  const devices = useMatchingDevices(linkable);
   return (
     <View className="gap-4">
       <Kind context={context} opening={opening} wall={wall} />

@@ -6,7 +6,7 @@ vi.mock('../../design/colour', () => ({ useColour: (role: string): string => rol
 
 const { Arc } = await import('./arc');
 
-const BASE = { value: 0.4, size: 52, thickness: 6, colour: 'humidity' } as const;
+const BASE = { value: 0.4, size: 52, thickness: 6, colour: 'humidity', ticking: false } as const;
 
 describe('Arc ticks', () => {
   it('draws a tick as one more stroke in the same svg at its own colour and thickness', () => {

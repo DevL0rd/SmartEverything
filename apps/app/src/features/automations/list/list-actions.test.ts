@@ -25,7 +25,7 @@ describe('removeAutomation', () => {
     notified.length = 0;
   });
 
-  it('removes the automation and then reports it removed', async () => {
+  it('leaves the page at once and then removes the automation', async () => {
     const order: string[] = [];
     const remove = vi.fn((id: string) => {
       order.push(`remove ${id}`);
@@ -34,7 +34,7 @@ describe('removeAutomation', () => {
     await removeAutomation(remove, 'a1', 'Porch', () => {
       order.push('removed');
     });
-    expect(order).toEqual(['remove a1', 'removed']);
+    expect(order).toEqual(['removed', 'remove a1']);
   });
 
   it('does nothing when the confirmation is declined', async () => {
@@ -46,11 +46,11 @@ describe('removeAutomation', () => {
     expect(onRemoved).not.toHaveBeenCalled();
   });
 
-  it('stays on the page and tells the user when the delete fails', async () => {
+  it('tells the user when the delete is refused', async () => {
     const remove = vi.fn(() => Promise.reject(new Error('conflict')));
     const onRemoved = vi.fn();
     await removeAutomation(remove, 'a1', 'Porch', onRemoved);
-    expect(onRemoved).not.toHaveBeenCalled();
+    expect(onRemoved).toHaveBeenCalledTimes(1);
     expect(notified).toHaveLength(1);
   });
 

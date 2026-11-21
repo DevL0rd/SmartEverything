@@ -364,6 +364,7 @@ function TimeLeft({
         progress={share}
         colour={timeLeftColourOf(person.grant.expiresAt, now)}
         label={`Time left for ${person.name}: ${endLabelOf(person.grant.expiresAt, now)}`}
+        ticking={false}
       />
     </View>
   );

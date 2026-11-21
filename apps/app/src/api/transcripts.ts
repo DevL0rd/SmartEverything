@@ -20,16 +20,19 @@ export async function deleteTranscriptLine(sessionId: string, lineId: number): P
   log.info('transcript.line_deleted', { sessionId, lineId });
 }
 
-export function listTranscriptSessions(query: {
-  readonly source: TranscriptSession['source'];
-  readonly pluginId?: string;
-  readonly limit: number;
-}): Promise<TranscriptSession[]> {
-  return api().call(E.listTranscripts, { query });
+export function listTranscriptSessions(
+  query: {
+    readonly source: TranscriptSession['source'];
+    readonly pluginId?: string;
+    readonly limit: number;
+  },
+  signal: AbortSignal,
+): Promise<TranscriptSession[]> {
+  return api().call(E.listTranscripts, { query }, { signal });
 }
 
-export function readTranscriptSettings(): Promise<TranscriptSettings> {
-  return api().call(E.readTranscriptSettings, {});
+export function readTranscriptSettings(signal: AbortSignal): Promise<TranscriptSettings> {
+  return api().call(E.readTranscriptSettings, {}, { signal });
 }
 
 export async function saveTranscriptSettings(
@@ -40,6 +43,13 @@ export async function saveTranscriptSettings(
   return saved;
 }
 
-export function readTranscriptStatus(cameraId?: string): Promise<TranscriptStatus> {
-  return api().call(E.readTranscriptStatus, { query: cameraId === undefined ? {} : { cameraId } });
+export function readTranscriptStatus(
+  cameraId: string | undefined,
+  signal: AbortSignal,
+): Promise<TranscriptStatus> {
+  return api().call(
+    E.readTranscriptStatus,
+    { query: cameraId === undefined ? {} : { cameraId } },
+    { signal },
+  );
 }

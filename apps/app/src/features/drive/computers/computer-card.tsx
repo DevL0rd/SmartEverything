@@ -62,6 +62,7 @@ function HomeBar({ device, home }: { readonly device: Device; readonly home: str
         progress={usage.share}
         colour={usage.tone ?? 'primary'}
         label={`Disk on ${device.label}`}
+        ticking={false}
       />
     </View>
   );

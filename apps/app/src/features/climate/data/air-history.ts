@@ -54,16 +54,17 @@ function historyQuery(
   hours: number,
 ): {
   readonly queryKey: ReturnType<typeof historyKey>;
-  readonly queryFn: () => Promise<HistoryRow[]>;
+  readonly queryFn: (context: { readonly signal: AbortSignal }) => Promise<HistoryRow[]>;
 } {
   return {
     queryKey: historyKey(capabilities, hours),
-    queryFn: async (): Promise<HistoryRow[]> => {
+    queryFn: async ({ signal }): Promise<HistoryRow[]> => {
       const startedAt = Date.now();
       try {
         const rows = await readHistory(
           capabilities,
           new Date(Date.now() - hours * HOUR_MS).toISOString(),
+          signal,
         );
         log.debug('history.loaded', () => ({
           capabilities,

@@ -45,6 +45,7 @@ function Tile({ ready, hero, run }: InternetFaceProps): ReactNode {
         size="widget"
         label={hero.spoken}
         offline={hero.stale}
+        ticking
       />
       <View className="min-w-0 flex-1">
         {isDown(hero) ? (

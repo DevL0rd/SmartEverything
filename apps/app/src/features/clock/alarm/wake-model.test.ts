@@ -114,7 +114,7 @@ describe('wakeInsightsOf', () => {
       ringOf({ day: shiftDay(LAST, -4), due: 6 * 60, up: 6 * 60 + 6, snoozes: 1 }),
     ];
     const insights = wakeInsightsOf(statsOf('week', 7), rings, ZONE);
-    expect(insights.snoozes).toBe(0);
+    expect(insights.snoozes).toBe(3);
     expect(insights.lostAverage).toBe(12);
     expect(insights.buckets.at(-3)).toMatchObject({ alarm: null });
     expect(insights.buckets.at(-4)).toMatchObject({ alarm: null });

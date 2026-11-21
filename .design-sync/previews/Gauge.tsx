@@ -10,10 +10,26 @@ const aqi = [
 ];
 const body = (
   <Row gap={32}>
-    <Gauge value={34} min={0} max={300} bands={aqi} size={150} label="Air quality index 34, good">
+    <Gauge
+      ticking={false}
+      value={34}
+      min={0}
+      max={300}
+      bands={aqi}
+      size={150}
+      label="Air quality index 34, good"
+    >
       <Text variant="title-1">34</Text>
     </Gauge>
-    <Gauge value={142} min={0} max={300} bands={aqi} size={150} label="Air quality index 142, poor">
+    <Gauge
+      ticking={false}
+      value={142}
+      min={0}
+      max={300}
+      bands={aqi}
+      size={150}
+      label="Air quality index 142, poor"
+    >
       <Text variant="title-1">142</Text>
     </Gauge>
   </Row>

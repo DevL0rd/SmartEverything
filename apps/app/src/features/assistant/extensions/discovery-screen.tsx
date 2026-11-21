@@ -44,7 +44,8 @@ function targetOf(params: z.infer<typeof PARAMS>): DiscoveryTarget {
 }
 
 export function DiscoveryScreen(): ReactNode {
-  const params = PARAMS.parse(useLocalSearchParams());
+  const localSearchParams = useLocalSearchParams();
+  const params = PARAMS.parse(localSearchParams);
   const query = useDiscoveryItem(targetOf(params));
   const item = query.data;
   const kind = params.page?.[1] === 'skills' ? 'skill' : 'extension';

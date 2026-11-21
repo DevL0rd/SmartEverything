@@ -5,7 +5,8 @@ import type { GraphScene } from '../../model/graph/scene-contract';
 import { CommandLedger } from '../../../../store/command-ledger';
 import type { EntityStore } from '../../../../store/entity-store';
 import { StoreContext } from '../../../../store/store-runtime';
-import { GraphEmitContext, GraphRunContext, GraphRunStore } from './graph-context';
+import { GraphRunStore } from './graph-context';
+import { GraphEmitContext, GraphRunContext } from './graph-contexts';
 import { GRAPH_NODE_TYPES } from './node-registry';
 import { buildGraphEdges, buildGraphNodes } from './scene-to-flow';
 

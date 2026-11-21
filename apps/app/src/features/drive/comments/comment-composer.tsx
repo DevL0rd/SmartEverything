@@ -1,13 +1,15 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { View } from 'react-native';
+import { Logger, background } from '@smarteverything/logging';
 import { setDriveGrant } from '../../../api/drive';
 import { Button } from '../../../components/button';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { TextField } from '../../../components/text-field';
 import { cn } from '../../../design/cn';
-import { useMutationState } from '../../../store/mutation';
+import { errorFields } from '../../../design/log-tally';
+import { notify } from '../../../components/toast-store';
 import { ProfileAvatar } from '../../profiles';
 import type { CommentContext } from './comment-context';
 import {
@@ -18,6 +20,8 @@ import {
   unsharedMentionsOf,
   withMention,
 } from './comments-model';
+
+const log = new Logger('app.drive');
 
 function Suggestions({
   body,
@@ -90,39 +94,47 @@ interface Posting {
   readonly setBody: (body: string) => void;
   readonly unshared: readonly string[];
   readonly busy: boolean;
-  readonly problem: string | null;
   readonly post: () => void;
+}
+
+function shareFirst(itemId: string, unshared: readonly string[]): Promise<unknown> {
+  return Promise.all(
+    unshared.map((profileId) =>
+      setDriveGrant({ itemId, profileId, role: 'view', expiresAt: null }),
+    ),
+  );
 }
 
 function usePosting(props: ComposerProps): Posting {
   const { context } = props;
   const [body, setBody] = useState(props.initial);
-  const mutation = useMutationState();
+  const [pending, setPending] = useState(0);
   const mentions = mentionsIn(body, context.people);
   const unshared = context.sees === null ? [] : unsharedMentionsOf(mentions, context.sees);
   const itemId = context.subject.item.id;
   const post = (): void => {
-    mutation.run(
-      async () => {
-        await Promise.all(
-          unshared.map((profileId) =>
-            setDriveGrant({ itemId, profileId, role: 'view', expiresAt: null }),
-          ),
-        );
-        return props.send(body.trim(), mentions);
-      },
-      {
-        failure: 'The comment was not saved',
-        label: 'drive.comment.post',
-        inline: true,
-        onDone: () => {
-          setBody('');
-          props.onDone();
+    const sent = body;
+    setPending((current) => current + 1);
+    setBody('');
+    props.onDone();
+    const done = shareFirst(itemId, unshared)
+      .then(() => props.send(sent.trim(), mentions))
+      .then(
+        () => {
+          log.info('comment.posted', { itemId });
         },
-      },
-    );
+        (error: unknown) => {
+          log.warn('comment.post_refused', { itemId, ...errorFields(error) });
+          setBody(sent);
+          notify({ message: 'The comment was not saved', error, tone: 'critical' });
+        },
+      )
+      .finally(() => {
+        setPending((current) => current - 1);
+      });
+    background(done, 'drive.comment.post_settle_failed');
   };
-  return { body, setBody, unshared, busy: mutation.busy, problem: mutation.problem, post };
+  return { body, setBody, unshared, busy: pending > 0, post };
 }
 
 function Actions({
@@ -144,7 +156,6 @@ function Actions({
       <Button
         label={sharing ? 'Share and mention' : submitLabel}
         icon={sharing ? 'share' : 'messageCircle'}
-        loading={posting.busy}
         disabled={!ready}
         onPress={posting.post}
       />
@@ -166,7 +177,6 @@ export function Composer(props: ComposerProps): ReactNode {
         placeholder={props.placeholder}
         multiline
         focusOnMount={props.focus}
-        error={posting.problem}
         disabled={!context.writable}
       />
       <Suggestions body={posting.body} context={context} onChange={posting.setBody} />

@@ -14,7 +14,7 @@ import { mayChangeLook } from '../calendar/calendar-edit';
 import { sourceText } from '../calendar/calendars-model';
 import { useGoogleAccount, usePlannerCollections } from '../data';
 import { usePlannerSharing, useViewerCalendars, type ViewerLook } from '../data/sharing';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import { weekOrderOf } from '../clock/alarm-text';
 import {
   COLOUR_OPTIONS,
@@ -100,8 +100,8 @@ function ColourLead({ colour }: { readonly colour: PlannerColourKey }): ReactNod
 
 export function CalendarRows(): ReactNode {
   const sharing = usePlannerSharing(null);
-  const calendars = useViewerCalendars(null).filter(mayChangeLook);
   const pointer = useIdiom() === 'pointer';
+  const calendars = useViewerCalendars(null).filter(mayChangeLook);
   if (calendars.length === 0) {
     return (
       <NavRow

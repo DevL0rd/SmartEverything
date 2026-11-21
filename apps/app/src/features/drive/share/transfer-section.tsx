@@ -79,7 +79,7 @@ function Confirm({
 }): ReactNode {
   const live = useSyncStatus().status === 'live';
   const usage = useDriveUsage().data ?? null;
-  const offer = useTransferOffer();
+  const offer = useTransferOffer(item);
   const room = transferRoomOf(item.bytes, usage, person.id);
   return (
     <View className="gap-2 rounded-lg border-hairline border-outline-variant bg-surface-2 p-3">
@@ -110,8 +110,9 @@ function Confirm({
 function Offer({ item }: { readonly item: TransferItem }): ReactNode {
   const live = useSyncStatus().status === 'live';
   const profiles = useProfiles();
-  const candidates = transferCandidatesOf(profiles, useViewerId());
+  const viewerId = useViewerId();
   const [picked, setPicked] = useState<string | null>(null);
+  const candidates = transferCandidatesOf(profiles, viewerId);
   const person = candidates.find((each) => each.id === picked) ?? null;
   if (candidates.length === 0) {
     return (

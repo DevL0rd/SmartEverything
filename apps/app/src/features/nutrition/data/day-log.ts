@@ -23,7 +23,7 @@ export function useDayEntries(day: string): UseQueryResult<HealthEntryRow[]> {
   const to = endOfDayKey(day);
   return useScreenQuery({
     queryKey: entriesKey(from, to, LOGGED_TYPES.join(',')),
-    queryFn: () => readEntries(from, to, LOGGED_TYPES),
+    queryFn: ({ signal }) => readEntries(from, to, LOGGED_TYPES, signal),
   });
 }
 
@@ -31,15 +31,23 @@ function isLogged(record: HealthRecord): record is OtherRecord {
   return record.type === 'Nutrition' || record.type === 'Hydration';
 }
 
-async function readDayRecords(from: number, to: number): Promise<OtherRecord[]> {
+async function readDayRecords(
+  from: number,
+  to: number,
+  signal: AbortSignal,
+): Promise<OtherRecord[]> {
   const startedAt = Date.now();
-  const records = await api().call(E.readHealthRecords, {
-    query: {
-      types: [...LOGGED_TYPES],
-      from: new Date(from).toISOString(),
-      to: new Date(to).toISOString(),
+  const records = await api().call(
+    E.readHealthRecords,
+    {
+      query: {
+        types: [...LOGGED_TYPES],
+        from: new Date(from).toISOString(),
+        to: new Date(to).toISOString(),
+      },
     },
-  });
+    { signal },
+  );
   const kept = records.filter(isLogged).filter((record) => {
     const start = Date.parse(record.startTime);
     return record.type !== 'Hydration' || (start >= from && start < to);
@@ -54,13 +62,13 @@ async function readDayRecords(from: number, to: number): Promise<OtherRecord[]> 
 
 function dayRecordsQuery(day: string): {
   readonly queryKey: readonly (string | number)[];
-  readonly queryFn: () => Promise<OtherRecord[]>;
+  readonly queryFn: (context: { readonly signal: AbortSignal }) => Promise<OtherRecord[]>;
 } {
   const from = startOfDayKey(day);
   const to = endOfDayKey(day);
   return {
     queryKey: [...HEALTH_PREFIX, 'nutrition-records', from, to],
-    queryFn: () => readDayRecords(from, to),
+    queryFn: ({ signal }) => readDayRecords(from, to, signal),
   };
 }
 

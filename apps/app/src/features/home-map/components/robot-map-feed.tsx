@@ -21,7 +21,7 @@ import { href } from '../../../app-shell/hrefs';
 import { moment } from '../../../format/time';
 import { useScreenPaused } from '../../../design/screen-pause';
 import { useMinute } from '../../../store/clock';
-import { useDevices } from '../../../store/selectors';
+import { useDeviceNames } from '../../../store/selectors';
 import { homeMapQueryOptions } from '../data/home-map-query';
 import {
   useHomeMapSet,
@@ -162,7 +162,7 @@ function orderedIds(summaries: readonly HomeMapSummary[] | null): readonly HomeM
 export function useFeedData(): FeedData {
   const feeds = useRobotMapFeeds();
   const { maps: summaries } = useHomeMapSet();
-  const devices = useDevices();
+  const labels = useDeviceNames('label');
   const paused = useScreenPaused();
   const ids = orderedIds(summaries);
   const documents = useQueries({
@@ -170,8 +170,7 @@ export function useFeedData(): FeedData {
   });
   const maps = documents.flatMap((query) => (query.data === undefined ? [] : [query.data]));
   const targets = feedTargets(maps);
-  const deviceName = (deviceId: string): string =>
-    devices.find((device) => device.id === deviceId)?.label ?? 'Robot vacuum';
+  const deviceName = (deviceId: string): string => labels.get(deviceId) ?? 'Robot vacuum';
   return { feeds, maps, targets, deviceName };
 }
 

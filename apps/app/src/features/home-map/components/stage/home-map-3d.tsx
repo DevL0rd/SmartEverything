@@ -106,6 +106,7 @@ interface Wiring {
   readonly channel: Channel;
   readonly unavailable: boolean;
   readonly ready: () => Promise<void>;
+  readonly painted: () => Promise<void>;
   readonly failed: (failure: Map3dFailure, detail: string) => Promise<void>;
   readonly lost: (cause: string) => void;
 }
@@ -156,6 +157,9 @@ function useWiring(props: HomeMap3dProps, onReady: () => void): Wiring {
   }, [bridge, feed]);
   const ready = useStableCallback((): Promise<void> => {
     bridge.ready();
+    return Promise.resolve();
+  });
+  const painted = useStableCallback((): Promise<void> => {
     onReady();
     return Promise.resolve();
   });
@@ -170,14 +174,14 @@ function useWiring(props: HomeMap3dProps, onReady: () => void): Wiring {
     bridge.lost();
     setChannel((current) => createChannel(current.generation + 1));
   });
-  return { channel, unavailable, ready, failed, lost };
+  return { channel, unavailable, ready, painted, failed, lost };
 }
 
 interface SurfaceProps {
   readonly slot: HandleSlot;
   readonly generation: number;
   readonly stage: HomeMap3dProps;
-  readonly wiring: Pick<Wiring, 'ready' | 'failed' | 'lost'>;
+  readonly wiring: Pick<Wiring, 'ready' | 'painted' | 'failed' | 'lost'>;
   readonly onPickRoom: (roomId: string | null) => Promise<void>;
   readonly onPickDevice: (deviceId: string) => Promise<void>;
   readonly onScanFailed: (detail: string) => Promise<void>;
@@ -189,7 +193,6 @@ function Surface(props: SurfaceProps): ReactNode {
   const editing = stage.edit === undefined ? {} : { editing: true, onEdit: props.onEdit };
   const theme = useUniwind().theme === 'light' ? 'light' : 'dark';
   const { reduced } = useMotion();
-  const { showFurniture, showDeviceModels } = stage.look;
   return (
     <Map3d
       key={generation}
@@ -206,13 +209,14 @@ function Surface(props: SurfaceProps): ReactNode {
       selectedItem={stage.selectedItem}
       quality={stage.live.quality}
       realistic={stage.realistic !== null}
-      objectLook={{ showFurniture, showDeviceModels }}
+      objectLook={stage.look}
       currentRoomId={null}
       keepOut={stage.chrome}
       insets={stage.insets}
       label={stage.label}
       sharedRenderer={stage.sharedRenderer ?? false}
       onReady={wiring.ready}
+      onPainted={wiring.painted}
       onPickRoom={onPickRoom}
       onPickDevice={onPickDevice}
       onUnavailable={wiring.failed}

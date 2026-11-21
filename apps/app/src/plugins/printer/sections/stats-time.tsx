@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { Arc, Bars, CalendarHeatmap, HourHeatmap, WEEKDAY_ROWS } from '../../../components/charts';
 import { Card } from '../../../components/card';
 import { Text } from '../../../components/text';
-import { useClockFormat } from '../../../features/clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 export function Calendar({
   view,
@@ -54,6 +54,7 @@ export function Reliability({ view }: { readonly view: PrinterStatsView }): Reac
             thickness={8}
             colour={percent !== null && percent < 90 ? 'warning' : 'positive'}
             trackColour="track"
+            ticking={false}
           />
           <View className="min-w-0 flex-1 gap-1">
             <Text variant="title-3" className="tabular">

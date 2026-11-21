@@ -77,6 +77,7 @@ function LabelShare({ entry }: { readonly entry: TimerUseLabel }): ReactNode {
         progress={entry.share}
         colour="primary"
         label={`${entry.label}, ${timedText(entry.ms)}`}
+        ticking={false}
       />
     </View>
   );

@@ -75,7 +75,8 @@ function useWorkspace(
   return useScreenQuery({
     queryKey: ['window', 'ai-workspace', chat.id, settled],
     enabled: engine.kind === 'dsh' && engine.session_id !== null,
-    queryFn: () => api().call(E.readAiChatWorkspace, { params: { chatId: chat.id } }),
+    queryFn: ({ signal }) =>
+      api().call(E.readAiChatWorkspace, { params: { chatId: chat.id } }, { signal }),
   });
 }
 

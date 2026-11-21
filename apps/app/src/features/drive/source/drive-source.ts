@@ -13,6 +13,7 @@ import { useSession, useSyncStatus } from '../../../store/selectors';
 import type { FileSource } from '../../files';
 import { router } from 'expo-router';
 import { invalidateAllDrive, useDriveChips, useDriveRoots, useViewerId } from '../data';
+import { shownDriveCreates } from '../data/shown';
 import { openHrefOf } from '../recent/recent-model';
 import { nativeDriveProvider } from '../phone/provider';
 import { driveActionsOf, driveRequests, type DriveActionEnv } from './drive-actions';
@@ -86,13 +87,14 @@ export function useDriveSource(): FileSource<DriveOrigin> {
   const client = useQueryClient();
   const roots = useDriveRoots();
   const chipOf = useDriveChips();
+  const viewerId = useViewerId();
   return createDriveSource({
     roots,
-    viewerId: useViewerId(),
+    viewerId,
     clientId: useSession().client.id,
     online: useSyncStatus().status === 'live',
     phone: nativeDriveProvider.linked(),
-    change: changeDriveBatched,
+    change: shownDriveCreates(client, viewerId, (body) => changeDriveBatched(body)),
     setOffline: setDriveOffline,
     setLock: setDriveItemLock,
     removeShortcut: removeDriveShortcut,
@@ -102,7 +104,7 @@ export function useDriveSource(): FileSource<DriveOrigin> {
       invalidateAllDrive(client);
     },
     restore: {
-      readItem: readDriveItem,
+      readItem: (itemId) => readDriveItem(itemId),
       labelOf: (rootId) => chipOf(rootId).label,
       open: (item) => {
         router.push(openHrefOf(item, roots));

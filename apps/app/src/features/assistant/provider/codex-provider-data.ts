@@ -21,8 +21,8 @@ export function useCodexProvider(
   return useScreenQuery({
     queryKey: codexProviderKey(chatId),
     enabled: enabled,
-    queryFn: async () => {
-      const state = await api().call(E.readAiChatProvider, { params: { chatId } });
+    queryFn: async ({ signal }) => {
+      const state = await api().call(E.readAiChatProvider, { params: { chatId } }, { signal });
       if (!('runtime' in state) || state.runtime !== 'codex')
         throw new Error('Expected Codex provider state from this hub.');
       return state;
@@ -37,11 +37,15 @@ export function useCodexRead(
   return useScreenQuery({
     queryKey: [...codexProviderKey(chatId), 'read', query],
     enabled,
-    queryFn: () =>
-      api().call(E.readAiChatProviderState, {
-        params: { chatId },
-        body: { runtime: 'codex', query },
-      }),
+    queryFn: ({ signal }) =>
+      api().call(
+        E.readAiChatProviderState,
+        {
+          params: { chatId },
+          body: { runtime: 'codex', query },
+        },
+        { signal },
+      ),
   });
 }
 export function useCodexControl(

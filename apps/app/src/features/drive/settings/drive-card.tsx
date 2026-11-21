@@ -55,7 +55,7 @@ function ScanProgress({ card }: { readonly card: DriveSettingsCard }): ReactNode
       <Text variant="footnote" tone="variant" className="tabular">
         {line.text}
       </Text>
-      <ProgressBar progress={line.share} colour="info" label={line.text} />
+      <ProgressBar progress={line.share} colour="info" label={line.text} ticking={false} />
     </View>
   );
 }

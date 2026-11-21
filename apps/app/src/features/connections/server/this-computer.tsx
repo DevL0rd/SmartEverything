@@ -48,6 +48,7 @@ function StartOnLogin({ bridge }: { readonly bridge: DesktopBridge }): ReactNode
   const client = useQueryClient();
   const read = useScreenQuery({
     queryKey: START_ON_LOGIN_KEY,
+    // eslint-disable-next-line local/query-fn-signal -- the desktop bridge reads over IPC, which cannot be aborted
     queryFn: () => bridge.getStartOnLogin(),
   });
   useEffect(() => {

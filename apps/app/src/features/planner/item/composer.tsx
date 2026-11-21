@@ -1,5 +1,6 @@
 import type { PlannerCollectionRow, PlannerColourKey } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
+import { randomUUID } from 'expo-crypto';
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { View, type TextInput } from 'react-native';
 import type { PlannerSuggestion } from '../../../api/planner';
@@ -12,8 +13,11 @@ import { useIdiom } from '../../../design/platform';
 import { useMinute } from '../../../store/clock';
 import { useRow, useSettings } from '../../../store/selectors';
 import {
+  alarmDefaultsOf,
   usePlannerClockWrites,
+  usePlannerPreferences,
   usePlannerWrites,
+  type AlarmDefaults,
   type ClockWrites,
   type PlannerPerson,
   type PlannerWrites,
@@ -35,7 +39,7 @@ import {
   type ParseState,
   type WillAddChip,
 } from './parse-preview';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 export interface ComposerProps {
   readonly open: boolean;
@@ -91,6 +95,7 @@ const PARTNER: Readonly<Record<ComposerKind, ComposerKind>> = {
 export interface ComposerPorts {
   readonly items: Pick<PlannerWrites, 'createItem' | 'createAlarm'>;
   readonly clock: Pick<ClockWrites, 'startTimer'>;
+  readonly alarmDefaults: AlarmDefaults;
 }
 
 export async function addPlan(
@@ -105,7 +110,15 @@ export async function addPlan(
   }
   if (plan.kind === 'alarms') {
     await Promise.all(
-      plan.bodies.map((body) => ports.items.createAlarm({ ...body, days: [...body.days] })),
+      plan.bodies.map((body) =>
+        ports.items.createAlarm({
+          ...ports.alarmDefaults,
+          ...body,
+          id: randomUUID(),
+          days: [...body.days],
+          targets: [...ports.alarmDefaults.targets],
+        }),
+      ),
     );
     return;
   }
@@ -166,7 +179,6 @@ interface ComposerState {
   readonly ruleOn: boolean;
   readonly setRuleOn: (on: boolean) => void;
   readonly ready: boolean;
-  readonly busy: boolean;
   readonly submit: () => void;
 }
 
@@ -199,27 +211,24 @@ interface Submission {
 function useSubmit(
   props: ComposerProps,
   { plan, current, rule }: Submission,
-): { readonly ready: boolean; readonly busy: boolean; readonly submit: () => void } {
+): { readonly ready: boolean; readonly submit: () => void } {
   const items = usePlannerWrites(props.person);
   const clock = usePlannerClockWrites(props.person);
-  const [busy, setBusy] = useState(false);
+  const prefs = usePlannerPreferences(props.person).data;
   const ready = plan !== null && plan.kind !== 'missing' && (current || plan.kind === 'timer');
   const submit = (): void => {
-    if (plan === null || !ready || props.disabled || busy) return;
-    setBusy(true);
+    if (plan === null || !ready || props.disabled || prefs === undefined) return;
+    props.onClose();
     background(
-      addPlan(plan, rule, { items, clock })
-        .then(props.onClose)
-        .catch((error: unknown) => {
+      addPlan(plan, rule, { items, clock, alarmDefaults: alarmDefaultsOf(prefs.clock) }).catch(
+        (error: unknown) => {
           notify({ message: FAILED[props.target], error, tone: 'critical' });
-        })
-        .finally(() => {
-          setBusy(false);
-        }),
+        },
+      ),
       'planner.composer_add_failed',
     );
   };
-  return { ready: ready && !props.disabled && !busy, busy, submit };
+  return { ready: ready && !props.disabled && prefs !== undefined, submit };
 }
 
 function seedOf(props: ComposerProps): { readonly collectionId?: string } {
@@ -245,6 +254,7 @@ function useComposer(props: ComposerProps): ComposerState {
   const asked = shownKindOf(props.target, chosen, null);
   const preview = usePreviewFor(props, text, asked, timeZone);
   const { parsed } = preview;
+  const today = { now, timeZone, format: useClockFormat() };
   const kind = shownKindOf(props.target, chosen, parsed?.draft.kind ?? null);
   const fallback = useFallbackPlan({
     person: props.person,
@@ -256,13 +266,12 @@ function useComposer(props: ComposerProps): ComposerState {
   });
   const plan = fallback ?? composerPlanOf({ kind, text, parsed, timeZone });
   const suggestion = suggestionOf(kind, preview.suggestions);
-  const today = { now, timeZone, format: useClockFormat() };
-  const next = plan === null ? null : nextLineOf(plan, parsed, today);
   const sending = useSubmit(props, {
     plan,
     current: preview.current || fallback !== null,
     rule: ruleOn ? suggestion : null,
   });
+  const next = plan === null ? null : nextLineOf(plan, parsed, today);
   return {
     text,
     setText,
@@ -311,7 +320,6 @@ function ComposerField({
       colour={state.colour}
       placeholder={disabled ? OFFLINE : PLACEHOLDER[state.kind]}
       label={TITLE[target]}
-      disabled={state.busy}
       inputRef={inputRef}
       onSubmit={state.submit}
       onTab={COMPOSER_KINDS[target].includes(partner) ? switchKind : null}
@@ -361,7 +369,6 @@ function ComposerBody({
           label={ADD_LABEL[state.kind]}
           icon={state.kind === 'timer' ? 'play' : 'plus'}
           variant="filled"
-          loading={state.busy}
           disabled={!state.ready}
           onPress={state.submit}
         />

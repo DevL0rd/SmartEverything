@@ -38,6 +38,7 @@ function RingLayer({
           thickness={thickness}
           colour={ring.colour}
           tinted
+          ticking={false}
         />
       </View>
       {overlap > 0 ? (
@@ -48,6 +49,7 @@ function RingLayer({
             thickness={thickness}
             colour={ring.colour}
             trackColour={null}
+            ticking={false}
           />
         </View>
       ) : null}

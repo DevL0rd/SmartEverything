@@ -22,6 +22,7 @@ import { ClipboardSyncHost } from '../features/clipboard';
 import { ConsentHost } from '../features/connections';
 import { QuickControlsHost } from '../features/devices';
 import { BackgroundAlertsHost, PushRegistrationHost } from '../features/settings';
+import { PhotosLiveProgressHost } from '../features/photos/backup/live';
 import { PhotosBackupHost } from '../features/photos/backup/runner/host';
 import { HealthSyncHost } from '../features/fitness';
 import { DriveProviderHost } from '../features/drive/phone';
@@ -37,6 +38,7 @@ import { TreadmillLinkHost } from '../plugins/treadmill/data/link-host';
 import { PinPickerHost } from '../search/pin-picker';
 import { SearchPopover } from '../search/search-popover';
 import { useSyncStatus } from '../store/selectors';
+import { useEntityStore } from '../store/store-context';
 import { HighlightHost } from '../components/highlight-host';
 import { AppViewHost } from './app-view-host';
 import { NotificationTaps } from './notification-taps';
@@ -47,13 +49,14 @@ const log = new Logger('app.nav');
 
 function usePreloading(): void {
   const client = useQueryClient();
+  const store = useEntityStore();
   const live = useSyncStatus().status === 'live';
   useEffect(() => {
     log.debug('hosts.sync_live', { live });
     if (live) {
-      preloader.start(ROUTES, client);
+      preloader.start(ROUTES, client, store.get);
     }
-  }, [live, client]);
+  }, [live, client, store]);
 }
 
 function PhoneAlertHosts(): ReactNode {
@@ -114,6 +117,7 @@ export function GlobalHosts(): ReactNode {
       <AiCallHost />
       <CallAudioSync />
       <AiSpeechHost />
+      <PhotosLiveProgressHost />
       <AppViewHost />
       <HighlightHost />
       <OverlayHost />

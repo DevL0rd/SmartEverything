@@ -9,7 +9,7 @@ const SEARCH_PAUSE_MS = 700;
 const SEARCH_MIN = 3;
 
 export function useFoods(): UseQueryResult<FoodRow[]> {
-  return useScreenQuery({ queryKey: FOODS_KEY, queryFn: readFoods });
+  return useScreenQuery({ queryKey: FOODS_KEY, queryFn: ({ signal }) => readFoods(signal) });
 }
 
 export function isBarcode(query: string): boolean {
@@ -24,7 +24,7 @@ export function useProductSearch(query: string): {
   const active = settled.length >= SEARCH_MIN && !isBarcode(settled);
   const result = useScreenQuery({
     queryKey: foodSearchKey(settled),
-    queryFn: () => searchProducts(settled),
+    queryFn: ({ signal }) => searchProducts(settled, signal),
     enabled: active,
     staleTime: Infinity,
     retry: false,

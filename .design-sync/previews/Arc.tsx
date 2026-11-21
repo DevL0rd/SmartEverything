@@ -4,9 +4,17 @@ import { Row } from '../preview-helpers';
 
 const body = (
   <Row gap={28}>
-    <Arc value={0.72} size={110} thickness={10} colour="viz-1" />
-    <Arc value={0.4} size={110} thickness={10} colour="move" trackColour="outline-variant" />
+    <Arc ticking={false} value={0.72} size={110} thickness={10} colour="viz-1" />
     <Arc
+      ticking={false}
+      value={0.4}
+      size={110}
+      thickness={10}
+      colour="move"
+      trackColour="outline-variant"
+    />
+    <Arc
+      ticking={false}
       value={0.9}
       size={110}
       thickness={14}

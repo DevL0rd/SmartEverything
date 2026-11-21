@@ -9,7 +9,7 @@ import { Icon, type IconName } from '../../../components/icon';
 import { Interactive } from '../../../components/interactive';
 import { Text } from '../../../components/text';
 import { useColour } from '../../../design/colour';
-import { useClockFormat } from '../format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 import { selectionTick } from '../../../platform/haptics';
 import {
   angleOfMinute,

@@ -52,6 +52,8 @@ export {
   usePlannerItems,
   useAlarmSaves,
   useShownAlarm,
+  alarmDefaultsOf,
+  type AlarmDefaults,
 } from './data';
 export { type AlarmChange } from './data/writes';
 export { QueryBody } from './frame/query-body';

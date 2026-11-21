@@ -3,16 +3,25 @@ import { API_ENDPOINTS as E, CAMERA_EVENT_SEARCH_WORDS } from '@smarteverything/
 import { api } from '../../api/transport';
 import type { PreloadContext, RouteDefinition } from '../../app-shell/route-types';
 import { CAMERA_LIST_KEY } from '../../queries/keys';
-import { snapshotQuery } from '../device-visuals';
+import { snapshotQuery, snapshotReadinessOf, snapshotRefused } from '../device-visuals';
 
-export async function preloadCameras({ queryClient }: PreloadContext): Promise<void> {
+export async function preloadCameras({ queryClient, state }: PreloadContext): Promise<void> {
   const cameras = await queryClient.query({
     queryKey: CAMERA_LIST_KEY,
-    queryFn: () => api().call(E.listCameras, {}),
+    queryFn: ({ signal }) => api().call(E.listCameras, {}, { signal }),
+  });
+  const current = state();
+  const streamable = cameras.flatMap((camera) => {
+    const readiness = snapshotReadinessOf(current, camera.device_id);
+    if (readiness.condition !== 'streamable') {
+      return [];
+    }
+    const query = snapshotQuery(camera.device_id, 'thumb', readiness);
+    return snapshotRefused(queryClient, query.queryKey) ? [] : [query];
   });
   await Promise.all(
-    cameras.map(async (camera) => {
-      const link = await queryClient.query(snapshotQuery(camera.device_id, 'thumb'));
+    streamable.map(async (query) => {
+      const link = await queryClient.query(query);
       await Image.prefetch(link.url);
     }),
   );

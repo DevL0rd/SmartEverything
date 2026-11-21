@@ -248,7 +248,7 @@ export function useModelCandidates(context: ModelCandidatesContext): ModelCandid
   const props = guarded(context.props, session.valid);
   const { kind = 'chat', picked } = props;
   const current = useCurrentChoice(picked);
-  const favourites = guardedFavourites(useFavouriteModels(), session.valid);
+  const favouriteModels = useFavouriteModels();
   const { native, scoped } = useNativeCandidates(props, session.valid);
   const suggested = useSuggestedModels(kind, catalogueModelId(picked), !scoped);
   const pages = useCataloguePages(context, session.ready && !scoped);
@@ -257,6 +257,7 @@ export function useModelCandidates(context: ModelCandidatesContext): ModelCandid
     { ...props, models, valid: session.valid },
     kind === 'chat' && !scoped,
   );
+  const favourites = guardedFavourites(favouriteModels, session.valid);
   const catalogue = scoped
     ? []
     : catalogueCandidates(

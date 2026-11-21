@@ -1,9 +1,4 @@
-import {
-  skipToken,
-  useQueryClient,
-  type QueryClient,
-  type UseQueryResult,
-} from '@tanstack/react-query';
+import { skipToken, type QueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { PhotoGroupKind } from '@smarteverything/domain';
 import { background } from '@smarteverything/logging';
 import type { PhotosResult } from '../../../api/photos';
@@ -17,7 +12,8 @@ export function usePhotoPeople(
 ): UseQueryResult<PhotosResult<'listPhotoGroups'>> {
   return useScreenQuery({
     queryKey: photoKeys.people(kind),
-    queryFn: (): Promise<PhotosResult<'listPhotoGroups'>> => listPhotoGroups(kind),
+    queryFn: ({ signal }): Promise<PhotosResult<'listPhotoGroups'>> =>
+      listPhotoGroups(kind, signal),
     retry: false,
   });
 }
@@ -30,7 +26,7 @@ export function usePhotoGroup(
     queryFn:
       groupId === null
         ? skipToken
-        : (): Promise<PhotosResult<'readPhotoGroup'>> => readPhotoGroup(groupId),
+        : ({ signal }): Promise<PhotosResult<'readPhotoGroup'>> => readPhotoGroup(groupId, signal),
     retry: false,
   });
 }
@@ -43,7 +39,8 @@ export function usePhotoFaces(
     queryFn:
       itemId === null
         ? skipToken
-        : (): Promise<PhotosResult<'readPhotoFaces'>> => readPhotoFaces(itemId),
+        : ({ signal }): Promise<PhotosResult<'readPhotoFaces'>> =>
+            readPhotoFaces(itemId, { signal }),
     retry: false,
   });
 }
@@ -63,11 +60,4 @@ export function invalidatePeople(client: QueryClient): void {
     'photos.people.invalidate_failed',
     { kind: 'faces' },
   );
-}
-
-export function usePeopleRefresh(): () => void {
-  const client = useQueryClient();
-  return (): void => {
-    invalidatePeople(client);
-  };
 }

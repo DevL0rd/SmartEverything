@@ -6,3 +6,12 @@ export function useAutomations(): AutomationList {
   const { automations } = useAutomationsSource();
   return listOf(usePausable(automations.subscribe, automations.snapshot));
 }
+
+export function useAutomationName(automationId: string | null): string | null {
+  const { automations } = useAutomationsSource();
+  return usePausable(automations.subscribe, () =>
+    automationId === null
+      ? null
+      : (listOf(automations.snapshot()).byId.get(automationId)?.name ?? null),
+  );
+}

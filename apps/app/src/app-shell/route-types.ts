@@ -2,6 +2,7 @@ import type { AppHref } from '../components/app-href';
 import type { QueryClient } from '@tanstack/react-query';
 import type { IconName } from '../components/icon';
 import type { Availability } from '../store/selectors';
+import type { StoreState } from '../store/state';
 
 export type TabKey =
   | 'home'
@@ -19,6 +20,7 @@ export type TabKey =
 
 export interface PreloadContext {
   readonly queryClient: QueryClient;
+  readonly state: () => StoreState;
 }
 
 interface RouteAction {

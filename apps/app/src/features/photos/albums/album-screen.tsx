@@ -9,7 +9,7 @@ import { href } from '../../../app-shell/hrefs';
 import { Button } from '../../../components/button';
 import { confirm } from '../../../components/confirm-store';
 import type { MenuItem } from '../../../components/menu';
-import { notify } from '../../../components/toast-store';
+import { notify, notifyFailure } from '../../../components/toast-store';
 import { EmptyState } from '../../../components/empty-state';
 import { ErrorState } from '../../../components/error-state';
 import { shellLayoutOf } from '../../../components/page-shell/layout';
@@ -23,9 +23,10 @@ import { Skeleton } from '../../../components/skeleton';
 import { useAreaWidth } from '../../../design/size-class';
 import { count } from '../../../format/number';
 import { DRIVE_PREFIX } from '../../../queries/keys';
-import { useMutationState, type MutationState } from '../../../store/mutation';
+import type { EntityStore } from '../../../store/entity-store';
 import { useActiveProfile, useProfiles } from '../../../store/people';
 import { useLoaded, useSyncStatus } from '../../../store/selectors';
+import { useEntityStore } from '../../../store/store-context';
 import { PhotosFrame } from '../components/photos-frame';
 import type { SelectionScope } from '../library/library-model';
 import { selectionFrameOf, type SelectionExtra } from '../library/library-selection';
@@ -154,11 +155,7 @@ export function deleteBody(memberNames: readonly string[]): string {
   return `${namesText(memberNames)} can no longer open it. The photos they added stay in their own libraries, and yours stay in your library.`;
 }
 
-function removeAlbum(
-  album: DriveAlbum,
-  mutation: MutationState,
-  memberNames: readonly string[],
-): void {
+function removeAlbum(store: EntityStore, album: DriveAlbum, memberNames: readonly string[]): void {
   background(
     confirm({
       title: `Delete ${album.title}?`,
@@ -167,13 +164,8 @@ function removeAlbum(
       tone: 'destructive',
     }).then((accepted) => {
       if (!accepted) return;
-      mutation.run(() => deleteAlbum(album), {
-        failure: 'The album was not deleted',
-        label: 'photos.album_delete',
-        onDone: () => {
-          router.replace(href.photosPage('albums'));
-        },
-      });
+      router.replace(href.photosPage('albums'));
+      deleteAlbum(store, album).catch(notifyFailure('The album was not deleted'));
     }),
     'photos.album_delete_confirm_failed',
   );
@@ -239,7 +231,6 @@ function useRemoveExtra(
   controls: MediaSelectionControls,
 ): readonly SelectionExtra[] {
   const me = useActiveProfile()?.id ?? null;
-  const mutation = useMutationState();
   const client = useQueryClient();
   const owner = ownsAlbum(album, me);
   if (album.kind === 'smart' || (!owner && !joinedContributor(share))) return [];
@@ -253,17 +244,16 @@ function useRemoveExtra(
       label: 'Remove from album',
       short: 'Remove',
       icon: 'minus',
-      disabled: !usable || mutation.busy,
+      disabled: !usable,
       onPress: (chosen): void => {
-        mutation.run(() => removeFromAlbum(album, chosen), {
-          failure: `Not everything left ${album.title}`,
-          label: 'photos.album_remove',
-          onDone: () => {
+        controls.clear();
+        removeFromAlbum(client, album, chosen).then(
+          () => {
             invalidateAlbumItems(client);
-            controls.clear();
             notify({ message: `Removed ${photosText(chosen.length)} from ${album.title}` });
           },
-        });
+          notifyFailure(`Not everything left ${album.title}`),
+        );
       },
     },
   ];
@@ -379,12 +369,12 @@ export function AlbumScreen(): ReactNode {
   const albumId = albumIdOf(useLocalSearchParams()['albumId']);
   const album = usePhotoAlbum(albumId);
   const loaded = useLoaded();
-  const mutation = useMutationState();
+  const store = useEntityStore();
   const me = useActiveProfile()?.id ?? null;
   const [request, setRequest] = useState<AlbumSheetRequest | null>(null);
   const memberNames = useMemberNames(albumId);
   const edit = (): void => {
-    if (album !== null) setRequest({ draft: draftOfAlbum(album), album });
+    if (album !== null) setRequest({ draft: draftOfAlbum(album), album, itemIds: [] });
   };
   const close = (): void => {
     setRequest(null);
@@ -395,7 +385,7 @@ export function AlbumScreen(): ReactNode {
       <AlbumPage
         album={album}
         actions={actionsOf(album, me, edit, () => {
-          removeAlbum(album, mutation, memberNames);
+          removeAlbum(store, album, memberNames);
         })}
         onEdit={edit}
       >

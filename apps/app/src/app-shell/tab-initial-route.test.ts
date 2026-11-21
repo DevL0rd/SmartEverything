@@ -57,7 +57,10 @@ vi.mock('./instant-open', () => ({
   forgetRoute: (): void => undefined,
   isInstantRoute: (): boolean => false,
 }));
-vi.mock('./nav-model', () => ({ tabOfRouteName: (): null => null }));
+vi.mock('./nav-model', () => ({
+  tabOfRouteName: (): null => null,
+  tabIconOfRouteName: (): null => null,
+}));
 vi.mock('./screen-pause', () => ({ screenPause: (): null => null }));
 vi.mock('./preloader', () => ({ preloader: { boostSection: (): void => undefined } }));
 

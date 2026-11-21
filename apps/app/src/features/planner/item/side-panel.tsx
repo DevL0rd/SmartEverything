@@ -53,7 +53,7 @@ import {
   usePlannerSelection,
   type PlannerSelection,
 } from './selection';
-import { useClockFormat } from '../../clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 export const PLANNER_ITEM_PANEL = 'Item details';
 

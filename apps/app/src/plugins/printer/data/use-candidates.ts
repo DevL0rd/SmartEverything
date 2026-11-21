@@ -9,7 +9,7 @@ export const CANDIDATES_KEY = ['window', 'printer', 'candidates'] as const;
 export function useCandidates(): UseQueryResult<ViewOf<'candidates'>> {
   return useScreenQuery({
     queryKey: CANDIDATES_KEY,
-    queryFn: () => readPrinterView(null, 'candidates'),
+    queryFn: ({ signal }) => readPrinterView(null, 'candidates', {}, signal),
     refetchInterval: (query) => (query.state.data?.searching === true ? SEARCH_POLL_MS : false),
   });
 }

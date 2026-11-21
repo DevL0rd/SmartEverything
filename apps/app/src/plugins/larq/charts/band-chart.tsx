@@ -8,7 +8,7 @@ import { WATER_COLOUR } from '../model/bottle-colours';
 import { bandOf } from '../model/stats-model';
 import { ChartBox } from './chart-box';
 import { ChartLabel } from './chart-label';
-import { useClockFormat } from '../../../features/clock/format/clock-format';
+import { useClockFormat } from '../../../store/clock-format';
 
 const HEIGHT = 96;
 const LABEL_BAND = 20;

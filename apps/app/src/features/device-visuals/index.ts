@@ -30,7 +30,7 @@ export type {
 export { robotFactsOf, robotMood } from './model/facts/robot';
 export { GESTURE_ACTIONS, lastPressOf, pressesOf, type Press } from './model/button-facts';
 export { CameraSnapshot } from './media/camera-snapshot';
-export { snapshotQuery } from './media/snapshot-link';
+export { snapshotQuery, snapshotReadinessOf, snapshotRefused } from './media/snapshot-link';
 export { Layer, scaled, useSvgId, type Box } from './parts/frame';
 export { FIXED_PX, SIZE_CLASS } from './visual-size';
 export { LightingScope } from './parts/material';

@@ -3,13 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { AI_CHAT_TITLE_MAX, type AiChatRow } from '@smarteverything/domain';
 import { TextEditSheet } from '../../../settings/text-edit-sheet';
 import { changeChat } from './chat-actions';
-
-class ChatRenameError extends Error {
-  public constructor() {
-    super('Couldn’t save the chat title. Try again.');
-    this.name = 'ChatRenameError';
-  }
-}
+import { useEntityStore } from '../../../store/store-context';
 
 function ChatRenameSheet({
   chat,
@@ -18,6 +12,7 @@ function ChatRenameSheet({
   readonly chat: Pick<AiChatRow, 'id' | 'title'>;
   readonly onClose: () => void;
 }): ReactNode {
+  const store = useEntityStore();
   return (
     <TextEditSheet
       request={{
@@ -29,7 +24,7 @@ function ChatRenameSheet({
         confirmLabel: 'Rename',
         maxLength: AI_CHAT_TITLE_MAX,
         save: async (title) => {
-          if ((await changeChat(chat.id, { title })) === null) throw new ChatRenameError();
+          await changeChat(store, chat.id, { title });
         },
       }}
       onClose={onClose}

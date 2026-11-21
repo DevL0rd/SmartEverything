@@ -13,6 +13,7 @@ import {
   LIST_DEBOUNCE_MS,
   OWNER_LISTS,
   SHARED_LISTS,
+  deviceStateKey,
   metaKey,
   metaSlot,
   rowKey,
@@ -42,6 +43,8 @@ const STATE = z.looseObject({
 });
 
 const ORDER = z.array(z.string());
+
+const DEVICE_ROWS = z.array(z.unknown());
 
 function hashOf(text: string): string {
   let hash = 5381;
@@ -77,6 +80,22 @@ function rowKeysOf(orders: ReadonlyMap<string, readonly string[]>): string[] {
   return [...orders].flatMap(([key, ids]) => ids.map((id) => rowKey(key, id)));
 }
 
+function deviceStateOf(
+  texts: ReadonlyMap<string, string>,
+  orders: ReadonlyMap<string, readonly string[]>,
+  key: string,
+): unknown {
+  const ids = orders.get(key);
+  if (ids === undefined) return undefined;
+  const rows: unknown[] = [];
+  for (const id of ids) {
+    const read = DEVICE_ROWS.safeParse(parsedKey(texts, rowKey(key, id)));
+    if (!read.success) return undefined;
+    rows.push(...read.data);
+  }
+  return rows;
+}
+
 function assemble(
   base: string,
   texts: ReadonlyMap<string, string>,
@@ -101,7 +120,7 @@ function assemble(
       ...Object.fromEntries(empty.map((name) => [name, []])),
       ...lists(CACHED_SHARED_LISTS, 't'),
       ...state.data.tables,
-      device_state: parsedKey(texts, `${base}.device_state`),
+      device_state: deviceStateOf(texts, orders, deviceStateKey(base)),
     },
     owner: owner ? lists(OWNER_LISTS, 'o') : null,
   };

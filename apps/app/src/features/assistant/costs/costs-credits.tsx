@@ -55,6 +55,7 @@ function BalanceView({ account }: { readonly account: OpenRouterAccount }): Reac
         progress={balance.total > 0 ? balance.used / balance.total : 0}
         colour={low ? 'warning' : 'positive'}
         label={usedLine(balance, money)}
+        ticking={false}
       />
       <Text variant="caption" tone="faint">
         {usedLine(balance, money)}

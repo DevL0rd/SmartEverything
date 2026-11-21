@@ -12,43 +12,51 @@ import { completedHelpersOf, type ChatEntry } from './chat-entry';
 import { deleteChat, setChatArchived, setChatPinned, setChatRead } from './chat-actions';
 import { closeChatListSlideOver } from './chat-list-toggle';
 import { Logger, background } from '@smarteverything/logging';
+import type { EntityStore } from '../../../store/entity-store';
 
 const log = new Logger('app.chat-rows');
 
 export type ChatRowTarget = Pick<ChatEntry, 'id' | 'title' | 'pinned' | 'archived' | 'unread'>;
 
 export interface RowHandlers {
+  readonly store: EntityStore;
   readonly onDeleted: (chatId: string) => void;
   readonly storedMessages: () => readonly AssistantMessageRow[];
 }
 
-function pinAction(entry: ChatRowTarget): SwipeAction {
+function pinAction(entry: ChatRowTarget, store: EntityStore): SwipeAction {
   return {
     label: entry.pinned ? 'Unpin' : 'Pin',
     icon: entry.pinned ? 'pinOff' : 'pin',
     tone: 'primary',
     onCommit: (): void => {
-      background(setChatPinned(entry.id, !entry.pinned), 'chat_pinned.set_failed');
+      background(setChatPinned(store, entry.id, !entry.pinned), 'chat_pinned.set_failed');
     },
   };
 }
 
-function archiveAction(entry: ChatRowTarget): SwipeAction {
+function archiveAction(entry: ChatRowTarget, store: EntityStore): SwipeAction {
   return {
     label: entry.archived ? 'Unarchive' : 'Archive',
     icon: entry.archived ? 'archiveRestore' : 'archive',
     tone: 'neutral',
     onCommit: (): void => {
-      setChatArchived(entry.id, !entry.archived);
+      setChatArchived(store, entry.id, !entry.archived);
     },
   };
 }
 
-export function rowSwipeOf(entry: ChatRowTarget): {
+export function rowSwipeOf(
+  entry: ChatRowTarget,
+  store: EntityStore,
+): {
   readonly leading: SwipeAction | undefined;
   readonly trailing: SwipeAction;
 } {
-  return { leading: entry.archived ? undefined : pinAction(entry), trailing: archiveAction(entry) };
+  return {
+    leading: entry.archived ? undefined : pinAction(entry, store),
+    trailing: archiveAction(entry, store),
+  };
 }
 
 function toMenuItem(action: SwipeAction): MenuItem {
@@ -81,7 +89,7 @@ async function branchLatest(chatId: string, stored: readonly AssistantMessageRow
 }
 
 export function menuOf(entry: ChatRowTarget, handlers: RowHandlers): readonly MenuItem[] {
-  const { leading, trailing } = rowSwipeOf(entry);
+  const { leading, trailing } = rowSwipeOf(entry, handlers.store);
   const unread = entry.unread > 0;
   return [
     ...(leading === undefined ? [] : [toMenuItem(leading)]),
@@ -89,7 +97,7 @@ export function menuOf(entry: ChatRowTarget, handlers: RowHandlers): readonly Me
       label: unread ? 'Mark read' : 'Mark unread',
       icon: unread ? 'circleCheck' : 'circle',
       onPress: (): void => {
-        background(setChatRead(entry.id, unread), 'chat_read.set_failed');
+        background(setChatRead(handlers.store, entry.id, unread), 'chat_read.set_failed');
       },
     },
     {

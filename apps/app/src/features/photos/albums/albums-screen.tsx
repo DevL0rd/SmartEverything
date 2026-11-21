@@ -41,7 +41,7 @@ function useStarterMenu(starter: Starter, onOpen: Open): ReturnType<typeof useAn
     description: choice.description,
     icon: starter.icon,
     onPress: (): void => {
-      onOpen({ draft: choice.draft, album: null });
+      onOpen({ draft: choice.draft, album: null, itemIds: [] });
     },
   }));
   return useAnchoredMenu(items, `Start a smart album from ${starter.title.toLowerCase()}`);
@@ -86,7 +86,9 @@ function Starters({
   readonly compact: boolean;
   readonly onOpen: Open;
 }): ReactNode {
-  const starters = startersOf(usePhotoTrips().data, usePhotoInsights('all_time').data?.cameras);
+  const photoTrips = usePhotoTrips();
+  const photoInsights = usePhotoInsights('all_time');
+  const starters = startersOf(photoTrips.data, photoInsights.data?.cameras);
   if (starters.length === 0) return null;
   return (
     <View className="gap-2">
@@ -271,10 +273,10 @@ export function AlbumsScreen(): ReactNode {
   const compact = shellLayoutOf(useAreaWidth()) === 'compact';
   const [request, setRequest] = useState<AlbumSheetRequest | null>(null);
   const openNew = (): void => {
-    setRequest({ draft: newDraft('manual', 'person'), album: null });
+    setRequest({ draft: newDraft('manual', 'person'), album: null, itemIds: [] });
   };
   const openSmart = (): void => {
-    setRequest({ draft: newDraft('smart', 'person'), album: null });
+    setRequest({ draft: newDraft('smart', 'person'), album: null, itemIds: [] });
   };
   return (
     <PhotosFrame

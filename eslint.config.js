@@ -29,21 +29,12 @@ const pausableStoreInfrastructure = [
   'apps/app/src/components/toast-layers.ts',
 ];
 
-const rawExternalStoreUnconverted = [
-  'apps/app/src/components/back-navigation.ts',
+const visibilityDrivenStores = [
   'apps/app/src/components/house-map/live-visibility/stage-host.tsx',
-  'apps/app/src/features/app-updates/data/desktop-install-action.ts',
-  'apps/app/src/features/app-updates/data/update-store.ts',
-  'apps/app/src/features/assistant/data/area-status.ts',
-  'apps/app/src/features/assistant/voice-message/voice-pill-transcript-state.ts',
   'apps/app/src/features/devices/vacuum/components/map-view-parts.tsx',
-  'apps/app/src/features/drive/data/links.ts',
-  'apps/app/src/features/home-map/data/scan-upload.ts',
   'apps/app/src/features/models/live/live-view.tsx',
   'apps/app/src/features/models/live/scroll-model-layer.tsx',
   'apps/app/src/features/models/live/use-live-view.ts',
-  'apps/app/src/features/photos/organise/locked/session.ts',
-  'apps/app/src/plugins/shelly-presence/presence-face-choice.ts',
   'apps/app/src/plugins/shelly-presence/presence-page.tsx',
 ];
 
@@ -359,7 +350,7 @@ export default tseslint.config(
       'apps/app/**/*.test.ts',
       'apps/app/**/*.test.tsx',
       ...pausableStoreInfrastructure,
-      ...rawExternalStoreUnconverted,
+      ...visibilityDrivenStores,
     ],
     rules: { 'local/no-raw-external-store': 'error' },
   },
@@ -377,15 +368,18 @@ export default tseslint.config(
     rules: { 'local/no-raw-modal': 'error' },
   },
   {
-    files: ['apps/app/src/features/**/*.{ts,tsx}', 'apps/app/src/plugins/**/*.{ts,tsx}'],
+    files: ['apps/app/src/**/*.{ts,tsx}'],
+    ignores: ['apps/app/**/*.test.ts', 'apps/app/**/*.test.tsx'],
     rules: {
       'local/no-whole-store-subscribe': [
         'error',
         {
-          allow: [
-            'apps/app/src/features/devices/microwave/send-program.ts',
-            'apps/app/src/features/devices/laundry/send-plan.ts',
-            'apps/app/src/features/cameras/player/use-ptz.ts',
+          allow: ['apps/app/src/store/persistence.ts'],
+          deviceListIn: [
+            'apps/app/src/features/home-map/data/',
+            'apps/app/src/features/home-map/editor/',
+            'apps/app/src/features/home-map/components/',
+            'apps/app/src/components/house-map/',
           ],
         },
       ],
@@ -410,6 +404,21 @@ export default tseslint.config(
         },
       ],
     },
+  },
+  {
+    files: ['apps/app/src/**/*.tsx'],
+    ignores: ['apps/app/**/*.test.tsx'],
+    rules: { 'local/chart-ticking': 'error' },
+  },
+  {
+    files: ['apps/app/src/**/*.{ts,tsx}', 'apps/app/app/**/*.tsx'],
+    ignores: ['apps/app/**/*.test.ts', 'apps/app/**/*.test.tsx'],
+    rules: { 'local/hooks-before-values': 'error' },
+  },
+  {
+    files: ['apps/app/src/**/*.{ts,tsx}'],
+    ignores: ['apps/app/**/*.test.ts', 'apps/app/**/*.test.tsx'],
+    rules: { 'local/query-fn-signal': 'error' },
   },
   {
     files: ['apps/app/src/**/*.{ts,tsx}'],

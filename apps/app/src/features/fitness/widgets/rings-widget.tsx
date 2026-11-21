@@ -69,7 +69,12 @@ function RingRow({ ring }: { readonly ring: RingValue }): ReactNode {
           {`${amount(ring)} / ${count(ring.goal)}`}
         </Text>
       </View>
-      <ProgressBar progress={ring.progress} colour={COLOUR[ring.key]} label={ring.label} />
+      <ProgressBar
+        progress={ring.progress}
+        colour={COLOUR[ring.key]}
+        label={ring.label}
+        ticking={false}
+      />
     </View>
   );
 }
@@ -95,7 +100,13 @@ function RingColumn({
           {`/ ${count(ring.goal)}`}
         </Text>
       </View>
-      <ProgressBar progress={ring.progress} colour={COLOUR[ring.key]} label={ring.label} thick />
+      <ProgressBar
+        progress={ring.progress}
+        colour={COLOUR[ring.key]}
+        label={ring.label}
+        thick
+        ticking={false}
+      />
       <Text variant="footnote" tone="faint" numberOfLines={1}>
         {`${percent(Math.min(ring.progress, 9.99))} · ${leftText(ring)}`}
       </Text>

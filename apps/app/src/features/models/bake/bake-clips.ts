@@ -12,6 +12,7 @@ import {
   type BakeRig,
 } from './bake-layers';
 import type { BakeKey, BakeView, ClipResult } from './bake-protocol';
+import { releaseImage, type MakeCanvas, type Snapshot, type StagedImage } from './bake-staging';
 
 export interface ClipFrameTime {
   readonly elapsedS: number;
@@ -89,17 +90,6 @@ export function yieldTask(): Promise<void> {
   });
 }
 
-export interface StagingDraw<S> {
-  readonly copy: (image: S, from: PixelRect, to: PixelRect) => void;
-}
-
-export interface StagingCanvas<S> {
-  readonly canvas: S;
-  readonly draw: StagingDraw<S> | null;
-}
-
-export type MakeCanvas<S> = (width: number, height: number) => StagingCanvas<S>;
-
 export interface CroppedFrame<S> {
   readonly canvas: S;
   readonly rect: PixelRect;
@@ -111,37 +101,13 @@ export interface PackedAtlas<S> {
   readonly grid: AtlasGrid;
 }
 
-function canvas2d(width: number, height: number): StagingCanvas<HTMLCanvasElement> {
-  const made = document.createElement('canvas');
-  made.width = width;
-  made.height = height;
-  const context = made.getContext('2d');
-  if (context === null) return { canvas: made, draw: null };
-  const copy = (image: HTMLCanvasElement, from: PixelRect, to: PixelRect): void => {
-    context.drawImage(
-      image,
-      from.x,
-      from.y,
-      from.width,
-      from.height,
-      to.x,
-      to.y,
-      to.width,
-      to.height,
-    );
-  };
-  return { canvas: made, draw: { copy } };
-}
-
-export function cropFrame<S>(
+export async function cropFrame<S>(
   source: S,
   rect: PixelRect | null,
-  make: MakeCanvas<S>,
-): CroppedFrame<S> | null {
+  snapshot: Snapshot<S>,
+): Promise<CroppedFrame<S> | null> {
   if (rect === null) return null;
-  const { canvas, draw } = make(rect.width, rect.height);
-  draw?.copy(source, rect, { x: 0, y: 0, width: rect.width, height: rect.height });
-  return { canvas, rect };
+  return { canvas: await snapshot(source, rect), rect };
 }
 
 export function packFrames<S>(
@@ -180,35 +146,31 @@ async function drawFrames(
     readonly signals: ChannelSignals;
     readonly schedule: ClipSchedule;
   },
-  pause: () => Promise<void>,
-): Promise<readonly (CroppedFrame<HTMLCanvasElement> | null)[]> {
+): Promise<readonly (CroppedFrame<StagedImage> | null)[]> {
   const size = { width: key.width, height: key.height, dpr: key.dpr };
-  const frames: (CroppedFrame<HTMLCanvasElement> | null)[] = [];
+  const frames: Promise<CroppedFrame<StagedImage> | null>[] = [];
   for (const time of run.schedule.times) {
     rig.live.setSignals(run.signals, { timeS: time.elapsedS });
     rig.halos.sync();
     const frame = { view: key.view, aspect: key.width / key.height, shot: run.shot, ...time };
     const camera = aimCamera(context, framedShot(rig.built, rig.spec, frame), size);
-    renderPass(context.renderer, rig, camera, SHOW_ALL);
+    await renderPass(context.renderer, rig, camera, SHOW_ALL);
     const bounds = passBounds(rig.stage.scene, camera, SHOW_ALL, canvasPixels(context, key.dpr));
-    frames.push(cropFrame(context.renderer.domElement, bounds, canvas2d));
-    await pause();
+    frames.push(cropFrame<StagedImage>(context.source, bounds, context.staging.snapshot));
+    await context.pause();
   }
-  return frames;
+  return Promise.all(frames);
 }
 
-function releaseFrames(frames: readonly (CroppedFrame<HTMLCanvasElement> | null)[]): void {
+function releaseFrames(frames: readonly (CroppedFrame<StagedImage> | null)[]): void {
   for (const frame of frames) {
-    if (frame === null) continue;
-    frame.canvas.width = 0;
-    frame.canvas.height = 0;
+    if (frame !== null) releaseImage(frame);
   }
 }
 
 export async function bakeClip(
   bake: ClipBake,
   signals: ChannelSignals,
-  pause: () => Promise<void>,
 ): Promise<Omit<ClipResult, 'id' | 'ms'> | null> {
   const { rig, key } = bake;
   if (key.target.kind !== 'shot') return null;
@@ -216,17 +178,19 @@ export async function bakeClip(
   const shot = rig.spec.shots?.find((each) => each.id === shotId);
   if (shot === undefined) return null;
   const schedule = clipSchedule(key.view, shot);
-  const frames = await drawFrames(bake, { shot, signals, schedule }, pause);
-  const atlas = packFrames(frames, canvas2d);
+  const frames = await drawFrames(bake, { shot, signals, schedule });
+  const atlas = packFrames(frames, bake.context.staging.make);
   releaseFrames(frames);
   if (atlas === null) throw new Error('the clip rendered blank');
+  const uri = await bake.context.staging.encode(atlas.canvas);
+  releaseImage(atlas);
   return {
     kind: 'clip',
     width: key.width,
     height: key.height,
     dpr: key.dpr,
     shotId,
-    uri: atlas.canvas.toDataURL('image/png'),
+    uri,
     rect: cssRect(atlas.crop, key.dpr),
     columns: atlas.grid.columns,
     rows: atlas.grid.rows,

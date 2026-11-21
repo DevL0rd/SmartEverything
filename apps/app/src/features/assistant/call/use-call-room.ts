@@ -212,12 +212,12 @@ export function useCallRoom(): CallRoomModel {
   const layout = callLayoutOf({ width: useAreaWidth(), height, idiom: useIdiom() });
   const layers = useCallLayers();
   const { pref } = useCallAudio();
-  const reasons = reasonsOf(call, callEngine.capabilities());
   const name = useAssistantName();
   const level = useCallLevel(call.phase, call.muted);
   const cameraAnchor = useRef<View>(null);
   const shareAnchor = useRef<View>(null);
   const captureMode = useCaptureMode();
+  const reasons = reasonsOf(call, callEngine.capabilities());
   const screenSharePage = screenSharePageOf(captureMode);
   const shareScreen = (): void => {
     if (screenSharePage === null) {
@@ -227,8 +227,8 @@ export function useCallRoom(): CallRoomModel {
     layers.open(screenSharePage);
   };
   const handlers = handlersOf({ call, reasons, pref, layers });
-  const runAction = actionRunner(reasons, pref, layers, shareScreen);
   useRoomEffects(call, layout, layers, handlers);
+  const runAction = actionRunner(reasons, pref, layers, shareScreen);
   return {
     call,
     name,

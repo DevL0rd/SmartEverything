@@ -49,13 +49,14 @@ let root: Root | null = null;
 function mount(getRevision: typeof hubApi.getRevision): () => DraftLoad | null {
   const source: AutomationsSource = {
     api: { ...hubApi, getDraft: () => Promise.resolve(VIEW), getRevision },
+    write: (write) => write.send(),
     automations: {
       snapshot: () => ({ rows: [], rejected: 0, unstructured: [] }),
       subscribe: () => () => undefined,
     },
     kindSource: { snapshot: () => NODE_REGISTRY, subscribe: () => () => undefined },
     trace: { hold: () => () => undefined },
-    runChanges: () => () => undefined,
+    runWaitChanges: () => () => undefined,
   };
   const client = new QueryClient();
   let latest: DraftLoad | null = null;
@@ -101,7 +102,9 @@ afterEach(() => {
 
 describe('loading the editor of a drafted automation', () => {
   it('loads the base revision with one request and does not wait on itself', async () => {
-    const getRevision = vi.fn(() => Promise.resolve(ROW));
+    const getRevision = vi.fn((..._read: Parameters<typeof hubApi.getRevision>) =>
+      Promise.resolve(ROW),
+    );
     const load = mount(getRevision);
     await act(async () => {
       await vi.waitFor(() => {
@@ -110,7 +113,9 @@ describe('loading the editor of a drafted automation', () => {
     });
     expect(load()?.base.revision).toBe(7);
     expect(getRevision).toHaveBeenCalledTimes(1);
-    expect(getRevision).toHaveBeenCalledWith(AUTOMATION_ID, 7, NODE_REGISTRY);
+    const [, , , request] = getRevision.mock.calls[0] ?? [];
+    expect(getRevision.mock.calls[0]?.slice(0, 3)).toEqual([AUTOMATION_ID, 7, NODE_REGISTRY]);
+    expect(request?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('shows that a query fetching its own key through the client never settles', async () => {

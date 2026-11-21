@@ -10,7 +10,7 @@ export function useSecrets(enabled: boolean): UseQueryResult<AutomationSecretEnt
   const { api } = useAutomationsSource();
   return useScreenQuery({
     queryKey: automationKeys.secrets(),
-    queryFn: api.listSecrets,
+    queryFn: ({ signal }) => api.listSecrets(signal),
     enabled,
   });
 }

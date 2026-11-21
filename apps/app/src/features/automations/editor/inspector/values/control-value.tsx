@@ -68,7 +68,8 @@ function LevelValue({
   disabled,
   onChange,
 }: EditorProps<Extract<ControlValueSpec, { t: 'number' }>>): ReactNode {
-  const scale = numberScale(spec, useHomeTemperature());
+  const homeTemperature = useHomeTemperature();
+  const scale = numberScale(spec, homeTemperature);
   const shown = typeof value === 'number' ? scale.shown(value) : null;
   const unit = scale.unit ?? '';
   const commit = (next: number): void => {

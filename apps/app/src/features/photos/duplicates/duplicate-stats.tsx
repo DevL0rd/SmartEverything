@@ -53,7 +53,12 @@ function SpaceTile({ stats, libraryBytes }: StatsProps): ReactNode {
         )}
       </View>
       {share === null ? null : (
-        <ProgressBar progress={share.share} colour="positive" label="Share of the library" />
+        <ProgressBar
+          progress={share.share}
+          colour="positive"
+          label="Share of the library"
+          ticking={false}
+        />
       )}
     </View>
   );

@@ -72,6 +72,7 @@ function RangeBar({ day, span }: { readonly day: WeatherDay; readonly span: Span
         progress={(day.maxC - span.low) / width}
         colour="temp-warm"
         label={`${degrees(day.minC)} to ${degrees(day.maxC)}`}
+        ticking={false}
       />
     </View>
   );

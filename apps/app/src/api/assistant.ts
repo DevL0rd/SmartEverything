@@ -64,9 +64,10 @@ export async function finishAssistantUpload(uploadId: string): Promise<Assistant
 
 export async function assistantAttachmentLinks(
   ids: readonly string[],
+  request: { readonly signal?: AbortSignal } = {},
 ): Promise<Readonly<Record<string, SignedLink>>> {
   const client = api().forMedia();
-  const links = await client.call(E.assistantAttachmentLinks, { body: { ids: [...ids] } });
+  const links = await client.call(E.assistantAttachmentLinks, { body: { ids: [...ids] } }, request);
   return Object.fromEntries(
     await Promise.all(
       links.map(

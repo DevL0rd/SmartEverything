@@ -48,7 +48,8 @@ function WideTitle({ frame }: { readonly frame: FrameProps }): ReactNode {
 function WideRows({ frame }: { readonly frame: FrameProps }): ReactNode {
   const { shell, layout } = frame;
   const desktop = layout.header === 'desktop';
-  const options = barOptionsOf(shell.search, useSearchOptionsPlace());
+  const searchOptionsPlace = useSearchOptionsPlace();
+  const options = barOptionsOf(shell.search, searchOptionsPlace);
   const tabs = shell.tabs;
   if (!shellRowsShown(options, tabs, shell.toolbar)) return null;
   return (

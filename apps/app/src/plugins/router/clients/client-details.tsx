@@ -43,6 +43,7 @@ export function ClientLead({ client }: { readonly client: NetworkClient }): Reac
         size="widget"
         label={text}
         offline={!client.connected}
+        ticking={false}
       />
       <Text variant="callout" tone="variant" className="flex-1">
         {text}

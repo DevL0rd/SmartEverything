@@ -68,8 +68,8 @@ export function EventCard(props: EventCardProps): ReactNode {
   const { entry, cameraName, thumb, timeZone } = props;
   const [hovered, setHovered] = useState(false);
   const look = eventLook(entry.kind, entry.details);
-  const target = recordingTarget(entry);
   const menu = useContextMenu(useCardMenu(entry, props.onDelete), cameraName ?? look.label);
+  const target = recordingTarget(entry);
   return (
     <View
       className={cn(

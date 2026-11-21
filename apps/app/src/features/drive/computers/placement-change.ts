@@ -1,7 +1,11 @@
 import type { DrivePlacementSet } from '@smarteverything/domain';
 import { Logger } from '@smarteverything/logging';
 import { removeDrivePlacement, setComputerMount, setDrivePlacement } from '../../../api/drive';
+import type { EntityStore } from '../../../store/entity-store';
 import { useMutationState } from '../../../store/mutation';
+import { writeOptimistically, type Edit } from '../../../store/optimistic';
+import { useEntityStore } from '../../../store/store-context';
+import { mountShown, placementRemoveShown, placementSetShown } from '../data/row-shown';
 
 const log = new Logger('app.drive');
 
@@ -15,6 +19,15 @@ export interface PlacementWrites {
   ) => void;
   readonly remove: (placementId: string, onDone?: () => void) => void;
   readonly mount: (deviceId: string, enabled: boolean) => void;
+}
+
+function shownSend(
+  store: EntityStore,
+  event: string,
+  edits: readonly Edit[],
+  send: () => Promise<void>,
+): () => Promise<void> {
+  return () => writeOptimistically(store, { event, edits, send });
 }
 
 async function setAll(bodies: readonly DrivePlacementSet[]): Promise<void> {
@@ -32,34 +45,75 @@ async function removeOne(placementId: string): Promise<void> {
   log.info('placement.removed', { placementId });
 }
 
+function setEdits(
+  store: EntityStore,
+  bodies: readonly DrivePlacementSet[],
+): readonly Edit[] | null {
+  const state = store.get();
+  const edits: Edit[] = [];
+  for (const body of bodies) {
+    const edit = placementSetShown(state, body);
+    if (edit === null) return null;
+    edits.push(edit);
+  }
+  return edits;
+}
+
+interface PlacementRun {
+  readonly label: string;
+  readonly failure: string;
+  readonly edits: readonly Edit[] | null;
+  readonly send: () => Promise<void>;
+  readonly onDone?: (() => void) | undefined;
+}
+
+function present(edit: Edit | null): readonly Edit[] | null {
+  return edit === null ? null : [edit];
+}
+
 export function usePlacementWrites(): PlacementWrites {
   const mutation = useMutationState();
-  const finish = (onDone: (() => void) | undefined): { readonly onDone?: () => void } =>
-    onDone === undefined ? {} : { onDone };
+  const store = useEntityStore();
+  const run = ({ label, failure, edits, send, onDone }: PlacementRun): void => {
+    mutation.run(edits === null ? send : shownSend(store, label, edits, send), {
+      failure,
+      label,
+      inline: edits === null,
+      ...(onDone === undefined || edits !== null ? {} : { onDone }),
+    });
+    if (edits !== null) onDone?.();
+  };
   return {
     busy: mutation.busy,
     problem: mutation.problem,
     set: (bodies, failure, onDone): void => {
-      mutation.run(() => setAll(bodies), {
-        failure,
+      run({
         label: 'drive.placement.set',
-        inline: true,
-        ...finish(onDone),
+        failure,
+        edits: setEdits(store, bodies),
+        send: () => setAll(bodies),
+        onDone,
       });
     },
     remove: (placementId, onDone): void => {
-      mutation.run(() => removeOne(placementId), {
-        failure: 'The folder was not removed from this computer',
+      const edits = present(placementRemoveShown(store.get(), placementId));
+      const failure = 'The folder was not removed from this computer';
+      run({
         label: 'drive.placement.remove',
-        inline: true,
-        ...finish(onDone),
+        failure,
+        edits,
+        send: () => removeOne(placementId),
+        onDone,
       });
     },
     mount: (deviceId, enabled): void => {
-      mutation.run(() => turnMount(deviceId, enabled), {
-        failure: enabled ? 'The drive was not mounted' : 'The drive was not unmounted',
+      const edits = present(mountShown(store.get(), deviceId, enabled));
+      const failure = enabled ? 'The drive was not mounted' : 'The drive was not unmounted';
+      run({
         label: 'drive.placement.mount',
-        inline: true,
+        failure,
+        edits,
+        send: () => turnMount(deviceId, enabled),
       });
     },
   };

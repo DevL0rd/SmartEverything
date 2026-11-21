@@ -42,7 +42,7 @@ export function useComparison(
   const { api } = useAutomationsSource();
   return useScreenQuery({
     queryKey: automationKeys.compare(automationId, from, to),
-    queryFn: () => api.compareRevisions(automationId, from, to),
+    queryFn: ({ signal }) => api.compareRevisions(automationId, from, to, { signal }),
     enabled,
   });
 }

@@ -53,6 +53,7 @@ export function CalorieDial({
             startAngle={-135}
             sweep={270}
             tinted
+            ticking={false}
           />
         </View>
       )}

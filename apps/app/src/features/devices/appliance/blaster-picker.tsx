@@ -33,7 +33,8 @@ export function BlasterPicker({
   readonly name: string;
   readonly onClose: () => void;
 }): ReactNode {
-  const choices = blasterChoices(useDevices(), appliance.blasterId);
+  const devices = useDevices();
+  const choices = blasterChoices(devices, appliance.blasterId);
   return (
     <Sheet open onClose={onClose} title="Use another blaster" detents={['fit']}>
       {choices.length === 0 ? (

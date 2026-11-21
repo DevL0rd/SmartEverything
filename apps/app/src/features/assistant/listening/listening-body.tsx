@@ -154,8 +154,8 @@ export function ListeningBody({
   const area = useAreaWidth();
   const { width, onLayout } = useMeasuredWidth();
   const name = useAssistantName();
-  const rows = rowsOf(view, allowed);
   const actions = useListeningActions(offline, setOpenKey);
+  const rows = rowsOf(view, allowed);
   const open = rows.find((row) => row.source.key === openKey);
   return (
     <View className="gap-5" onLayout={isNative() ? undefined : onLayout}>

@@ -1,5 +1,6 @@
-import { createContext, use } from 'react';
+import { use } from 'react';
 import { usePausable } from '../../design/external-store';
+import { PickerSourceContext } from './picker-source-context';
 import type { PickerState } from './types';
 
 export interface PickerSource {
@@ -11,8 +12,6 @@ export interface PickerView {
   readonly state: PickerState;
   readonly read: () => PickerState;
 }
-
-export const PickerSourceContext = createContext<PickerSource | null>(null);
 
 function required(source: PickerSource | null): PickerSource {
   if (source === null) throw new Error('A widget board needs a picker source provider');

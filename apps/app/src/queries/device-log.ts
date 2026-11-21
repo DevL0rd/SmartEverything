@@ -7,12 +7,14 @@ import { DEVICE_LOG_PREFIX } from './keys';
 export function readDeviceLog(
   deviceId: string,
   limit: number,
-  to?: string,
+  to: string | undefined,
+  signal: AbortSignal,
 ): Promise<DeviceLogEntry[]> {
-  return api().call(E.readDeviceLog, {
-    params: { deviceId },
-    query: { limit, ...(to === undefined ? {} : { to }) },
-  });
+  return api().call(
+    E.readDeviceLog,
+    { params: { deviceId }, query: { limit, ...(to === undefined ? {} : { to }) } },
+    { signal },
+  );
 }
 
 interface LoggedChanges {

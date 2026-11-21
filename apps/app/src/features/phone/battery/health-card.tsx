@@ -49,6 +49,7 @@ export function HealthCard({ device }: { readonly device: Device }): ReactNode {
             bands={TEMPERATURE_BANDS}
             size={GAUGE_SIZE}
             label={`Temperature ${String(Math.round(celsius))} degrees, ${temperatureWord(celsius)}`}
+            ticking={false}
           >
             <Text variant="title-3" className="tabular">
               {`${String(Math.round(celsius))} °C`}

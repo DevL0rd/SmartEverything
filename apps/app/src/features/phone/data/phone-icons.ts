@@ -11,14 +11,15 @@ export function iconUriOf(icon: PhoneIconUpload): string {
   return `data:image/webp;base64,${icon.webpBase64}`;
 }
 
-function readIcon(hash: string): Promise<PhoneIconUpload> {
-  return api().call(E.readPhoneIcon, { params: { hash } });
+function readIcon(hash: string, signal: AbortSignal): Promise<PhoneIconUpload> {
+  return api().call(E.readPhoneIcon, { params: { hash } }, { signal });
 }
 
 export function usePhoneIcon(hash: string | null): string | null {
   const query = useScreenQuery({
     queryKey: phoneIconKey(hash),
-    queryFn: hash === null ? skipToken : (): Promise<PhoneIconUpload> => readIcon(hash),
+    queryFn:
+      hash === null ? skipToken : ({ signal }): Promise<PhoneIconUpload> => readIcon(hash, signal),
     select: iconUriOf,
     gcTime: Infinity,
   });

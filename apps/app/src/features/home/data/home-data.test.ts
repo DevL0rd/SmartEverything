@@ -8,7 +8,7 @@ import { DEVICE_GROUP_WIDGET } from '../../device-groups';
 import { SPOTLIGHT_WIDGET } from '../widgets/spotlight';
 import { NO_HOME_DATA, availableWidgets } from './home-data';
 
-vi.mock('../../talk/data/talk-available', () => ({ talkAvailable: () => true }));
+vi.mock('../../talk/data/talk-available', () => ({ talkAvailable: (): boolean => true }));
 
 describe('Home widget availability', () => {
   it('offers both Walkie-talkie widgets on supported clients before any channels exist', () => {
@@ -17,6 +17,8 @@ describe('Home widget availability', () => {
       'automations',
       'talk-channel',
       'talk-channels',
+      'planner-up-next',
+      'planner-clock',
     ]);
   });
 

@@ -304,9 +304,9 @@ export function Cursor({
   readonly frame: HypnogramFrame;
   readonly at: number;
 }): ReactNode {
-  const segment = spanAt(segments, at);
   const dot = useColour('on-surface');
   const ring = useColour('surface-1');
+  const segment = spanAt(segments, at);
   if (segment === null) {
     return null;
   }

@@ -8,6 +8,6 @@ export function usePushDeliveries(enabled = true): UseQueryResult<PushStatus> {
   return useScreenQuery({
     queryKey: PUSH_STATUS_KEY,
     enabled,
-    queryFn: () => api().call(E.readPushStatus, {}),
+    queryFn: ({ signal }) => api().call(E.readPushStatus, {}, { signal }),
   });
 }

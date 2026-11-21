@@ -72,6 +72,7 @@ export function PlaceRowItem({
             progress={share}
             colour="viz-1"
             label={`${place.name} share of the places in view`}
+            ticking={false}
           />
         )}
       </View>

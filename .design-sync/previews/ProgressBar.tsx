@@ -4,9 +4,9 @@ import { Col } from '../preview-helpers';
 
 const body = (
   <Col gap={20}>
-    <ProgressBar progress={0.35} colour="viz-1" label="Firmware download 35%" />
-    <ProgressBar progress={0.8} colour="positive" label="Backup 80%" thick />
-    <ProgressBar progress={1} colour="primary" label="Sync complete" />
+    <ProgressBar ticking={false} progress={0.35} colour="viz-1" label="Firmware download 35%" />
+    <ProgressBar ticking={false} progress={0.8} colour="positive" label="Backup 80%" thick />
+    <ProgressBar ticking={false} progress={1} colour="primary" label="Sync complete" />
   </Col>
 );
 export const Bars = (): ReactElement => (

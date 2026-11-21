@@ -28,7 +28,7 @@ vi.mock('expo-crypto', () => ({ randomUUID: (): string => 'copy' }));
 vi.mock('../../../../design/platform', () => ({ isNative: (): boolean => false }));
 vi.mock('../../../../store/selectors', () => ({
   useRooms: (): readonly never[] => [],
-  useDevices: (): readonly never[] => [],
+  useDeviceNames: (): ReadonlyMap<string, string> => new Map(),
 }));
 vi.mock('../../../../api/transport', () => ({ api: vi.fn() }));
 vi.mock('../../../../components/button', () => ({ Button: none }));

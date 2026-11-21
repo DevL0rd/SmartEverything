@@ -75,6 +75,7 @@ export function MicrowaveHero({ device }: { readonly device: Device }): ReactNod
               colour="temp-warm"
               label={`Progress ${String(Math.round(run.progress * 100))} percent`}
               thick
+              ticking={false}
             />
           </View>
         )}

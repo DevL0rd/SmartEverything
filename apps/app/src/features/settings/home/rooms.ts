@@ -1,10 +1,13 @@
 import type { TableRow } from '@smarteverything/domain';
-import { createRoom, placeRoom, renameRoom } from '../../../api/settings';
+import { createRoom, placeRoom } from '../../../api/settings';
 import { ValueStore } from '../../../design/external-store';
 import type { TextEditRequest } from '../../../settings/text-edit-sheet';
+import type { EntityStore } from '../../../store/entity-store';
+import { composed, liveRowEdit, writeOptimistically } from '../../../store/optimistic';
+import { renameRoomShown } from '../../../store/room-writes';
 import { orderedRooms } from '../../../store/table-rules';
+import { trackSetting } from '../settings-log';
 
-import { settingsLog, trackSetting } from '../settings-log';
 type Room = TableRow<'rooms'>;
 
 const ROOM_NAME_LENGTH = 60;
@@ -25,7 +28,7 @@ export function openAddRoom(count: number): void {
   });
 }
 
-export function openRenameRoom(room: Room): void {
+export function openRenameRoom(store: EntityStore, room: Room): void {
   roomEditor.set({
     title: 'Rename room',
     label: 'Room name',
@@ -33,30 +36,55 @@ export function openRenameRoom(room: Room): void {
     placeholder: 'Room name',
     confirmLabel: 'Save',
     maxLength: ROOM_NAME_LENGTH,
-    save: (name) =>
-      trackSetting('room.rename', { roomId: room.id }, () => renameRoom(room.id, name)),
+    save: (name) => renameRoomShown(store, room, name),
   });
 }
 
-export async function reorderRooms(rooms: readonly Room[], keys: readonly string[]): Promise<void> {
+function placed(
+  rooms: readonly Room[],
+  keys: readonly string[],
+): readonly (readonly [Room, number])[] {
   const byId = new Map(rooms.map((room) => [room.id, room]));
-  let moved = 0;
-  const operation = settingsLog.operation('rooms.reorder', { rooms: keys.length });
-  try {
-    for (const [position, roomId] of keys.entries()) {
-      if (byId.get(roomId)?.position !== position) {
-        await placeRoom(roomId, position);
-        moved += 1;
-      }
+  return [...keys.entries()].flatMap(([position, roomId]) => {
+    const room = byId.get(roomId);
+    return room === undefined || room.position === position ? [] : [[room, position] as const];
+  });
+}
+
+export async function reorderRooms(
+  store: EntityStore,
+  rooms: readonly Room[],
+  keys: readonly string[],
+): Promise<void> {
+  const moves = placed(rooms, keys);
+  const edits = moves.map(([room, position]) =>
+    liveRowEdit('rooms', room.id, room, { ...room, position }),
+  );
+  store.update(composed(edits).apply);
+  for (const [index, [room, position]] of moves.entries()) {
+    try {
+      await writeOptimistically(store, {
+        event: 'room.place',
+        edits: [],
+        send: () => placeRoom(room.id, position),
+        fields: {
+          roomId: room.id,
+          position,
+        },
+      });
+    } catch (error) {
+      store.update(composed(edits.slice(index)).revert);
+      throw error;
     }
-    operation.succeeded({ moved });
-  } catch (error) {
-    operation.failed(error, { moved });
-    throw error;
   }
 }
 
-export function moveRoom(rooms: readonly Room[], roomId: string, offset: -1 | 1): Promise<void> {
+export function moveRoom(
+  store: EntityStore,
+  rooms: readonly Room[],
+  roomId: string,
+  offset: -1 | 1,
+): Promise<void> {
   const keys = orderedRooms(rooms).map((room) => room.id);
   const from = keys.indexOf(roomId);
   const to = from + offset;
@@ -65,5 +93,5 @@ export function moveRoom(rooms: readonly Room[], roomId: string, offset: -1 | 1)
   }
   keys.splice(from, 1);
   keys.splice(to, 0, roomId);
-  return reorderRooms(rooms, keys);
+  return reorderRooms(store, rooms, keys);
 }

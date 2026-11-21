@@ -13,11 +13,17 @@ import { vacuumCleanKey, vacuumCleansKey } from './keys';
 async function readCleans(
   deviceId: string,
   before: string | undefined,
+  signal: AbortSignal,
 ): Promise<VacuumCleanSummary[]> {
-  const page = await api().call(E.listVacuumCleans, {
-    params: { deviceId },
-    query: before === undefined ? { limit: CLEANS_PAGE_SIZE } : { before, limit: CLEANS_PAGE_SIZE },
-  });
+  const page = await api().call(
+    E.listVacuumCleans,
+    {
+      params: { deviceId },
+      query:
+        before === undefined ? { limit: CLEANS_PAGE_SIZE } : { before, limit: CLEANS_PAGE_SIZE },
+    },
+    { signal },
+  );
   return page.cleans;
 }
 
@@ -43,7 +49,7 @@ export function useVacuumCleans(
     string | undefined
   >({
     queryKey: vacuumCleansKey(deviceId, finishedCleans),
-    queryFn: ({ pageParam }) => readCleans(deviceId, pageParam),
+    queryFn: ({ pageParam, signal }) => readCleans(deviceId, pageParam, signal),
     initialPageParam: undefined,
     getNextPageParam: nextCleansCursor,
   });
@@ -72,7 +78,8 @@ export interface VacuumCleanState {
 export function useVacuumClean(deviceId: string, cleanId: string | null): VacuumCleanState {
   const query = useScreenQuery({
     queryKey: vacuumCleanKey(deviceId, cleanId ?? ''),
-    queryFn: () => api().call(E.getVacuumClean, { params: { deviceId, cleanId: cleanId ?? '' } }),
+    queryFn: ({ signal }) =>
+      api().call(E.getVacuumClean, { params: { deviceId, cleanId: cleanId ?? '' } }, { signal }),
     enabled: cleanId !== null,
     staleTime: Infinity,
   });

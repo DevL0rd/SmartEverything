@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Logger, background } from '@smarteverything/logging';
 import { isFinished } from '@smarteverything/domain';
 import type { EntityStore } from '../../../store/entity-store';
+import { COMMAND_READS } from '../../../store/live-commands';
 import type { Device } from '../../../store/state';
 import { useEntityStore, useLedger } from '../../../store/store-context';
 
@@ -33,7 +34,7 @@ function finished(store: EntityStore, commandId: string): Promise<void> {
       resolve();
       return;
     }
-    const stop = store.subscribe(() => {
+    const stop = store.subscribeSlices(COMMAND_READS, () => {
       if (done()) {
         stop();
         resolve();

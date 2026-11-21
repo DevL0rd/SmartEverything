@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Position, ReactFlowProvider, type EdgeProps } from '@xyflow/react';
 import type { GraphScene, GraphSceneEdge } from '../../../model/graph/scene-contract';
 import type { GraphFlowEdge } from '../graph-canvas-types';
-import { GraphEmitContext } from '../graph-context';
+import { GraphEmitContext } from '../graph-contexts';
 import { buildGraphNodes } from '../scene-to-flow';
 import { ExecEdge } from './exec-edge';
 import { ValueEdge } from './value-edge';

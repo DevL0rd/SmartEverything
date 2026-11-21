@@ -190,6 +190,7 @@ function seenOf(node: Mesh | Sprite): Seen {
 
 function recorder(frames: Seen[][]): PassRenderer {
   return {
+    compileAsync: (scene: Object3D): Promise<Object3D> => Promise.resolve(scene),
     render: (scene: Object3D): void => {
       const seen: Seen[] = [];
       scene.traverse((node) => {
@@ -246,14 +247,14 @@ describe('bake layers', () => {
     rig.dispose();
   });
 
-  it('draws the body without the moving part, the part over a depth body, a white mask and the shadow', () => {
+  it('draws the body without the moving part, the part over a depth body, a white mask and the shadow', async () => {
     const frames: Seen[][] = [];
     const rig = rigOf();
     const groups = movingGroups(rig.spec, 'card', new Set(rig.built.parts.map((part) => part.id)));
     const plans = layerPlans(rig, groups);
     expect(plans.map((plan) => plan.id)).toEqual(['body', 'blades', 'emissive', 'shadow']);
     const camera = cameraFor(rig);
-    for (const plan of plans) renderPass(recorder(frames), rig, camera, plan.pass);
+    for (const plan of plans) await renderPass(recorder(frames), rig, camera, plan.pass);
     const [body, part, mask, shadow] = frames;
     expect(painted(body)).toEqual(expect.arrayContaining(['base', 'head', 'led']));
     expect(painted(body)).not.toContain('blades');
@@ -315,6 +316,7 @@ function lampSpec(): ModelSpec {
 
 function paintedNodes(frames: (Mesh | Sprite)[][]): PassRenderer {
   return {
+    compileAsync: (scene: Object3D): Promise<Object3D> => Promise.resolve(scene),
     render: (scene: Object3D): void => {
       const found: (Mesh | Sprite)[] = [];
       scene.traverse((node) => {
@@ -404,7 +406,7 @@ const FIXTURES = [
 describe('bake crop rectangles', () => {
   for (const [name, specOf] of FIXTURES) {
     for (const theme of ['dark', 'light'] as const) {
-      it(`contains every pixel each layer paints, without reading pixels, for the ${name} in ${theme}`, () => {
+      it(`contains every pixel each layer paints, without reading pixels, for the ${name} in ${theme}`, async () => {
         const key = fanKey({ kind: 'keyframe', state: 'on' }, theme);
         const rig = createBakeRig(new Texture(), specOf(), key);
         rig.live.setSignals({ power: true, speed: 0.5, brightness: 80 }, { reduced: true });
@@ -415,7 +417,7 @@ describe('bake crop rectangles', () => {
         const frames: (Mesh | Sprite)[][] = [];
         for (const plan of plans) {
           const bounds = passBounds(rig.stage.scene, camera, plan.pass, CANVAS);
-          renderPass(paintedNodes(frames), rig, camera, plan.pass);
+          await renderPass(paintedNodes(frames), rig, camera, plan.pass);
           const truth = paintedExtent(frames.at(-1) ?? [], camera);
           expect(truth, plan.id).not.toBeNull();
           expect(bounds, plan.id).not.toBeNull();

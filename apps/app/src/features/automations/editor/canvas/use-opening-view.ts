@@ -55,10 +55,7 @@ export function useOpeningView(
     const { width, height } = element.getBoundingClientRect();
     if (width <= 0 || height <= 0) return;
     if (held.current !== 'opening') {
-      background(
-        fitGraph(held.current === 'fit' ? 'whole' : 'open'),
-        'automations.canvas.fit',
-      );
+      background(fitGraph(held.current === 'fit' ? 'whole' : 'open'), 'automations.canvas.fit');
       return;
     }
     background(

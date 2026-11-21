@@ -2,11 +2,8 @@ import { act, createElement, use, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { SNAPSHOT, type Snapshot } from '@smarteverything/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  PickerSourceContext,
-  usePickerSource,
-  type PickerView,
-} from '../components/widget-board/picker-source';
+import { usePickerSource, type PickerView } from '../components/widget-board/picker-source';
+import { PickerSourceContext } from '../components/widget-board/picker-source-context';
 import { ScreenPause, ScreenPausedContext } from '../design/screen-pause';
 import { CommandLedger } from './command-ledger';
 import { EntityStore } from './entity-store';
@@ -69,10 +66,11 @@ async function mount(store: EntityStore, children: ReactNode, pause?: ScreenPaus
     ownerDocument: null,
     addEventListener: (): void => undefined,
   });
-  const tree = createElement(StoreProvider, {
+  const providers = {
     runtime: { store, ledger: new CommandLedger(store) },
     children: createElement(PickerSourceProvider, null, children),
-  });
+  };
+  const tree = createElement(StoreProvider, providers);
   await act(() => {
     root?.render(
       pause === undefined

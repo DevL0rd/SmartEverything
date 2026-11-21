@@ -9,7 +9,7 @@ import { cn } from '../../../design/cn';
 import type { WorldCity } from './cities';
 import { dayShareOf, daylightLineOf, daylightOf, type Daylight } from './daylight';
 import { DaylightBar } from './daylight-bar';
-import type { InstantClock } from '../format/clock-format';
+import type { InstantClock } from '../../../store/clock-format';
 import { dayWordOf, offsetToHomeOf, type DayWord } from './world-time';
 
 export interface CityView {

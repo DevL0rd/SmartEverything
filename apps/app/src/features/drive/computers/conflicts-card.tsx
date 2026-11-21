@@ -66,8 +66,8 @@ function ConflictsFailed({
 
 export function ConflictsCard(): ReactNode {
   const pages = useDriveConflicts(null);
-  const conflicts = openConflictsOf(flattenPages(pages.data, (page) => page.items));
   const [choice, setChoice] = useState<Choice>(CLOSED);
+  const conflicts = openConflictsOf(flattenPages(pages.data, (page) => page.items));
   if (pages.isError && conflicts.length === 0) return <ConflictsFailed pages={pages} />;
   if (conflicts.length === 0) return null;
   const close = (): void => {

@@ -3,8 +3,7 @@ import { useState } from 'react';
 import { Image, View } from 'react-native';
 import type { MediaSize } from '@smarteverything/domain';
 import { Icon } from '../../../components/icon';
-import { useDevice } from '../../../store/selectors';
-import { useSnapshotLink } from './snapshot-link';
+import { useSnapshotLink, useSnapshotReadiness } from './snapshot-link';
 
 export interface CameraSnapshotProps {
   readonly deviceId: string;
@@ -29,8 +28,7 @@ export function CameraSnapshot({
   placeholder = true,
   fit = 'cover',
 }: CameraSnapshotProps): ReactNode {
-  const online = useDevice(deviceId)?.online === true;
-  const link = useSnapshotLink(deviceId, size, online);
+  const link = useSnapshotLink(deviceId, size, useSnapshotReadiness(deviceId));
   const [broken, setBroken] = useState<string | null>(null);
   const uri = link.data?.url ?? null;
   if (uri === null || broken === uri) {

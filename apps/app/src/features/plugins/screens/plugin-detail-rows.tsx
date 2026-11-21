@@ -11,6 +11,8 @@ import { notify } from '../../../components/toast-store';
 import { PluginActionRow } from '../../../plugins/shared/plugin-action';
 import { usePluginTool, type PluginToolResult } from '../../../plugins/use-plugin-tool';
 import { changePlugin, remove, restart, switchPlugin } from '../data/plugin-actions';
+import type { EntityStore } from '../../../store/entity-store';
+import { useEntityStore } from '../../../store/store-context';
 import { usePluginTools } from '../data/plugin-queries';
 import { background } from '@smarteverything/logging';
 
@@ -30,10 +32,10 @@ export function PowerRows({ row }: { readonly row: PluginRow }): ReactNode {
   );
 }
 
-function trust(row: PluginRow, on: boolean): void {
+function trust(store: EntityStore, row: PluginRow, on: boolean): void {
   const change = (): void => {
     background(
-      changePlugin(row, { trusted: on }, 'The sandbox setting wasn’t saved'),
+      changePlugin(store, row, { trusted: on }, 'The sandbox setting wasn’t saved'),
       'plugin.change_failed',
     );
   };
@@ -57,6 +59,7 @@ function trust(row: PluginRow, on: boolean): void {
 }
 
 export function SwitchRows({ row }: { readonly row: PluginRow }): ReactNode {
+  const store = useEntityStore();
   return (
     <List inset>
       <SwitchRow
@@ -64,7 +67,7 @@ export function SwitchRows({ row }: { readonly row: PluginRow }): ReactNode {
         title="On"
         value={row.enabled}
         onChange={(on) => {
-          background(switchPlugin(row, on), 'plugin.switch_failed');
+          background(switchPlugin(store, row, on), 'plugin.switch_failed');
         }}
       />
       {row.source === 'local' ? (
@@ -74,7 +77,7 @@ export function SwitchRows({ row }: { readonly row: PluginRow }): ReactNode {
           subtitle="Lets it use files outside its own folder"
           value={row.trusted}
           onChange={(on) => {
-            trust(row, on);
+            trust(store, row, on);
           }}
         />
       ) : null}

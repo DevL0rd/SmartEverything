@@ -59,7 +59,7 @@ describe('the access queries', () => {
       () => undefined,
     );
     await settle();
-    expect(listAccessAudit).toHaveBeenCalledWith(5, null);
+    expect(listAccessAudit).toHaveBeenCalledWith(5, null, expect.any(AbortSignal));
     owner();
   });
 });

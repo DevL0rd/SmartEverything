@@ -5,9 +5,11 @@ import {
 import { visibilityRegistry } from '../../../components/house-map/live-visibility/registry';
 import { acquireTrackingLease } from '../../../plugins/shelly-presence/use-tracking-lease';
 import { liveWatch } from '../../../store/live-watch';
-import { useDevices } from '../../../store/selectors';
+import { sameJson } from '../../../store/same-json';
+import { useStoreSelector } from '../../../store/store-context';
 import { VACUUM_MAP_TOPICS } from '../../devices';
 import { stageDemand, type StageBoard } from '../components/stage/stage-states';
+import { shownDevices } from './map-devices';
 import {
   boardStagesOf,
   mapDemandFacts,
@@ -22,8 +24,11 @@ const MAP_DEMAND_PORTS: MapDemandPorts = {
 };
 
 export function useHomeMapDemand(board: StageBoard, map: PlacedMap | null, look: DemandLook): void {
-  const devices = useDevices();
-  const facts = mapDemandFacts(map, devices, look);
+  const facts = useStoreSelector(
+    (state) => mapDemandFacts(map, shownDevices(state), look),
+    sameJson,
+    [map, look.showRobot, look.showPeople],
+  );
   const stages = boardStagesOf(board);
   useMapDemand(stageDemand(stages.inline, facts), MAP_DEMAND_PORTS);
   useMapDemand(stageDemand(stages.full, facts), MAP_DEMAND_PORTS);

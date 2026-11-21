@@ -7,9 +7,9 @@ import type { CameraCondition } from '../player/player-state';
 import { useCameraReach } from './use-cameras';
 
 export function useCameraCondition(entry: CameraEntry): CameraCondition {
+  const reach = useCameraReach(entry.device.id);
   const privacy = privacySwitchOf(entry.device);
   const value = useDeviceValue(entry.device.id, privacy?.key ?? 'privacy_mode');
-  const reach = useCameraReach(entry.device.id);
   return {
     online: entry.device.online,
     lastSeen: useLastSeen(entry.device.id)?.at ?? null,

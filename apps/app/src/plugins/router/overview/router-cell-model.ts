@@ -29,6 +29,10 @@ export interface RouterCell {
   readonly canRun: boolean;
 }
 
+const ONLINE_CHIP: CellChip = { tone: 'positive', label: 'Online' };
+const TESTING_CHIP: CellChip = { tone: 'info', label: 'Testing…' };
+const DOWN_CHIP: CellChip = { tone: 'critical', label: 'No internet' };
+
 function onlineCount(snapshot: RouterSnapshot): number {
   return snapshot.clients.filter((client) => client.connected).length;
 }
@@ -102,7 +106,7 @@ function staleCell(snapshot: RouterSnapshot, now: number): RouterCell {
 }
 
 function testingCell(snapshot: RouterSnapshot, run: SpeedTestRun): RouterCell {
-  const chip: CellChip = { tone: 'info', label: 'Testing…' };
+  const chip = TESTING_CHIP;
   const line = run.line ?? 'Speed test running';
   const download = rateParts(run.mbps);
   return {
@@ -119,7 +123,7 @@ function testingCell(snapshot: RouterSnapshot, run: SpeedTestRun): RouterCell {
 }
 
 function downCell(): RouterCell {
-  const chip: CellChip = { tone: 'critical', label: 'No internet' };
+  const chip = DOWN_CHIP;
   const line = 'The router is fine';
   return {
     kind: 'down',
@@ -150,7 +154,7 @@ export function routerCellOf(
   if (hero.tone === 'critical') {
     return downCell();
   }
-  const chip: CellChip = { tone: 'positive', label: 'Online' };
+  const chip = ONLINE_CHIP;
   const line = onlineLine(snapshot);
   const figures = snapshot.network
     ? pairOf(snapshot.network.downloadMbps, snapshot.network.uploadMbps)
@@ -175,9 +179,12 @@ export interface SystemReading {
   readonly text: string;
 }
 
-export function systemReadingsOf(
-  system: NonNullable<RouterSnapshot['system']>,
-): readonly SystemReading[] {
+export type SystemFigures = Pick<
+  NonNullable<RouterSnapshot['system']>,
+  'cpuPercent' | 'memoryUsedPercent' | 'temperatureCelsius'
+>;
+
+export function systemReadingsOf(system: SystemFigures): readonly SystemReading[] {
   const temperature = system.temperatureCelsius;
   return [
     {

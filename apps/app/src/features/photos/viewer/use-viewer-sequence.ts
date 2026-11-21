@@ -34,7 +34,8 @@ function useSequenceBuckets(
   const archive = from === 'archive';
   return useScreenQuery({
     queryKey: archive ? photoKeys.archiveBuckets(scope) : photoKeys.buckets(scope),
-    queryFn: () => (archive ? readArchiveBuckets(scope) : readLibraryBuckets(scope)),
+    queryFn: ({ signal }) =>
+      archive ? readArchiveBuckets(scope, signal) : readLibraryBuckets(scope, signal),
     placeholderData: keepPreviousData,
     retry: false,
   });
@@ -50,8 +51,10 @@ function useSequenceMonth(
   const archive = from === 'archive';
   return useDrivePages({
     queryKey: archive ? photoKeys.archiveMonth(month, scope) : photoKeys.month(month, scope),
-    read: (cursor) =>
-      archive ? readArchivePage(month, scope, cursor) : readLibraryPage(month, scope, cursor),
+    read: (cursor, signal) =>
+      archive
+        ? readArchivePage(month, scope, cursor, signal)
+        : readLibraryPage(month, scope, cursor, signal),
     enabled,
   });
 }

@@ -136,25 +136,24 @@ describe('which engines need the OpenRouter key', () => {
 
 describe('starting a chat with its first message', () => {
   function steps(overrides: {
-    create?: () => Promise<{ id: string }>;
+    create?: () => Promise<unknown>;
     send?: () => Promise<unknown>;
   }): StartSteps {
     return {
       create: overrides.create ?? vi.fn(() => Promise.resolve({ id: 'chat-1' })),
       send: overrides.send ?? vi.fn(() => Promise.resolve(null)),
-      chatId: null,
-      created: vi.fn(),
+      chatId: 'chat-1',
     };
   }
 
-  it('opens the created chat once the message is sent', async () => {
+  it('creates the chat under the client id and then sends the message to it', async () => {
     const run = steps({});
     expect(await startChatWithMessage(run)).toEqual({ kind: 'sent', chatId: 'chat-1' });
+    expect(run.create).toHaveBeenCalledWith('chat-1');
     expect(run.send).toHaveBeenCalledWith('chat-1');
-    expect(run.created).toHaveBeenCalledWith('chat-1');
   });
 
-  it('preserves the created chat identity when the send acknowledgement is lost', async () => {
+  it('keeps the chat identity when the send acknowledgement is lost', async () => {
     const cause = new Error('no answer');
     const run = steps({ send: () => Promise.reject(cause) });
     expect(await startChatWithMessage(run)).toEqual({
@@ -163,15 +162,18 @@ describe('starting a chat with its first message', () => {
       cause,
       chatId: 'chat-1',
     });
-    expect(run.created).toHaveBeenCalledWith('chat-1');
   });
 
-  it('has nothing to delete when the chat was never created', async () => {
+  it('sends nothing when the chat was not created', async () => {
     const cause = new Error('offline');
     const run = steps({ create: () => Promise.reject(cause) });
-    expect(await startChatWithMessage(run)).toEqual({ kind: 'failed', stage: 'create', cause });
+    expect(await startChatWithMessage(run)).toEqual({
+      kind: 'failed',
+      stage: 'create',
+      cause,
+      chatId: 'chat-1',
+    });
     expect(run.send).not.toHaveBeenCalled();
-    expect(run.created).not.toHaveBeenCalled();
   });
 
   it('shares overlapping submissions of the same first-message request', async () => {
@@ -190,18 +192,6 @@ describe('starting a chat with its first message', () => {
     finishCreate({ id: 'chat-1' });
     expect(await first).toEqual({ kind: 'sent', chatId: 'chat-1' });
     expect(run.send).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps an explicit retry on its original chat without replaying automatically', async () => {
-    const start = createDraftChatStarter();
-    const cause = new Error('acknowledgement lost');
-    const run = steps({ send: vi.fn(() => Promise.reject(cause)) });
-    await start('request-1', run);
-    expect(run.send).toHaveBeenCalledTimes(1);
-    const retry = { ...steps({}), chatId: 'chat-1' };
-    expect(await start('request-1', retry)).toEqual({ kind: 'sent', chatId: 'chat-1' });
-    expect(retry.create).not.toHaveBeenCalled();
-    expect(retry.send).toHaveBeenCalledExactlyOnceWith('chat-1');
   });
 
   it('tells the person their message is still there', () => {

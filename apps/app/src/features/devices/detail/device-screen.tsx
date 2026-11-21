@@ -150,9 +150,9 @@ function GenericPage({
 }): ReactNode {
   const { device } = model;
   const shell = useDeviceShell(device, section);
-  const shown = sectionsOf(model).find(({ key }) => key === section);
   const [initial] = useSectionParam('search');
   const search = useSectionSearchState(`${section}|${initial ?? ''}`, initial ?? '');
+  const shown = sectionsOf(model).find(({ key }) => key === section);
   useSectionLog(device.id, section, shown !== undefined);
   return (
     <PageShell

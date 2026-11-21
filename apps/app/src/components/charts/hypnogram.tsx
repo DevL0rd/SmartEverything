@@ -75,6 +75,12 @@ function useScrub(
   set: (at: number | null) => void,
 ): Scrub {
   const pointer = useIdiom() === 'pointer';
+  const step = (direction: 1 | -1): void => {
+    set(stepAt(segments, current, direction));
+  };
+  const keys = useStepKeys(step, () => {
+    set(null);
+  });
   const scrub = scrubGesture(pointer, (point) => {
     if (point !== null) {
       set(nightAt(frame, point.x));
@@ -87,12 +93,6 @@ function useScrub(
     .onEnd(() => {
       set(null);
     });
-  const step = (direction: 1 | -1): void => {
-    set(stepAt(segments, current, direction));
-  };
-  const keys = useStepKeys(step, () => {
-    set(null);
-  });
   return {
     gesture: pointer ? scrub : Gesture.Race(scrub, clear),
     onAction: (event): void => {

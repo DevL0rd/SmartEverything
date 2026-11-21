@@ -80,6 +80,7 @@ function RingRow({ ring }: { readonly ring: ComputerRing }): ReactNode {
           size={RING_SIZE}
           thickness={RING_THICKNESS}
           colour={RING_COLOUR[ring.tone ?? 'offline']}
+          ticking={false}
         />
       </View>
       <Text variant="callout" numberOfLines={1} className="min-w-0 flex-1">

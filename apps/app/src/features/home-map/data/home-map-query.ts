@@ -49,21 +49,24 @@ export class HomeMapNotFullError extends Error {
   }
 }
 
-export async function fetchHomeMap(mapId?: HomeMapId): Promise<HomeMap> {
-  const answer = await api().call(E.getHomeMap, { query: mapQuery(mapId) });
+export async function fetchHomeMap(
+  mapId: HomeMapId | undefined,
+  signal: AbortSignal,
+): Promise<HomeMap> {
+  const answer = await api().call(E.getHomeMap, { query: mapQuery(mapId) }, { signal });
   if ('view' in answer) throw new HomeMapNotFullError();
   return answer;
 }
 
 export function homeMapQueryOptions(mapId?: HomeMapId): {
   readonly queryKey: readonly unknown[];
-  readonly queryFn: () => Promise<HomeMap>;
+  readonly queryFn: (context: { readonly signal: AbortSignal }) => Promise<HomeMap>;
   readonly staleTime: number;
   readonly gcTime: number;
 } {
   return {
     queryKey: homeMapQueryKey(mapId),
-    queryFn: (): Promise<HomeMap> => fetchHomeMap(mapId),
+    queryFn: ({ signal }): Promise<HomeMap> => fetchHomeMap(mapId, signal),
     staleTime: Infinity,
     gcTime: Infinity,
   };

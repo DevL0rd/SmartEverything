@@ -148,7 +148,14 @@ function NoticeBody({
           accessibilityRole="image"
           accessibilityLabel={`Preparing, ${percent(share)}`}
         >
-          <Arc value={share} size={44} thickness={4} colour="primary" trackColour="surface-3" />
+          <Arc
+            value={share}
+            size={44}
+            thickness={4}
+            colour="primary"
+            trackColour="surface-3"
+            ticking={false}
+          />
         </View>
       ) : (
         <Icon name={look === 'failed' ? 'alert' : 'film'} size={32} tone="variant" />

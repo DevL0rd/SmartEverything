@@ -50,19 +50,23 @@ export async function removeIrAppliance(applianceId: string): Promise<void> {
   log.info('appliance.removed', { applianceId });
 }
 
-export async function listIrLibraryCategories(): Promise<IrLibraryCategory[]> {
-  return api().call(E.listIrLibraryCategories, {});
+export async function listIrLibraryCategories(signal: AbortSignal): Promise<IrLibraryCategory[]> {
+  return api().call(E.listIrLibraryCategories, {}, { signal });
 }
 
-export async function listIrLibraryBrands(category: string): Promise<IrLibraryBrand[]> {
-  return api().call(E.listIrLibraryBrands, { query: { category } });
+export async function listIrLibraryBrands(
+  category: string,
+  signal: AbortSignal,
+): Promise<IrLibraryBrand[]> {
+  return api().call(E.listIrLibraryBrands, { query: { category } }, { signal });
 }
 
 export async function listIrLibraryModels(
   category: string,
   brand: string,
+  signal: AbortSignal,
 ): Promise<IrLibraryModel[]> {
-  return api().call(E.listIrLibraryModels, { query: { category, brand } });
+  return api().call(E.listIrLibraryModels, { query: { category, brand } }, { signal });
 }
 
 export interface NewLibraryAppliance {

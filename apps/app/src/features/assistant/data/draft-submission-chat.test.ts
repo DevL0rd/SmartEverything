@@ -125,14 +125,8 @@ describe('first-message request ownership', () => {
     });
     const create = vi.fn(() => Promise.resolve({ id: CHAT }));
     const send = vi.fn(() => pending);
-    const firstSend = startChatWithMessage({
-      chatId: null,
-      create,
-      send,
-      created: (id): void => {
-        first.drafts.bindDraftSubmissionChat('new-chat', original.id, { id, sessionKey: 'home' });
-      },
-    });
+    first.drafts.bindDraftSubmissionChat('new-chat', original.id, { id: CHAT, sessionKey: 'home' });
+    const firstSend = startChatWithMessage({ chatId: CHAT, create, send });
     await Promise.resolve();
     expect(send).toHaveBeenCalledTimes(1);
     await first.store.bindAiDraftsProfile(PROFILE_B);
@@ -149,17 +143,18 @@ describe('first-message request ownership', () => {
     expect(recovered.chat).toEqual({ id: CHAT, sessionKey: 'home' });
     expect(create).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledTimes(1);
-    const retryCreate = vi.fn(() => Promise.resolve({ id: 'duplicate' }));
+    const retryCreate = vi.fn((_id: string) => Promise.resolve({ id: CHAT }));
     const retrySend = vi.fn((_id: string, _requestId: string) => Promise.resolve(null));
+    const chatId = recovered.chat?.id;
+    if (chatId === undefined) throw new Error('Expected the bound chat');
     expect(
       await startChatWithMessage({
-        chatId: recovered.chat?.id ?? null,
+        chatId,
         create: retryCreate,
-        created: vi.fn(),
         send: (id) => retrySend(id, recovered.id),
       }),
     ).toEqual({ kind: 'sent', chatId: CHAT });
-    expect(retryCreate).not.toHaveBeenCalled();
+    expect(retryCreate).toHaveBeenCalledExactlyOnceWith(CHAT);
     expect(retrySend).toHaveBeenCalledExactlyOnceWith(CHAT, original.id);
     acknowledge();
     await firstSend;

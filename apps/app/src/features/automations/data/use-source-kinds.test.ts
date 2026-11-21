@@ -17,13 +17,14 @@ let root: Root | null = null;
 function sourceOf(kindSource: AutomationsSource['kindSource']): AutomationsSource {
   return {
     api: hubApi,
+    write: (write) => write.send(),
     automations: {
       snapshot: () => ({ rows: [], rejected: 0, unstructured: [] }),
       subscribe: () => () => undefined,
     },
     kindSource,
     trace: { hold: () => () => undefined },
-    runChanges: () => () => undefined,
+    runWaitChanges: () => () => undefined,
   };
 }
 

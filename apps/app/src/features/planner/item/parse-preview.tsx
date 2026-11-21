@@ -313,12 +313,15 @@ function useParsed(
 ): Pick<ParseState, 'parsed' | 'problem' | 'current' | 'retry'> {
   const parse = useScreenQuery({
     queryKey: [...key, timeZone, text, ...(collectionId === undefined ? [] : [collectionId])],
-    queryFn: () =>
-      tools.parse({
-        text: text ?? '',
-        time_zone: timeZone,
-        ...(collectionId === undefined ? {} : { collection_id: collectionId }),
-      }),
+    queryFn: ({ signal }) =>
+      tools.parse(
+        {
+          text: text ?? '',
+          time_zone: timeZone,
+          ...(collectionId === undefined ? {} : { collection_id: collectionId }),
+        },
+        signal,
+      ),
     enabled: text !== null,
     placeholderData: keepPreviousData,
     retry: false,
@@ -340,7 +343,7 @@ function useSuggestions(
 ): readonly PlannerSuggestion[] {
   const suggest = useScreenQuery({
     queryKey: [...key, title],
-    queryFn: () => tools.suggestCompletion({ title: title ?? '' }),
+    queryFn: ({ signal }) => tools.suggestCompletion({ title: title ?? '' }, signal),
     enabled: title !== null,
     placeholderData: keepPreviousData,
     retry: false,

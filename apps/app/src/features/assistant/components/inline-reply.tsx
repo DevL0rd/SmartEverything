@@ -289,12 +289,12 @@ export function InlineReply({
 }): ReactNode {
   const { value: row, at } = useFlushedAt(item.row, STREAM_FLUSH_MS, live);
   const showSteps = useAssistantStatus()?.settings.activity_steps !== false;
-  const parts = visibleReplyParts(row, showSteps);
-  const sources = live ? NO_SOURCES : webSourcesOf(row);
   const context = useMemo(
     () => ({ messageId: row.id, startedAt: row.created_at }),
     [row.id, row.created_at],
   );
+  const parts = visibleReplyParts(row, showSteps);
+  const sources = live ? NO_SOURCES : webSourcesOf(row);
   if (parts === null) return null;
   const streamingTail = streamingKey(parts, live);
   const stoppedKey = stoppedToolsKey(row, parts);
