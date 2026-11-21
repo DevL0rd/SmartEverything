@@ -40,7 +40,7 @@ export interface StoreHostSetup {
   readonly readers: number;
 }
 
-const BUSY_TIMEOUT_MS = 5000;
+const BUSY_TIMEOUT_MS = 30_000;
 
 const FEED_SUMMARY_MS = 60_000;
 
